@@ -6,6 +6,8 @@ export σ, relu, softmax
 
 relu(x) = max(0, x)
 
-softmax(xs) = exp.(xs) ./ sum(exp.(xs), ndims(xs))
+softmax(xs::AbstractVector) = exp.(xs) ./ sum(exp.(xs))
+
+softmax(xs::AbstractMatrix) = exp.(xs) ./ sum(exp.(xs), 1)
 
 end # module
