@@ -2,6 +2,9 @@
 
 relu(x) = max(0, x)
 
-softmax(xs::AbstractVector) = exp.(xs) ./ sum(exp.(xs))
+softmax!(out::AbstractVecOrMat, xs::AbstractVecOrMat) =
+  out .= exp.(xs) ./ sum(exp, xs, 1)
 
-softmax(xs::AbstractMatrix) = exp.(xs) ./ sum(exp.(xs), 1)
+softmax!(xs) = softmax!(xs, xs)
+
+softmax(xs) = softmax!(similar(xs), xs)
