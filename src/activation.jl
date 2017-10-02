@@ -1,5 +1,8 @@
 σ(x) = 1 / (1 + exp(-x))
 
+# ForwardDiff numerical stability hack
+σ(x::Float32) = ifelse(x < -80, zero(x), 1 / (1 + exp(-x)))
+
 relu(x) = max(0, x)
 
 function softmax!(out::AbstractVecOrMat, xs::AbstractVecOrMat)
