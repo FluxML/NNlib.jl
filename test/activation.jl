@@ -6,4 +6,7 @@ xs = rand(5,5)
 
 @test sum(softmax(vec(xs))) ≈ 1
 
+@test leakyrelu(0.3)( 0.4) ≈ 0.4
+@test leakyrelu(0.3)(-0.4) ≈ -0.12
+
 end
