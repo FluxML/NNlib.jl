@@ -28,12 +28,12 @@ You can also specify the coefficient explicitly, e.g. `leakyrelu(x, 0.01)`.
 leakyrelu(x, a = oftype(x, 0.01)) = max(a*x, x)
 
 """
-    elu(x; α = 1) = max(α * (exp(x) - one(x)), x)
+    elu(x; α = 1) = x > 0 ? x : α * (exp(x) - one(x)
 
 Exponential Linear Unit activation function. See [Fast and Accurate Deep Network
 Learning by Exponential Linear Units](https://arxiv.org/abs/1511.07289)
 """
-elu(x, α = one(x)) = max(α * (exp(x) - one(x)), x)
+elu(x, α = one(x)) = ifelse(x ≥ 0, x, α * (exp(x) - one(x)))
 
 """
     swish(x) = x * σ(x)

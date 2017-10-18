@@ -13,7 +13,7 @@ xs = rand(5,5)
     @test elu(-4) ≈ (exp(-4) - 1)
 end
 
-@test relu( 0.4,0.3) ≈  0.4
-@test relu(-0.4,0.3) ≈ -0.12
+@test leakyrelu( 0.4,0.3) ≈  0.4
+@test leakyrelu(-0.4,0.3) ≈ -0.12
 
 end
