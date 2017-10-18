@@ -40,3 +40,13 @@ end
 
 ∇softmax!(Δ, xs) = ∇softmax!(Δ, Δ, xs)
 ∇softmax(Δ, xs) = ∇softmax!(similar(Δ), Δ, xs)
+
+"""
+    swish(x)
+
+Self-Gated Actvation Function
+
+# Reference
+- [Swish: a Self-Gated Activation Function](https://arxiv.org/pdf/1710.05941.pdf)
+"""
+swish(x) = x * σ(x)
