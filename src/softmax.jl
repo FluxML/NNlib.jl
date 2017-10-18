@@ -33,3 +33,21 @@ end
 
 ∇softmax!(Δ, xs) = ∇softmax!(Δ, Δ, xs)
 ∇softmax(Δ, xs) = ∇softmax!(similar(Δ), Δ, xs)
+
+"""
+    softmax(xs) = exp.(xs) ./ sum(exp.(xs))
+
+[Softmax](https://en.wikipedia.org/wiki/Softmax_function) takes
+log-probabilities (any real vector) and returns a probability distribution that
+sums to 1.
+
+If given a matrix it will treat it as a batch of vectors, with each column
+independent.
+
+    julia> softmax([1,2,3.])
+    3-element Array{Float64,1}:
+      0.0900306
+      0.244728
+      0.665241
+"""
+softmax
