@@ -3,7 +3,7 @@
 # ForwardDiff numerical stability hack
 σ(x::Float32) = ifelse(x < -80, zero(x), 1 / (1 + exp(-x)))
 
-relu(x) = max(0, x)
+relu(x, leak=0.0) = max(leak.*x, x)
 
 function softmax!(out::AbstractVecOrMat, xs::AbstractVecOrMat)
   # out[end, :] .= maximum(xs, 1)
