@@ -1,63 +1,45 @@
+"""
+    σ(x) = 1 / (1 + exp(-x))
+
+Classic [sigmoid](https://en.wikipedia.org/wiki/Sigmoid_function) activation
+function.
+"""
 σ(x) = 1 / (1 + exp(-x))
 
 # ForwardDiff numerical stability hack
 σ(x::Float32) = ifelse(x < -80, zero(x), 1 / (1 + exp(-x)))
 
-relu(x, leak=0.0) = max(leak.*x, x)
+"""
+    relu(x) = max(0, x)
+
+[Rectified Linear Unit](https://en.wikipedia.org/wiki/Rectifier_(neural_networks))
+activation function.
+"""
+relu(x) = max(0, x)
 
 """
-    elu(x; α = 1.)
+    leakyrelu(x) = max(0.01x, x)
 
-Exponential Linear Unit
+Leaky [Rectified Linear Unit](https://en.wikipedia.org/wiki/Rectifier_(neural_networks))
+activation function.
 
-# Reference
-- [Fast and Accurate Deep Network Learning by Exponential Linear Units (ELUs)]
-  (https://arxiv.org/abs/1511.07289)
+You can also specify the coefficient explicitly, e.g. `leakyrelu(x, 0.01)`.
 """
-elu(x::Real; α::AbstractFloat = 1.) = ifelse((x >= 0), x, α * (exp(x) - one(x)))
-
-function softmax!(out::AbstractVecOrMat, xs::AbstractVecOrMat)
-  # out[end, :] .= maximum(xs, 1)
-  for j = 1:size(xs, 2)
-    out[end, j] = 0
-    for i = 1:size(xs, 1)
-      @inbounds out[end, j] = max(out[end, j], xs[i, j])
-    end
-  end
-  # out .= exp(xs .- out[end, :])
-  for j = 1:size(out, 2), i = 1:size(out, 1)
-    @inbounds out[i, j] = exp(xs[i, j] - out[end, j])
-  end
-  # out ./= sum(out, 1)
-  for j = 1:size(out, 2)
-    s = zero(eltype(out))
-    for i = 1:size(out, 1)
-      @inbounds s += out[i, j]
-    end
-    for i = 1:size(out, 1)
-      @inbounds out[i, j] /= s
-    end
-  end
-  return out
-end
-
-softmax!(xs) = softmax!(xs, xs)
-softmax(xs) = softmax!(similar(xs), xs)
-
-function ∇softmax!(out::AbstractVecOrMat, Δ::AbstractVecOrMat, xs::AbstractVecOrMat)
-  s = sum(exp, xs, 1)
-  out .= exp.(xs)./s.*(Δ .- sum(Δ .* exp.(xs), 1)./s)
-end
-
-∇softmax!(Δ, xs) = ∇softmax!(Δ, Δ, xs)
-∇softmax(Δ, xs) = ∇softmax!(similar(Δ), Δ, xs)
+leakyrelu(x, a = oftype(x, 0.01)) = max(a*x, x)
 
 """
-    swish(x)
+    elu(x; α = 1) = max(α * (exp(x) - one(x)), x)
 
-Self-Gated Actvation Function
+Exponential Linear Unit activation function. See [Fast and Accurate Deep Network
+Learning by Exponential Linear Units](https://arxiv.org/abs/1511.07289)
+"""
+elu(x, α = one(x)) = max(α * (exp(x) - one(x)), x)
 
-# Reference
-- [Swish: a Self-Gated Activation Function](https://arxiv.org/pdf/1710.05941.pdf)
+"""
+    swish(x) = x * σ(x)
+
+Self-gated actvation function.
+
+See [Swish: a Self-Gated Activation Function](https://arxiv.org/pdf/1710.05941.pdf).
 """
 swish(x) = x * σ(x)
