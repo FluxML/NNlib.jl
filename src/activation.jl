@@ -5,6 +5,17 @@
 
 relu(x, leak=0.0) = max(leak.*x, x)
 
+"""
+    elu(x; α = 1.)
+
+Exponential Linear Unit
+
+# Reference
+- [Fast and Accurate Deep Network Learning by Exponential Linear Units (ELUs)]
+  (https://arxiv.org/abs/1511.07289)
+"""
+elu(x::Real; α::AbstractFloat = 1.) = ifelse((x >= 0), x, α * (exp(x) - one(x)))
+
 function softmax!(out::AbstractVecOrMat, xs::AbstractVecOrMat)
   # out[end, :] .= maximum(xs, 1)
   for j = 1:size(xs, 2)

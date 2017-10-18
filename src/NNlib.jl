@@ -1,6 +1,6 @@
 module NNlib
 
-export σ, relu, softmax
+export σ, relu, elu, softmax
 
 include("activation.jl")
 include("adapt.jl")
