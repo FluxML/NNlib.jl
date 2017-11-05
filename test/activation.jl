@@ -38,7 +38,7 @@ end
         @test relu(1.0) == 1.0
         @test leakyrelu(1.0) == 1.0
         @test elu(1.0) == 1.0
-        @test swish(1.0) == 1 / (1 + exp(-1))
+        @test swish(1.0) == 1.0 / (1.0 + exp(-1.0))
         @test softplus(1.0) ≈ log(exp(1.0) + 1.0)
         @test softsign(1.0) == 0.5
         @test selu(1.0) == 1.0507009873554804934193349852946
@@ -47,7 +47,7 @@ end
         @test relu(-1.0) == 0.0
         @test leakyrelu(-1.0) == -0.01
         @test elu(-1.0) == exp(-1.0) - 1.0
-        @test swish(1.0) == 1.0 / (1.0 + exp(-1.0))
+        @test swish(-1.0) == -1.0 / (1.0 + exp(1.0))
         @test softplus(-1.0) ≈ log(exp(-1.0) + 1.0)
         @test softsign(-1.0) == -0.5
         @test selu(-1.0) == 1.0507009873554804934193349852946 * 1.6732632423543772848170429916717 * (exp(-1.0) - 1.0)
