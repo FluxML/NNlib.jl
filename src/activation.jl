@@ -43,3 +43,10 @@ Self-gated actvation function.
 See [Swish: a Self-Gated Activation Function](https://arxiv.org/pdf/1710.05941.pdf).
 """
 swish(x) = x * σ(x)
+
+"""
+    softrelu(x) = log(1+exp(x))
+Softplus activation function
+See [Softplus: Activation](https://en.wikipedia.org/wiki/Rectifier_(neural_networks))
+"""
+softrelu(x) = log(1 + exp(x))
