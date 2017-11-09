@@ -19,7 +19,7 @@ const MLN2  = 6.9314718055994530941723212145817656807550013436025525412068000949
 end
 
 @inline function ldexp3k(x::T, e::Int) where {T<:Union{Float32,Float64}}
-    if VERSION < v"0.7.0-DEV.1430"
+    @static if VERSION < v"0.7.0-DEV.1430"
         reinterpret(T, reinterpret(Unsigned, x) + (Int64(e) << significand_bits(T)) % fpinttype(T))
     else
         reinterpret(T, reinterpret(Unsigned, x) + (Int64(e) << significand_bits(T)) % uinttype(T))
@@ -87,6 +87,6 @@ using Requires
   import ForwardDiff: Dual, value, partials
   function log_fast(d::Dual{T,<:Union{Float32,Float64}}) where T
     x = value(d)
-    Dual(log_fast(x), inv(x) * partials(d))
+    Dual{T}(log_fast(x), inv(x) * partials(d))
   end
 end
