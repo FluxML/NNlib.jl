@@ -43,3 +43,13 @@ Self-gated actvation function.
 See [Swish: a Self-Gated Activation Function](https://arxiv.org/pdf/1710.05941.pdf).
 """
 swish(x) = x * σ(x)
+
+"""
+
+    tanh(x) = 2 * σ(2*x) - 1
+
+Hyperbolic activation function.
+
+See [Hyperbolic function: (https://en.wikipedia.org/wiki/Hyperbolic_function#Hyperbolic_tangent)]
+"""
+tanh(x) = 2 * σ(2*x) - 1
