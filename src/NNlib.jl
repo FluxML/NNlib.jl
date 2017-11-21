@@ -1,6 +1,6 @@
 module NNlib
 
-export σ, relu, leakyrelu, elu, swish, softmax
+export σ, relu, leakyrelu, elu, swish, softmax, selu, softplus, softsign
 
 include("numeric.jl")
 include("activation.jl")
