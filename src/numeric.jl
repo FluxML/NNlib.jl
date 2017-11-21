@@ -81,8 +81,6 @@ log_fast(x::Union{Int32,Int64}) = log_fast(float(x))
 
 # Derivatives
 
-using Requires
-
 @require ForwardDiff begin
   import ForwardDiff: Dual, value, partials
   function log_fast(d::Dual{T,<:Union{Float32,Float64}}) where T

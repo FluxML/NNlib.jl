@@ -25,8 +25,14 @@ function.
 σ(x) = one(x) / (one(x) + exp(-x))
 
 # ForwardDiff numerical stability hack
-σ(x::Float32) = ifelse(x < -80.0f0, zero(x), one(x) / (one(x) + exp(-x)))
+σ_stable(x) = ifelse(x < -80, zero(x), one(x) / (one(x) + exp(-x)))
 
+σ(x::Float32) = σ_stable(x)
+
+@require ForwardDiff begin
+  import ForwardDiff: Dual
+  σ(x::Dual{T,Float32}) where T = σ_stable(x)
+end
 
 """
     relu(x) = max(0, x)
