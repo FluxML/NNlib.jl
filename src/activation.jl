@@ -76,21 +76,13 @@ You can also specify the coefficient explicitly, e.g. `leakyrelu(x, 0.01)`.
     -1 │⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⡇⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀│
        -3                      0                      3
 """
-leakyrelu(x::T, a::T) where T = max(a * x, x)
-leakyrelu(x::T, a::S) where T<:AbstractFloat where S<:AbstractFloat = max(T(a) * x, x)
+leakyrelu(x::AbstractFloat, a = oftype(x, 0.01)) = max(a*x, x)
 
-function leakyrelu(x::T, a::S) where {T, S}
-    _T = promote_type(T, S)
-    max(_T(a) * _T(x), _T(x))
-end
-
-leakyrelu(x) = leakyrelu(x, 0.01)
-
+leakyrelu(x, a...) = leakyrelu(float(x), a...)
 
 """
-    elu(x) = x > 0 ? x : α * (exp(x) - 1)
-
-    α = 1
+    elu(x, α = 1) =
+      x > 0 ? x : α * (exp(x) - 1)
 
 Exponential Linear Unit activation function.
 See [Fast and Accurate Deep Network Learning by Exponential Linear Units](https://arxiv.org/abs/1511.07289).
@@ -113,16 +105,9 @@ You can also specify the coefficient explicitly, e.g. `elu(x, 1)`.
     -1 │⣀⣀⠤⠤⠤⠤⠔⠒⠒⠉⠉⠀⠀⠀⠀⠀⠀⠀⠀⠀⡇⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀│
        -3                      0                      3
 """
-elu(x::T, α::T) where T = ifelse(x ≥ zero(x), x, α * (exp(x) - one(x)))
-elu(x::T, α::S) where T<:AbstractFloat where S<:AbstractFloat = ifelse(x ≥ zero(x), x, T(α) * (exp(x) - one(x)))
+elu(x::AbstractFloat, α = one(x)) = ifelse(x ≥ 0, x, α * (exp(x) - one(x)))
 
-function elu(x::T, α::S) where {T, S}
-    _T = promote_type(T, S)
-    ifelse(x ≥ zero(x), _T(x), _T(α) * (exp(_T(x)) - one(_T(x))))
-end
-
-elu(x) = elu(x, 1.0)
-
+elu(x) = elu(float(x))
 
 """
     swish(x) = x * σ(x)
@@ -148,7 +133,6 @@ See [Swish: a Self-Gated Activation Function](https://arxiv.org/pdf/1710.05941.p
        -3                      0                      3
 """
 swish(x) = x * σ(x)
-
 
 """
     selu(x) = λ * (x ≥ 0 ? x : α * (exp(x) - 1))
@@ -176,14 +160,13 @@ See [Self-Normalizing Neural Networks](https://arxiv.org/pdf/1706.02515.pdf).
 -2 │⠉⠉⠉⠉⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⡇⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀│
    -3                      0                      3
 """
-function selu(x::T) where T <: AbstractFloat
-    T(1.0507009873554804934193349852946) * ifelse(x ≥ zero(x), x, T(1.6732632423543772848170429916717) * (exp(x) - one(x)))
+function selu(x::AbstractFloat)
+  λ = oftype(x, 1.0507009873554804934193349852946)
+  α = oftype(x, 1.6732632423543772848170429916717)
+  λ * ifelse(x > 0, x, α * (exp(x) - 1))
 end
 
-function selu(x)
-    1.0507009873554804934193349852946 * ifelse(x ≥ zero(x), Float64(x), 1.6732632423543772848170429916717 * (exp(x) - 1.0))
-end
-
+selu(x) = selu(float(x))
 
 """
     softsign(x) = x / (1 + |x|)

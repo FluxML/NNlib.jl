@@ -1,9 +1,9 @@
-ACTIVATION_FUCNTIONS = [σ, relu, leakyrelu, elu, swish, selu, softplus, softsign];
+ACTIVATION_FUNCTIONS = [σ, relu, leakyrelu, elu, swish, selu, softplus, softsign];
 
 function test_value_float_precision_preserving(a)
     @testset "$(a): " begin
         for T in [Float32, Float64]
-            for val in [-10, -1, 0, 1, 10] 
+            for val in [-10, -1, 0, 1, 10]
                 val = @inferred a(T(val))
                 @test typeof(val) == T
             end
@@ -54,12 +54,12 @@ end
     end
 
     @testset "Test Float64 and Float32 type preservation" begin
-        test_value_float_precision_preserving.(ACTIVATION_FUCNTIONS)
+        test_value_float_precision_preserving.(ACTIVATION_FUNCTIONS)
     end
 
     @testset "Test Integer64 and Integer32 inputs will force Float64 outputs" begin
-        test_value_int_input_forces_float64.(filter(x -> x != relu, ACTIVATION_FUCNTIONS))
-        
+        test_value_int_input_forces_float64.(filter(x -> x != relu, ACTIVATION_FUNCTIONS))
+
         @testset "relu: " begin
         # relu doesn't have to force floating point outputs
         @test typeof(relu(1)) == Int64
