@@ -1,3 +1,4 @@
+using NNlib: conv2d_grad_w, conv2d_grad_x, pool_grad
 
 @testset "conv" begin
 
@@ -49,13 +50,9 @@ end
     # for gradients, check only size
     # correctness of gradients is cross-checked with CUDNN.jl
     # (it's assumed pooling code won't change often)
-    
+
     y = pool(x)
     dy = reshape(rand(2,2), 2, 2, 1, 1)
     @test size(pool_grad(x, y, dy)) == size(x)
-    
+
 end
-
-
-
-
