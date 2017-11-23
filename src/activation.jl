@@ -24,6 +24,8 @@ function.
 """
 σ(x) = one(x) / (one(x) + exp(-x))
 
+const sigmoid = σ
+
 # ForwardDiff numerical stability hack
 σ_stable(x) = ifelse(x < -80, zero(x), one(x) / (one(x) + exp(-x)))
 
