@@ -26,9 +26,9 @@ elseif is_windows()
     if success(`$gpp --version`)
         cd(path) do
             run(`$gpp -c -fPIC -std=c++11 conv.cpp -I $incdir`)
-            run(`$gpp -shared -o conv.dll conv.o`)
+            run(`$gpp -shared -o nnlib.dll conv.o`)
             rm("conv.o")
-            mv("conv.dll", "..\\deps\\conv.dll")
+            mv("nnlib.dll", "..\\deps\\nnlib.dll")
         end
     else
         error("no windows c++ compiler (cl.exe) found, and WinRPM with g++ is failing as well.")
@@ -38,8 +38,8 @@ elseif is_unix()
     cd(path) do
         # Note: on Mac OS X, g++ is aliased to clang++.
         run(`c++ -c -fPIC -std=c++11 conv.cpp`)
-        run(`c++ -shared -o conv.so conv.o`)
+        run(`c++ -shared -o nnlib.so conv.o`)
         rm("conv.o")
-        mv("conv.so", "../deps/conv.so")
+        mv("nnlib.so", "../deps/nnlib.so")
     end
 end
