@@ -28,7 +28,7 @@ elseif is_windows()
             run(`$gpp -c -fPIC -std=c++11 conv.cpp -I $incdir`)
             run(`$gpp -shared -o conv.dll conv.o`)
             rm("conv.o")
-            mv("conv.dll", "../")
+            mv("conv.dll", "..\\deps\\conv.dll")
         end
     else
         error("no windows c++ compiler (cl.exe) found, and WinRPM with g++ is failing as well.")
@@ -40,6 +40,6 @@ elseif is_unix()
         run(`c++ -c -fPIC -std=c++11 conv.cpp`)
         run(`c++ -shared -o conv.so conv.o`)
         rm("conv.o")
-        mv("conv.so", "../")
+        mv("conv.so", "../deps/conv.so")
     end
 end
