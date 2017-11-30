@@ -2,7 +2,13 @@
 
 path = joinpath(dirname(@__FILE__), "..", "src")
 
-if is_windows()
+version = "0.1.0"
+
+if is_apple()
+  download("https://www.dropbox.com/s/syt6q6qv6ehc4p0/nnlib-$version.dylib?dl=1",
+           joinpath(@__DIR__, "nnlib.dylib"))
+
+elseif is_windows()
 
     import WinRPM
     info("Compiling with WinRPM gcc-c++")
@@ -21,17 +27,19 @@ if is_windows()
         cd(path) do
             run(`$gpp -c -fPIC -std=c++11 conv.cpp -I $incdir`)
             run(`$gpp -shared -o conv.dll conv.o`)
+            rm("conv.o")
+            mv("conv.dll", "../")
         end
     else
         error("no windows c++ compiler (cl.exe) found, and WinRPM with g++ is failing as well.")
     end
 
-end
-
-if is_unix()
+elseif is_unix()
     cd(path) do
         # Note: on Mac OS X, g++ is aliased to clang++.
         run(`c++ -c -fPIC -std=c++11 conv.cpp`)
         run(`c++ -shared -o conv.so conv.o`)
+        rm("conv.o")
+        mv("conv.so", "../")
     end
 end
