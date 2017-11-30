@@ -1,5 +1,3 @@
-#! /usr/bin/env julia
-
 path = joinpath(dirname(@__FILE__), "..", "src")
 
 if is_apple()
