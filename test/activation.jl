@@ -62,7 +62,7 @@ end
 
         @testset "relu: " begin
         # relu doesn't have to force floating point outputs
-        @test typeof(relu(1)) == Int64
+        @test typeof(relu(Int64(1))) == Int64
         @test typeof(relu(Int32(1))) == Int32
         end
     end

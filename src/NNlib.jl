@@ -5,7 +5,7 @@ using Requires
 export σ, sigmoid, relu, leakyrelu, elu, swish, selu, softplus, softsign,
   softmax, conv2d, pool
 
-const libnnlib = Libdl.find_library(is_windows() ? "conv.dll" : "conv.so", [@__DIR__])
+const libnnlib = Libdl.find_library("nnlib.$(Libdl.dlext)", [joinpath(@__DIR__, "..", "deps")])
 
 include("numeric.jl")
 include("activation.jl")

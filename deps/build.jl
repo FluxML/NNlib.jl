@@ -1,37 +1,17 @@
-#! /usr/bin/env julia
-
 path = joinpath(dirname(@__FILE__), "..", "src")
 
-if is_windows()
-
-    import WinRPM
-    info("Compiling with WinRPM gcc-c++")
-    WinRPM.install("gcc-c++"; yes = true)
-    WinRPM.install("gcc"; yes = true)
-    WinRPM.install("headers"; yes = true)
-    WinRPM.install("winpthreads-devel"; yes = true)
-
-    gpp = Pkg.dir("WinRPM","deps","usr","x86_64-w64-mingw32","sys-root","mingw","bin","g++")
-    RPMbindir = Pkg.dir("WinRPM","deps","usr","x86_64-w64-mingw32","sys-root","mingw","bin")
-    incdir = Pkg.dir("WinRPM","deps","usr","x86_64-w64-mingw32","sys-root","mingw","include")
-
-    push!(Base.Libdl.DL_LOAD_PATH, RPMbindir)
-    ENV["PATH"] = ENV["PATH"] * ";" * RPMbindir
-    if success(`$gpp --version`)
-        cd(path) do
-            run(`$gpp -c -fPIC -std=c++11 conv.cpp -I $incdir`)
-            run(`$gpp -shared -o conv.dll conv.o`)
-        end
-    else
-        error("no windows c++ compiler (cl.exe) found, and WinRPM with g++ is failing as well.")
-    end
-
-end
-
-if is_unix()
-    cd(path) do
-        # Note: on Mac OS X, g++ is aliased to clang++.
-        run(`c++ -c -fPIC -std=c++11 conv.cpp`)
-        run(`c++ -shared -o conv.so conv.o`)
-    end
+if is_apple()
+  download("https://externalshare.blob.core.windows.net/packages/nnlib-0.1.0.dylib",
+           joinpath(@__DIR__, "nnlib.dylib"))
+elseif is_windows()
+  Int == Int64 || error("32-bit Windows is not currently supported. Please report this to https://github.com/FluxML/NNlib.jl")
+  download("https://externalshare.blob.core.windows.net/packages/nnlib64-0.1.0.dll",
+           joinpath(@__DIR__, "nnlib.dll"))
+elseif is_unix()
+  cd(path) do
+    run(`c++ -c -fPIC -std=c++11 conv.cpp`)
+    run(`c++ -shared -o nnlib.so conv.o`)
+    rm("conv.o")
+    mv("nnlib.so", "../deps/nnlib.so")
+  end
 end
