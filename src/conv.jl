@@ -227,3 +227,6 @@ for (T,S) in ((Float32,32), (Float64,64)); @eval begin
         return dx
     end
 end;end
+
+maxpool2d(x, k) = pool(x; window = k, mode = 0)
+avgpool2d(x, k) = pool(x; window = k, mode = 1)
