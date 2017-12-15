@@ -12,6 +12,6 @@ elseif is_unix()
     run(`c++ -c -fPIC -std=c++11 conv.cpp`)
     run(`c++ -shared -o nnlib.so conv.o`)
     rm("conv.o")
-    mv("nnlib.so", "../deps/nnlib.so")
+    mv("nnlib.so", "../deps/nnlib.so", remove_destination = true)
   end
 end
