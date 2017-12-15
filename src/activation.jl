@@ -84,9 +84,9 @@ You can also specify the coefficient explicitly, e.g. `leakyrelu(x, 0.01)`.
     -1 │⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⡇⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀│
        -3                      0                      3
 """
-leakyrelu(x::AbstractFloat, a = oftype(x, 0.01)) = max(a*x, x)
+leakyrelu(x, a) = max(oftype(x, a)*x, x)
 
-leakyrelu(x, a...) = leakyrelu(float(x), a...)
+leakyrelu(x::T) where T = leakyrelu(float(x), 0.01)
 
 """
     elu(x, α = 1) =
@@ -113,9 +113,9 @@ You can also specify the coefficient explicitly, e.g. `elu(x, 1)`.
     -1 │⣀⣀⠤⠤⠤⠤⠔⠒⠒⠉⠉⠀⠀⠀⠀⠀⠀⠀⠀⠀⡇⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀│
        -3                      0                      3
 """
-elu(x::AbstractFloat, α = one(x)) = ifelse(x ≥ 0, x, α * (exp(x) - one(x)))
+elu(x, α) = ifelse(x ≥ 0, float(x), α * (exp(x) - one(x)))
 
-elu(x) = elu(float(x))
+elu(x) = elu(x, one(x))
 
 """
     swish(x) = x * σ(x)
@@ -168,13 +168,13 @@ See [Self-Normalizing Neural Networks](https://arxiv.org/pdf/1706.02515.pdf).
 -2 │⠉⠉⠉⠉⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⡇⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀│
    -3                      0                      3
 """
-function selu(x::AbstractFloat)
+function _selu(x)
   λ = oftype(x, 1.0507009873554804934193349852946)
   α = oftype(x, 1.6732632423543772848170429916717)
-  λ * ifelse(x > 0, x, α * (exp(x) - 1))
+  λ * ifelse(x > zero(x), x, α * (exp(x) - one(x)))
 end
 
-selu(x) = selu(float(x))
+selu(x) = _selu(float(x))
 
 """
     softsign(x) = x / (1 + |x|)

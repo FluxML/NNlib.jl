@@ -22,6 +22,20 @@ function test_value_int_input_forces_float64(a)
     end
 end
 
+if "ForwardDiff" in collect(keys(Pkg.installed()))
+    using ForwardDiff
+    function test_value_duals(a)
+        @testset "$(a): " begin
+        for T in [Float32, Float64, Int32, Int64]
+            for val in [-10, -1, 0, 1, 10]
+                val = @inferred a(ForwardDiff.Dual(float(T(val)), one(float(T))))
+                @test typeof(val) == ForwardDiff.Dual{1,float(T)}
+            end
+        end
+        end
+    end
+end
+
 @testset "Activation Functions" begin
 
     @testset "Test outputs against precomputed results" begin
@@ -67,6 +81,13 @@ end
         end
     end
 
+    if "ForwardDiff" in collect(keys(Pkg.installed()))
+        @testset "Test ForwardDiff.Dual returns correct Float type" begin
+           test_value_duals.(ACTIVATION_FUNCTIONS)
+        end
+    else
+        warn("ForwardDiff is not installed and ForwardDiff.Dual is not tested.")
+    end
 
     xs = rand(5,5)
 
