@@ -1,4 +1,4 @@
-using NNlib: conv2d_grad_w, conv2d_grad_x, pool_grad
+using NNlib: conv2d_grad_w, conv2d_grad_x, pool_grad, pool
 
 @testset "conv" begin
 
