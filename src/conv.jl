@@ -228,5 +228,5 @@ for (T,S) in ((Float32,32), (Float64,64)); @eval begin
     end
 end;end
 
-maxpool2d(x, k) = pool(x; window = k, mode = 0)
-avgpool2d(x, k) = pool(x; window = k, mode = 1)
+maxpool2d(x, k; pad = 0) = pool(x; window = k, padding = pad, mode = 0)
+avgpool2d(x, k; pad = 0) = pool(x; window = k, padding = pad, mode = 1)
