@@ -1,6 +1,6 @@
 module NNlib
 
-using Requires
+using Requires, Libdl
 
 export σ, sigmoid, relu, leakyrelu, elu, swish, selu, softplus, softsign,
   softmax, conv2d, maxpool2d, avgpool2d
