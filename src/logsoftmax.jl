@@ -1,22 +1,22 @@
 using Base.Threads
 
 function logsoftmax!(out::AbstractVecOrMat, xs::AbstractVecOrMat)
-    @threads for j = 1:size(xs, 2)
-        @inbounds begin
-            xi_max = xs[1, j]
-            for i = 1:size(out, 1)
-                xi_max = max(xi_max, xs[i, j])
-            end
-            s = zero(eltype(out))
-            for i = 1:size(out, 1)
-                s += exp(xs[i, j] - xi_max)
-            end
-            for i = 1:size(out, 1)
-                out[i, j] = xs[i, j] - log(s) - xi_max
-            end
-        end
+  @threads for j = 1:size(xs, 2)
+    @inbounds begin
+      xi_max = xs[1, j]
+      for i = 1:size(out, 1)
+        xi_max = max(xi_max, xs[i, j])
+      end
+      s = zero(eltype(out))
+      for i = 1:size(out, 1)
+        s += exp(xs[i, j] - xi_max)
+      end
+      for i = 1:size(out, 1)
+        out[i, j] = xs[i, j] - log(s) - xi_max
+      end
     end
-    out
+  end
+  out
 end
 
 
