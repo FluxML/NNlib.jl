@@ -13,7 +13,7 @@ logsoftmax(xs) = logsoftmax!(similar(xs), xs)
 ∇logsoftmax(Δ, xs) = ∇softmax!(similar(Δ), Δ ./ softmax(xs), xs)
 
 """
-    logsoftmax(xs) = xs .- log.(sum(exp.(xs)))
+    logsoftmax(xs) = xs .- log.(sum(exp.(xs))
 
 [Softmax](https://en.wikipedia.org/wiki/Softmax_function) takes
 log-probabilities (any real vector) and returns a probability distribution that
