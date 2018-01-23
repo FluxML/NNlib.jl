@@ -27,7 +27,6 @@ logsoftmax(xs) = logsoftmax!(similar(xs), xs)
 
 """
     logsoftmax(xs) = log.(exp.(xs) ./ sum(exp.(xs)))
-
 logsoftmax computes the log of softmax(xs) and it is more numerically stable
 than softmax function in computing the cross entropy loss.
 """
