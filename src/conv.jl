@@ -141,7 +141,7 @@ function conv2d_grad_x{T}(x::Array{T,4}, w::Array{T,4}, dy::Array{T,4};
     return dx
 end
 
-im2col_dims(w,x,y)=(size(y,1)*size(y,2), size(w,1)*size(w,2)*size(w,3))
+im2col_dims(w,y)=(size(y,1)*size(y,2), size(w,1)*size(w,2)*size(w,3))
 
 
 
