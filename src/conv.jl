@@ -73,7 +73,7 @@ function conv2d{T}(x::Array{T,4}, w::Array{T,4};
     Wy,Hy,Cy,Ny = cdims(w,x;padding=padding,stride=stride)
     # @assert Cy==C2 && Ny==Nx
     y = similar(x, (Wy,Hy,Cy,Ny))
-    x2dims = im2col_dims(w,x,y)
+    x2dims = im2col_dims(w,y)
     x2 = similar(x, x2dims)
     (p1,p2) = psize(padding,x)
     (s1,s2) = psize(stride,x)
@@ -98,7 +98,7 @@ function conv2d_grad_w{T}(x::Array{T,4}, w::Array{T,4}, dy::Array{T,4};
     # if mode != 0 && mode != 1; throw(ArgumentError("conv2d only supports mode=0 or 1.")); end
     # @assert Cx==C1 && Cy==C2 && Ny==Nx
     dw = zeros(w)
-    x2dims = im2col_dims(w,x,dy)
+    x2dims = im2col_dims(w,dy)
     x2 = similar(x, x2dims)
     # op(A) is an m-by-k matrix, op(B) is a k-by-n matrix, C is an m-by-n matrix.
     Y,M,N,K = Wy*Hy*Cy,Ww*Hw*Cx,Cy,Wy*Hy
@@ -125,7 +125,7 @@ function conv2d_grad_x{T}(x::Array{T,4}, w::Array{T,4}, dy::Array{T,4};
     # if mode != 0 && mode != 1; throw(ArgumentError("conv2d only supports mode=0 or 1.")); end
     @assert Cx==C1 && Cy==C2 && Ny==Nx
     dx = similar(x)
-    x2dims = im2col_dims(w,x,dy)
+    x2dims = im2col_dims(w,dy)
     x2 = similar(x, x2dims)
     # op(A) is an m-by-k matrix, op(B) is a k-by-n matrix, C is an m-by-n matrix.
     Y,M,N,K = Wy*Hy*Cy,Wy*Hy,Ww*Hw*Cx,Cy
