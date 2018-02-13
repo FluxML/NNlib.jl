@@ -462,7 +462,7 @@ void mean_pooling3d_bwd(T* global_input, const T *global_output,
 
 template <typename T>
 void im2col3d(const T *img, T *col, int width, int height, int depth, int channels,
-	    int kernel_w, int kernel_h, int kernel_d, int pad_w, int pad_h, int pad_d,
+      int kernel_w, int kernel_h, int kernel_d, int pad_w, int pad_h, int pad_d,
       int stride_w, int stride_h, int stride_d, int mode) {
 
   int depth_col = (depth + 2 * pad_d - kernel_d) / stride_d + 1;
@@ -503,7 +503,7 @@ void im2col3d(const T *img, T *col, int width, int height, int depth, int channe
 
 template <typename T>
 void col2im3d(const T *col, T *img, int width, int height, int depth, int channels,
-	    int kernel_w, int kernel_h, int kernel_d,
+      int kernel_w, int kernel_h, int kernel_d,
       int pad_w, int pad_h, int pad_d,
       int stride_w, int stride_h, int stride_d, int mode) {
   int depth_col = (depth + 2 * pad_d - kernel_d) / stride_d + 1;
@@ -718,23 +718,23 @@ void mean_pooling3d_bwd64(double *global_input, const double *global_output,
 }
 
 void im2col3d32(const float *img, float *col, int width, int height, int depth, int channels,
-		    int kernel_w, int kernel_h, int kernel_d, int pad_w, int pad_h, int pad_d,
+      int kernel_w, int kernel_h, int kernel_d, int pad_w, int pad_h, int pad_d,
         int stride_w, int stride_h, int stride_d, int mode) {
   im2col3d(img, col, width, height, depth, channels, kernel_w, kernel_h, kernel_d, pad_w, pad_h, pad_d, stride_w, stride_h, stride_d, mode);
 }
 void im2col3d64(const double *img, double *col, int width, int height, int depth, int channels,
-		    int kernel_w, int kernel_h, int kernel_d, int pad_w, int pad_h, int pad_d,
+      int kernel_w, int kernel_h, int kernel_d, int pad_w, int pad_h, int pad_d,
         int stride_w, int stride_h, int stride_d, int mode) {
   im2col3d(img, col, width, height, depth, channels, kernel_w, kernel_h, kernel_d, pad_w, pad_h, pad_d, stride_w, stride_h, stride_d, mode);
 }
 
 void col2im3d32(const float *col, float *img, int width, int height, int depth, int channels,
-	      int kernel_w, int kernel_h, int kernel_d, int pad_w, int pad_h, int pad_d,
+        int kernel_w, int kernel_h, int kernel_d, int pad_w, int pad_h, int pad_d,
         int stride_w, int stride_h, int stride_d, int mode) {
   col2im3d(col, img, width, height, depth, channels, kernel_w, kernel_h, kernel_d, pad_w, pad_h, pad_d, stride_w, stride_h, stride_d, mode);
 }
 void col2im3d64(const double *col, double *img, int width, int height, int depth, int channels,
-	      int kernel_w, int kernel_h, int kernel_d, int pad_w, int pad_h, int pad_d,
+        int kernel_w, int kernel_h, int kernel_d, int pad_w, int pad_h, int pad_d,
         int stride_w, int stride_h, int stride_d, int mode) {
   col2im3d(col, img, width, height, depth, channels, kernel_w, kernel_h, kernel_d, pad_w, pad_h, pad_d, stride_w, stride_h, stride_d, mode);
 }
