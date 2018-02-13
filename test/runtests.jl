@@ -9,10 +9,16 @@ include("conv.jl")
 xs = rand(5)
 @test softmax(xs) ≈ exp.(xs) ./ sum(exp.(xs))
 @test logsoftmax(xs) ≈ log.(softmax(xs))
+@test logsigmoid.(xs) ≈ log.(sigmoid.(xs))
 
 xs = rand(5,10)
 @test softmax(xs) ≈ exp.(xs) ./ sum(exp.(xs),1)
 @test logsoftmax(xs) ≈ log.(softmax(xs))
+@test logsigmoid.(xs) ≈ log.(sigmoid.(xs))
+
+for T in [:Float32, :Float64]
+  @eval @test logsigmoid.($T[-100_000, 100_000.]) ≈ $T[-100_000, 0.]
+end
 
 ## compare the outputs with the PyTorch nn.LogSoftmax returns
 xs = Float32[1, 2, 3000.]
