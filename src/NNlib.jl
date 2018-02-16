@@ -9,7 +9,6 @@ const libnnlib = Libdl.find_library("nnlib.$(Libdl.dlext)", [joinpath(@__DIR__, 
 
 include("numeric.jl")
 include("activation.jl")
-include("logsigmoid.jl")
 include("softmax.jl")
 include("logsoftmax.jl")
 include("linalg.jl")
