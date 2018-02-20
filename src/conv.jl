@@ -4,6 +4,7 @@
 
 
 ## helper macros & functions
+include("conv_utils.jl")
 
 macro nnlib_call(fun, x...)       # error if nnlib_call missing, nothing if run
     if libnnlib != ""
@@ -164,10 +165,8 @@ for (T,S) in ((Float32,32), (Float64,64)); @eval begin
                      n::Int, p1::Int, p2::Int, s1::Int, s2::Int, mode::Int)
         Wx,Hx,Cx,Nx = size(x)
         Ww,Hw,C1,C2 = size(w)
-        xn = pointer(x, Wx*Hx*Cx*(n-1)+1)
-        @nnlib_call($("im2col2d$S"),
-               (Ptr{$T},Ptr{$T},Cint,Cint,Cint,Cint,Cint,Cint,Cint,Cint,Cint,Cint),
-               xn,x2,Wx,Hx,Cx,Ww,Hw,p1,p2,s1,s2,mode)
+        xn = x[:, :, :, n]
+        im2col_2d!(xn,x2,Wx,Hx,Cx,Ww,Hw,p1,p2,s1,s2,mode)
         return x2
     end
 
@@ -175,10 +174,9 @@ for (T,S) in ((Float32,32), (Float64,64)); @eval begin
                      n::Int, p1::Int, p2::Int, s1::Int, s2::Int, mode::Int)
         Wx,Hx,Cx,Nx = size(x)
         Ww,Hw,C1,C2 = size(w)
-        xn = pointer(x, Wx*Hx*Cx*(n-1)+1)
-        @nnlib_call($("col2im2d$S"),
-               (Ptr{$T},Ptr{$T},Cint,Cint,Cint,Cint,Cint,Cint,Cint,Cint,Cint,Cint),
-               x2,xn,Wx,Hx,Cx,Ww,Hw,p1,p2,s1,s2,mode)
+        xn = x[:, :, :, n]
+        col2im_2d!(x2,xn,Wx,Hx,Cx,Ww,Hw,p1,p2,s1,s2,mode)
+        x[:, :, :, n] = xn
         return x
     end
 
@@ -196,13 +194,9 @@ for (T,S) in ((Float32,32), (Float64,64)); @eval begin
         (p1,p2) = psize(padding, x)
         (s1,s2) = psize(stride, x)
         if mode == 0
-            @nnlib_call($("max_pooling2d_fwd$S"),
-                   (Ptr{$T},Ptr{$T},Cint,Cint,Cint,Cint,Cint,Cint,Cint,Cint,Cint,Cint,Cint,Cint),
-                   x,y,Wx,Hx,Cx,Nx,Wy,Hy,w1,w2,p1,p2,s1,s2)
+            max_pooling2d_fwd!(x,y,Wx,Hx,Cx,Nx,Wy,Hy,w1,w2,p1,p2,s1,s2)
         elseif mode == 1 || (mode == 2 && p1==p2==0)
-            @nnlib_call($("mean_pooling2d_fwd$S"),
-                   (Ptr{$T},Ptr{$T},Cint,Cint,Cint,Cint,Cint,Cint,Cint,Cint,Cint,Cint,Cint,Cint),
-                   x,y,Wx,Hx,Cx,Nx,Wy,Hy,w1,w2,p1,p2,s1,s2)
+            mean_pooling2d_fwd!(x,y,Wx,Hx,Cx,Nx,Wy,Hy,w1,w2,p1,p2,s1,s2)
         else
             throw(ArgumentError("mode $mode not supported by cpu pool"))
         end
@@ -224,13 +218,9 @@ for (T,S) in ((Float32,32), (Float64,64)); @eval begin
         (s1,s2) = psize(stride, x)
         if mode == 0
             if alpha != 1; y = y ./ alpha; end
-            @nnlib_call($("max_pooling2d_bwd$S"),
-                   (Ptr{$T},Ptr{$T},Ptr{$T},Ptr{$T},Cint,Cint,Cint,Cint,Cint,Cint,Cint,Cint,Cint,Cint,Cint,Cint),
-                   x,y,dy,dx,Wx,Hx,Cx,Nx,Wy,Hy,w1,w2,p1,p2,s1,s2)
+            max_pooling2d_bwd!(x,y,dy,dx,Wx,Hx,Cx,Nx,Wy,Hy,w1,w2,p1,p2,s1,s2)
         elseif mode == 1 || (mode == 2 && p1==p2==0)
-            @nnlib_call($("mean_pooling2d_bwd$S"),
-                   (Ptr{$T},Ptr{$T},Cint,Cint,Cint,Cint,Cint,Cint,Cint,Cint,Cint,Cint,Cint,Cint),
-                   dx,dy,Wx,Hx,Cx,Nx,Wy,Hy,w1,w2,p1,p2,s1,s2)
+            mean_pooling2d_bwd!(dx,dy,Wx,Hx,Cx,Nx,Wy,Hy,w1,w2,p1,p2,s1,s2)
         else
             throw(ArgumentError("mode $mode not supported by cpu pool"))
         end
@@ -338,10 +328,8 @@ for (T,S) in ((Float32,32), (Float64,64)); @eval begin
                      s3::Int, mode::Int)
         Wx,Hx,Dx,Cx,Nx = size(x)
         Ww,Hw,Dw,C1,C2 = size(w)
-        xn = pointer(x, Wx*Hx*Dx*Cx*(n-1)+1)
-        @nnlib_call($("im2col3d$S"),
-               (Ptr{$T},Ptr{$T},Cint,Cint,Cint,Cint,Cint,Cint,Cint,Cint,Cint,Cint,Cint,Cint,Cint,Cint),
-               xn,x2,Wx,Hx,Dx,Cx,Ww,Hw,Dw,p1,p2,p3,s1,s2,s3,mode)
+        xn = x[:, :, :, :, n]
+        im2col_3d!(xn,x2,Wx,Hx,Dx,Cx,Ww,Hw,Dw,p1,p2,p3,s1,s2,s3,mode)
         return x2
     end
 
@@ -350,10 +338,9 @@ for (T,S) in ((Float32,32), (Float64,64)); @eval begin
                      s3::Int, mode::Int)
         Wx,Hx,Dx,Cx,Nx = size(x)
         Ww,Hw,Dw,C1,C2 = size(w)
-        xn = pointer(x, Wx*Hx*Dx*Cx*(n-1)+1)
-        @nnlib_call($("col2im3d$S"),
-               (Ptr{$T},Ptr{$T},Cint,Cint,Cint,Cint,Cint,Cint,Cint,Cint,Cint,Cint,Cint,Cint,Cint,Cint),
-               x2,xn,Wx,Hx,Dx,Cx,Ww,Hw,Dw,p1,p2,p3,s1,s2,s3,mode)
+        xn = x[:, :, :, :, n]
+        col2im_3d!(x2,xn,Wx,Hx,Dx,Cx,Ww,Hw,Dw,p1,p2,p3,s1,s2,s3,mode)
+        x[:, :, :, :, n] = xn
         return x
     end
 
@@ -371,13 +358,9 @@ for (T,S) in ((Float32,32), (Float64,64)); @eval begin
         (p1,p2,p3) = psize(padding, x)
         (s1,s2,s3) = psize(stride, x)
         if mode == 0
-            @nnlib_call($("max_pooling3d_fwd$S"),
-                   (Ptr{$T},Ptr{$T},Cint,Cint,Cint,Cint,Cint,Cint,Cint,Cint,Cint,Cint,Cint,Cint,Cint,Cint,Cint,Cint,Cint),
-                   x,y,Wx,Hx,Dx,Cx,Nx,Wy,Hy,Dy,w1,w2,w3,p1,p2,p3,s1,s2,s3)
+            max_pooling3d_fwd!(x,y,Wx,Hx,Dx,Cx,Nx,Wy,Hy,Dy,w1,w2,w3,p1,p2,p3,s1,s2,s3)
         elseif mode == 1 || (mode == 2 && p1==p2==0)
-            @nnlib_call($("mean_pooling3d_fwd$S"),
-                   (Ptr{$T},Ptr{$T},Cint,Cint,Cint,Cint,Cint,Cint,Cint,Cint,Cint,Cint,Cint,Cint,Cint,Cint,Cint,Cint,Cint),
-                   x,y,Wx,Hx,Dx,Cx,Nx,Wy,Hy,Dy,w1,w2,w3,p1,p2,p3,s1,s2,s3)
+            mean_pooling3d_fwd!(x,y,Wx,Hx,Dx,Cx,Nx,Wy,Hy,Dy,w1,w2,w3,p1,p2,p3,s1,s2,s3)
         else
             throw(ArgumentError("mode $mode not supported by cpu pool"))
         end
@@ -399,13 +382,9 @@ for (T,S) in ((Float32,32), (Float64,64)); @eval begin
         (s1,s2,s3) = psize(stride, x)
         if mode == 0
             if alpha != 1; y = y ./ alpha; end
-            @nnlib_call($("max_pooling3d_bwd$S"),
-                   (Ptr{$T},Ptr{$T},Ptr{$T},Ptr{$T},Cint,Cint,Cint,Cint,Cint,Cint,Cint,Cint,Cint,Cint,Cint,Cint,Cint,Cint,Cint,Cint,Cint),
-                   x,y,dy,dx,Wx,Hx,Dx,Cx,Nx,Wy,Hy,Dy,w1,w2,w3,p1,p2,p3,s1,s2,s3)
+            max_pooling3d_bwd!(x,y,dy,dx,Wx,Hx,Dx,Cx,Nx,Wy,Hy,Dy,w1,w2,w3,p1,p2,p3,s1,s2,s3)
         elseif mode == 1 || (mode == 2 && p1==p2==0)
-            @nnlib_call($("mean_pooling3d_bwd$S"),
-                   (Ptr{$T},Ptr{$T},Cint,Cint,Cint,Cint,Cint,Cint,Cint,Cint,Cint,Cint,Cint,Cint,Cint,Cint,Cint,Cint,Cint),
-                   dx,dy,Wx,Hx,Dx,Cx,Nx,Wy,Hy,Dy,w1,w2,w3,p1,p2,p3,s1,s2,s3)
+            mean_pooling3d_bwd!(dx,dy,Wx,Hx,Dx,Cx,Nx,Wy,Hy,Dy,w1,w2,w3,p1,p2,p3,s1,s2,s3)
         else
             throw(ArgumentError("mode $mode not supported by cpu pool"))
         end
