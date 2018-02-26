@@ -156,15 +156,13 @@ function im2col_dims(w,y)
     return (r, c)
 end
 
-function conv2d{T}(x::AbstractArray{T,4}, w::AbstractArray{T,4};
+function conv2d!{T}(y::AbstractArray{T,4}, x::AbstractArray{T,4}, w::AbstractArray{T,4};
                   padding=0, stride=1, mode=0, alpha=1)
     if mode != 0 && mode != 1; throw(ArgumentError("conv2d only supports mode=0 or 1.")); end
     Wx,Hx,Cx,Nx = size(x)
     Ww,Hw,C1,C2 = size(w)
     if Cx!=C1; throw(DimensionMismatch()); end
-    Wy,Hy,Cy,Ny = cdims(w,x;padding=padding,stride=stride)
-    # @assert Cy==C2 && Ny==Nx
-    y = similar(x, (Wy,Hy,Cy,Ny))
+    Wy,Hy,Cy,Ny = size(y)
     x2dims = im2col_dims(w,y)
     x2 = similar(x, x2dims)
     (p1,p2) = psize(padding,x)
@@ -179,7 +177,7 @@ function conv2d{T}(x::AbstractArray{T,4}, w::AbstractArray{T,4};
     return y
 end
 
-function conv2d_grad_w{T}(x::AbstractArray{T,4}, w::AbstractArray{T,4}, dy::AbstractArray{T,4};
+function conv2d_grad_w!{T}(dw::AbstractArray{T,4}, x::AbstractArray{T,4}, w::AbstractArray{T,4}, dy::AbstractArray{T,4};
                    padding=0, stride=1, mode=0, alpha=1)
     # dw = x'*dy
     Wx,Hx,Cx,Nx = size(x)
@@ -187,7 +185,6 @@ function conv2d_grad_w{T}(x::AbstractArray{T,4}, w::AbstractArray{T,4}, dy::Abst
     Wy,Hy,Cy,Ny = size(dy)
     # if mode != 0 && mode != 1; throw(ArgumentError("conv2d only supports mode=0 or 1.")); end
     # @assert Cx==C1 && Cy==C2 && Ny==Nx
-    dw = zeros(w)
     x2dims = im2col_dims(w,dy)
     x2 = similar(x, x2dims)
     # op(A) is an m-by-k matrix, op(B) is a k-by-n matrix, C is an m-by-n matrix.
@@ -204,7 +201,7 @@ function conv2d_grad_w{T}(x::AbstractArray{T,4}, w::AbstractArray{T,4}, dy::Abst
     return dw
 end
 
-function conv2d_grad_x{T}(x::AbstractArray{T,4}, w::AbstractArray{T,4}, dy::AbstractArray{T,4};
+function conv2d_grad_x!{T}(dx::AbstractArray{T,4}, x::AbstractArray{T,4}, w::AbstractArray{T,4}, dy::AbstractArray{T,4};
                    padding=0, stride=1, mode=0, alpha=1)
     # dx = dy*w'
     Wx,Hx,Cx,Nx = size(x)
@@ -212,7 +209,6 @@ function conv2d_grad_x{T}(x::AbstractArray{T,4}, w::AbstractArray{T,4}, dy::Abst
     Wy,Hy,Cy,Ny = size(dy)
     # if mode != 0 && mode != 1; throw(ArgumentError("conv2d only supports mode=0 or 1.")); end
     @assert Cx==C1 && Cy==C2 && Ny==Nx
-    dx = similar(x)
     x2dims = im2col_dims(w,dy)
     x2 = similar(x, x2dims)
     # op(A) is an m-by-k matrix, op(B) is a k-by-n matrix, C is an m-by-n matrix.
@@ -248,15 +244,14 @@ function col2im2d!(w::AbstractArray{T,4}, x::AbstractArray{T,4}, x2::AbstractArr
     return x
 end
 
-function conv3d{T}(x::AbstractArray{T,5}, w::AbstractArray{T,5};
+function conv3d!{T}(y::AbstractArray{T,5}, x::AbstractArray{T,5}, w::AbstractArray{T,5};
                   padding=0, stride=1, mode=0, alpha=1)
     if mode != 0 && mode != 1; throw(ArgumentError("conv3d only supports mode=0 or 1.")); end
     Wx,Hx,Dx,Cx,Nx = size(x)
     Ww,Hw,Dw,C1,C2 = size(w)
     if Cx!=C1; throw(DimensionMismatch()); end
-    Wy,Hy,Dy,Cy,Ny = cdims(w,x;padding=padding,stride=stride)
+    Wy,Hy,Dy,Cy,Ny = size(y)
     # @assert Cy==C2 && Ny==Nx
-    y = similar(x, (Wy,Hy,Dy,Cy,Ny))
     x2dims = im2col_dims(w,y)
     x2 = similar(x, x2dims)
     (p1,p2,p3) = psize(padding,x)
@@ -272,7 +267,7 @@ function conv3d{T}(x::AbstractArray{T,5}, w::AbstractArray{T,5};
     return y
 end
 
-function conv3d_grad_w{T}(x::AbstractArray{T,5}, w::AbstractArray{T,5}, dy::AbstractArray{T,5};
+function conv3d_grad_w!{T}(dw::AbstractArray{T,5}, x::AbstractArray{T,5}, w::AbstractArray{T,5}, dy::AbstractArray{T,5};
                    padding=0, stride=1, mode=0, alpha=1)
     # dw = x'*dy
     Wx,Hx,Dx,Cx,Nx = size(x)
@@ -280,7 +275,6 @@ function conv3d_grad_w{T}(x::AbstractArray{T,5}, w::AbstractArray{T,5}, dy::Abst
     Wy,Hy,Dy,Cy,Ny = size(dy)
     # if mode != 0 && mode != 1; throw(ArgumentError("conv2d only supports mode=0 or 1.")); end
     # @assert Cx==C1 && Cy==C2 && Ny==Nx
-    dw = zeros(w)
     x2dims = im2col_dims(w,dy)
     x2 = similar(x, x2dims)
     # op(A) is an m-by-k matrix, op(B) is a k-by-n matrix, C is an m-by-n matrix.
@@ -297,7 +291,7 @@ function conv3d_grad_w{T}(x::AbstractArray{T,5}, w::AbstractArray{T,5}, dy::Abst
     return dw
 end
 
-function conv3d_grad_x{T}(x::AbstractArray{T,5}, w::AbstractArray{T,5}, dy::AbstractArray{T,5};
+function conv3d_grad_x{T}(dx::AbstractArray{T,5}, x::AbstractArray{T,5}, w::AbstractArray{T,5}, dy::AbstractArray{T,5};
                    padding=0, stride=1, mode=0, alpha=1)
     # dx = dy*w'
     Wx,Hx,Dx,Cx,Nx = size(x)
@@ -305,7 +299,6 @@ function conv3d_grad_x{T}(x::AbstractArray{T,5}, w::AbstractArray{T,5}, dy::Abst
     Wy,Hy,Dy,Cy,Ny = size(dy)
     # if mode != 0 && mode != 1; throw(ArgumentError("conv2d only supports mode=0 or 1.")); end
     @assert Cx==C1 && Cy==C2 && Ny==Nx
-    dx = similar(x)
     x2dims = im2col_dims(w,dy)
     x2 = similar(x, x2dims)
     # op(A) is an m-by-k matrix, op(B) is a k-by-n matrix, C is an m-by-n matrix.

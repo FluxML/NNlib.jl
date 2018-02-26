@@ -1,22 +1,21 @@
-using NNlib: conv2d_grad_w, conv2d_grad_x, maxpool_grad, maxpool,
-             conv3d_grad_w, conv3d_grad_x
+using NNlib: conv, ∇conv_filter, ∇conv_data, ∇maxpool, maxpool
 
-@testset "conv" begin
+@testset "conv2d" begin
 
     x = reshape(Float64[1:20;], 5, 4, 1, 1)
     w = reshape(Float64[1:4;], 2, 2, 1, 1)
 
-    @test squeeze(conv2d(x, w),(3,4)) == [
+    @test squeeze(conv(x, w),(3,4)) == [
         29 79 129;
         39 89 139;
         49 99 149;
         59 109 159.]
 
-    @test squeeze(conv2d(x, w; stride=2),(3,4)) == [
+    @test squeeze(conv(x, w; stride=2),(3,4)) == [
         29 129;
         49 149.]
 
-    @test squeeze(conv2d(x, w; padding=1),(3,4)) == [
+    @test squeeze(conv(x, w; pad=1),(3,4)) == [
         1.0   9.0   29.0   49.0   48.0;
         4.0  29.0   79.0  129.0  115.0;
         7.0  39.0   89.0  139.0  122.0;
@@ -30,8 +29,8 @@ using NNlib: conv2d_grad_w, conv2d_grad_x, maxpool_grad, maxpool,
     # correctness of gradients is cross-checked with CUDNN.jl
     # (it's assumed convolution code won't change often)
 
-    @test size(conv2d_grad_w(x, w, reshape(rand(4,3), 4, 3, 1, 1))) == size(w)
-    @test size(conv2d_grad_x(x, w, reshape(rand(4,3), 4, 3, 1, 1))) == size(x)
+    @test size(∇conv_filter(reshape(rand(4,3), 4, 3, 1, 1), x, w)) == size(w)
+    @test size(∇conv_data(reshape(rand(4,3), 4, 3, 1, 1), x, w)) == size(x)
 
 end
 
@@ -54,7 +53,7 @@ end
 
     y = maxpool(x, (2,2))
     dy = reshape(rand(2,2), 2, 2, 1, 1)
-    @test size(maxpool_grad(dy, y, x, (2,2))) == size(x)
+    @test size(∇maxpool(dy, y, x, (2,2))) == size(x)
 
 end
 
@@ -74,9 +73,9 @@ end
         1078.0  1258.0  1438.0;
         1114.0  1294.0  1474.0;
         1150.0  1330.0  1510.0]
-    @test squeeze(conv3d(x, w),(4,5)) == res
+    @test squeeze(conv(x, w),(4,5)) == res
 
-    @test squeeze(conv3d(x, w; stride=2),(3,4,5)) == [
+    @test squeeze(conv(x, w; stride=2),(3,4,5)) == [
         322.0 682.0;
         394.0 754.0]
 
@@ -109,15 +108,15 @@ end
         478.0  1185.0  1315.0  1445.0  877.0;
         489.0  1211.0  1341.0  1471.0  892.0;
         270.0   660.0   730.0   800.0  480.0]
-    @test squeeze(conv3d(x, w; padding=1),(4,5)) == res
+    @test squeeze(conv(x, w; pad=1),(4,5)) == res
 
 
     # for gradients, check only size
     # correctness of gradients is cross-checked with CUDNN.jl
     # (it's assumed convolution code won't change often)
 
-    @test size(conv3d_grad_w(x, w, reshape(rand(4,3,2), 4, 3, 2, 1, 1))) == size(w)
-    @test size(conv3d_grad_x(x, w, reshape(rand(4,3,2), 4, 3, 2, 1, 1))) == size(x)
+    @test size(∇conv_filter(reshape(rand(4,3,2), 4, 3, 2, 1, 1), x, w)) == size(w)
+    @test size(∇conv_data(reshape(rand(4,3,2), 4, 3, 2, 1, 1), x, w)) == size(x)
 
 end
 
@@ -145,6 +144,6 @@ end
 
     y = maxpool(x, (2,2,2))
     dy = reshape(rand(2,2), 2, 2, 1, 1, 1)
-    @test size(maxpool_grad(dy, y, x, (2,2,2))) == size(x)
+    @test size(∇maxpool(dy, y, x, (2,2,2))) == size(x)
 
 end
