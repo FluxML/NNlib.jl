@@ -1,3 +1,15 @@
+# convert padding etc. size to an Int array of the right dimension
+function psize(p, x)
+  nd = ndims(x)-2
+  if isa(p,Number)
+    fill(Int(p),nd)
+  elseif length(p)==nd
+    collect(Int,p)
+  else
+    throw(DimensionMismatch("psize: $p $nd"))
+  end
+end
+
 function im2col_2d!{T}(img::AbstractArray{T,3}, col::AbstractArray{T,2}, width::Int, height::Int, channels::Int,
   kernel_w::Int, kernel_h::Int, pad_w::Int, pad_h::Int, stride_w::Int, stride_h::Int, mode::Int)
 

@@ -1,5 +1,5 @@
-using NNlib: conv2d_grad_w, conv2d_grad_x, pool2d_grad, pool2d,
-             conv3d_grad_w, conv3d_grad_x, pool3d_grad, pool3d
+using NNlib: conv2d_grad_w, conv2d_grad_x, maxpool_grad, maxpool,
+             conv3d_grad_w, conv3d_grad_x
 
 @testset "conv" begin
 
@@ -36,13 +36,13 @@ using NNlib: conv2d_grad_w, conv2d_grad_x, pool2d_grad, pool2d,
 end
 
 
-@testset "pool2d" begin
+@testset "maxpool2d" begin
 
     x = reshape(Float64[1:20;], 5, 4, 1, 1)
 
-    @test squeeze(pool2d(x), (3,4)) == [7 17; 9 19]
-    @test squeeze(pool2d(x; stride=2), (3,4)) == [7 17; 9 19]
-    @test squeeze(pool2d(x; padding=1), (3,4)) == [
+    @test squeeze(maxpool(x, (2,2)), (3,4)) == [7 17; 9 19]
+    @test squeeze(maxpool(x, (2,2); stride=(2,2)), (3,4)) == [7 17; 9 19]
+    @test squeeze(maxpool(x, (2,2); pad=(1,1)), (3,4)) == [
         1.0  11.0  16.0;
         3.0  13.0  18.0;
         5.0  15.0  20.0;
@@ -50,11 +50,11 @@ end
 
     # for gradients, check only size
     # correctness of gradients is cross-checked with CUDNN.jl
-    # (it's assumed pooling code won't change often)
+    # (it's assumed maxpooling code won't change often)
 
-    y = pool2d(x)
+    y = maxpool(x, (2,2))
     dy = reshape(rand(2,2), 2, 2, 1, 1)
-    @test size(pool2d_grad(x, y, dy)) == size(x)
+    @test size(maxpool_grad(dy, y, x, (2,2))) == size(x)
 
 end
 
@@ -122,12 +122,12 @@ end
 end
 
 
-@testset "pool3d" begin
+@testset "maxpool3d" begin
 
     x = reshape(Float64[1:60;], 5, 4, 3, 1, 1)
 
-    @test squeeze(pool3d(x), (3,4,5)) == [27 37; 29 39.]
-    @test squeeze(pool3d(x; stride=2), (3,4,5)) == [27 37; 29 39.]
+    @test squeeze(maxpool(x, (2,2,2)), (3,4,5)) == [27 37; 29 39.]
+    @test squeeze(maxpool(x, (2,2,2); stride=(2,2,2)), (3,4,5)) == [27 37; 29 39.]
     res = zeros(3,3,2)
     res[:, :, 1] = [
         1.0  11.0  16.0;
@@ -137,14 +137,14 @@ end
         41.0  51.0  56.0;
         43.0  53.0  58.0;
         45.0  55.0  60.0]
-    @test squeeze(pool3d(x; padding=1), (4,5)) == res
+    @test squeeze(maxpool(x, (2,2,2), pad=(1,1,1)), (4,5)) == res
 
     # for gradients, check only size
     # correctness of gradients is cross-checked with CUDNN.jl
-    # (it's assumed pooling code won't change often)
+    # (it's assumed maxpooling code won't change often)
 
-    y = pool3d(x)
+    y = maxpool(x, (2,2,2))
     dy = reshape(rand(2,2), 2, 2, 1, 1, 1)
-    @test size(pool3d_grad(x, y, dy)) == size(x)
+    @test size(maxpool_grad(dy, y, x, (2,2,2))) == size(x)
 
 end

@@ -1,25 +1,14 @@
-# convert padding etc. size to an Int array of the right dimension
-function psize(p, x)
-  nd = ndims(x)-2
-  if isa(p,Number)
-    fill(Int(p),nd)
-  elseif length(p)==nd
-    collect(Int,p)
-  else
-    throw(DimensionMismatch("psize: $p $nd"))
-  end
-end
+Dims{N} = NTuple{N,Integer}
 
-function pdims(x; window=2, padding=0, stride=window, o...)
-  N = ndims(x)
-  ntuple(N) do i
+include("impl/pool.jl")
+include("impl/conv.jl")
+
+function pdims(dims::Dims{N}, window, padding, stride) where N
+  ntuple(Val{N}) do i
     if i < N-1
-      wi = (if isa(window,Number); window; else window[i]; end)
-      pi = (if isa(padding,Number); padding; else padding[i]; end)
-      si = (if isa(stride,Number); stride; else stride[i]; end)
-      1 + div(size(x,i) + 2*pi - wi, si)
+      1 + (dims[i] + 2*padding[i] - window[i])÷stride[i]
     else
-      size(x,i)
+      dims[i]
     end
   end
 end
@@ -39,11 +28,38 @@ function cdims(w,x; padding=0, stride=1, o...)
   end
 end
 
-include("impl/pool.jl")
-include("impl/conv.jl")
+maxpool(x::AbstractArray{<:Real,4}, k::Dims{2}; pad = (0,0), stride = k) =
+  maxpool2d!(similar(x, pdims(size(x), k, pad, stride)),
+             x, window = k, padding = pad, stride = stride)
 
-maxpool2d(x, k; pad = 0) = pool2d(x; window = k, padding = pad, mode = 0)
-avgpool2d(x, k; pad = 0) = pool2d(x; window = k, padding = pad, mode = 1)
+maxpool(x::AbstractArray{<:Real,5}, k::Dims{3}; pad = (0,0,0), stride = k) =
+  maxpool3d!(similar(x, pdims(size(x), k, pad, stride)),
+             x, window = k, padding = pad, stride = stride)
 
-maxpool3d(x, k; pad = 0) = pool3d(x; window = k, padding = pad, mode = 0)
-avgpool3d(x, k; pad = 0) = pool3d(x; window = k, padding = pad, mode = 1)
+maxpool_grad(dy::AbstractArray{<:Real,4}, y::AbstractArray{<:Real,4}, x::AbstractArray{<:Real,4},
+             k::Dims{2}; pad = (0,0), stride = k) =
+  maxpool2d_grad!(similar(x), dy, y, x,
+                  window = k, padding = pad, stride = stride)
+
+maxpool_grad(dy::AbstractArray{<:Real,5}, y::AbstractArray{<:Real,5}, x::AbstractArray{<:Real,5},
+             k::Dims{3}; pad = (0,0,0), stride = k) =
+  maxpool3d_grad!(similar(x), dy, y, x,
+                  window = k, padding = pad, stride = stride)
+
+meanpool(x::AbstractArray{<:Real,4}, k::Dims{2}; pad = (0,0), stride = k) =
+  meanpool2d!(similar(x, pdims(size(x), k, pad, stride)),
+             x, window = k, padding = pad, stride = stride)
+
+meanpool(x::AbstractArray{<:Real,5}, k::Dims{3}; pad = (0,0,0), stride = k) =
+  meanpool3d!(similar(x, pdims(size(x), k, pad, stride)),
+             x, window = k, padding = pad, stride = stride)
+
+meanpool_grad(dy::AbstractArray{<:Real,4}, y::AbstractArray{<:Real,4}, x::AbstractArray{<:Real,4},
+             k::Dims{2}; pad = (0,0), stride = k) =
+  meanpool2d_grad!(similar(x), dy, y, x,
+                  window = k, padding = pad, stride = stride)
+
+meanpool_grad(dy::AbstractArray{<:Real,5}, y::AbstractArray{<:Real,5}, x::AbstractArray{<:Real,5},
+             k::Dims{3}; pad = (0,0,0), stride = k) =
+  meanpool3d_grad!(similar(x), dy, y, x,
+                  window = k, padding = pad, stride = stride)
