@@ -1,4 +1,4 @@
-function im2col_2d!{T}(img::Array{T,3}, col::Array{T,2}, width::Int, height::Int, channels::Int,
+function im2col_2d!{T}(img::AbstractArray{T,3}, col::AbstractArray{T,2}, width::Int, height::Int, channels::Int,
   kernel_w::Int, kernel_h::Int, pad_w::Int, pad_h::Int, stride_w::Int, stride_h::Int, mode::Int)
 
   height_col = div((height + 2pad_h - kernel_h), stride_h) + 1
@@ -31,7 +31,7 @@ function im2col_2d!{T}(img::Array{T,3}, col::Array{T,2}, width::Int, height::Int
 end
 
 
-function col2im_2d!{T}(col::Array{T,2}, img::Array{T,3}, width::Int, height::Int,
+function col2im_2d!{T}(col::AbstractArray{T,2}, img::AbstractArray{T,3}, width::Int, height::Int,
   channels::Int, kernel_w::Int, kernel_h::Int, pad_w::Int, pad_h::Int, stride_w::Int,
   stride_h::Int, mode::Int)
 
@@ -63,7 +63,7 @@ function col2im_2d!{T}(col::Array{T,2}, img::Array{T,3}, width::Int, height::Int
 end
 
 
-function im2col_3d!{T}(img::Array{T,4}, col::Array{T,2}, width::Int, height::Int, depth::Int,
+function im2col_3d!{T}(img::AbstractArray{T,4}, col::AbstractArray{T,2}, width::Int, height::Int, depth::Int,
   channels::Int, kernel_w::Int, kernel_h::Int, kernel_d::Int, pad_w::Int, pad_h::Int, pad_d::Int,
   stride_w::Int, stride_h::Int, stride_d::Int, mode::Int)
 
@@ -103,7 +103,7 @@ function im2col_3d!{T}(img::Array{T,4}, col::Array{T,2}, width::Int, height::Int
   end
 end
 
-function col2im_3d!{T}(col::Array{T,2}, img::Array{T,4}, width::Int, height::Int,
+function col2im_3d!{T}(col::AbstractArray{T,2}, img::AbstractArray{T,4}, width::Int, height::Int,
   depth::Int, channels::Int, kernel_w::Int, kernel_h::Int, kernel_d::Int,
   pad_w::Int, pad_h::Int, pad_d::Int, stride_w::Int, stride_h::Int, stride_d::Int, mode::Int)
 
@@ -171,7 +171,7 @@ function im2col_dims(w,y)
     return (r, c)
 end
 
-function conv2d{T}(x::Array{T,4}, w::Array{T,4};
+function conv2d{T}(x::AbstractArray{T,4}, w::AbstractArray{T,4};
                   padding=0, stride=1, upscale=1, mode=0, alpha=1,
                   o...) # Ignoring handle, algo, workSpace, workSpaceSizeInBytes
     if upscale != 1; throw(ArgumentError("CPU conv2d only supports upscale=1.")); end
@@ -196,7 +196,7 @@ function conv2d{T}(x::Array{T,4}, w::Array{T,4};
     return y
 end
 
-function conv2d_grad_w{T}(x::Array{T,4}, w::Array{T,4}, dy::Array{T,4};
+function conv2d_grad_w{T}(x::AbstractArray{T,4}, w::AbstractArray{T,4}, dy::AbstractArray{T,4};
                    padding=0, stride=1, upscale=1, mode=0, alpha=1,
                    o...) # Ignoring handle, algo, workSpace, workSpaceSizeInBytes
     # dw = x'*dy
@@ -223,7 +223,7 @@ function conv2d_grad_w{T}(x::Array{T,4}, w::Array{T,4}, dy::Array{T,4};
     return dw
 end
 
-function conv2d_grad_x{T}(x::Array{T,4}, w::Array{T,4}, dy::Array{T,4};
+function conv2d_grad_x{T}(x::AbstractArray{T,4}, w::AbstractArray{T,4}, dy::AbstractArray{T,4};
                    padding=0, stride=1, upscale=1, mode=0, alpha=1,
                    o...) # Ignoring handle, algo, workSpace, workSpaceSizeInBytes
     # dx = dy*w'
@@ -252,7 +252,7 @@ end
 
 for (T,S) in ((Float32,32), (Float64,64)); @eval begin
 
-    function im2col2d!(w::Array{$T,4}, x::Array{$T,4}, x2::Array{$T,2},
+    function im2col2d!(w::AbstractArray{$T,4}, x::AbstractArray{$T,4}, x2::AbstractArray{$T,2},
                      n::Int, p1::Int, p2::Int, s1::Int, s2::Int, mode::Int)
         Wx,Hx,Cx,Nx = size(x)
         Ww,Hw,C1,C2 = size(w)
@@ -261,7 +261,7 @@ for (T,S) in ((Float32,32), (Float64,64)); @eval begin
         return x2
     end
 
-    function col2im2d!(w::Array{$T,4}, x::Array{$T,4}, x2::Array{$T,2},
+    function col2im2d!(w::AbstractArray{$T,4}, x::AbstractArray{$T,4}, x2::AbstractArray{$T,2},
                      n::Int, p1::Int, p2::Int, s1::Int, s2::Int, mode::Int)
         Wx,Hx,Cx,Nx = size(x)
         Ww,Hw,C1,C2 = size(w)
@@ -272,7 +272,7 @@ for (T,S) in ((Float32,32), (Float64,64)); @eval begin
     end
 end;end
 
-function conv3d{T}(x::Array{T,5}, w::Array{T,5};
+function conv3d{T}(x::AbstractArray{T,5}, w::AbstractArray{T,5};
                   padding=0, stride=1, upscale=1, mode=0, alpha=1,
                   o...) # Ignoring handle, algo, workSpace, workSpaceSizeInBytes
     if upscale != 1; throw(ArgumentError("CPU conv3d only supports upscale=1.")); end
@@ -298,7 +298,7 @@ function conv3d{T}(x::Array{T,5}, w::Array{T,5};
     return y
 end
 
-function conv3d_grad_w{T}(x::Array{T,5}, w::Array{T,5}, dy::Array{T,5};
+function conv3d_grad_w{T}(x::AbstractArray{T,5}, w::AbstractArray{T,5}, dy::AbstractArray{T,5};
                    padding=0, stride=1, upscale=1, mode=0, alpha=1,
                    o...) # Ignoring handle, algo, workSpace, workSpaceSizeInBytes
     # dw = x'*dy
@@ -325,7 +325,7 @@ function conv3d_grad_w{T}(x::Array{T,5}, w::Array{T,5}, dy::Array{T,5};
     return dw
 end
 
-function conv3d_grad_x{T}(x::Array{T,5}, w::Array{T,5}, dy::Array{T,5};
+function conv3d_grad_x{T}(x::AbstractArray{T,5}, w::AbstractArray{T,5}, dy::AbstractArray{T,5};
                    padding=0, stride=1, upscale=1, mode=0, alpha=1,
                    o...) # Ignoring handle, algo, workSpace, workSpaceSizeInBytes
     # dx = dy*w'
@@ -354,7 +354,7 @@ end
 
 for (T,S) in ((Float32,32), (Float64,64)); @eval begin
 
-    function im2col3d!(w::Array{$T,5}, x::Array{$T,5}, x2::Array{$T,2},
+    function im2col3d!(w::AbstractArray{$T,5}, x::AbstractArray{$T,5}, x2::AbstractArray{$T,2},
                      n::Int, p1::Int, p2::Int, p3::Int, s1::Int, s2::Int,
                      s3::Int, mode::Int)
         Wx,Hx,Dx,Cx,Nx = size(x)
@@ -364,7 +364,7 @@ for (T,S) in ((Float32,32), (Float64,64)); @eval begin
         return x2
     end
 
-    function col2im3d!(w::Array{$T,5}, x::Array{$T,5}, x2::Array{$T,2},
+    function col2im3d!(w::AbstractArray{$T,5}, x::AbstractArray{$T,5}, x2::AbstractArray{$T,2},
                      n::Int, p1::Int, p2::Int, p3::Int, s1::Int, s2::Int,
                      s3::Int, mode::Int)
         Wx,Hx,Dx,Cx,Nx = size(x)

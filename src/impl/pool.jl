@@ -1,4 +1,4 @@
-function max_pooling2d_fwd!{T}(global_input::Array{T,4}, global_output::Array{T,4},
+function max_pooling2d_fwd!{T}(global_input::AbstractArray{T,4}, global_output::AbstractArray{T,4},
   width::Int, height::Int, channels::Int, num::Int, pooled_width::Int,
   pooled_height::Int, kernel_w::Int, kernel_h::Int, pad_w::Int, pad_h::Int,
   stride_w::Int, stride_h::Int)
@@ -21,8 +21,8 @@ function max_pooling2d_fwd!{T}(global_input::Array{T,4}, global_output::Array{T,
   end
 end
 
-function max_pooling2d_bwd!{T}(global_input::Array{T,4}, global_output::Array{T,4},
-  grad_output::Array{T,4}, grad_input::Array{T,4}, width::Int, height::Int,
+function max_pooling2d_bwd!{T}(global_input::AbstractArray{T,4}, global_output::AbstractArray{T,4},
+  grad_output::AbstractArray{T,4}, grad_input::AbstractArray{T,4}, width::Int, height::Int,
   channels::Int, num::Int, pooled_width::Int, pooled_height::Int, kernel_w::Int,
   kernel_h::Int, pad_w::Int, pad_h::Int, stride_w::Int, stride_h::Int)
 
@@ -54,7 +54,7 @@ function max_pooling2d_bwd!{T}(global_input::Array{T,4}, global_output::Array{T,
 end
 
 
-function mean_pooling2d_fwd!{T}(global_input::Array{T,4}, global_output::Array{T,4},
+function mean_pooling2d_fwd!{T}(global_input::AbstractArray{T,4}, global_output::AbstractArray{T,4},
   width::Int, height::Int, channels::Int, num::Int, pooled_width::Int,
   pooled_height::Int, kernel_w::Int, kernel_h::Int,pad_w::Int, pad_h::Int,
   stride_w::Int, stride_h::Int)
@@ -78,7 +78,7 @@ function mean_pooling2d_fwd!{T}(global_input::Array{T,4}, global_output::Array{T
   end
 end
 
-function mean_pooling2d_bwd!{T}(global_input::Array{T,4}, global_output::Array{T,4},
+function mean_pooling2d_bwd!{T}(global_input::AbstractArray{T,4}, global_output::AbstractArray{T,4},
   width::Int, height::Int, channels::Int, num::Int, pooled_width::Int,
   pooled_height::Int, kernel_w::Int, kernel_h::Int, pad_w::Int, pad_h::Int,
   stride_w::Int, stride_h::Int)
@@ -107,7 +107,7 @@ function mean_pooling2d_bwd!{T}(global_input::Array{T,4}, global_output::Array{T
 end
 
 
-function max_pooling3d_fwd!{T}(global_input::Array{T,5}, global_output::Array{T,5},
+function max_pooling3d_fwd!{T}(global_input::AbstractArray{T,5}, global_output::AbstractArray{T,5},
   width::Int, height::Int, depth::Int, channels::Int, num::Int, pooled_width::Int,
   pooled_height::Int, pooled_depth::Int, kernel_w::Int, kernel_h::Int, kernel_d::Int,
   pad_w::Int, pad_h::Int, pad_d::Int, stride_w::Int, stride_h::Int, stride_d::Int)
@@ -137,8 +137,8 @@ function max_pooling3d_fwd!{T}(global_input::Array{T,5}, global_output::Array{T,
   end
 end
 
-function max_pooling3d_bwd!{T}(global_input::Array{T,5}, global_output::Array{T,5},
-  grad_output::Array{T,5}, grad_input::Array{T,5}, width::Int, height::Int, depth::Int,
+function max_pooling3d_bwd!{T}(global_input::AbstractArray{T,5}, global_output::AbstractArray{T,5},
+  grad_output::AbstractArray{T,5}, grad_input::AbstractArray{T,5}, width::Int, height::Int, depth::Int,
   channels::Int, num::Int, pooled_width::Int, pooled_height::Int, pooled_depth::Int,
   kernel_w::Int, kernel_h::Int, kernel_d::Int, pad_w::Int, pad_h::Int, pad_d::Int,
   stride_w::Int, stride_h::Int, stride_d::Int)
@@ -182,7 +182,7 @@ function max_pooling3d_bwd!{T}(global_input::Array{T,5}, global_output::Array{T,
 end
 
 
-function mean_pooling3d_fwd!{T}(global_input::Array{T,5}, global_output::Array{T,5},
+function mean_pooling3d_fwd!{T}(global_input::AbstractArray{T,5}, global_output::AbstractArray{T,5},
   width::Int, height::Int, depth::Int, channels::Int, num::Int, pooled_width::Int,
   pooled_height::Int, pooled_depth::Int, kernel_w::Int, kernel_h::Int, kernel_d::Int,
   pad_w::Int, pad_h::Int, pad_d::Int, stride_w::Int, stride_h::Int, stride_d::Int)
@@ -215,7 +215,7 @@ function mean_pooling3d_fwd!{T}(global_input::Array{T,5}, global_output::Array{T
   end
 end
 
-function mean_pooling3d_bwd!{T}(grad_input::Array{T,5}, grad_output::Array{T,5},
+function mean_pooling3d_bwd!{T}(grad_input::AbstractArray{T,5}, grad_output::AbstractArray{T,5},
   width::Int, height::Int, depth::Int, channels::Int, num::Int, pooled_width::Int,
   pooled_height::Int, pooled_depth::Int, kernel_w::Int, kernel_h::Int, kernel_d::Int,
   pad_w::Int, pad_h::Int, pad_d::Int, stride_w::Int, stride_h::Int, stride_d::Int)
@@ -263,7 +263,7 @@ end
 
 for (T,S) in ((Float32,32), (Float64,64)); @eval begin
 
-    function pool2d(x::Array{$T,4}; window=2, padding=0, stride=window, mode=0,
+    function pool2d(x::AbstractArray{$T,4}; window=2, padding=0, stride=window, mode=0,
                   maxpoolingNanOpt=0, alpha=1, handle=nothing)
         if maxpoolingNanOpt!=0
             throw(ArgumentError("CPU pool only supports maxpoolingNanOpt=0"))
@@ -285,7 +285,7 @@ for (T,S) in ((Float32,32), (Float64,64)); @eval begin
         return y
     end
 
-    function pool2d_grad(x::Array{$T,4}, y::Array{$T,4}, dy::Array{$T,4};
+    function pool2d_grad(x::AbstractArray{$T,4}, y::AbstractArray{$T,4}, dy::AbstractArray{$T,4};
                        window=2, padding=0, stride=window, mode=0,
                        maxpoolingNanOpt=0, alpha=1, handle=nothing)
         if maxpoolingNanOpt!=0;
@@ -315,7 +315,7 @@ avgpool2d(x, k; pad = 0) = pool2d(x; window = k, padding = pad, mode = 1)
 
 for (T,S) in ((Float32,32), (Float64,64)); @eval begin
 
-    function pool3d(x::Array{$T,5}; window=2, padding=0, stride=window, mode=0,
+    function pool3d(x::AbstractArray{$T,5}; window=2, padding=0, stride=window, mode=0,
                   maxpoolingNanOpt=0, alpha=1, handle=nothing)
         if maxpoolingNanOpt!=0
             throw(ArgumentError("CPU pool only supports maxpoolingNanOpt=0"))
@@ -337,7 +337,7 @@ for (T,S) in ((Float32,32), (Float64,64)); @eval begin
         return y
     end
 
-    function pool3d_grad(x::Array{$T,5}, y::Array{$T,5}, dy::Array{$T,5};
+    function pool3d_grad(x::AbstractArray{$T,5}, y::AbstractArray{$T,5}, dy::AbstractArray{$T,5};
                        window=2, padding=0, stride=window, mode=0,
                        maxpoolingNanOpt=0, alpha=1, handle=nothing)
         if maxpoolingNanOpt!=0;
