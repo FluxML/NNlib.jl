@@ -155,9 +155,7 @@ function im2col_dims(w,y)
 end
 
 function conv2d{T}(x::AbstractArray{T,4}, w::AbstractArray{T,4};
-                  padding=0, stride=1, upscale=1, mode=0, alpha=1,
-                  o...) # Ignoring handle, algo, workSpace, workSpaceSizeInBytes
-    if upscale != 1; throw(ArgumentError("CPU conv2d only supports upscale=1.")); end
+                  padding=0, stride=1, mode=0, alpha=1)
     if mode != 0 && mode != 1; throw(ArgumentError("conv2d only supports mode=0 or 1.")); end
     Wx,Hx,Cx,Nx = size(x)
     Ww,Hw,C1,C2 = size(w)
@@ -180,13 +178,11 @@ function conv2d{T}(x::AbstractArray{T,4}, w::AbstractArray{T,4};
 end
 
 function conv2d_grad_w{T}(x::AbstractArray{T,4}, w::AbstractArray{T,4}, dy::AbstractArray{T,4};
-                   padding=0, stride=1, upscale=1, mode=0, alpha=1,
-                   o...) # Ignoring handle, algo, workSpace, workSpaceSizeInBytes
+                   padding=0, stride=1, mode=0, alpha=1)
     # dw = x'*dy
     Wx,Hx,Cx,Nx = size(x)
     Ww,Hw,C1,C2 = size(w)
     Wy,Hy,Cy,Ny = size(dy)
-    # if upscale != 1; throw(ArgumentError("CPU conv2d only supports upscale=1.")); end
     # if mode != 0 && mode != 1; throw(ArgumentError("conv2d only supports mode=0 or 1.")); end
     # @assert Cx==C1 && Cy==C2 && Ny==Nx
     dw = zeros(w)
@@ -207,13 +203,11 @@ function conv2d_grad_w{T}(x::AbstractArray{T,4}, w::AbstractArray{T,4}, dy::Abst
 end
 
 function conv2d_grad_x{T}(x::AbstractArray{T,4}, w::AbstractArray{T,4}, dy::AbstractArray{T,4};
-                   padding=0, stride=1, upscale=1, mode=0, alpha=1,
-                   o...) # Ignoring handle, algo, workSpace, workSpaceSizeInBytes
+                   padding=0, stride=1, mode=0, alpha=1)
     # dx = dy*w'
     Wx,Hx,Cx,Nx = size(x)
     Ww,Hw,C1,C2 = size(w)
     Wy,Hy,Cy,Ny = size(dy)
-    # if upscale != 1; throw(ArgumentError("CPU conv2d only supports upscale=1.")); end
     # if mode != 0 && mode != 1; throw(ArgumentError("conv2d only supports mode=0 or 1.")); end
     @assert Cx==C1 && Cy==C2 && Ny==Nx
     dx = similar(x)
@@ -253,9 +247,7 @@ function col2im2d!(w::AbstractArray{T,4}, x::AbstractArray{T,4}, x2::AbstractArr
 end
 
 function conv3d{T}(x::AbstractArray{T,5}, w::AbstractArray{T,5};
-                  padding=0, stride=1, upscale=1, mode=0, alpha=1,
-                  o...) # Ignoring handle, algo, workSpace, workSpaceSizeInBytes
-    if upscale != 1; throw(ArgumentError("CPU conv3d only supports upscale=1.")); end
+                  padding=0, stride=1, mode=0, alpha=1)
     if mode != 0 && mode != 1; throw(ArgumentError("conv3d only supports mode=0 or 1.")); end
     Wx,Hx,Dx,Cx,Nx = size(x)
     Ww,Hw,Dw,C1,C2 = size(w)
@@ -279,13 +271,11 @@ function conv3d{T}(x::AbstractArray{T,5}, w::AbstractArray{T,5};
 end
 
 function conv3d_grad_w{T}(x::AbstractArray{T,5}, w::AbstractArray{T,5}, dy::AbstractArray{T,5};
-                   padding=0, stride=1, upscale=1, mode=0, alpha=1,
-                   o...) # Ignoring handle, algo, workSpace, workSpaceSizeInBytes
+                   padding=0, stride=1, mode=0, alpha=1)
     # dw = x'*dy
     Wx,Hx,Dx,Cx,Nx = size(x)
     Ww,Hw,Dw,C1,C2 = size(w)
     Wy,Hy,Dy,Cy,Ny = size(dy)
-    # if upscale != 1; throw(ArgumentError("CPU conv2d only supports upscale=1.")); end
     # if mode != 0 && mode != 1; throw(ArgumentError("conv2d only supports mode=0 or 1.")); end
     # @assert Cx==C1 && Cy==C2 && Ny==Nx
     dw = zeros(w)
@@ -306,13 +296,11 @@ function conv3d_grad_w{T}(x::AbstractArray{T,5}, w::AbstractArray{T,5}, dy::Abst
 end
 
 function conv3d_grad_x{T}(x::AbstractArray{T,5}, w::AbstractArray{T,5}, dy::AbstractArray{T,5};
-                   padding=0, stride=1, upscale=1, mode=0, alpha=1,
-                   o...) # Ignoring handle, algo, workSpace, workSpaceSizeInBytes
+                   padding=0, stride=1, mode=0, alpha=1)
     # dx = dy*w'
     Wx,Hx,Dx,Cx,Nx = size(x)
     Ww,Hw,Dw,C1,C2 = size(w)
     Wy,Hy,Dy,Cy,Ny = size(dy)
-    # if upscale != 1; throw(ArgumentError("CPU conv2d only supports upscale=1.")); end
     # if mode != 0 && mode != 1; throw(ArgumentError("conv2d only supports mode=0 or 1.")); end
     @assert Cx==C1 && Cy==C2 && Ny==Nx
     dx = similar(x)
