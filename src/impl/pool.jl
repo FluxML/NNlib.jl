@@ -247,150 +247,120 @@ function mean_pooling3d_bwd!{T}(grad_input::Array{T, 5}, grad_output::Array{T, 5
   end
 end
 
-
-function im2col_2d!{T}(img::Array{T, 3}, col::Array{T, 2}, width::Int, height::Int, channels::Int,
-  kernel_w::Int, kernel_h::Int, pad_w::Int, pad_h::Int, stride_w::Int, stride_h::Int, mode::Int)
-
-  height_col = div((height + 2pad_h - kernel_h), stride_h) + 1
-  width_col = div((width + 2pad_w - kernel_w), stride_w) + 1
-  channels_col = channels * kernel_h * kernel_w
-
-
-  #pragma omp parallel for
-  for c = 1:channels_col
-    w_offset = (c - 1) % kernel_w
-    h_offset = div(c - 1, kernel_w) % kernel_h
-    c_im = div(c - 1, kernel_h * kernel_w)
-    if mode == 0
-      w_offset = kernel_w - 1 - w_offset
-      h_offset = kernel_h - 1 - h_offset
-    end
-    for h = 1:height_col
-      for w = 1:width_col
-        h_pad = (h - 1) * stride_h - pad_h + h_offset
-        w_pad = (w - 1) *stride_w - pad_w + w_offset
-        if h_pad >= 0 && h_pad < height && w_pad >= 0 && w_pad < width
-          col[((c - 1)*height_col+h-1) * width_col + w] =
-           img[(c_im  * height + h_pad) * width + w_pad + 1]
+function pdims(x; window=2, padding=0, stride=window, o...)
+    N = ndims(x)
+    ntuple(N) do i
+        if i < N-1
+            wi = (if isa(window,Number); window; else window[i]; end)
+            pi = (if isa(padding,Number); padding; else padding[i]; end)
+            si = (if isa(stride,Number); stride; else stride[i]; end)
+            1 + div(size(x,i) + 2*pi - wi, si)
         else
-          col[((c - 1)*height_col+h - 1) * width_col + w] = 0
+            size(x,i)
         end
-      end
     end
-  end
 end
 
+for (T,S) in ((Float32,32), (Float64,64)); @eval begin
 
-function col2im_2d!{T}(col::Array{T, 2}, img::Array{T, 3}, width::Int, height::Int,
-  channels::Int, kernel_w::Int, kernel_h::Int, pad_w::Int, pad_h::Int, stride_w::Int,
-  stride_h::Int, mode::Int)
-
-  height_col = div(height + 2pad_h - kernel_h, stride_h) + 1
-  width_col = div(width + 2pad_w - kernel_w, stride_w) + 1
-  channels_col = channels * kernel_h * kernel_w
-
-  fill!(img, 0)
-  #pragma omp parallel for
-  for c = 1:channels_col
-    w_offset = (c - 1) % kernel_w
-    h_offset = div(c - 1,  kernel_w) % kernel_h
-    c_im = div(c - 1, kernel_h * kernel_w)
-    if mode == 0
-      w_offset = kernel_w - 1 - w_offset
-      h_offset = kernel_h - 1 - h_offset
-    end
-    for h = 1:height_col
-      for w = 1:width_col
-        h_pad = (h - 1) * stride_h - pad_h + h_offset
-        w_pad = (w - 1) * stride_w - pad_w + w_offset
-        if h_pad >= 0 && h_pad < height && w_pad >= 0 && w_pad < width
-          cval::T = col[((c - 1) * height_col + h - 1) * width_col + w]
-          img[(c_im * height + h_pad) * width + w_pad + 1] += cval
+    function pool2d(x::Array{$T,4}; window=2, padding=0, stride=window, mode=0,
+                  maxpoolingNanOpt=0, alpha=1, handle=nothing)
+        if maxpoolingNanOpt!=0
+            throw(ArgumentError("CPU pool only supports maxpoolingNanOpt=0"))
         end
-      end
-    end
-  end
-end
-
-
-function im2col_3d!{T}(img::Array{T, 4}, col::Array{T, 2}, width::Int, height::Int, depth::Int,
-  channels::Int, kernel_w::Int, kernel_h::Int, kernel_d::Int, pad_w::Int, pad_h::Int, pad_d::Int,
-  stride_w::Int, stride_h::Int, stride_d::Int, mode::Int)
-
-  height_col = div((height + 2pad_h - kernel_h), stride_h) + 1
-  width_col = div((width + 2pad_w - kernel_w), stride_w) + 1
-  depth_col = div((depth + 2pad_d - kernel_d), stride_d) + 1
-  channels_col = channels * kernel_h * kernel_w * kernel_d
-
-
-  #pragma omp parallel for
-  for c = 1:channels_col
-    w_offset = (c - 1) % kernel_w
-    h_offset = div(c - 1, kernel_w) % kernel_h
-    d_offset = div(c - 1, kernel_w * kernel_h) % kernel_d
-    c_im = div(c - 1, kernel_w * kernel_h * kernel_d)
-    if mode == 0
-      w_offset = kernel_w - 1 - w_offset
-      h_offset = kernel_h - 1 - h_offset
-      d_offset = kernel_d - 1 - d_offset
-    end
-    for d = 1:depth_col
-      for h = 1:height_col
-        for w = 1:width_col
-          d_pad = (d - 1) * stride_d - pad_d + d_offset
-          h_pad = (h - 1) * stride_h - pad_h + h_offset
-          w_pad = (w - 1) *stride_w - pad_w + w_offset
-          if d_pad >= 0 && d_pad < depth && h_pad >= 0 && h_pad < height &&
-            w_pad >= 0 && w_pad < width
-            col[(((c - 1) * depth_col + d - 1) * height_col + h - 1) * width_col + w] =
-        	    img[((c_im * depth + d_pad) * height + h_pad) * width + w_pad + 1]
-        	else
-        	  col[(((c - 1) * depth_col + d - 1) * height_col + h - 1) * width_col + w] = 0
-          end
+        Wx,Hx,Cx,Nx = size(x);
+        Wy,Hy,Cy,Ny = pdims(x;window=window,padding=padding,stride=stride)
+        y = similar(x, (Wy,Hy,Cy,Ny))
+        (w1,w2) = psize(window, x)
+        (p1,p2) = psize(padding, x)
+        (s1,s2) = psize(stride, x)
+        if mode == 0
+            max_pooling2d_fwd!(x,y,Wx,Hx,Cx,Nx,Wy,Hy,w1,w2,p1,p2,s1,s2)
+        elseif mode == 1 || (mode == 2 && p1==p2==0)
+            mean_pooling2d_fwd!(x,y,Wx,Hx,Cx,Nx,Wy,Hy,w1,w2,p1,p2,s1,s2)
+        else
+            throw(ArgumentError("mode $mode not supported by cpu pool"))
         end
-      end
-    end
-  end
-end
-
-function col2im_3d!{T}(col::Array{T, 2}, img::Array{T, 4}, width::Int, height::Int,
-  depth::Int, channels::Int, kernel_w::Int, kernel_h::Int, kernel_d::Int,
-  pad_w::Int, pad_h::Int, pad_d::Int, stride_w::Int, stride_h::Int, stride_d::Int, mode::Int)
-
-  depth_col = div(depth + 2pad_d - kernel_d, stride_d) + 1
-  height_col = div(height + 2pad_h - kernel_h, stride_h) + 1
-  width_col = div(width + 2 * pad_w - kernel_w, stride_w) + 1
-  channels_col = channels * kernel_h * kernel_w * kernel_d
-
-  fill!(img, 0)
-  #pragma omp parallel for
-  for c = 1:channels_col
-    w_offset = (c - 1) % kernel_w;
-    h_offset = div(c - 1, kernel_w) % kernel_h
-    d_offset = div(c - 1, kernel_w * kernel_h) % kernel_d
-    c_im = div(c - 1, kernel_h * kernel_w * kernel_d)
-
-    if mode == 0
-      w_offset = kernel_w - 1 - w_offset
-      h_offset = kernel_h - 1 - h_offset
-      d_offset = kernel_d - 1 - d_offset
+        if alpha != 1; scale!(alpha,y); end
+        return y
     end
 
-    for d = 1:depth_col
-      for h = 1:height_col
-        for w = 1:width_col
-          d_pad = (d - 1) * stride_d - pad_d + d_offset
-        	h_pad = (h - 1) * stride_h - pad_h + h_offset
-        	w_pad = (w - 1) * stride_w - pad_w + w_offset
-        	if h_pad >= 0 && h_pad < height && w_pad >= 0 && w_pad < width &&
-            d_pad >= 0 && d_pad < depth
-        	  cval::T = col[(((c - 1) * depth_col + d - 1) * height_col + h - 1) * width_col + w]
-        	  iidx = ((c_im * depth + d_pad) * height + h_pad) * width + w_pad + 1
-                  #pragma omp atomic
-        	  img[iidx] += cval
-        	end
+    function pool2d_grad(x::Array{$T,4}, y::Array{$T,4}, dy::Array{$T,4};
+                       window=2, padding=0, stride=window, mode=0,
+                       maxpoolingNanOpt=0, alpha=1, handle=nothing)
+        if maxpoolingNanOpt!=0;
+            throw(ArgumentError("CPU pool only supports maxpoolingNanOpt=0"));
         end
-      end
+        Wx,Hx,Cx,Nx = size(x);
+        Wy,Hy,Cy,Ny = size(y);
+        dx = similar(x)
+        (w1,w2) = psize(window, x)
+        (p1,p2) = psize(padding, x)
+        (s1,s2) = psize(stride, x)
+        if mode == 0
+            if alpha != 1; y = y ./ alpha; end
+            max_pooling2d_bwd!(x,y,dy,dx,Wx,Hx,Cx,Nx,Wy,Hy,w1,w2,p1,p2,s1,s2)
+        elseif mode == 1 || (mode == 2 && p1==p2==0)
+            mean_pooling2d_bwd!(dx,dy,Wx,Hx,Cx,Nx,Wy,Hy,w1,w2,p1,p2,s1,s2)
+        else
+            throw(ArgumentError("mode $mode not supported by cpu pool"))
+        end
+        if alpha != 1; scale!(alpha,dx); end
+        return dx
     end
-  end
-end
+end;end
+
+maxpool2d(x, k; pad = 0) = pool2d(x; window = k, padding = pad, mode = 0)
+avgpool2d(x, k; pad = 0) = pool2d(x; window = k, padding = pad, mode = 1)
+
+for (T,S) in ((Float32,32), (Float64,64)); @eval begin
+
+    function pool3d(x::Array{$T,5}; window=2, padding=0, stride=window, mode=0,
+                  maxpoolingNanOpt=0, alpha=1, handle=nothing)
+        if maxpoolingNanOpt!=0
+            throw(ArgumentError("CPU pool only supports maxpoolingNanOpt=0"))
+        end
+        Wx,Hx,Dx,Cx,Nx = size(x);
+        Wy,Hy,Dy,Cy,Ny = pdims(x;window=window,padding=padding,stride=stride)
+        y = similar(x, (Wy,Hy,Dy,Cy,Ny))
+        (w1,w2,w3) = psize(window, x)
+        (p1,p2,p3) = psize(padding, x)
+        (s1,s2,s3) = psize(stride, x)
+        if mode == 0
+            max_pooling3d_fwd!(x,y,Wx,Hx,Dx,Cx,Nx,Wy,Hy,Dy,w1,w2,w3,p1,p2,p3,s1,s2,s3)
+        elseif mode == 1 || (mode == 2 && p1==p2==0)
+            mean_pooling3d_fwd!(x,y,Wx,Hx,Dx,Cx,Nx,Wy,Hy,Dy,w1,w2,w3,p1,p2,p3,s1,s2,s3)
+        else
+            throw(ArgumentError("mode $mode not supported by cpu pool"))
+        end
+        if alpha != 1; scale!(alpha,y); end
+        return y
+    end
+
+    function pool3d_grad(x::Array{$T,5}, y::Array{$T,5}, dy::Array{$T,5};
+                       window=2, padding=0, stride=window, mode=0,
+                       maxpoolingNanOpt=0, alpha=1, handle=nothing)
+        if maxpoolingNanOpt!=0;
+            throw(ArgumentError("CPU pool only supports maxpoolingNanOpt=0"));
+        end
+        Wx,Hx,Dx,Cx,Nx = size(x);
+        Wy,Hy,Dy,Cy,Ny = size(y);
+        dx = similar(x)
+        (w1,w2,w3) = psize(window, x)
+        (p1,p2,p3) = psize(padding, x)
+        (s1,s2,s3) = psize(stride, x)
+        if mode == 0
+            if alpha != 1; y = y ./ alpha; end
+            max_pooling3d_bwd!(x,y,dy,dx,Wx,Hx,Dx,Cx,Nx,Wy,Hy,Dy,w1,w2,w3,p1,p2,p3,s1,s2,s3)
+        elseif mode == 1 || (mode == 2 && p1==p2==0)
+            mean_pooling3d_bwd!(dx,dy,Wx,Hx,Dx,Cx,Nx,Wy,Hy,Dy,w1,w2,w3,p1,p2,p3,s1,s2,s3)
+        else
+            throw(ArgumentError("mode $mode not supported by cpu pool"))
+        end
+        if alpha != 1; scale!(alpha,dx); end
+        return dx
+    end
+end;end
+
+maxpool3d(x, k; pad = 0) = pool3d(x; window = k, padding = pad, mode = 0)
+avgpool3d(x, k; pad = 0) = pool3d(x; window = k, padding = pad, mode = 1)
