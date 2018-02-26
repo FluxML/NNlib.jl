@@ -1,21 +1,5 @@
-
-## Convolutions on CPU. Almost all the code is borrowed from Knet.jl
-## For GPU versions see CUDNN.jl
-
-
 ## helper macros & functions
 include("conv_utils.jl")
-
-macro nnlib_call(fun, x...)       # error if nnlib_call missing, nothing if run
-    if libnnlib != ""
-        fx = Expr(:call, :ccall, ("$fun", libnnlib), :Void, x...)
-        err = gensym()
-        esc(:($err=$fx; $err))
-    else
-        Expr(:call,:error,"Cannot find nnlib, please rerun Pkg.build(\"NNlib\").")
-    end
-end
-
 
 function cdims(w,x; padding=0, stride=1, o...)
     N = ndims(x)
@@ -179,8 +163,6 @@ for (T,S) in ((Float32,32), (Float64,64)); @eval begin
         x[:, :, :, n] = xn
         return x
     end
-
-    ### CPU pooling from Mocha.jl
 
     function pool2d(x::Array{$T,4}; window=2, padding=0, stride=window, mode=0,
                   maxpoolingNanOpt=0, alpha=1, handle=nothing)
