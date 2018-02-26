@@ -2,22 +2,16 @@ function max_pooling2d_fwd!{T}(global_input::AbstractArray{T,4}, global_output::
   width::Int, height::Int, channels::Int, num::Int, pooled_width::Int,
   pooled_height::Int, kernel_w::Int, kernel_h::Int, pad_w::Int, pad_h::Int,
   stride_w::Int, stride_h::Int)
-  for n = 1:num
-    for c = 1:channels
-      for ph = 1:pooled_height
-        for pw = 1:pooled_width
-          hstart = (ph - 1)* stride_h - pad_h
-          wstart = (pw - 1)* stride_w - pad_w
-          hend   = min(hstart + kernel_h, height)
-          wend   = min(wstart + kernel_w, width)
+  for n = 1:num, c = 1:channels, ph = 1:pooled_height, pw = 1:pooled_width
+    hstart = (ph - 1)* stride_h - pad_h
+    wstart = (pw - 1)* stride_w - pad_w
+    hend   = min(hstart + kernel_h, height)
+    wend   = min(wstart + kernel_w, width)
 
-          hstart = max(hstart, 0) + 1
-          wstart = max(wstart, 0) + 1
+    hstart = max(hstart, 0) + 1
+    wstart = max(wstart, 0) + 1
 
-          global_output[pw, ph, c, n] = maximum(global_input[wstart:wend, hstart:hend, c, n])
-        end
-      end
-    end
+    global_output[pw, ph, c, n] = maximum(global_input[wstart:wend, hstart:hend, c, n])
   end
 end
 
@@ -28,26 +22,18 @@ function max_pooling2d_bwd!{T}(global_input::AbstractArray{T,4}, global_output::
 
   grad_input[:, :, :, :] = 0
   #pragma omp parallel for
-  for n = 1:num
-    for c = 1:channels
-      for ph = 1:pooled_height
-        for pw = 1:pooled_width
-          hstart = (ph - 1) * stride_h - pad_h
-          wstart = (pw - 1) * stride_w - pad_w
-          hend   = min(hstart + kernel_h, height)
-          wend   = min(wstart + kernel_w, width)
-          hstart = max(hstart, 0) + 1
-          wstart = max(wstart, 0) + 1
-          maxval = global_output[pw, ph, c, n]
-          d_maxval = grad_output[pw, ph, c, n]
-          for h = hstart:hend
-            for w = wstart:wend
-              if global_input[w, h, c, n] == maxval
-                grad_input[w, h, c, n] += d_maxval
-              end
-            end
-          end
-        end
+  for n = 1:num, c = 1:channels, ph = 1:pooled_height, pw = 1:pooled_width
+    hstart = (ph - 1) * stride_h - pad_h
+    wstart = (pw - 1) * stride_w - pad_w
+    hend   = min(hstart + kernel_h, height)
+    wend   = min(wstart + kernel_w, width)
+    hstart = max(hstart, 0) + 1
+    wstart = max(wstart, 0) + 1
+    maxval = global_output[pw, ph, c, n]
+    d_maxval = grad_output[pw, ph, c, n]
+    for h = hstart:hend, w = wstart:wend
+      if global_input[w, h, c, n] == maxval
+        grad_input[w, h, c, n] += d_maxval
       end
     end
   end
@@ -59,22 +45,16 @@ function mean_pooling2d_fwd!{T}(global_input::AbstractArray{T,4}, global_output:
   pooled_height::Int, kernel_w::Int, kernel_h::Int,pad_w::Int, pad_h::Int,
   stride_w::Int, stride_h::Int)
   kernel_size = kernel_w * kernel_h
-  for n = 1:num
-    for c = 1:channels
-      for ph = 1:pooled_height
-        for pw = 1:pooled_width
-          hstart = (ph - 1) * stride_h - pad_h
-          wstart = (pw - 1) * stride_w - pad_w
-          hend   = min(hstart + kernel_h, height)
-          wend   = min(wstart + kernel_w, width)
+  for n = 1:num, c = 1:channels, ph = 1:pooled_height, pw = 1:pooled_width
+    hstart = (ph - 1) * stride_h - pad_h
+    wstart = (pw - 1) * stride_w - pad_w
+    hend   = min(hstart + kernel_h, height)
+    wend   = min(wstart + kernel_w, width)
 
-          hstart = max(hstart, 0) + 1
-          wstart = max(wstart, 0) + 1
+    hstart = max(hstart, 0) + 1
+    wstart = max(wstart, 0) + 1
 
-          global_output[pw, ph, c, n] = sum(global_input[wstart:wend, hstart:hend, c, n]) / kernel_size
-        end
-      end
-    end
+    global_output[pw, ph, c, n] = sum(global_input[wstart:wend, hstart:hend, c, n]) / kernel_size
   end
 end
 
@@ -87,22 +67,16 @@ function mean_pooling2d_bwd!{T}(global_input::AbstractArray{T,4}, global_output:
   kernel_size = kernel_w * kernel_h
 
   #pragma omp parallel for
-  for n = 1:num
-    for c = 1:channels
-      for ph = 1:pooled_height
-        for pw = 1:pooled_width
-          hstart = (ph - 1) * stride_h - pad_h
-          wstart = (pw - 1) * stride_w - pad_w
-          hend   = min(hstart + kernel_h, height)
-          wend   = min(wstart + kernel_w, width)
-          hstart = max(hstart, 0) + 1
-          wstart = max(wstart, 0) + 1
+  for n = 1:num, c = 1:channels, ph = 1:pooled_height, pw = 1:pooled_width
+    hstart = (ph - 1) * stride_h - pad_h
+    wstart = (pw - 1) * stride_w - pad_w
+    hend   = min(hstart + kernel_h, height)
+    wend   = min(wstart + kernel_w, width)
+    hstart = max(hstart, 0) + 1
+    wstart = max(wstart, 0) + 1
 
-          oval = global_output[pw, ph, c, n] / kernel_size
-          global_input[wstart:wend, hstart:hend, c, n] += oval
-        end
-      end
-    end
+    oval = global_output[pw, ph, c, n] / kernel_size
+    global_input[wstart:wend, hstart:hend, c, n] += oval
   end
 end
 
@@ -145,29 +119,21 @@ function max_pooling3d_fwd!{T}(global_input::AbstractArray{T,5}, global_output::
   width::Int, height::Int, depth::Int, channels::Int, num::Int, pooled_width::Int,
   pooled_height::Int, pooled_depth::Int, kernel_w::Int, kernel_h::Int, kernel_d::Int,
   pad_w::Int, pad_h::Int, pad_d::Int, stride_w::Int, stride_h::Int, stride_d::Int)
-  for n = 1:num
-    for c = 1:channels
-      for pd = 1:pooled_depth
-        for ph = 1:pooled_height
-          for pw = 1:pooled_width
-            dstart = (pd - 1)* stride_d - pad_d
-            hstart = (ph - 1)* stride_h - pad_h
-            wstart = (pw - 1)* stride_w - pad_w
+  for n = 1:num, c = 1:channels, pd = 1:pooled_depth, ph = 1:pooled_height, pw = 1:pooled_width
+    dstart = (pd - 1)* stride_d - pad_d
+    hstart = (ph - 1)* stride_h - pad_h
+    wstart = (pw - 1)* stride_w - pad_w
 
-            dend   = min(dstart + kernel_d, depth)
-            hend   = min(hstart + kernel_h, height)
-            wend   = min(wstart + kernel_w, width)
+    dend   = min(dstart + kernel_d, depth)
+    hend   = min(hstart + kernel_h, height)
+    wend   = min(wstart + kernel_w, width)
 
-            dstart = max(dstart, 0) + 1
-            hstart = max(hstart, 0) + 1
-            wstart = max(wstart, 0) + 1
+    dstart = max(dstart, 0) + 1
+    hstart = max(hstart, 0) + 1
+    wstart = max(wstart, 0) + 1
 
-            global_output[pw, ph, pd, c, n] =
-            maximum(global_input[wstart:wend, hstart:hend, dstart:dend, c, n])
-          end
-        end
-      end
-    end
+    global_output[pw, ph, pd, c, n] =
+    maximum(global_input[wstart:wend, hstart:hend, dstart:dend, c, n])
   end
 end
 
@@ -180,36 +146,24 @@ function max_pooling3d_bwd!{T}(global_input::AbstractArray{T,5}, global_output::
   grad_input[:, :, :, :, :] = 0
 
   #pragma omp parallel for
-  for n = 1:num
-    for c = 1:channels
-      for pd = 1:pooled_depth
-        for ph = 1:pooled_height
-          for pw = 1:pooled_width
-            dstart = (pd - 1) * stride_h - pad_h
-            hstart = (ph - 1) * stride_h - pad_h
-            wstart = (pw - 1) * stride_w - pad_w
+  for n = 1:num, c = 1:channels, pd = 1:pooled_depth, ph = 1:pooled_height, pw = 1:pooled_width
+    dstart = (pd - 1) * stride_h - pad_h
+    hstart = (ph - 1) * stride_h - pad_h
+    wstart = (pw - 1) * stride_w - pad_w
 
-            dend   = min(dstart + kernel_d, depth)
-            hend   = min(hstart + kernel_h, height)
-            wend   = min(wstart + kernel_w, width)
+    dend   = min(dstart + kernel_d, depth)
+    hend   = min(hstart + kernel_h, height)
+    wend   = min(wstart + kernel_w, width)
 
-            dstart = max(dstart, 0) + 1
-            hstart = max(hstart, 0) + 1
-            wstart = max(wstart, 0) + 1
+    dstart = max(dstart, 0) + 1
+    hstart = max(hstart, 0) + 1
+    wstart = max(wstart, 0) + 1
 
-            maxval = global_output[pw, ph, pd, c, n]
-            d_maxval = grad_output[pw, ph, pd, c, n]
-            for d = dstart:dend
-              for h = hstart:hend
-                for w = wstart:wend
-                  if global_input[w, h, d, c, n] == maxval
-                    grad_input[w, h, d, c, n] += d_maxval
-                  end
-                end
-              end
-            end
-          end
-        end
+    maxval = global_output[pw, ph, pd, c, n]
+    d_maxval = grad_output[pw, ph, pd, c, n]
+    for d = dstart:dend, h = hstart:hend, w = wstart:wend
+      if global_input[w, h, d, c, n] == maxval
+        grad_input[w, h, d, c, n] += d_maxval
       end
     end
   end
@@ -223,29 +177,21 @@ function mean_pooling3d_fwd!{T}(global_input::AbstractArray{T,5}, global_output:
 
   kernel_size = kernel_w * kernel_h * kernel_d
   #pragma omp parallel for
-  for n = 1:num
-    for c = 1:channels
-      for pd = 1:pooled_depth
-        for ph = 1:pooled_height
-          for pw = 1:pooled_width
-            dstart = (pd - 1) * stride_d - pad_d
-            hstart = (ph - 1) * stride_h - pad_h
-            wstart = (pw - 1) * stride_w - pad_w
+  for n = 1:num, c = 1:channels, pd = 1:pooled_depth, ph = 1:pooled_height, pw = 1:pooled_width
+    dstart = (pd - 1) * stride_d - pad_d
+    hstart = (ph - 1) * stride_h - pad_h
+    wstart = (pw - 1) * stride_w - pad_w
 
-            dend   = min(dstart + kernel_d, depth)
-            hend   = min(hstart + kernel_h, height)
-            wend   = min(wstart + kernel_w, width)
+    dend   = min(dstart + kernel_d, depth)
+    hend   = min(hstart + kernel_h, height)
+    wend   = min(wstart + kernel_w, width)
 
-            dstart = max(dstart, 0) + 1
-            hstart = max(hstart, 0) + 1
-            wstart = max(wstart, 0) + 1
+    dstart = max(dstart, 0) + 1
+    hstart = max(hstart, 0) + 1
+    wstart = max(wstart, 0) + 1
 
-            global_output[pw, ph, pd, c, n] =
-            sum(global_input[wstart:wend, hstart:hend, dstart:dend, c, n]) / kernel_size
-          end
-        end
-      end
-    end
+    global_output[pw, ph, pd, c, n] =
+    sum(global_input[wstart:wend, hstart:hend, dstart:dend, c, n]) / kernel_size
   end
 end
 
@@ -258,26 +204,18 @@ function mean_pooling3d_bwd!{T}(grad_input::AbstractArray{T,5}, grad_output::Abs
   fill!(grad_input, 0.0)
 
   #pragma omp parallel for
-  for n = 1:num
-    for c = 1:channels
-      for pd = 1:pooled_depth
-        for ph = 1:pooled_height
-          for pw = 1:pooled_width
-            dstart = (pd - 1) * stride_d - pad_d
-            hstart = (ph - 1) * stride_h - pad_h
-            wstart = (pw - 1) * stride_w - pad_w
-            dend   = min(dstart + kernel_d, depth)
-            hend   = min(hstart + kernel_h, height)
-            wend   = min(wstart + kernel_w, width)
-            dstart = max(dstart, 0) + 1
-            hstart = max(hstart, 0) + 1
-            wstart = max(wstart, 0) + 1
+  for n = 1:num, c = 1:channels, pd = 1:pooled_depth, ph = 1:pooled_height, pw = 1:pooled_width
+    dstart = (pd - 1) * stride_d - pad_d
+    hstart = (ph - 1) * stride_h - pad_h
+    wstart = (pw - 1) * stride_w - pad_w
+    dend   = min(dstart + kernel_d, depth)
+    hend   = min(hstart + kernel_h, height)
+    wend   = min(wstart + kernel_w, width)
+    dstart = max(dstart, 0) + 1
+    hstart = max(hstart, 0) + 1
+    wstart = max(wstart, 0) + 1
 
-            grad_input[wstart:wend, hstart:hend, dstart:dend, c, n] += grad_output[pw, ph, pd, c, n] / kernel_size
-          end
-        end
-      end
-    end
+    grad_input[wstart:wend, hstart:hend, dstart:dend, c, n] += grad_output[pw, ph, pd, c, n] / kernel_size
   end
 end
 

@@ -48,14 +48,12 @@ function col2im_2d!{T}(col::AbstractArray{T,2}, img::AbstractArray{T,3}, width::
       w_offset = kernel_w - 1 - w_offset
       h_offset = kernel_h - 1 - h_offset
     end
-    for h = 1:height_col
-      for w = 1:width_col
-        h_pad = (h - 1) * stride_h - pad_h + h_offset
-        w_pad = (w - 1) * stride_w - pad_w + w_offset
-        if h_pad >= 0 && h_pad < height && w_pad >= 0 && w_pad < width
-          cval::T = col[((c - 1) * height_col + h - 1) * width_col + w]
-          img[(c_im * height + h_pad) * width + w_pad + 1] += cval
-        end
+    for h = 1:height_col, w = 1:width_col
+      h_pad = (h - 1) * stride_h - pad_h + h_offset
+      w_pad = (w - 1) * stride_w - pad_w + w_offset
+      if h_pad >= 0 && h_pad < height && w_pad >= 0 && w_pad < width
+        cval::T = col[((c - 1) * height_col + h - 1) * width_col + w]
+        img[(c_im * height + h_pad) * width + w_pad + 1] += cval
       end
     end
   end
@@ -82,20 +80,16 @@ function im2col_3d!{T}(img::AbstractArray{T,4}, col::AbstractArray{T,2}, width::
       h_offset = kernel_h - 1 - h_offset
       d_offset = kernel_d - 1 - d_offset
     end
-    for d = 1:depth_col
-      for h = 1:height_col
-        for w = 1:width_col
-          d_pad = (d - 1) * stride_d - pad_d + d_offset
-          h_pad = (h - 1) * stride_h - pad_h + h_offset
-          w_pad = (w - 1) *stride_w - pad_w + w_offset
-          if d_pad >= 0 && d_pad < depth && h_pad >= 0 && h_pad < height &&
-            w_pad >= 0 && w_pad < width
-            col[(((c - 1) * depth_col + d - 1) * height_col + h - 1) * width_col + w] =
-        	    img[((c_im * depth + d_pad) * height + h_pad) * width + w_pad + 1]
-        	else
-        	  col[(((c - 1) * depth_col + d - 1) * height_col + h - 1) * width_col + w] = 0
-          end
-        end
+    for d = 1:depth_col, h = 1:height_col, w = 1:width_col
+      d_pad = (d - 1) * stride_d - pad_d + d_offset
+      h_pad = (h - 1) * stride_h - pad_h + h_offset
+      w_pad = (w - 1) *stride_w - pad_w + w_offset
+      if d_pad >= 0 && d_pad < depth && h_pad >= 0 && h_pad < height &&
+        w_pad >= 0 && w_pad < width
+        col[(((c - 1) * depth_col + d - 1) * height_col + h - 1) * width_col + w] =
+    	    img[((c_im * depth + d_pad) * height + h_pad) * width + w_pad + 1]
+    	else
+    	  col[(((c - 1) * depth_col + d - 1) * height_col + h - 1) * width_col + w] = 0
       end
     end
   end
@@ -124,21 +118,17 @@ function col2im_3d!{T}(col::AbstractArray{T,2}, img::AbstractArray{T,4}, width::
       d_offset = kernel_d - 1 - d_offset
     end
 
-    for d = 1:depth_col
-      for h = 1:height_col
-        for w = 1:width_col
-          d_pad = (d - 1) * stride_d - pad_d + d_offset
-        	h_pad = (h - 1) * stride_h - pad_h + h_offset
-        	w_pad = (w - 1) * stride_w - pad_w + w_offset
-        	if h_pad >= 0 && h_pad < height && w_pad >= 0 && w_pad < width &&
-            d_pad >= 0 && d_pad < depth
-        	  cval::T = col[(((c - 1) * depth_col + d - 1) * height_col + h - 1) * width_col + w]
-        	  iidx = ((c_im * depth + d_pad) * height + h_pad) * width + w_pad + 1
-                  #pragma omp atomic
-        	  img[iidx] += cval
-        	end
-        end
-      end
+    for d = 1:depth_col, h = 1:height_col, w = 1:width_col
+      d_pad = (d - 1) * stride_d - pad_d + d_offset
+    	h_pad = (h - 1) * stride_h - pad_h + h_offset
+    	w_pad = (w - 1) * stride_w - pad_w + w_offset
+    	if h_pad >= 0 && h_pad < height && w_pad >= 0 && w_pad < width &&
+        d_pad >= 0 && d_pad < depth
+    	  cval::T = col[(((c - 1) * depth_col + d - 1) * height_col + h - 1) * width_col + w]
+    	  iidx = ((c_im * depth + d_pad) * height + h_pad) * width + w_pad + 1
+              #pragma omp atomic
+    	  img[iidx] += cval
+    	end
     end
   end
 end
