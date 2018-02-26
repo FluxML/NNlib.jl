@@ -106,6 +106,51 @@ function mean_pooling2d_bwd!{T}(global_input::AbstractArray{T,4}, global_output:
   end
 end
 
+function pool2d(x::AbstractArray{T,4}; window=2, padding=0, stride=window, mode=0,
+              maxpoolingNanOpt=0, alpha=1, handle=nothing) where T
+    if maxpoolingNanOpt!=0
+        throw(ArgumentError("CPU pool only supports maxpoolingNanOpt=0"))
+    end
+    Wx,Hx,Cx,Nx = size(x);
+    Wy,Hy,Cy,Ny = pdims(x;window=window,padding=padding,stride=stride)
+    y = similar(x, (Wy,Hy,Cy,Ny))
+    (w1,w2) = psize(window, x)
+    (p1,p2) = psize(padding, x)
+    (s1,s2) = psize(stride, x)
+    if mode == 0
+        max_pooling2d_fwd!(x,y,Wx,Hx,Cx,Nx,Wy,Hy,w1,w2,p1,p2,s1,s2)
+    elseif mode == 1 || (mode == 2 && p1==p2==0)
+        mean_pooling2d_fwd!(x,y,Wx,Hx,Cx,Nx,Wy,Hy,w1,w2,p1,p2,s1,s2)
+    else
+        throw(ArgumentError("mode $mode not supported by cpu pool"))
+    end
+    if alpha != 1; scale!(alpha,y); end
+    return y
+end
+
+function pool2d_grad(x::AbstractArray{T,4}, y::AbstractArray{T,4}, dy::AbstractArray{T,4};
+                   window=2, padding=0, stride=window, mode=0,
+                   maxpoolingNanOpt=0, alpha=1, handle=nothing) where T
+    if maxpoolingNanOpt!=0;
+        throw(ArgumentError("CPU pool only supports maxpoolingNanOpt=0"));
+    end
+    Wx,Hx,Cx,Nx = size(x);
+    Wy,Hy,Cy,Ny = size(y);
+    dx = similar(x)
+    (w1,w2) = psize(window, x)
+    (p1,p2) = psize(padding, x)
+    (s1,s2) = psize(stride, x)
+    if mode == 0
+        if alpha != 1; y = y ./ alpha; end
+        max_pooling2d_bwd!(x,y,dy,dx,Wx,Hx,Cx,Nx,Wy,Hy,w1,w2,p1,p2,s1,s2)
+    elseif mode == 1 || (mode == 2 && p1==p2==0)
+        mean_pooling2d_bwd!(dx,dy,Wx,Hx,Cx,Nx,Wy,Hy,w1,w2,p1,p2,s1,s2)
+    else
+        throw(ArgumentError("mode $mode not supported by cpu pool"))
+    end
+    if alpha != 1; scale!(alpha,dx); end
+    return dx
+end
 
 function max_pooling3d_fwd!{T}(global_input::AbstractArray{T,5}, global_output::AbstractArray{T,5},
   width::Int, height::Int, depth::Int, channels::Int, num::Int, pooled_width::Int,
@@ -247,120 +292,48 @@ function mean_pooling3d_bwd!{T}(grad_input::AbstractArray{T,5}, grad_output::Abs
   end
 end
 
-function pdims(x; window=2, padding=0, stride=window, o...)
-    N = ndims(x)
-    ntuple(N) do i
-        if i < N-1
-            wi = (if isa(window,Number); window; else window[i]; end)
-            pi = (if isa(padding,Number); padding; else padding[i]; end)
-            si = (if isa(stride,Number); stride; else stride[i]; end)
-            1 + div(size(x,i) + 2*pi - wi, si)
-        else
-            size(x,i)
-        end
+function pool3d(x::AbstractArray{T,5}; window=2, padding=0, stride=window, mode=0,
+              maxpoolingNanOpt=0, alpha=1, handle=nothing) where T
+    if maxpoolingNanOpt!=0
+        throw(ArgumentError("CPU pool only supports maxpoolingNanOpt=0"))
     end
+    Wx,Hx,Dx,Cx,Nx = size(x);
+    Wy,Hy,Dy,Cy,Ny = pdims(x;window=window,padding=padding,stride=stride)
+    y = similar(x, (Wy,Hy,Dy,Cy,Ny))
+    (w1,w2,w3) = psize(window, x)
+    (p1,p2,p3) = psize(padding, x)
+    (s1,s2,s3) = psize(stride, x)
+    if mode == 0
+        max_pooling3d_fwd!(x,y,Wx,Hx,Dx,Cx,Nx,Wy,Hy,Dy,w1,w2,w3,p1,p2,p3,s1,s2,s3)
+    elseif mode == 1 || (mode == 2 && p1==p2==0)
+        mean_pooling3d_fwd!(x,y,Wx,Hx,Dx,Cx,Nx,Wy,Hy,Dy,w1,w2,w3,p1,p2,p3,s1,s2,s3)
+    else
+        throw(ArgumentError("mode $mode not supported by cpu pool"))
+    end
+    if alpha != 1; scale!(alpha,y); end
+    return y
 end
 
-for (T,S) in ((Float32,32), (Float64,64)); @eval begin
-
-    function pool2d(x::AbstractArray{$T,4}; window=2, padding=0, stride=window, mode=0,
-                  maxpoolingNanOpt=0, alpha=1, handle=nothing)
-        if maxpoolingNanOpt!=0
-            throw(ArgumentError("CPU pool only supports maxpoolingNanOpt=0"))
-        end
-        Wx,Hx,Cx,Nx = size(x);
-        Wy,Hy,Cy,Ny = pdims(x;window=window,padding=padding,stride=stride)
-        y = similar(x, (Wy,Hy,Cy,Ny))
-        (w1,w2) = psize(window, x)
-        (p1,p2) = psize(padding, x)
-        (s1,s2) = psize(stride, x)
-        if mode == 0
-            max_pooling2d_fwd!(x,y,Wx,Hx,Cx,Nx,Wy,Hy,w1,w2,p1,p2,s1,s2)
-        elseif mode == 1 || (mode == 2 && p1==p2==0)
-            mean_pooling2d_fwd!(x,y,Wx,Hx,Cx,Nx,Wy,Hy,w1,w2,p1,p2,s1,s2)
-        else
-            throw(ArgumentError("mode $mode not supported by cpu pool"))
-        end
-        if alpha != 1; scale!(alpha,y); end
-        return y
+function pool3d_grad(x::AbstractArray{T,5}, y::AbstractArray{T,5}, dy::AbstractArray{T,5};
+                   window=2, padding=0, stride=window, mode=0,
+                   maxpoolingNanOpt=0, alpha=1, handle=nothing) where T
+    if maxpoolingNanOpt!=0;
+        throw(ArgumentError("CPU pool only supports maxpoolingNanOpt=0"));
     end
-
-    function pool2d_grad(x::AbstractArray{$T,4}, y::AbstractArray{$T,4}, dy::AbstractArray{$T,4};
-                       window=2, padding=0, stride=window, mode=0,
-                       maxpoolingNanOpt=0, alpha=1, handle=nothing)
-        if maxpoolingNanOpt!=0;
-            throw(ArgumentError("CPU pool only supports maxpoolingNanOpt=0"));
-        end
-        Wx,Hx,Cx,Nx = size(x);
-        Wy,Hy,Cy,Ny = size(y);
-        dx = similar(x)
-        (w1,w2) = psize(window, x)
-        (p1,p2) = psize(padding, x)
-        (s1,s2) = psize(stride, x)
-        if mode == 0
-            if alpha != 1; y = y ./ alpha; end
-            max_pooling2d_bwd!(x,y,dy,dx,Wx,Hx,Cx,Nx,Wy,Hy,w1,w2,p1,p2,s1,s2)
-        elseif mode == 1 || (mode == 2 && p1==p2==0)
-            mean_pooling2d_bwd!(dx,dy,Wx,Hx,Cx,Nx,Wy,Hy,w1,w2,p1,p2,s1,s2)
-        else
-            throw(ArgumentError("mode $mode not supported by cpu pool"))
-        end
-        if alpha != 1; scale!(alpha,dx); end
-        return dx
+    Wx,Hx,Dx,Cx,Nx = size(x);
+    Wy,Hy,Dy,Cy,Ny = size(y);
+    dx = similar(x)
+    (w1,w2,w3) = psize(window, x)
+    (p1,p2,p3) = psize(padding, x)
+    (s1,s2,s3) = psize(stride, x)
+    if mode == 0
+        if alpha != 1; y = y ./ alpha; end
+        max_pooling3d_bwd!(x,y,dy,dx,Wx,Hx,Dx,Cx,Nx,Wy,Hy,Dy,w1,w2,w3,p1,p2,p3,s1,s2,s3)
+    elseif mode == 1 || (mode == 2 && p1==p2==0)
+        mean_pooling3d_bwd!(dx,dy,Wx,Hx,Dx,Cx,Nx,Wy,Hy,Dy,w1,w2,w3,p1,p2,p3,s1,s2,s3)
+    else
+        throw(ArgumentError("mode $mode not supported by cpu pool"))
     end
-end;end
-
-maxpool2d(x, k; pad = 0) = pool2d(x; window = k, padding = pad, mode = 0)
-avgpool2d(x, k; pad = 0) = pool2d(x; window = k, padding = pad, mode = 1)
-
-for (T,S) in ((Float32,32), (Float64,64)); @eval begin
-
-    function pool3d(x::AbstractArray{$T,5}; window=2, padding=0, stride=window, mode=0,
-                  maxpoolingNanOpt=0, alpha=1, handle=nothing)
-        if maxpoolingNanOpt!=0
-            throw(ArgumentError("CPU pool only supports maxpoolingNanOpt=0"))
-        end
-        Wx,Hx,Dx,Cx,Nx = size(x);
-        Wy,Hy,Dy,Cy,Ny = pdims(x;window=window,padding=padding,stride=stride)
-        y = similar(x, (Wy,Hy,Dy,Cy,Ny))
-        (w1,w2,w3) = psize(window, x)
-        (p1,p2,p3) = psize(padding, x)
-        (s1,s2,s3) = psize(stride, x)
-        if mode == 0
-            max_pooling3d_fwd!(x,y,Wx,Hx,Dx,Cx,Nx,Wy,Hy,Dy,w1,w2,w3,p1,p2,p3,s1,s2,s3)
-        elseif mode == 1 || (mode == 2 && p1==p2==0)
-            mean_pooling3d_fwd!(x,y,Wx,Hx,Dx,Cx,Nx,Wy,Hy,Dy,w1,w2,w3,p1,p2,p3,s1,s2,s3)
-        else
-            throw(ArgumentError("mode $mode not supported by cpu pool"))
-        end
-        if alpha != 1; scale!(alpha,y); end
-        return y
-    end
-
-    function pool3d_grad(x::AbstractArray{$T,5}, y::AbstractArray{$T,5}, dy::AbstractArray{$T,5};
-                       window=2, padding=0, stride=window, mode=0,
-                       maxpoolingNanOpt=0, alpha=1, handle=nothing)
-        if maxpoolingNanOpt!=0;
-            throw(ArgumentError("CPU pool only supports maxpoolingNanOpt=0"));
-        end
-        Wx,Hx,Dx,Cx,Nx = size(x);
-        Wy,Hy,Dy,Cy,Ny = size(y);
-        dx = similar(x)
-        (w1,w2,w3) = psize(window, x)
-        (p1,p2,p3) = psize(padding, x)
-        (s1,s2,s3) = psize(stride, x)
-        if mode == 0
-            if alpha != 1; y = y ./ alpha; end
-            max_pooling3d_bwd!(x,y,dy,dx,Wx,Hx,Dx,Cx,Nx,Wy,Hy,Dy,w1,w2,w3,p1,p2,p3,s1,s2,s3)
-        elseif mode == 1 || (mode == 2 && p1==p2==0)
-            mean_pooling3d_bwd!(dx,dy,Wx,Hx,Dx,Cx,Nx,Wy,Hy,Dy,w1,w2,w3,p1,p2,p3,s1,s2,s3)
-        else
-            throw(ArgumentError("mode $mode not supported by cpu pool"))
-        end
-        if alpha != 1; scale!(alpha,dx); end
-        return dx
-    end
-end;end
-
-maxpool3d(x, k; pad = 0) = pool3d(x; window = k, padding = pad, mode = 0)
-avgpool3d(x, k; pad = 0) = pool3d(x; window = k, padding = pad, mode = 1)
+    if alpha != 1; scale!(alpha,dx); end
+    return dx
+end

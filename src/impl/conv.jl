@@ -30,7 +30,6 @@ function im2col_2d!{T}(img::AbstractArray{T,3}, col::AbstractArray{T,2}, width::
   end
 end
 
-
 function col2im_2d!{T}(col::AbstractArray{T,2}, img::AbstractArray{T,3}, width::Int, height::Int,
   channels::Int, kernel_w::Int, kernel_h::Int, pad_w::Int, pad_h::Int, stride_w::Int,
   stride_h::Int, mode::Int)
@@ -61,7 +60,6 @@ function col2im_2d!{T}(col::AbstractArray{T,2}, img::AbstractArray{T,3}, width::
     end
   end
 end
-
 
 function im2col_3d!{T}(img::AbstractArray{T,4}, col::AbstractArray{T,2}, width::Int, height::Int, depth::Int,
   channels::Int, kernel_w::Int, kernel_h::Int, kernel_d::Int, pad_w::Int, pad_h::Int, pad_d::Int,
@@ -143,21 +141,6 @@ function col2im_3d!{T}(col::AbstractArray{T,2}, img::AbstractArray{T,4}, width::
       end
     end
   end
-end
-
-function cdims(w,x; padding=0, stride=1, o...)
-    N = ndims(x)
-    ntuple(N) do i
-        if i < N-1
-            pi = (if isa(padding,Number); padding; else padding[i]; end)
-            si = (if isa(stride,Number); stride; else stride[i]; end)
-            1 + div(size(x,i) - size(w,i) + 2*pi, si)
-        elseif i == N-1
-            size(w,N)
-        else # i == N
-            size(x,N)
-        end
-    end
 end
 
 function im2col_dims(w,y)
@@ -250,27 +233,24 @@ function conv2d_grad_x{T}(x::AbstractArray{T,4}, w::AbstractArray{T,4}, dy::Abst
     return dx
 end
 
-for (T,S) in ((Float32,32), (Float64,64)); @eval begin
+function im2col2d!(w::AbstractArray{T,4}, x::AbstractArray{T,4}, x2::AbstractArray{T,2},
+                 n::Int, p1::Int, p2::Int, s1::Int, s2::Int, mode::Int) where T
+    Wx,Hx,Cx,Nx = size(x)
+    Ww,Hw,C1,C2 = size(w)
+    xn = x[:, :, :, n]
+    im2col_2d!(xn,x2,Wx,Hx,Cx,Ww,Hw,p1,p2,s1,s2,mode)
+    return x2
+end
 
-    function im2col2d!(w::AbstractArray{$T,4}, x::AbstractArray{$T,4}, x2::AbstractArray{$T,2},
-                     n::Int, p1::Int, p2::Int, s1::Int, s2::Int, mode::Int)
-        Wx,Hx,Cx,Nx = size(x)
-        Ww,Hw,C1,C2 = size(w)
-        xn = x[:, :, :, n]
-        im2col_2d!(xn,x2,Wx,Hx,Cx,Ww,Hw,p1,p2,s1,s2,mode)
-        return x2
-    end
-
-    function col2im2d!(w::AbstractArray{$T,4}, x::AbstractArray{$T,4}, x2::AbstractArray{$T,2},
-                     n::Int, p1::Int, p2::Int, s1::Int, s2::Int, mode::Int)
-        Wx,Hx,Cx,Nx = size(x)
-        Ww,Hw,C1,C2 = size(w)
-        xn = x[:, :, :, n]
-        col2im_2d!(x2,xn,Wx,Hx,Cx,Ww,Hw,p1,p2,s1,s2,mode)
-        x[:, :, :, n] = xn
-        return x
-    end
-end;end
+function col2im2d!(w::AbstractArray{T,4}, x::AbstractArray{T,4}, x2::AbstractArray{T,2},
+                 n::Int, p1::Int, p2::Int, s1::Int, s2::Int, mode::Int) where T
+    Wx,Hx,Cx,Nx = size(x)
+    Ww,Hw,C1,C2 = size(w)
+    xn = x[:, :, :, n]
+    col2im_2d!(x2,xn,Wx,Hx,Cx,Ww,Hw,p1,p2,s1,s2,mode)
+    x[:, :, :, n] = xn
+    return x
+end
 
 function conv3d{T}(x::AbstractArray{T,5}, w::AbstractArray{T,5};
                   padding=0, stride=1, upscale=1, mode=0, alpha=1,
@@ -352,26 +332,23 @@ function conv3d_grad_x{T}(x::AbstractArray{T,5}, w::AbstractArray{T,5}, dy::Abst
     return dx
 end
 
-for (T,S) in ((Float32,32), (Float64,64)); @eval begin
+function im2col3d!(w::AbstractArray{T,5}, x::AbstractArray{T,5}, x2::AbstractArray{T,2},
+                 n::Int, p1::Int, p2::Int, p3::Int, s1::Int, s2::Int,
+                 s3::Int, mode::Int) where T
+    Wx,Hx,Dx,Cx,Nx = size(x)
+    Ww,Hw,Dw,C1,C2 = size(w)
+    xn = x[:, :, :, :, n]
+    im2col_3d!(xn,x2,Wx,Hx,Dx,Cx,Ww,Hw,Dw,p1,p2,p3,s1,s2,s3,mode)
+    return x2
+end
 
-    function im2col3d!(w::AbstractArray{$T,5}, x::AbstractArray{$T,5}, x2::AbstractArray{$T,2},
-                     n::Int, p1::Int, p2::Int, p3::Int, s1::Int, s2::Int,
-                     s3::Int, mode::Int)
-        Wx,Hx,Dx,Cx,Nx = size(x)
-        Ww,Hw,Dw,C1,C2 = size(w)
-        xn = x[:, :, :, :, n]
-        im2col_3d!(xn,x2,Wx,Hx,Dx,Cx,Ww,Hw,Dw,p1,p2,p3,s1,s2,s3,mode)
-        return x2
-    end
-
-    function col2im3d!(w::AbstractArray{$T,5}, x::AbstractArray{$T,5}, x2::AbstractArray{$T,2},
-                     n::Int, p1::Int, p2::Int, p3::Int, s1::Int, s2::Int,
-                     s3::Int, mode::Int)
-        Wx,Hx,Dx,Cx,Nx = size(x)
-        Ww,Hw,Dw,C1,C2 = size(w)
-        xn = x[:, :, :, :, n]
-        col2im_3d!(x2,xn,Wx,Hx,Dx,Cx,Ww,Hw,Dw,p1,p2,p3,s1,s2,s3,mode)
-        x[:, :, :, :, n] = xn
-        return x
-    end
-end;end
+function col2im3d!(w::AbstractArray{T,5}, x::AbstractArray{T,5}, x2::AbstractArray{T,2},
+                 n::Int, p1::Int, p2::Int, p3::Int, s1::Int, s2::Int,
+                 s3::Int, mode::Int) where T
+    Wx,Hx,Dx,Cx,Nx = size(x)
+    Ww,Hw,Dw,C1,C2 = size(w)
+    xn = x[:, :, :, :, n]
+    col2im_3d!(x2,xn,Wx,Hx,Dx,Cx,Ww,Hw,Dw,p1,p2,p3,s1,s2,s3,mode)
+    x[:, :, :, :, n] = xn
+    return x
+end
