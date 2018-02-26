@@ -40,7 +40,7 @@ conv!(y::AbstractArray{T,4}, x::AbstractArray{T,4}, w::AbstractArray{T,4}; pad =
   conv2d_grad_w!(dw, x, w, dy, padding = pad, stride = stride)
 
 ∇conv_data!(dx::AbstractArray{T,4}, dy::AbstractArray{T,4}, x::AbstractArray{T,4}, w::AbstractArray{T,4}; pad = 0, stride = 1) where T =
-  conv2d_grad_w!(dx, x, w, dy, padding = pad, stride = stride)
+  conv2d_grad_x!(dx, x, w, dy, padding = pad, stride = stride)
 
 conv!(y::AbstractArray{T,5}, x::AbstractArray{T,5}, w::AbstractArray{T,5}; pad = 0, stride = 1) where T =
   conv3d!(y, x, w, padding = pad, stride = stride)
@@ -49,7 +49,7 @@ conv!(y::AbstractArray{T,5}, x::AbstractArray{T,5}, w::AbstractArray{T,5}; pad =
   conv3d_grad_w!(dw, x, w, dy, padding = pad, stride = stride)
 
 ∇conv_data!(dx::AbstractArray{T,5}, dy::AbstractArray{T,5}, x::AbstractArray{T,5}, w::AbstractArray{T,5}; pad = 0, stride = 1) where T =
-  conv3d_grad_w!(dx, x, w, dy, padding = pad, stride = stride)
+  conv3d_grad_x!(dx, x, w, dy, padding = pad, stride = stride)
 
 # Pooling
 
@@ -69,39 +69,60 @@ maxpool(x::AbstractArray, k; pad = map(_->0,k), stride = k) =
   maxpool!(similar(x, pdims(size(x), k, pad, stride)),
            x, k, pad = pad, stride = stride)
 
+maxpool!(y::A, x::A, k; kw...) where A<:AbstractArray =
+  maxpool_cpu!(y, x, k; kw...)
+
 ∇maxpool(dy::A, y::A, x::A, k; pad = map(_->0,k), stride = k) where A<:AbstractArray =
   ∇maxpool!(similar(x), dy, y, x, k, pad = pad, stride = stride)
 
-# N-D dispatch
+∇maxpool!(dx::A, dy::A, y::A, x::A, k; kw...) where A<:AbstractArray =
+  ∇maxpool_cpu!(dx, dy, y, x, k; kw...)
 
-maxpool!(y::AbstractArray{<:Real,4}, x::AbstractArray{<:Real,4}, k::Dims{2}; pad = (0,0), stride = k) =
+meanpool(x::AbstractArray, k; pad = map(_->0,k), stride = k) =
+  meanpool!(similar(x, pdims(size(x), k, pad, stride)),
+           x, k, pad = pad, stride = stride)
+
+meanpool!(y::A, x::A, k; kw...) where A<:AbstractArray =
+  meanpool_cpu!(y, x, k; kw...)
+
+∇meanpool(dy::A, y::A, x::A, k; pad = map(_->0,k), stride = k) where A<:AbstractArray =
+  ∇meanpool!(similar(x), dy, y, x, k, pad = pad, stride = stride)
+
+∇meanpool!(dx::A, dy::A, y::A, x::A, k; kw...) where A<:AbstractArray =
+  ∇meanpool_cpu!(dx, dy, y, x, k; kw...)
+
+# N-D dispatch
+# We use a separate function to avoid ambiguity issues
+# (more specific array types vs. more specific dimensions)
+
+maxpool_cpu!(y::A, x::A, k::Dims{2}; pad = (0,0), stride = k) where A<:AbstractArray{<:Real,4} =
   maxpool2d!(y, x, window = k, padding = pad, stride = stride)
 
-∇maxpool!(dx::AbstractArray{<:Real,4}, dy::AbstractArray{<:Real,4}, y::AbstractArray{<:Real,4}, x::AbstractArray{<:Real,4},
-          k::Dims{2}; pad = (0,0), stride = k) =
+∇maxpool_cpu!(dx::AbstractArray{<:Real,4}, dy::AbstractArray{<:Real,4}, y::AbstractArray{<:Real,4}, x::AbstractArray{<:Real,4},
+              k::Dims{2}; pad = (0,0), stride = k) =
   maxpool2d_grad!(dx, dy, y, x,
                   window = k, padding = pad, stride = stride)
 
-maxpool!(y::AbstractArray{<:Real,5}, x::AbstractArray{<:Real,5}, k::Dims{3}; pad = (0,0), stride = k) =
+maxpool_cpu!(y::AbstractArray{<:Real,5}, x::AbstractArray{<:Real,5}, k::Dims{3}; pad = (0,0), stride = k) =
   maxpool3d!(y, x, window = k, padding = pad, stride = stride)
 
-∇maxpool!(dx::AbstractArray{<:Real,5}, dy::AbstractArray{<:Real,5}, y::AbstractArray{<:Real,5}, x::AbstractArray{<:Real,5},
-          k::Dims{3}; pad = (0,0), stride = k) =
+∇maxpool_cpu!(dx::AbstractArray{<:Real,5}, dy::AbstractArray{<:Real,5}, y::AbstractArray{<:Real,5}, x::AbstractArray{<:Real,5},
+              k::Dims{3}; pad = (0,0), stride = k) =
   maxpool3d_grad!(dx, dy, y, x,
                   window = k, padding = pad, stride = stride)
 
-meanpool!(y::AbstractArray{<:Real,4}, x::AbstractArray{<:Real,4}, k::Dims{2}; pad = (0,0), stride = k) =
+meanpool_cpu!(y::AbstractArray{<:Real,4}, x::AbstractArray{<:Real,4}, k::Dims{2}; pad = (0,0), stride = k) =
   meanpool2d!(y, x, window = k, padding = pad, stride = stride)
 
-∇meanpool!(dx::AbstractArray{<:Real,4}, dy::AbstractArray{<:Real,4}, y::AbstractArray{<:Real,4}, x::AbstractArray{<:Real,4},
-          k::Dims{2}; pad = (0,0), stride = k) =
+∇meanpool_cpu!(dx::AbstractArray{<:Real,4}, dy::AbstractArray{<:Real,4}, y::AbstractArray{<:Real,4}, x::AbstractArray{<:Real,4},
+              k::Dims{2}; pad = (0,0), stride = k) =
   meanpool2d_grad!(dx, dy, y, x,
                    window = k, padding = pad, stride = stride)
 
-meanpool!(y::AbstractArray{<:Real,5}, x::AbstractArray{<:Real,5}, k::Dims{3}; pad = (0,0), stride = k) =
+meanpool_cpu!(y::AbstractArray{<:Real,5}, x::AbstractArray{<:Real,5}, k::Dims{3}; pad = (0,0), stride = k) =
   meanpool3d!(y, x, window = k, padding = pad, stride = stride)
 
-∇meanpool!(dx::AbstractArray{<:Real,5}, dy::AbstractArray{<:Real,5}, y::AbstractArray{<:Real,5}, x::AbstractArray{<:Real,5},
-          k::Dims{3}; pad = (0,0), stride = k) =
+∇meanpool_cpu!(dx::AbstractArray{<:Real,5}, dy::AbstractArray{<:Real,5}, y::AbstractArray{<:Real,5}, x::AbstractArray{<:Real,5},
+              k::Dims{3}; pad = (0,0), stride = k) =
   meanpool3d_grad!(dx, dy, y, x,
                    window = k, padding = pad, stride = stride)

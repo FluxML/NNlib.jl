@@ -291,7 +291,7 @@ function conv3d_grad_w!{T}(dw::AbstractArray{T,5}, x::AbstractArray{T,5}, w::Abs
     return dw
 end
 
-function conv3d_grad_x{T}(dx::AbstractArray{T,5}, x::AbstractArray{T,5}, w::AbstractArray{T,5}, dy::AbstractArray{T,5};
+function conv3d_grad_x!{T}(dx::AbstractArray{T,5}, x::AbstractArray{T,5}, w::AbstractArray{T,5}, dy::AbstractArray{T,5};
                    padding=0, stride=1, mode=0, alpha=1)
     # dx = dy*w'
     Wx,Hx,Dx,Cx,Nx = size(x)
