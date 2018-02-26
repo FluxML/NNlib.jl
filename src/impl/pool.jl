@@ -124,7 +124,7 @@ function meanpool2d_grad!(dx::AbstractArray{T,4}, dy::AbstractArray{T,4}, y::Abs
     (w1,w2) = window
     (p1,p2) = padding
     (s1,s2) = stride
-    mean_pooling2d_bwd!(x,y,dy,dx,Wx,Hx,Cx,Nx,Wy,Hy,w1,w2,p1,p2,s1,s2)
+    mean_pooling2d_bwd!(dx,dy,Wx,Hx,Cx,Nx,Wy,Hy,w1,w2,p1,p2,s1,s2)
     return dx
 end
 
@@ -275,6 +275,6 @@ function meanpool3d_grad!(dx::AbstractArray{T,5}, dy::AbstractArray{T,5}, y::Abs
     (w1,w2,w3) = psize(window, x)
     (p1,p2,p3) = psize(padding, x)
     (s1,s2,s3) = psize(stride, x)
-    mean_pooling3d_bwd!(x,y,dy,dx,Wx,Hx,Dx,Cx,Nx,Wy,Hy,Dy,w1,w2,w3,p1,p2,p3,s1,s2,s3)
+    mean_pooling3d_bwd!(dx,dy,Wx,Hx,Dx,Cx,Nx,Wy,Hy,Dy,w1,w2,w3,p1,p2,p3,s1,s2,s3)
     return dx
 end
