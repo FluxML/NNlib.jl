@@ -1,4 +1,4 @@
-function im2col_2d!{T}(img::Array{T, 3}, col::Array{T, 2}, width::Int, height::Int, channels::Int,
+function im2col_2d!{T}(img::Array{T,3}, col::Array{T,2}, width::Int, height::Int, channels::Int,
   kernel_w::Int, kernel_h::Int, pad_w::Int, pad_h::Int, stride_w::Int, stride_h::Int, mode::Int)
 
   height_col = div((height + 2pad_h - kernel_h), stride_h) + 1
@@ -31,7 +31,7 @@ function im2col_2d!{T}(img::Array{T, 3}, col::Array{T, 2}, width::Int, height::I
 end
 
 
-function col2im_2d!{T}(col::Array{T, 2}, img::Array{T, 3}, width::Int, height::Int,
+function col2im_2d!{T}(col::Array{T,2}, img::Array{T,3}, width::Int, height::Int,
   channels::Int, kernel_w::Int, kernel_h::Int, pad_w::Int, pad_h::Int, stride_w::Int,
   stride_h::Int, mode::Int)
 
@@ -63,7 +63,7 @@ function col2im_2d!{T}(col::Array{T, 2}, img::Array{T, 3}, width::Int, height::I
 end
 
 
-function im2col_3d!{T}(img::Array{T, 4}, col::Array{T, 2}, width::Int, height::Int, depth::Int,
+function im2col_3d!{T}(img::Array{T,4}, col::Array{T,2}, width::Int, height::Int, depth::Int,
   channels::Int, kernel_w::Int, kernel_h::Int, kernel_d::Int, pad_w::Int, pad_h::Int, pad_d::Int,
   stride_w::Int, stride_h::Int, stride_d::Int, mode::Int)
 
@@ -103,7 +103,7 @@ function im2col_3d!{T}(img::Array{T, 4}, col::Array{T, 2}, width::Int, height::I
   end
 end
 
-function col2im_3d!{T}(col::Array{T, 2}, img::Array{T, 4}, width::Int, height::Int,
+function col2im_3d!{T}(col::Array{T,2}, img::Array{T,4}, width::Int, height::Int,
   depth::Int, channels::Int, kernel_w::Int, kernel_h::Int, kernel_d::Int,
   pad_w::Int, pad_h::Int, pad_d::Int, stride_w::Int, stride_h::Int, stride_d::Int, mode::Int)
 

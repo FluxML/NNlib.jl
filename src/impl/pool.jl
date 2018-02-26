@@ -1,4 +1,4 @@
-function max_pooling2d_fwd!{T}(global_input::Array{T, 4}, global_output::Array{T, 4},
+function max_pooling2d_fwd!{T}(global_input::Array{T,4}, global_output::Array{T,4},
   width::Int, height::Int, channels::Int, num::Int, pooled_width::Int,
   pooled_height::Int, kernel_w::Int, kernel_h::Int, pad_w::Int, pad_h::Int,
   stride_w::Int, stride_h::Int)
@@ -21,8 +21,8 @@ function max_pooling2d_fwd!{T}(global_input::Array{T, 4}, global_output::Array{T
   end
 end
 
-function max_pooling2d_bwd!{T}(global_input::Array{T, 4}, global_output::Array{T, 4},
-  grad_output::Array{T, 4}, grad_input::Array{T, 4}, width::Int, height::Int,
+function max_pooling2d_bwd!{T}(global_input::Array{T,4}, global_output::Array{T,4},
+  grad_output::Array{T,4}, grad_input::Array{T,4}, width::Int, height::Int,
   channels::Int, num::Int, pooled_width::Int, pooled_height::Int, kernel_w::Int,
   kernel_h::Int, pad_w::Int, pad_h::Int, stride_w::Int, stride_h::Int)
 
@@ -54,7 +54,7 @@ function max_pooling2d_bwd!{T}(global_input::Array{T, 4}, global_output::Array{T
 end
 
 
-function mean_pooling2d_fwd!{T}(global_input::Array{T, 4}, global_output::Array{T, 4},
+function mean_pooling2d_fwd!{T}(global_input::Array{T,4}, global_output::Array{T,4},
   width::Int, height::Int, channels::Int, num::Int, pooled_width::Int,
   pooled_height::Int, kernel_w::Int, kernel_h::Int,pad_w::Int, pad_h::Int,
   stride_w::Int, stride_h::Int)
@@ -78,7 +78,7 @@ function mean_pooling2d_fwd!{T}(global_input::Array{T, 4}, global_output::Array{
   end
 end
 
-function mean_pooling2d_bwd!{T}(global_input::Array{T, 4}, global_output::Array{T, 4},
+function mean_pooling2d_bwd!{T}(global_input::Array{T,4}, global_output::Array{T,4},
   width::Int, height::Int, channels::Int, num::Int, pooled_width::Int,
   pooled_height::Int, kernel_w::Int, kernel_h::Int, pad_w::Int, pad_h::Int,
   stride_w::Int, stride_h::Int)
@@ -107,7 +107,7 @@ function mean_pooling2d_bwd!{T}(global_input::Array{T, 4}, global_output::Array{
 end
 
 
-function max_pooling3d_fwd!{T}(global_input::Array{T, 5}, global_output::Array{T, 5},
+function max_pooling3d_fwd!{T}(global_input::Array{T,5}, global_output::Array{T,5},
   width::Int, height::Int, depth::Int, channels::Int, num::Int, pooled_width::Int,
   pooled_height::Int, pooled_depth::Int, kernel_w::Int, kernel_h::Int, kernel_d::Int,
   pad_w::Int, pad_h::Int, pad_d::Int, stride_w::Int, stride_h::Int, stride_d::Int)
@@ -137,8 +137,8 @@ function max_pooling3d_fwd!{T}(global_input::Array{T, 5}, global_output::Array{T
   end
 end
 
-function max_pooling3d_bwd!{T}(global_input::Array{T, 5}, global_output::Array{T, 5},
-  grad_output::Array{T, 5}, grad_input::Array{T, 5}, width::Int, height::Int, depth::Int,
+function max_pooling3d_bwd!{T}(global_input::Array{T,5}, global_output::Array{T,5},
+  grad_output::Array{T,5}, grad_input::Array{T,5}, width::Int, height::Int, depth::Int,
   channels::Int, num::Int, pooled_width::Int, pooled_height::Int, pooled_depth::Int,
   kernel_w::Int, kernel_h::Int, kernel_d::Int, pad_w::Int, pad_h::Int, pad_d::Int,
   stride_w::Int, stride_h::Int, stride_d::Int)
@@ -182,7 +182,7 @@ function max_pooling3d_bwd!{T}(global_input::Array{T, 5}, global_output::Array{T
 end
 
 
-function mean_pooling3d_fwd!{T}(global_input::Array{T, 5}, global_output::Array{T, 5},
+function mean_pooling3d_fwd!{T}(global_input::Array{T,5}, global_output::Array{T,5},
   width::Int, height::Int, depth::Int, channels::Int, num::Int, pooled_width::Int,
   pooled_height::Int, pooled_depth::Int, kernel_w::Int, kernel_h::Int, kernel_d::Int,
   pad_w::Int, pad_h::Int, pad_d::Int, stride_w::Int, stride_h::Int, stride_d::Int)
@@ -215,7 +215,7 @@ function mean_pooling3d_fwd!{T}(global_input::Array{T, 5}, global_output::Array{
   end
 end
 
-function mean_pooling3d_bwd!{T}(grad_input::Array{T, 5}, grad_output::Array{T, 5},
+function mean_pooling3d_bwd!{T}(grad_input::Array{T,5}, grad_output::Array{T,5},
   width::Int, height::Int, depth::Int, channels::Int, num::Int, pooled_width::Int,
   pooled_height::Int, pooled_depth::Int, kernel_w::Int, kernel_h::Int, kernel_d::Int,
   pad_w::Int, pad_h::Int, pad_d::Int, stride_w::Int, stride_h::Int, stride_d::Int)
