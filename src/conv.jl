@@ -26,10 +26,10 @@ conv(x::A, w::A; pad = 0, stride = 1) where A<:AbstractArray =
   conv!(similar(x, cdims(w, x, padding = pad, stride = stride)), x, w, pad = pad, stride = stride)
 
 ∇conv_data(dy::A, x::A, w::A; pad = 0, stride = 1) where A<:AbstractArray =
-  ∇conv_data!(zeros(x), dy, x, w)
+  ∇conv_data!(zeros(x), dy, x, w; pad = pad, stride = stride)
 
 ∇conv_filter(dy::A, x::A, w::A; pad = 0, stride = 1) where A<:AbstractArray =
-  ∇conv_filter!(zeros(w), dy, x, w)
+  ∇conv_filter!(zeros(w), dy, x, w; pad = pad, stride = stride)
 
 # N-D dispatch
 
