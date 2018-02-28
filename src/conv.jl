@@ -33,6 +33,29 @@ conv(x::A, w::A; pad = 0, stride = 1) where A<:AbstractArray =
 
 # N-D dispatch
 
+function conv!(y::AbstractArray{T,3}, x::AbstractArray{T,3}, w::AbstractArray{T,3};
+               pad = 0, stride = 1) where T
+    args = map(x -> reshape(x, size(x,1),1,size(x,2),size(x,3)), (y, x, w))
+    conv!(args..., pad = (pad...,0), stride = (stride...,1))
+    return y
+end
+
+function ∇conv_filter!(dw::AbstractArray{T,3}, dy::AbstractArray{T,3},
+                       x::AbstractArray{T,3}, w::AbstractArray{T,3};
+                       pad = 0, stride = 1) where T
+    args = map(x -> reshape(x, size(x,1),1,size(x,2),size(x,3)), (dw, dy, x, w))
+    ∇conv_filter!(args..., pad = (pad...,0), stride = (stride...,1))
+    return dw
+end
+
+function ∇conv_data!(dx::AbstractArray{T,3}, dy::AbstractArray{T,3},
+                     x::AbstractArray{T,3}, w::AbstractArray{T,3};
+                     pad = 0, stride = 1) where T
+    args = map(x -> reshape(x, size(x,1),1,size(x,2),size(x,3)), (dx, dy, x, w))
+    ∇conv_data!(args..., pad = (pad...,0), stride = (stride...,1))
+    return dx
+end
+
 conv!(y::AbstractArray{T,4}, x::AbstractArray{T,4}, w::AbstractArray{T,4};
       pad = 0, stride = 1) where T =
   conv2d!(y, x, w, padding = pad, stride = stride)
