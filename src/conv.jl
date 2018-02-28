@@ -5,25 +5,30 @@ include("impl/conv.jl")
 
 # Convolutions
 
-function cdims(w,x; padding=0, stride=1)
-  N = ndims(x)
-  ntuple(N) do i
+function cdims(x::NTuple{N}, w::NTuple{N}, pad, stride) where N
+  ntuple(Val{N}) do i
     if i < N-1
-      pi = (if isa(padding,Number); padding; else padding[i]; end)
-      si = (if isa(stride,Number); stride; else stride[i]; end)
-      1 + div(size(x,i) - size(w,i) + 2*pi, si)
+      1 + div(x[i] - w[i] + 2*pad[i], stride[i])
     elseif i == N-1
-      size(w,N)
+      w[N]
     else # i == N
-      size(x,N)
+      x[N]
     end
   end
 end
 
 # Interface
 
-conv(x::A, w::A; pad = 0, stride = 1) where A<:AbstractArray =
-  conv!(similar(x, cdims(w, x, padding = pad, stride = stride)), x, w, pad = pad, stride = stride)
+head(x) = reverse(Base.tail(reverse(x)))
+padtuple(x::Tuple,p::Integer) = map(_->p, head(head(x)))
+padtuple(x::Tuple,p::Tuple) = p
+padtuple(x::AbstractArray,p) = padtuple(size(x),p)
+
+function conv(x::A, w::A; pad = 0, stride = 1) where A<:AbstractArray
+  pad_, stride_ = padtuple(x, pad), padtuple(x, stride)
+  conv!(similar(x, cdims(size(x), size(w), pad_, stride_)),
+        x, w, pad = pad_, stride = stride_)
+end
 
 ∇conv_data(dy::A, x::A, w::A; pad = 0, stride = 1) where A<:AbstractArray =
   ∇conv_data!(zeros(x), dy, x, w; pad = pad, stride = stride)
