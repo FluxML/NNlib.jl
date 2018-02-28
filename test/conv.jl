@@ -1,7 +1,6 @@
 using NNlib: conv, ∇conv_filter, ∇conv_data, ∇maxpool, maxpool
 
 @testset "conv2d" begin
-
     x = reshape(Float64[1:20;], 5, 4, 1, 1)
     w = reshape(Float64[1:4;], 2, 2, 1, 1)
 
@@ -32,6 +31,11 @@ using NNlib: conv, ∇conv_filter, ∇conv_data, ∇maxpool, maxpool
     @test size(∇conv_filter(reshape(rand(4,3), 4, 3, 1, 1), x, w)) == size(w)
     @test size(∇conv_data(reshape(rand(4,3), 4, 3, 1, 1), x, w)) == size(x)
 
+    # Test that stride/pad work backward as well
+    y = conv(x, w; stride=2, pad=1)
+    @test size(y) == (3, 3, 1, 1)
+    @test size(∇conv_filter(y, x, w; stride=2, pad=1)) == size(w)
+    @test size(∇conv_data(y, x, w; stride=2, pad=1)) == size(x)
 end
 
 
