@@ -11,5 +11,6 @@ include("softmax.jl")
 include("logsoftmax.jl")
 include("linalg.jl")
 include("conv.jl")
+include("cubroadcast.jl")
 
 end # module
