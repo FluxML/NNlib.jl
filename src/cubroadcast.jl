@@ -13,6 +13,8 @@ broadcast_inputs(ex) =
   isbcastop(ex) ? vcat(broadcast_inputs.(ex.args[2:end])...) :
   []
 
+cudata(x) = x
+
 macro fix(ex)
   fs = []
   ex = MacroTools.prewalk(ex) do ex
@@ -20,7 +22,7 @@ macro fix(ex)
     # May not work in cases like `x .+ log(1.0)` but w/e
     xs = broadcast_inputs(ex)
     f_ = gensym()
-    push!(fs, :($f_ = $_cufunc($f, $(xs...))))
+    push!(fs, :($f_ = $_cufunc($f, $cudata.(($(xs...),))...)))
     :($f_.($(args...)))
   end
   :($(fs...); $ex) |> esc
