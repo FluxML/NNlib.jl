@@ -145,14 +145,99 @@ function col2im_3d!{T}(col::AbstractArray{T,2}, img::AbstractArray{T,4}, width::
   end
 end
 
+function im2col_nd!{T}(img::AbstractArray{T}, col::AbstractArray{T,2},
+  kernel_dim::AbstractArray{Int}, pad::AbstractArray{Int},
+  stride::AbstractArray{Int}, mode::Int)
+
+  img_dim = size(img)
+  n_dim = ndims(img) - 1
+
+  dim_col = div((img_dim[:end-1] + 2pad - kernel_dim), stride) + 1
+  channels_col = channels * prod(kernel_dim)
+  push!(dim_col, channels_col)
+
+  fill!(col, 0)
+  for c = 1:dim_col[end]
+    offset = zeros(n_dim + 1)
+    offset[1] = (c - 1) % kernel_dim[1]
+    for i = 2:n_dim
+      offset[i] = div(c - 1, prod(kernel_dim[1:i-1])) % kernel_dim[i]
+    end
+    offset[end] = div(c - 1, prod(kernel_dim))
+    if mode == 0
+      offset[1:n_dim] = kernel_dim - 1 - offset[1:n_dim]
+    end
+    for i = 1:prod(offset[1:end-1])
+      dim_iter = zeros(n_dim)
+      dim_iter[1] = (i - 1) % img_dim[1]
+      for j = 2:n_dim
+        dim_iter[j] = div(i - 1, prod(img_dim[1:j-1]))
+      end
+
+      dim_pad = dim_iter[1:end] * stride - pad + offset[1:end-1]
+
+      col_ind = c - 1
+      img_ind = c_im
+      for i = n_dim:-1:1
+        col_ind *= dim_col[i] + dim_iter[i]
+        img_ind *= img_dim[i] + dim_pad[i]
+      end
+      if sum(dim_pad .>= 0) == n_dim && sum(dim_pad .< img_dim[1:end]) == n_dim
+        col[col_ind + 1] = img[img_ind + 1]
+      end
+    end
+  end
+end
+
+function col2im_nd!{T}(col::AbstractArray{T,2}, img::AbstractArray{T},
+  kernel_dim::AbstractArray{Int}, pad::AbstractArray{Int},
+  stride::AbstractArray{Int}, mode::Int)
+
+  img_dim = size(img)
+  n_dim = ndims(img) - 1
+
+  dim_col = div((img_dim[:end-1] + 2pad - kernel_dim), stride) + 1
+  channels_col = channels * prod(kernel_dim)
+  push!(dim_col, channels_col)
+
+  fill!(img, 0)
+
+  for c = 1:dim_col[end]
+    offset = zeros(n_dim + 1)
+    offset[1] = (c - 1) % kernel_dim[1]
+    for i = 2:n_dim
+      offset[i] = div(c - 1, prod(kernel_dim[1:i-1])) % kernel_dim[i]
+    end
+    offset[end] = div(c - 1, prod(kernel_dim))
+    if mode == 0
+      offset[1:n_dim] = kernel_dim - 1 - offset[1:n_dim]
+    end
+
+    for i = 1:prod(offset[1:end-1])
+      dim_iter = zeros(n_dim)
+      dim_iter[1] = (i - 1) % img_dim[1]
+      for j = 2:n_dim
+        dim_iter[j] = div(i - 1, prod(img_dim[1:j-1]))
+      end
+
+      dim_pad = dim_iter[1:end] * stride - pad + offset[1:end-1]
+
+      col_ind = c - 1
+      img_ind = c_im
+      for i = n_dim:-1:1
+        col_ind = col_ind * dim_col[i] + dim_iter[i]
+        img_ind = img_ind * img_dim[i] + dim_pad[i]
+      end
+      if sum(dim_pad .>= 0) == n_dim && sum(dim_pad .< img_dim[1:end]) == n_dim
+        img[img_ind + 1] += col[col_ind + 1]
+      end
+    end
+  end
+end
+
 function im2col_dims(w,y)
     N = ndims(y)
-    r,c = 1,1
-    for i=1:N-2
-        r *= size(y,i)
-        c *= size(w,i)
-    end
-    c *= size(w,N-1)
+    r,c = prod(y[1:N-2]),prod(w[1:N-1])
     return (r, c)
 end
 
@@ -333,5 +418,94 @@ function col2im3d!(w::AbstractArray{T,5}, x::AbstractArray{T,5}, x2::AbstractArr
     xn = x[:, :, :, :, n]
     col2im_3d!(x2,xn,Wx,Hx,Dx,Cx,Ww,Hw,Dw,p1,p2,p3,s1,s2,s3,mode)
     x[:, :, :, :, n] = xn
+    return x
+end
+
+function conv_nd!{T}(y::AbstractArray{T}, x::AbstractArray{T}, w::AbstractArray{T};
+                  padding=0, stride=1, mode=0, alpha=1)
+    if mode != 0 && mode != 1; throw(ArgumentError("conv2d only supports mode=0 or 1.")); end
+    inp_dim = size(x)
+    kernel_dim = size(w)
+    if inp_dim[end-1]!=kernel_dim[end-1]; throw(DimensionMismatch()); end
+    out_dim = size(y)
+    x2dims = im2col_dims(w,y)
+    x2 = similar(x, x2dims)
+    pad = psize(padding,x)
+    strides = psize(stride,x)
+    M,N,K,Y = prod(out_dim[1:end-2]),out_dim[end-1],prod(w[1:end-1]),prod(out_dim[1:end-1])
+    alpha,beta,yidx = T(alpha),T(0),1
+    @inbounds for n in 1:inp_dim[end]
+        im2colnd!(w, x, x2, n, pad, strides, mode)
+        gemm!('N','N',M,N,K,alpha,pointer(x2),pointer(w),beta,pointer(y,yidx))
+        yidx += Y
+    end
+    return y
+end
+function conv_nd_grad_w!{T}(dw::AbstractArray{T}, x::AbstractArray{T}, w::AbstractArray{T},
+  dy::AbstractArray{T}; padding=0, stride=1, mode=0, alpha=1)
+    # dw = x'*dy
+    inp_dim = size(x)
+    kernel_dim = size(w)
+    dy_dim = size(dy)
+    # if mode != 0 && mode != 1; throw(ArgumentError("conv2d only supports mode=0 or 1.")); end
+    # @assert Cx==C1 && Cy==C2 && Ny==Nx
+    x2dims = im2col_dims(w,dy)
+    x2 = similar(x, x2dims)
+    # op(A) is an m-by-k matrix, op(B) is a k-by-n matrix, C is an m-by-n matrix.
+    Y,M,N,K = prod(dy_dim[1:end-1]),prod(inp_dim[1:end-1]),dy_dim[end-1],prod(dy_dim[1:end-2])
+    alpha,beta = T(alpha),T(1)
+    pad = psize(padding,x)
+    strides = psize(stride,x)
+    dyi = 1
+    @inbounds for n in 1:inp_dim[end]
+        im2colnd!(w, x, x2, n, pad, strides, mode)
+        gemm!('T','N',M,N,K,alpha,pointer(x2),pointer(dy,dyi),beta,pointer(dw))
+        dyi += Y
+    end
+    return dw
+end
+
+function conv_nd_grad_x!{T}(dx::AbstractArray{T}, x::AbstractArray{T}, w::AbstractArray{T},
+  dy::AbstractArray{T}; padding=0, stride=1, mode=0, alpha=1)
+   # dx = dy*w'
+    inp_dim = size(x)
+    kernel_dim = size(w)
+    dy_dim = size(dy)
+   # if mode != 0 && mode != 1; throw(ArgumentError("conv2d only supports mode=0 or 1.")); end
+    @assert inp_dim[end-1]==kernel_dim[end-1] && dy_dim[end-1]==kernel_dim[end] &&
+                            dy_dim[end]==inp_dim[end]
+
+    x2dims = im2col_dims(w,dy)
+    x2 = similar(x, x2dims)
+    # op(A) is an m-by-k matrix, op(B) is a k-by-n matrix, C is an m-by-n matrix.
+    Y,M,N,K = prod(dy_dim[1:end-1]),prod(dy_dim[1:end-2]),prod(kernel_dim[1:end-1]),dy_dim[end-1]
+    alpha,beta = T(alpha),T(0)
+    pad = psize(padding,x)
+    strides = psize(stride,x)
+    dyi = 1
+    @inbounds for n in 1:inp_dim[end]
+        gemm!('N','T',M,N,K,alpha,pointer(dy,dyi),pointer(w),beta,pointer(x2))
+        col2imnd!(w,dx,x2,n,pad,strides,mode)
+        dyi += Y
+    end
+    return dx
+end
+
+function im2colnd!(w::AbstractArray{T}, x::AbstractArray{T}, x2::AbstractArray{T,2},
+                 n::Int, pad::AbstractArray{Int}, strides::AbstractArray{Int}, mode::Int) where T
+    inp_dim = size(x)
+    kernel_dim = size(w)
+    xn = x[:, :, :, n]
+    im2col_nd!(xn,x2,kernel_dim,pad,strides,mode)
+    return x2
+end
+
+function col2imnd!(w::AbstractArray{T}, x::AbstractArray{T}, x2::AbstractArray{T,2},
+                 n::Int, pad::AbstractArray{Int}, strides::AbstractArray{Int}, mode::Int) where T
+    inp_dim = size(x)
+    kernel_dim = size(w)
+    xn = x[:, :, :, n]
+    col2im_nd!(x2,xn,kernel_dim,pad,strides,mode)
+    x[:, :, :, n] = xn
     return x
 end
