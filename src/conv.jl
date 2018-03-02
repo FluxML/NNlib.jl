@@ -85,6 +85,15 @@ conv!(y::AbstractArray{T,5}, x::AbstractArray{T,5}, w::AbstractArray{T,5};
             pad = 0, stride = 1) where T =
   conv3d_grad_x!(dx, x, w, dy, padding = pad, stride = stride)
 
+conv!(y::A, x::A, w::A; pad = 0, stride = 1) where A<:AbstractArray =
+  conv_nd!(y, x, w, padding = pad, stride = stride)
+
+∇conv_filter!(dw::A, dy::A, x::A, w::A; pad = 0, stride = 1) where A<:AbstractArray =
+  conv_nd_grad_w!(dw, x, w, dy, padding = pad, stride = stride)
+
+∇conv_data!(dx::A, dy::A, x::A, w::A; pad = 0, stride = 1) where A<:AbstractArray =
+  conv_nd_grad_x!(dx, x, w, dy, padding = pad, stride = stride)
+
 # Pooling
 
 function pdims(dims::Dims{N}, window, padding, stride) where N
