@@ -30,7 +30,7 @@ function im2col_2d!{T}(img::AbstractArray{T,3}, col::AbstractArray{T,2}, width::
     for h = 1:height_col
       for w = 1:width_col
         h_pad = (h - 1) * stride_h - pad_h + h_offset
-        w_pad = (w - 1) *stride_w - pad_w + w_offset
+        w_pad = (w - 1) * stride_w - pad_w + w_offset
         if h_pad >= 0 && h_pad < height && w_pad >= 0 && w_pad < width
           col[((c - 1)*height_col+h-1) * width_col + w] =
            img[(c_im  * height + h_pad) * width + w_pad + 1]
@@ -95,7 +95,7 @@ function im2col_3d!{T}(img::AbstractArray{T,4}, col::AbstractArray{T,2}, width::
     for d = 1:depth_col, h = 1:height_col, w = 1:width_col
       d_pad = (d - 1) * stride_d - pad_d + d_offset
       h_pad = (h - 1) * stride_h - pad_h + h_offset
-      w_pad = (w - 1) *stride_w - pad_w + w_offset
+      w_pad = (w - 1) * stride_w - pad_w + w_offset
       if d_pad >= 0 && d_pad < depth && h_pad >= 0 && h_pad < height &&
         w_pad >= 0 && w_pad < width
         col[(((c - 1) * depth_col + d - 1) * height_col + h - 1) * width_col + w] =
