@@ -157,7 +157,7 @@ function im2col_dims(w,y)
 end
 
 function conv2d!{T}(y::AbstractArray{T,4}, x::AbstractArray{T,4}, w::AbstractArray{T,4};
-                  padding=0, stride=1, mode=0, alpha=1)
+                  padding=0, stride=1, mode=0, alpha=T(1))
     if mode != 0 && mode != 1; throw(ArgumentError("conv2d only supports mode=0 or 1.")); end
     Wx,Hx,Cx,Nx = size(x)
     Ww,Hw,C1,C2 = size(w)
@@ -168,10 +168,10 @@ function conv2d!{T}(y::AbstractArray{T,4}, x::AbstractArray{T,4}, w::AbstractArr
     (p1,p2) = psize(padding,x)
     (s1,s2) = psize(stride,x)
     M,N,K,Y = Wy*Hy,Cy,Ww*Hw*Cx,Wy*Hy*Cy
-    alpha,beta,yidx = T(alpha),T(0),1
+    yidx = 1
     @inbounds for n in 1:Nx
         im2col2d!(w, x, x2, n, p1, p2, s1, s2, mode)
-        gemm!('N','N',M,N,K,alpha,pointer(x2),pointer(w),beta,pointer(y,yidx))
+        gemm!('N','N',M,N,K,alpha,pointer(x2),pointer(w),T(0),pointer(y,yidx))
         yidx += Y
     end
     return y
@@ -245,7 +245,7 @@ function col2im2d!(w::AbstractArray{T,4}, x::AbstractArray{T,4}, x2::AbstractArr
 end
 
 function conv3d!{T}(y::AbstractArray{T,5}, x::AbstractArray{T,5}, w::AbstractArray{T,5};
-                  padding=0, stride=1, mode=0, alpha=1)
+                  padding=0, stride=1, mode=0, alpha=T(1))
     if mode != 0 && mode != 1; throw(ArgumentError("conv3d only supports mode=0 or 1.")); end
     Wx,Hx,Dx,Cx,Nx = size(x)
     Ww,Hw,Dw,C1,C2 = size(w)
@@ -257,11 +257,11 @@ function conv3d!{T}(y::AbstractArray{T,5}, x::AbstractArray{T,5}, w::AbstractArr
     (p1,p2,p3) = psize(padding,x)
     (s1,s2,s3) = psize(stride,x)
     M,N,K,Y = Wy*Hy*Dy,Cy,Ww*Hw*Dw*Cx,Wy*Hy*Dy*Cy
-    alpha,beta,yidx = T(alpha),T(0),1
+    yidx = 1
     W = reshape(w, (Ww,:,C1,C2))
     @inbounds for n in 1:Nx
         im2col3d!(w, x, x2, n, p1, p2, p3, s1, s2, s3, mode)
-        gemm!('N','N',M,N,K,alpha,pointer(x2),pointer(W),beta,pointer(y,yidx))
+        gemm!('N','N',M,N,K,alpha,pointer(x2),pointer(W),T(0),pointer(y,yidx))
         yidx += Y
     end
     return y
