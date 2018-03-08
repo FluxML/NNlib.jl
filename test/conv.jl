@@ -44,8 +44,8 @@ end
     x = reshape(Float64[1:20;], 5, 4, 1, 1)
 
     @test squeeze(maxpool(x, (2,2)), (3,4)) == [7 17; 9 19]
-    @test squeeze(maxpool(x, (2,2); stride=(2,2)), (3,4)) == [7 17; 9 19]
-    @test squeeze(maxpool(x, (2,2); pad=(1,1)), (3,4)) == [
+    @test squeeze(maxpool(x, (2,2), stride=(2,2)), (3,4)) == [7 17; 9 19]
+    @test squeeze(maxpool(x, (2,2), (1,1)), (3,4)) == [
         1.0  11.0  16.0;
         3.0  13.0  18.0;
         5.0  15.0  20.0;
@@ -140,7 +140,7 @@ end
         41.0  51.0  56.0;
         43.0  53.0  58.0;
         45.0  55.0  60.0]
-    @test squeeze(maxpool(x, (2,2,2), pad=(1,1,1)), (4,5)) == res
+    @test squeeze(maxpool(x, (2,2,2), (1,1,1)), (4,5)) == res
 
     # for gradients, check only size
     # correctness of gradients is cross-checked with CUDNN.jl

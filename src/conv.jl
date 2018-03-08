@@ -108,22 +108,22 @@ end
 
 # Interface
 
-maxpool(x::AbstractArray, k; pad = map(_->0,k), stride = k) =
+maxpool(x::AbstractArray, k, pad = map(_->0,k); stride = k) =
   maxpool!(similar(x, pdims(size(x), k, pad, stride)),
-           x, k, pad = pad, stride = stride)
+           x, k, pad, stride = stride)
 
-maxpool!(y::A, x::A, k; kw...) where A<:AbstractArray =
-  maxpool_cpu!(y, x, k; kw...)
+maxpool!(y::A, x::A, k, pad; kw...) where A<:AbstractArray =
+  maxpool_cpu!(y, x, k, pad; kw...)
 
-∇maxpool(dy::A, y::A, x::A, k; pad = map(_->0,k), stride = k) where A<:AbstractArray =
-  ∇maxpool!(similar(x), dy, y, x, k, pad = pad, stride = stride)
+∇maxpool(dy::A, y::A, x::A, k, pad = map(_->0,k); stride = k) where A<:AbstractArray =
+  ∇maxpool!(similar(x), dy, y, x, k, pad, stride = stride)
 
-∇maxpool!(dx::A, dy::A, y::A, x::A, k; kw...) where A<:AbstractArray =
-  ∇maxpool_cpu!(dx, dy, y, x, k; kw...)
+∇maxpool!(dx::A, dy::A, y::A, x::A, k, pad; kw...) where A<:AbstractArray =
+  ∇maxpool_cpu!(dx, dy, y, x, k, pad; kw...)
 
 meanpool(x::AbstractArray, k; pad = map(_->0,k), stride = k) =
   meanpool!(similar(x, pdims(size(x), k, pad, stride)),
-           x, k, pad = pad, stride = stride)
+           x, k, pad, stride = stride)
 
 meanpool!(y::A, x::A, k; kw...) where A<:AbstractArray =
   meanpool_cpu!(y, x, k; kw...)
@@ -153,6 +153,15 @@ maxpool_cpu!(y::AbstractArray{<:Real,5}, x::AbstractArray{<:Real,5}, k::Dims{3};
               k::Dims{3}; pad = (0,0), stride = k) =
   maxpool3d_grad!(dx, dy, y, x,
                   window = k, padding = pad, stride = stride)
+
+maxpool_cpu!{N}(y::AbstractArray{<:Real}, x::AbstractArray{<:Real}, k::Dims{N}, pad::Dims{N}; stride = k) =
+  maxpool_nd!(y, x, k, pad, stride = stride)
+
+∇maxpool_cpu!{N}(dx::AbstractArray{<:Real}, dy::AbstractArray{<:Real}, y::AbstractArray{<:Real}, x::AbstractArray{<:Real},
+              k::Dims{N}, pad::Dims{N}; stride = k) =
+maxpool_nd_grad!(dx, dy, y, x, k, pad, stride = stride)
+
+
 
 meanpool_cpu!(y::AbstractArray{<:Real,4}, x::AbstractArray{<:Real,4}, k::Dims{2}; pad = (0,0), stride = k) =
   meanpool2d!(y, x, window = k, padding = pad, stride = stride)

@@ -278,3 +278,109 @@ function meanpool3d_grad!(dx::AbstractArray{T,5}, dy::AbstractArray{T,5}, y::Abs
     mean_pooling3d_bwd!(dx,dy,Wx,Hx,Dx,Cx,Nx,Wy,Hy,Dy,w1,w2,w3,p1,p2,p3,s1,s2,s3)
     return dx
 end
+
+function max_pooling_nd_fwd!{T}(x::AbstractArray{T}, y::AbstractArray{T},
+                               kernel_dim::AbstractArray{Int}, padding::AbstractArray{Int},
+                               stride::AbstractArray{Int})
+
+  inp_dim = collect(size(x))
+  out_dim = collect(size(y))
+  n_dim = ndims(y)
+  for i = 1:prod(out_dim)
+    dim_iter = zeros(n_dim)
+    dim_iter[1] = (i - 1) % out_dim[1]
+    for j = 2:n_dim
+      dim_iter[j] = div(i - 1, prod(out_dim[1:j-1])) % out_dim[j]
+    end
+
+    dim_iter = Int.(dim_iter)
+
+    dim_start = dim_iter[1:n_dim-2] .* stride - padding
+    dim_end = min.(dim_start + kernel_dim, inp_dim[1:n_dim-2])
+
+    dim_start = max.(dim_start, 0) + 1
+
+    out_ind = CartesianIndex(Int.(tuple(dim_iter + 1...)))
+
+    rngs = []
+    for i=1:n_dim-2
+      push!(rngs, dim_start[i]:dim_end[i])
+    end
+    push!(rngs, dim_iter[n_dim-1] + 1:dim_iter[n_dim-1] + 1)
+    push!(rngs, dim_iter[n_dim] + 1:dim_iter[n_dim] + 1)
+
+    cart_rng = CartesianRange(tuple(rngs...))
+
+    max_ = x[CartesianIndex(ntuple(i->i<=n_dim-2?dim_start[i]:dim_iter[i]+1, n_dim))]
+    for i in cart_rng
+      max_ = max(max_, x[i])
+    end
+    y[out_ind] = max_
+  end
+end
+
+function maxpool_nd!{T, N}(y::AbstractArray{T}, x::AbstractArray{T},
+                    window::Dims{N}, padding::Dims{N}; stride::Dims{N}=window)
+
+    window  = collect(window)
+    padding = collect(padding)
+    stride  = collect(stride)
+    max_pooling_nd_fwd!(x, y, window, padding, stride)
+    return y
+end
+
+function max_pooling_nd_bwd!{T}(x::AbstractArray{T}, y::AbstractArray{T},
+  grad_output::AbstractArray{T}, grad_input::AbstractArray{T},
+  kernel_dim::AbstractArray{Int}, padding::AbstractArray{Int}, stride::AbstractArray{Int})
+
+  fill!(grad_input, 0)
+
+  inp_dim = collect(size(x))
+  out_dim = collect(size(y))
+  n_dim = ndims(y)
+
+  for i = 1:prod(out_dim)
+    dim_iter = zeros(n_dim)
+    dim_iter[1] = (i - 1) % out_dim[1]
+    for j = 2:n_dim
+      dim_iter[j] = div(i - 1, prod(out_dim[1:j-1])) % out_dim[j]
+    end
+
+    dim_iter = Int.(dim_iter)
+
+    dim_start = dim_iter[1:n_dim-2] .* stride - padding
+    dim_end = min.(dim_start + kernel_dim, inp_dim[1:n_dim-2])
+
+    dim_start = max.(dim_start, 0) + 1
+
+    out_ind = CartesianIndex(Int.(tuple(dim_iter + 1...)))
+
+    rngs = []
+    for i=1:n_dim-2
+      push!(rngs, dim_start[i]:dim_end[i])
+    end
+    push!(rngs, dim_iter[n_dim-1] + 1:dim_iter[n_dim-1] + 1)
+    push!(rngs, dim_iter[n_dim] + 1:dim_iter[n_dim] + 1)
+
+    cart_rng = CartesianRange(tuple(rngs...))
+
+    maxval = y[i]
+    d_maxval = grad_output[i]
+
+    for i in cart_rng
+      if x[i] == maxval
+        grad_input[i] += d_maxval
+      end
+    end
+  end
+end
+
+function maxpool_nd_grad!{T, N}(dx::AbstractArray{T}, dy::AbstractArray{T},
+                          y::AbstractArray{T}, x::AbstractArray{T}, window::Dims{N},
+                          padding::Dims{N}; stride::Dims{N}=window)
+    window = collect(window)
+    padding = collect(padding)
+    stride = collect(stride)
+    max_pooling_nd_bwd!(x,y,dy,dx,window,padding,stride)
+    return dx
+end
