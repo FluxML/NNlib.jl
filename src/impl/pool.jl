@@ -232,7 +232,7 @@ function mean_pooling3d_fwd!{T}(x::AbstractArray{T,5}, y::AbstractArray{T,5},
 end
 
 function meanpool3d!(y::AbstractArray{T,5}, x::AbstractArray{T,5};
-                     window::Dims{3}=(2,2), padding::Dims{3}=(0,0),
+                     window::Dims{3}=(2,2,2), padding::Dims{3}=(0,0,0),
                      stride::Dims{3}=window) where T
     Wx,Hx,Dx,Cx,Nx = size(x)
     Wy,Hy,Dy,Cy,Ny = size(y)
@@ -320,7 +320,7 @@ function max_pooling_nd_fwd!{T}(x::AbstractArray{T}, y::AbstractArray{T},
 end
 
 function maxpool_nd!{T, N}(y::AbstractArray{T}, x::AbstractArray{T},
-                    window::Dims{N}, padding::Dims{N}; stride::Dims{N}=window)
+                    window::Dims{N}; padding::Dims{N}=tuple(zeros(Int, N)), stride::Dims{N}=window)
 
     window  = collect(window)
     padding = collect(padding)
@@ -376,8 +376,8 @@ function max_pooling_nd_bwd!{T}(x::AbstractArray{T}, y::AbstractArray{T},
 end
 
 function maxpool_nd_grad!{T, N}(dx::AbstractArray{T}, dy::AbstractArray{T},
-                          y::AbstractArray{T}, x::AbstractArray{T}, window::Dims{N},
-                          padding::Dims{N}; stride::Dims{N}=window)
+                          y::AbstractArray{T}, x::AbstractArray{T}, window::Dims{N};
+                          padding::Dims{N}=tuple(zeros(Int, N)), stride::Dims{N}=window)
     window = collect(window)
     padding = collect(padding)
     stride = collect(stride)
@@ -427,7 +427,7 @@ function mean_pooling_nd_fwd!{T}(x::AbstractArray{T}, y::AbstractArray{T},
 end
 
 function meanpool_nd!{T, N}(y::AbstractArray{T}, x::AbstractArray{T},
-                    window::Dims{N}, padding::Dims{N}; stride::Dims{N}=window)
+                    window::Dims{N}; padding::Dims{N}=tuple(zeros(Int, N)), stride::Dims{N}=window)
 
     window  = collect(window)
     padding = collect(padding)
@@ -478,8 +478,8 @@ function mean_pooling_nd_bwd!{T}(x::AbstractArray{T}, y::AbstractArray{T},
 end
 
 function meanpool_nd_grad!{T, N}(dx::AbstractArray{T}, dy::AbstractArray{T},
-                          y::AbstractArray{T}, x::AbstractArray{T}, window::Dims{N},
-                          padding::Dims{N}; stride::Dims{N}=window)
+                          y::AbstractArray{T}, x::AbstractArray{T}, window::Dims{N};
+                          padding::Dims{N}=tuple(zeros(Int, N)), stride::Dims{N}=window)
     window = collect(window)
     padding = collect(padding)
     stride = collect(stride)
