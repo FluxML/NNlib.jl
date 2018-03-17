@@ -174,11 +174,16 @@ function im2col_nd!{T}(img::AbstractArray, col::AbstractArray{T,2},
 
       col_ind::Int = c - 1
       img_ind::Int = offset[end]
+
+      dim_pad_checker::Int = 0
       for j = n_dim:-1:1
         col_ind = col_ind * dim_col[j] + dim_iter[j]
-        img_ind = img_ind * img_dim[j] + dim_pad[j]
+        dim_pad_checker += (0 <= dim_pad[j] < img_dim[j])
       end
-      if sum(dim_pad .>= 0) == n_dim && sum(dim_pad .< img_dim[1:n_dim]) == n_dim
+      if dim_pad_checker == n_dim
+        for j = n_dim:-1:1
+          img_ind = img_ind * img_dim[j] + dim_pad[j]
+        end
         col[col_ind + 1] = img[img_ind + 1]
       else
         col[col_ind + 1] = 0
@@ -220,11 +225,15 @@ function col2im_nd!{T}(col::AbstractArray{T,2}, img::AbstractArray{T},
 
       col_ind::Int = c - 1
       img_ind::Int = offset[end]
+      dim_pad_checker::Int = 0
       for j = n_dim:-1:1
         col_ind = col_ind * dim_col[j] + dim_iter[j]
-        img_ind = img_ind * img_dim[j] + dim_pad[j]
+        dim_pad_checker += (0 <= dim_pad[j] < img_dim[j])
       end
-      if sum(dim_pad .>= 0) == n_dim && sum(dim_pad .< img_dim[1:n_dim]) == n_dim
+      if dim_pad_checker == n_dim
+        for j = n_dim:-1:1
+          img_ind = img_ind * img_dim[j] + dim_pad[j]
+        end
         img[img_ind + 1] += col[col_ind + 1]
       end
     end
