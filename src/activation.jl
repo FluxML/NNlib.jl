@@ -104,3 +104,46 @@ softsign(x) = x / (one(x) + abs(x))
 See [Deep Sparse Rectifier Neural Networks](http://proceedings.mlr.press/v15/glorot11a/glorot11a.pdf).
 """
 softplus(x) = log1p(exp(x))
+
+
+"""
+    Maxout(num_units, axis)
+
+Maxout layer.
+
+See [Maxout Networks: Accelerating Deep Network Training by Reducing
+     Internal Covariate Shift](https://arxiv.org/abs/1302.4389)
+
+Example use:
+
+```julia
+model = Chain(
+  Dense(10, 8, σ),
+  x -> Maxout(4)(x),
+  Dense(4, 2),
+  softmax)
+```
+"""
+mutable struct Maxout
+  num_units::Integer
+  axis::Integer
+end
+
+Maxout(num_units::Integer; axis::Integer = -1) =
+  Maxout(num_units, axis)
+
+function (max_out::Maxout)(x)
+  num_units, axis = max_out.num_units, max_out.axis
+  shape = collect(size(x))
+  if (axis == -1)
+    axis = ndims(x)
+  end
+  if (shape[axis] % num_units > 0)
+    error("Number of elements in the given axis is not
+          a multiple of the number of output units.")
+  end
+  push!(shape, shape[axis] / num_units)
+  shape[axis] = num_units
+
+  return reshape(maximum(reshape(x, shape...), ndims(x)+1), shape[1:end-1]...)
+end
