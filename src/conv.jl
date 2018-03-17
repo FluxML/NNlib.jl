@@ -154,11 +154,11 @@ maxpool_cpu!(y::AbstractArray{<:Real,5}, x::AbstractArray{<:Real,5}, k::Dims{3};
   maxpool3d_grad!(dx, dy, y, x,
                   window = k, padding = pad, stride = stride)
 
-maxpool_cpu!{N}(y::AbstractArray{<:Real}, x::AbstractArray{<:Real}, k::Dims{N}; pad=tuple(zeros(Int, N)), stride = k) =
+maxpool_cpu!{N}(y::AbstractArray{<:Real}, x::AbstractArray{<:Real}, k::Dims{N}; pad=tuple(zeros(Int, N)...,), stride = k) =
   maxpool_nd!(y, x, k, padding = pad, stride = stride)
 
 ∇maxpool_cpu!{N}(dx::AbstractArray{<:Real}, dy::AbstractArray{<:Real}, y::AbstractArray{<:Real}, x::AbstractArray{<:Real},
-              k::Dims{N}; pad=tuple(zeros(Int, N)), stride = k) =
+              k::Dims{N}; pad=tuple(zeros(Int, N)...,), stride = k) =
 maxpool_nd_grad!(dx, dy, y, x, k, padding = pad, stride = stride)
 
 
@@ -179,11 +179,11 @@ meanpool_cpu!(y::AbstractArray{<:Real,5}, x::AbstractArray{<:Real,5}, k::Dims{3}
   meanpool3d_grad!(dx, dy, y, x,
                    window = k, padding = pad, stride = stride)
 
-meanpool_cpu!{N}(y::AbstractArray{<:Real}, x::AbstractArray{<:Real}, k::Dims{N}; pad=tuple(zeros(Int, N)), stride = k) =
+meanpool_cpu!{N}(y::AbstractArray{<:Real}, x::AbstractArray{<:Real}, k::Dims{N}; pad=tuple(zeros(Int, N)...,), stride = k) =
   meanpool_nd!(y, x, k, padding = pad, stride = stride)
 
 ∇meanpool_cpu!{N}(dx::AbstractArray{<:Real}, dy::AbstractArray{<:Real}, y::AbstractArray{<:Real}, x::AbstractArray{<:Real},
-              k::Dims{N}; pad=tuple(zeros(Int, N)), stride = k) =
+              k::Dims{N}; pad=tuple(zeros(Int, N)...,), stride = k) =
 meanpool_nd_grad!(dx, dy, y, x, k, padding = pad, stride = stride)
 
 # Deprecated 0.3

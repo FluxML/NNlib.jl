@@ -320,7 +320,7 @@ function max_pooling_nd_fwd!{T}(x::AbstractArray{T}, y::AbstractArray{T},
 end
 
 function maxpool_nd!{T, N}(y::AbstractArray{T}, x::AbstractArray{T},
-                    window::Dims{N}; padding::Dims{N}=tuple(zeros(Int, N)), stride::Dims{N}=window)
+                    window::Dims{N}; padding::Dims{N}=tuple(zeros(Int, N)...,), stride::Dims{N}=window)
 
     window  = collect(window)
     padding = collect(padding)
@@ -377,7 +377,7 @@ end
 
 function maxpool_nd_grad!{T, N}(dx::AbstractArray{T}, dy::AbstractArray{T},
                           y::AbstractArray{T}, x::AbstractArray{T}, window::Dims{N};
-                          padding::Dims{N}=tuple(zeros(Int, N)), stride::Dims{N}=window)
+                          padding::Dims{N}=tuple(zeros(Int, N)...,), stride::Dims{N}=window)
     window = collect(window)
     padding = collect(padding)
     stride = collect(stride)
@@ -427,7 +427,7 @@ function mean_pooling_nd_fwd!{T}(x::AbstractArray{T}, y::AbstractArray{T},
 end
 
 function meanpool_nd!{T, N}(y::AbstractArray{T}, x::AbstractArray{T},
-                    window::Dims{N}; padding::Dims{N}=tuple(zeros(Int, N)), stride::Dims{N}=window)
+                    window::Dims{N}; padding::Dims{N}=tuple(zeros(Int, N)...,), stride::Dims{N}=window)
 
     window  = collect(window)
     padding = collect(padding)
@@ -479,7 +479,7 @@ end
 
 function meanpool_nd_grad!{T, N}(dx::AbstractArray{T}, dy::AbstractArray{T},
                           y::AbstractArray{T}, x::AbstractArray{T}, window::Dims{N};
-                          padding::Dims{N}=tuple(zeros(Int, N)), stride::Dims{N}=window)
+                          padding::Dims{N}=tuple(zeros(Int, N)...,), stride::Dims{N}=window)
     window = collect(window)
     padding = collect(padding)
     stride = collect(stride)
