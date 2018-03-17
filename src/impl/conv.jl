@@ -157,18 +157,23 @@ function im2col_nd!{T}(img::AbstractArray, col::AbstractArray{T,2},
   for c = 1:dim_col[end]
     offset = zeros(n_dim + 1)
     offset[1] = (c - 1) % kernel_dim[1]
+    kernel_dim_prod = 1
     for i = 2:n_dim
-      offset[i] = div(c - 1, prod(kernel_dim[1:i-1])) % kernel_dim[i]
+      kernel_dim_prod *= kernel_dim[i-1]
+      offset[i] = div(c - 1, kernel_dim_prod) % kernel_dim[i]
     end
-    offset[end] = div(c - 1, prod(kernel_dim))
+    offset[end] = div(c - 1, kernel_dim_prod * kernel_dim[end])
     if mode == 0
-      offset[1:n_dim] = kernel_dim .- offset[1:n_dim] - 1
+      offset[1:n_dim] = kernel_dim - offset[1:n_dim] - 1
     end
     for i = 1:prod(dim_col[1:n_dim])
       dim_iter = zeros(n_dim)
       dim_iter[1] = (i - 1) % dim_col[1]
+
+      dim_col_prod::Int = 1
       for j = 2:n_dim
-        dim_iter[j] = div(i - 1, prod(dim_col[1:j-1])) % dim_col[j]
+        dim_col_prod *= dim_col[j-1]
+        dim_iter[j] = div(i - 1, dim_col_prod) % dim_col[j]
       end
       dim_pad = dim_iter .* stride - pad + offset[1:n_dim]
 
@@ -206,21 +211,24 @@ function col2im_nd!{T}(col::AbstractArray{T,2}, img::AbstractArray{T},
   for c = 1:dim_col[end]
     offset = zeros(n_dim + 1)
     offset[1] = (c - 1) % kernel_dim[1]
+    kernel_dim_prod = 1
     for i = 2:n_dim
-      offset[i] = div(c - 1, prod(kernel_dim[1:i-1])) % kernel_dim[i]
+      kernel_dim_prod *= kernel_dim[i-1]
+      offset[i] = div(c - 1, kernel_dim_prod) % kernel_dim[i]
     end
-    offset[end] = div(c - 1, prod(kernel_dim))
+    offset[end] = div(c - 1, kernel_dim_prod * kernel_dim[end])
     if mode == 0
-      offset[1:n_dim] = kernel_dim .- offset[1:n_dim] - 1
+      offset[1:n_dim] = kernel_dim - offset[1:n_dim] - 1
     end
 
     for i = 1:prod(dim_col[1:n_dim])
       dim_iter = zeros(n_dim)
       dim_iter[1] = (i - 1) % dim_col[1]
+      dim_col_prod::Int = 1
       for j = 2:n_dim
-        dim_iter[j] = div(i - 1, prod(dim_col[1:j-1])) % dim_col[j]
+        dim_col_prod *= dim_col[j-1]
+        dim_iter[j] = div(i - 1, dim_col_prod) % dim_col[j]
       end
-
       dim_pad = dim_iter .* stride - pad + offset[1:n_dim]
 
       col_ind::Int = c - 1
