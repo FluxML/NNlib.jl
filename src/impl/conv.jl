@@ -148,55 +148,57 @@ end
 function im2col_nd!{T}(img::AbstractArray, col::AbstractArray{T,2},
   kernel_dim::NTuple, pad::AbstractArray, stride::AbstractArray, mode::Int)
 
-  img_dim = collect(size(img))
+  img_dim = size(img)
   n_dim = ndims(img) - 1
-  kernel_dim = collect(kernel_dim[1:n_dim])
 
+  kernel_dim_prod = Array{Int, 1}(n_dim)
+  dim_col_prod = Array{Int, 1}(n_dim)
   dim_col = Array{Int, 1}(n_dim+1)
+  offset = Array{Int, 1}(n_dim+1)
+  dim_iter = Array{Int, 1}(n_dim)
+  dim_pad = Array{Int, 1}(n_dim)
 
-  for i=1:n_dim
+  dim_col[1] = div(img_dim[1] + 2pad[1] - kernel_dim[1], stride[1]) + 1
+  dim_col_prod[1] = dim_col[1]
+  kernel_dim_prod[1] = kernel_dim[1]
+  for i=2:n_dim
     dim_col[i] = div(img_dim[i] + 2pad[i] - kernel_dim[i], stride[i]) + 1
+    dim_col_prod[i] = dim_col_prod[i-1] * dim_col[i]
+    kernel_dim_prod[i] = kernel_dim_prod[i-1] * kernel_dim[i]
   end
 
-  dim_col[end] = img_dim[end] * prod(kernel_dim)
+  dim_col[end] = img_dim[end] * kernel_dim_prod[end]
 
   for c = 1:dim_col[end]
-    offset = Array{Int, 1}(n_dim+1)
     offset[1] = (c - 1) % kernel_dim[1]
-    kernel_dim_prod = 1
+
     for i = 2:n_dim
-      kernel_dim_prod *= kernel_dim[i-1]
-      offset[i] = div(c - 1, kernel_dim_prod) % kernel_dim[i]
+      offset[i] = div(c - 1, kernel_dim_prod[i-1]) % kernel_dim[i]
     end
-    offset[end] = div(c - 1, kernel_dim_prod * kernel_dim[end])
+    offset[end] = div(c - 1, kernel_dim_prod[end] * kernel_dim[end])
     if mode == 0
       for i = 1:n_dim
         offset[i] = kernel_dim[i] - offset[i] - 1
       end
     end
 
-    for i = 1:prod(dim_col[1:n_dim])
-      dim_iter = Array{Int, 1}(n_dim)
+    for i = 1:dim_col_prod[end]
       dim_iter[1] = (i - 1) % dim_col[1]
 
-      dim_pad = Array{Int, 1}(n_dim)
       dim_pad[1] = dim_iter[1] * stride[1] - pad[1] + offset[1]
-
-      dim_col_prod::Int = 1
-      for j = 2:n_dim
-        dim_col_prod *= dim_col[j-1]
-        dim_iter[j] = div(i - 1, dim_col_prod) % dim_col[j]
-        dim_pad[j] = dim_iter[j] * stride[j] - pad[j] + offset[j]
-      end
-
-      col_ind::Int = c - 1
-      img_ind::Int = offset[end]
-
       dim_pad_checker::Int = 0
-      for j = n_dim:-1:1
+      col_ind::Int = c - 1
+
+      for j = n_dim:-1:2
+        dim_iter[j] = div(i - 1, dim_col_prod[j-1]) % dim_col[j]
+        dim_pad[j] = dim_iter[j] * stride[j] - pad[j] + offset[j]
         col_ind = col_ind * dim_col[j] + dim_iter[j]
         dim_pad_checker += (0 <= dim_pad[j] < img_dim[j])
       end
+
+      col_ind = col_ind * dim_col[1] + dim_iter[1]
+      img_ind::Int = offset[end]
+
       if dim_pad_checker == n_dim
         for j = n_dim:-1:1
           img_ind = img_ind * img_dim[j] + dim_pad[j]
@@ -213,56 +215,60 @@ function col2im_nd!{T}(col::AbstractArray{T,2}, img::AbstractArray{T},
   kernel_dim::NTuple, pad::AbstractArray{Int},
   stride::AbstractArray{Int}, mode::Int)
 
-  img_dim = collect(size(img))
+  img_dim = size(img)
   n_dim = ndims(img) - 1
-  kernel_dim = collect(kernel_dim[1:n_dim])
 
+  kernel_dim_prod = Array{Int, 1}(n_dim)
+  dim_col_prod = Array{Int, 1}(n_dim)
   dim_col = Array{Int, 1}(n_dim+1)
+  offset = Array{Int, 1}(n_dim+1)
+  dim_iter = Array{Int, 1}(n_dim)
+  dim_pad = Array{Int, 1}(n_dim)
 
-  for i=1:n_dim
-    dim_col[i] = div(img_dim[i] + 2pad[i] - kernel_dim[i], stride[i]) + 1
-  end
-
-  dim_col[end] = img_dim[end] * prod(kernel_dim)
+  dim_col[1] = div(img_dim[1] + 2pad[1] - kernel_dim[1], stride[1]) + 1
+  dim_col_prod[1] = dim_col[1]
+  kernel_dim_prod[1] = kernel_dim[1]
 
   fill!(img, 0)
+
+  for i=2:n_dim
+    dim_col[i] = div(img_dim[i] + 2pad[i] - kernel_dim[i], stride[i]) + 1
+    dim_col_prod[i] = dim_col_prod[i-1] * dim_col[i]
+    kernel_dim_prod[i] = kernel_dim_prod[i-1] * kernel_dim[i]
+  end
+
+  dim_col[end] = img_dim[end] * kernel_dim_prod[end]
+
   for c = 1:dim_col[end]
-    offset =  Array{Int, 1}(n_dim+1)
     offset[1] = (c - 1) % kernel_dim[1]
-    kernel_dim_prod = 1
+
     for i = 2:n_dim
-      kernel_dim_prod *= kernel_dim[i-1]
-      offset[i] = div(c - 1, kernel_dim_prod) % kernel_dim[i]
+      offset[i] = div(c - 1, kernel_dim_prod[i-1]) % kernel_dim[i]
     end
-    offset[end] = div(c - 1, kernel_dim_prod * kernel_dim[end])
+    offset[end] = div(c - 1, kernel_dim_prod[end] * kernel_dim[end])
     if mode == 0
       for i = 1:n_dim
         offset[i] = kernel_dim[i] - offset[i] - 1
       end
     end
 
-    for i = 1:prod(dim_col[1:n_dim])
-      dim_iter = Array{Int, 1}(n_dim)
+    for i = 1:dim_col_prod[end]
       dim_iter[1] = (i - 1) % dim_col[1]
 
-      dim_pad =  Array{Int, 1}(n_dim)
       dim_pad[1] = dim_iter[1] * stride[1] - pad[1] + offset[1]
-
-      dim_col_prod::Int = 1
-      for j = 2:n_dim
-        dim_col_prod *= dim_col[j-1]
-        dim_iter[j] = div(i - 1, dim_col_prod) % dim_col[j]
-        dim_pad[j] = dim_iter[j] * stride[j] - pad[j] + offset[j]
-      end
-
-      col_ind::Int = c - 1
-      img_ind::Int = offset[end]
-
       dim_pad_checker::Int = 0
-      for j = n_dim:-1:1
+      col_ind::Int = c - 1
+
+      for j = n_dim:-1:2
+        dim_iter[j] = div(i - 1, dim_col_prod[j-1]) % dim_col[j]
+        dim_pad[j] = dim_iter[j] * stride[j] - pad[j] + offset[j]
         col_ind = col_ind * dim_col[j] + dim_iter[j]
         dim_pad_checker += (0 <= dim_pad[j] < img_dim[j])
       end
+
+      col_ind = col_ind * dim_col[1] + dim_iter[1]
+      img_ind::Int = offset[end]
+
       if dim_pad_checker == n_dim
         for j = n_dim:-1:1
           img_ind = img_ind * img_dim[j] + dim_pad[j]
