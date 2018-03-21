@@ -1,4 +1,3 @@
-# convert padding etc. size to an Int array of the right dimension
 function psize(p, x)
   nd = ndims(x)-2
   if isa(p,Number)
@@ -151,56 +150,63 @@ function im2col_nd!{T}(img::AbstractArray, col::AbstractArray{T,2},
   img_dim = size(img)
   n_dim = ndims(img) - 1
 
-  kernel_dim_prod = Array{Int, 1}(n_dim)
-  dim_col_prod = Array{Int, 1}(n_dim)
-  dim_col = Array{Int, 1}(n_dim+1)
-  offset = Array{Int, 1}(n_dim+1)
-  dim_iter = Array{Int, 1}(n_dim)
-  dim_pad = Array{Int, 1}(n_dim)
+  dim_col = zeros(Int, n_dim+1)
+  kernel_dim_prod = dim_col[1:n_dim]
+  dim_col_prod = kernel_dim_prod[:]
+  offset = dim_col[:]
+  dim_iter = kernel_dim_prod[:]
+  dim_pad = kernel_dim_prod[:]
+
+  i::Int = 1
 
   dim_col[1] = div(img_dim[1] + 2pad[1] - kernel_dim[1], stride[1]) + 1
   dim_col_prod[1] = dim_col[1]
   kernel_dim_prod[1] = kernel_dim[1]
-  for i=2:n_dim
+
+  while (i += 1) <= n_dim
     dim_col[i] = div(img_dim[i] + 2pad[i] - kernel_dim[i], stride[i]) + 1
     dim_col_prod[i] = dim_col_prod[i-1] * dim_col[i]
     kernel_dim_prod[i] = kernel_dim_prod[i-1] * kernel_dim[i]
   end
 
   dim_col[end] = img_dim[end] * kernel_dim_prod[end]
-
-  for c = 1:dim_col[end]
+  c::Int = 0
+  while (c += 1) <= dim_col[end]
     offset[1] = (c - 1) % kernel_dim[1]
 
-    for i = 2:n_dim
+    i = 1
+    while (i += 1) <= n_dim
       offset[i] = div(c - 1, kernel_dim_prod[i-1]) % kernel_dim[i]
     end
-    offset[end] = div(c - 1, kernel_dim_prod[end] * kernel_dim[end])
+    offset[end] = div(c - 1, kernel_dim_prod[end])
     if mode == 0
-      for i = 1:n_dim
+      i = 0
+      while (i += 1) <= n_dim
         offset[i] = kernel_dim[i] - offset[i] - 1
       end
     end
 
-    for i = 1:dim_col_prod[end]
+    i = 0
+    while (i += 1) <= dim_col_prod[end]
       dim_iter[1] = (i - 1) % dim_col[1]
 
       dim_pad[1] = dim_iter[1] * stride[1] - pad[1] + offset[1]
-      dim_pad_checker::Int = 0
+      dim_pad_checker::Int = (0 <= dim_pad[1] < img_dim[1])
       col_ind::Int = c - 1
 
-      for j = n_dim:-1:2
+      j::Int = n_dim + 1
+      while (j -= 1) > 1
         dim_iter[j] = div(i - 1, dim_col_prod[j-1]) % dim_col[j]
         dim_pad[j] = dim_iter[j] * stride[j] - pad[j] + offset[j]
         col_ind = col_ind * dim_col[j] + dim_iter[j]
         dim_pad_checker += (0 <= dim_pad[j] < img_dim[j])
       end
-
       col_ind = col_ind * dim_col[1] + dim_iter[1]
       img_ind::Int = offset[end]
 
       if dim_pad_checker == n_dim
-        for j = n_dim:-1:1
+        j = n_dim + 1
+        while (j -= 1) > 0
           img_ind = img_ind * img_dim[j] + dim_pad[j]
         end
         col[col_ind + 1] = img[img_ind + 1]
@@ -218,12 +224,12 @@ function col2im_nd!{T}(col::AbstractArray{T,2}, img::AbstractArray{T},
   img_dim = size(img)
   n_dim = ndims(img) - 1
 
-  kernel_dim_prod = Array{Int, 1}(n_dim)
-  dim_col_prod = Array{Int, 1}(n_dim)
-  dim_col = Array{Int, 1}(n_dim+1)
-  offset = Array{Int, 1}(n_dim+1)
-  dim_iter = Array{Int, 1}(n_dim)
-  dim_pad = Array{Int, 1}(n_dim)
+  dim_col = zeros(Int, n_dim+1)
+  kernel_dim_prod = dim_col[1:n_dim]
+  dim_col_prod = kernel_dim_prod[:]
+  offset = dim_col[:]
+  dim_iter = kernel_dim_prod[:]
+  dim_pad = kernel_dim_prod[:]
 
   dim_col[1] = div(img_dim[1] + 2pad[1] - kernel_dim[1], stride[1]) + 1
   dim_col_prod[1] = dim_col[1]
@@ -231,46 +237,52 @@ function col2im_nd!{T}(col::AbstractArray{T,2}, img::AbstractArray{T},
 
   fill!(img, 0)
 
-  for i=2:n_dim
+  i::Int = 1
+
+  while (i += 1) <= n_dim
     dim_col[i] = div(img_dim[i] + 2pad[i] - kernel_dim[i], stride[i]) + 1
     dim_col_prod[i] = dim_col_prod[i-1] * dim_col[i]
     kernel_dim_prod[i] = kernel_dim_prod[i-1] * kernel_dim[i]
   end
 
   dim_col[end] = img_dim[end] * kernel_dim_prod[end]
-
-  for c = 1:dim_col[end]
+  c::Int = 0
+  while (c += 1) <= dim_col[end]
     offset[1] = (c - 1) % kernel_dim[1]
 
-    for i = 2:n_dim
+    i = 1
+    while (i += 1) <= n_dim
       offset[i] = div(c - 1, kernel_dim_prod[i-1]) % kernel_dim[i]
     end
-    offset[end] = div(c - 1, kernel_dim_prod[end] * kernel_dim[end])
+    offset[end] = div(c - 1, kernel_dim_prod[end])
     if mode == 0
-      for i = 1:n_dim
+      i = 0
+      while (i += 1) <= n_dim
         offset[i] = kernel_dim[i] - offset[i] - 1
       end
     end
 
-    for i = 1:dim_col_prod[end]
+    i = 0
+    while (i += 1) <= dim_col_prod[end]
       dim_iter[1] = (i - 1) % dim_col[1]
 
       dim_pad[1] = dim_iter[1] * stride[1] - pad[1] + offset[1]
-      dim_pad_checker::Int = 0
+      dim_pad_checker::Int = (0 <= dim_pad[1] < img_dim[1])
       col_ind::Int = c - 1
 
-      for j = n_dim:-1:2
+      j::Int = n_dim + 1
+      while (j -= 1) > 1
         dim_iter[j] = div(i - 1, dim_col_prod[j-1]) % dim_col[j]
         dim_pad[j] = dim_iter[j] * stride[j] - pad[j] + offset[j]
         col_ind = col_ind * dim_col[j] + dim_iter[j]
         dim_pad_checker += (0 <= dim_pad[j] < img_dim[j])
       end
-
       col_ind = col_ind * dim_col[1] + dim_iter[1]
       img_ind::Int = offset[end]
 
       if dim_pad_checker == n_dim
-        for j = n_dim:-1:1
+        j = n_dim + 1
+        while (j -= 1) > 0
           img_ind = img_ind * img_dim[j] + dim_pad[j]
         end
         img[img_ind + 1] += col[col_ind + 1]
@@ -496,7 +508,7 @@ function conv_nd_grad_w!{T}(dw::AbstractArray{T}, x::AbstractArray{T}, w::Abstra
     x2dims = im2col_dims(w,dy)
     x2 = similar(x, x2dims)
     # op(A) is an m-by-k matrix, op(B) is a k-by-n matrix, C is an m-by-n matrix.
-    Y,M,N,K = prod(dy_dim[1:end-1]),prod(inp_dim[1:end-1]),dy_dim[end-1],prod(dy_dim[1:end-2])
+    Y,M,N,K = prod(dy_dim[1:end-1]),prod(kernel_dim[1:end-1]),dy_dim[end-1],prod(dy_dim[1:end-2])
     alpha,beta = T(alpha),T(1)
     pad = psize(padding,x)
     strides = psize(stride,x)
@@ -550,7 +562,6 @@ function col2imnd!(w::AbstractArray{T}, x::AbstractArray{T}, x2::AbstractArray{T
     inp_dim = size(x)
     kernel_dim = size(w)
     img_size = prod(inp_dim[1:end-1])
-    x = x[:]
     xn = reshape(x[img_size * (n - 1) + 1:img_size * n], inp_dim[1:end-1])
     col2im_nd!(x2,xn,kernel_dim,pad,strides,mode)
     x[img_size * (n - 1) + 1:img_size * n] = xn[:]

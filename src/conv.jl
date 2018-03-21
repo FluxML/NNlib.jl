@@ -61,29 +61,29 @@ function ∇conv_data!(dx::AbstractArray{T,3}, dy::AbstractArray{T,3},
     return dx
 end
 
-conv!(y::AbstractArray{T,4}, x::AbstractArray{T,4}, w::AbstractArray{T,4};
-      pad = 0, stride = 1) where T =
-  conv2d!(y, x, w, padding = pad, stride = stride)
+#conv!(y::AbstractArray{T,4}, x::AbstractArray{T,4}, w::AbstractArray{T,4};
+#      pad = 0, stride = 1) where T =
+#  conv2d!(y, x, w, padding = pad, stride = stride)
 
-∇conv_filter!(dw::AbstractArray{T,4}, dy::AbstractArray{T,4}, x::AbstractArray{T,4}, w::AbstractArray{T,4};
-              pad = 0, stride = 1) where T =
-  conv2d_grad_w!(dw, x, w, dy, padding = pad, stride = stride)
+#∇conv_filter!(dw::AbstractArray{T,4}, dy::AbstractArray{T,4}, x::AbstractArray{T,4}, w::AbstractArray{T,4};
+#              pad = 0, stride = 1) where T =
+#  conv2d_grad_w!(dw, x, w, dy, padding = pad, stride = stride)
 
-∇conv_data!(dx::AbstractArray{T,4}, dy::AbstractArray{T,4}, x::AbstractArray{T,4}, w::AbstractArray{T,4};
-            pad = 0, stride = 1) where T =
-  conv2d_grad_x!(dx, x, w, dy, padding = pad, stride = stride)
+#∇conv_data!(dx::AbstractArray{T,4}, dy::AbstractArray{T,4}, x::AbstractArray{T,4}, w::AbstractArray{T,4};
+#            pad = 0, stride = 1) where T =
+#  conv2d_grad_x!(dx, x, w, dy, padding = pad, stride = stride)
 
-conv!(y::AbstractArray{T,5}, x::AbstractArray{T,5}, w::AbstractArray{T,5};
-      pad = 0, stride = 1) where T =
-  conv3d!(y, x, w, padding = pad, stride = stride)
+#conv!(y::AbstractArray{T,5}, x::AbstractArray{T,5}, w::AbstractArray{T,5};
+#      pad = 0, stride = 1) where T =
+#  conv3d!(y, x, w, padding = pad, stride = stride)
 
-∇conv_filter!(dw::AbstractArray{T,5}, dy::AbstractArray{T,5}, x::AbstractArray{T,5}, w::AbstractArray{T,5};
-              pad = 0, stride = 1) where T =
-  conv3d_grad_w!(dw, x, w, dy, padding = pad, stride = stride)
+#∇conv_filter!(dw::AbstractArray{T,5}, dy::AbstractArray{T,5}, x::AbstractArray{T,5}, w::AbstractArray{T,5};
+#              pad = 0, stride = 1) where T =
+#  conv3d_grad_w!(dw, x, w, dy, padding = pad, stride = stride)
 
-∇conv_data!(dx::AbstractArray{T,5}, dy::AbstractArray{T,5}, x::AbstractArray{T,5}, w::AbstractArray{T,5};
-            pad = 0, stride = 1) where T =
-  conv3d_grad_x!(dx, x, w, dy, padding = pad, stride = stride)
+#∇conv_data!(dx::AbstractArray{T,5}, dy::AbstractArray{T,5}, x::AbstractArray{T,5}, w::AbstractArray{T,5};
+#            pad = 0, stride = 1) where T =
+#  conv3d_grad_x!(dx, x, w, dy, padding = pad, stride = stride)
 
 conv!(y::A, x::A, w::A; pad = 0, stride = 1) where A<:AbstractArray =
   conv_nd!(y, x, w, padding = pad, stride = stride)
