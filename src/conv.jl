@@ -97,30 +97,37 @@ function pdims(dims::Dims{N}, window, padding, stride) where N
   end
 end
 
+expand(::Type{Val{N}}, i::Integer) where N = ntuple(_ -> i, Val{N})
+expand(::Type{Val{N}}, i::NTuple{N, Integer}) where N = i
+
 # Interface
 
-maxpool(x::AbstractArray, k; pad = map(_->0,k), stride = k) =
+maxpool(x::AbstractArray, k; pad = 0, stride = k) =
   maxpool!(similar(x, pdims(size(x), k, pad, stride)),
-           x, k, pad = pad, stride = stride)
+           x, k, pad = expand(Val{ndims(k)}, pad),
+           stride = expand(Val{ndims(k)}, stride))
 
 maxpool!(y::A, x::A, k; kw...) where A<:AbstractArray =
   maxpool_cpu!(y, x, k; kw...)
 
-∇maxpool(dy::A, y::A, x::A, k; pad = map(_->0,k), stride = k) where A<:AbstractArray =
-  ∇maxpool!(similar(x), dy, y, x, k, pad = pad, stride = stride)
+∇maxpool(dy::A, y::A, x::A, k; pad = 0, stride = k) where A<:AbstractArray =
+  ∇maxpool!(similar(x), dy, y, x, k, pad = expand(Val{ndims(k)}, pad),
+              stride = expand(Val{ndims(k)}, stride))
 
 ∇maxpool!(dx::A, dy::A, y::A, x::A, k; kw...) where A<:AbstractArray =
   ∇maxpool_cpu!(dx, dy, y, x, k; kw...)
 
-meanpool(x::AbstractArray, k; pad = map(_->0,k), stride = k) =
+meanpool(x::AbstractArray, k; pad = 0, stride = k) =
   meanpool!(similar(x, pdims(size(x), k, pad, stride)),
-           x, k, pad = pad, stride = stride)
+           x, k, pad = expand(Val{ndims(k)}, pad),
+           stride = expand(Val{ndims(k)}, stride))
 
 meanpool!(y::A, x::A, k; kw...) where A<:AbstractArray =
   meanpool_cpu!(y, x, k; kw...)
 
-∇meanpool(dy::A, y::A, x::A, k; pad = map(_->0,k), stride = k) where A<:AbstractArray =
-  ∇meanpool!(similar(x), dy, y, x, k, pad = pad, stride = stride)
+∇meanpool(dy::A, y::A, x::A, k; pad = 0, stride = k) where A<:AbstractArray =
+  ∇meanpool!(similar(x), dy, y, x, k, pad = expand(Val{ndims(k)}, pad),
+              stride = expand(Val{ndims(k)}, stride))
 
 ∇meanpool!(dx::A, dy::A, y::A, x::A, k; kw...) where A<:AbstractArray =
   ∇meanpool_cpu!(dx, dy, y, x, k; kw...)
