@@ -6,7 +6,7 @@ using Base.Test
 include("activation.jl")
 include("conv.jl")
 if Base.find_in_path("CuArrays") ≠ nothing
-    include("cubroadcast.jl")
+  include("cubroadcast.jl")
 end
 
 xs = rand(5)
