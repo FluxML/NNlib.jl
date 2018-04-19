@@ -15,6 +15,11 @@ broadcast_inputs(ex) =
 
 cudata(x) = x
 
+"""
+Replace function calls with cuda intrinsics when applicable.
+
+@see CuArrays.cufunc
+"""
 macro fix(ex)
   fs = []
   ex = MacroTools.prewalk(ex) do ex
