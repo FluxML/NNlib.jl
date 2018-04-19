@@ -25,5 +25,10 @@ macro fix(ex)
     push!(fs, :($f_ = $_cufunc($f, $cudata.(($(xs...),))...)))
     :($f_.($(args...)))
   end
-  :($(fs...); $ex) |> esc
+
+  quote
+    let $(fs...)
+      $ex
+    end
+  end |> esc
 end
