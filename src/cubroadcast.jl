@@ -15,6 +15,11 @@ broadcast_inputs(ex) =
 
 cudata(x) = x
 
+"""
+Replace function calls with cuda intrinsics when applicable.
+
+@see CuArrays.cufunc
+"""
 macro fix(ex)
   fs = []
   ex = MacroTools.prewalk(ex) do ex
@@ -25,5 +30,10 @@ macro fix(ex)
     push!(fs, :($f_ = $_cufunc($f, $cudata.(($(xs...),))...)))
     :($f_.($(args...)))
   end
-  :($(fs...); $ex) |> esc
+
+  quote
+    let $(fs...)
+      $ex
+    end
+  end |> esc
 end
