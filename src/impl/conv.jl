@@ -156,6 +156,18 @@ function im2col_dims(w,y)
     return (r, c)
 end
 
+function dilation_dims(w, dilation = 1)
+  N = ndims(w)
+  dims_w = size(w)
+  ntuple(N) do i
+    if i < N - 1
+      dims_w[i] + (dims_w[i] - 1) * (dilation - 1)
+    else
+      dims_w[i]
+    end
+  end
+end
+
 function conv2d!{T}(y::AbstractArray{T,4}, x::AbstractArray{T,4}, w::AbstractArray{T,4};
                   padding=0, stride=1, mode=0, alpha=T(1))
     if mode != 0 && mode != 1; throw(ArgumentError("conv2d only supports mode=0 or 1.")); end
