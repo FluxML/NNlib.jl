@@ -49,7 +49,7 @@ function ∇conv_filter!(dw::AbstractArray{T,3}, dy::AbstractArray{T,3},
                        x::AbstractArray{T,3}, w::AbstractArray{T,3};
                        pad = 0, stride = 1, dilation = 1) where T
     args = map(x -> reshape(x, size(x,1),1,size(x,2),size(x,3)), (dw, dy, x, w))
-    ∇conv_filter!(args..., pad = (pad...,0), stride = (stride...,1), dilation = (dilation..., 1))
+    ∇conv_filter!(args..., pad = (pad...,0), stride = (stride...,1), dilation = (dilation...,1))
     return dw
 end
 

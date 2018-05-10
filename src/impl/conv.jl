@@ -149,9 +149,10 @@ end
 function dilation_dims(w, dilation = 1)
   N = ndims(w)
   dims_w = size(w)
+  dil = psize(dilation, w)
   ntuple(N) do i
     if i < N - 1
-      (dims_w[i] - 1) * dilation + 1
+      (dims_w[i] - 1) * dil[i] + 1
     else
       dims_w[i]
     end
@@ -160,12 +161,13 @@ end
 
 function im2col_dims(w,y,dilation=1)
     N = ndims(y)
+    dil = dilation_dims(w, dilation)
     r,c = 1,1
     for i=1:N-2
         r *= size(y,i)
-        c *= dilation_dims(w, dilation)[i]
+        c *= dil[i]
     end
-    c *= dilation_dims(w, dilation)[N-1]
+    c *= dil[N-1]
     return (r, c)
 end
 
