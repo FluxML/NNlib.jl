@@ -186,7 +186,7 @@ meanpool_cpu!(y::AbstractArray{<:Real,5}, x::AbstractArray{<:Real,5}, k::Dims{3}
 
 # Deprecated 0.3
 
-export conv2d, maxpool2d, avgpool2d, depthwiseconv
+export conv2d, maxpool2d, avgpool2d
 
 @deprecate conv2d(x, w; kw...) NNlib.conv(x, w; kw...)
 @deprecate maxpool2d(x::AbstractArray{<:Real,4}, k::Integer) maxpool(x, (k,k))
