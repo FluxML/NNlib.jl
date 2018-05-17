@@ -85,6 +85,22 @@ conv!(y::AbstractArray{T,5}, x::AbstractArray{T,5}, w::AbstractArray{T,5};
             pad = 0, stride = 1) where T =
   conv3d_grad_x!(dx, x, w, dy, padding = pad, stride = stride)
 
+# Depthwise Conv
+
+function dcdims(x::NTuple{4,Int}, w::NTuple{4,Int}, pad, stride)
+  ((x[1] + 2 * pad - w[1])÷stride + 1,(x[2] + 2 * pad - w[2])÷stride + 1,w[3]*w[4],x[4])
+end
+
+function depthwiseconv(x::A, w::A; pad = 0, stride = 1) where A<:AbstractArray
+  pad_, stride_ = padtuple(x, pad), padtuple(x, stride)
+  depthwiseconv!(similar(x, dcdims(size(x), size(w), pad_, stride_)),
+        x, w, pad = pad_, stride = stride_)
+end
+
+depthwiseconv!(y::AbstractArray{T,4}, x::AbstractArray{T,4}, w::AbstractArray{T,4};
+      pad = 0, stride = 1) where T =
+  depthwiseconv2d!(y, x, w, padding = pad, stride = stride)
+
 # Pooling
 
 function pdims(dims::Dims{N}, window, padding, stride) where N
@@ -170,7 +186,7 @@ meanpool_cpu!(y::AbstractArray{<:Real,5}, x::AbstractArray{<:Real,5}, k::Dims{3}
 
 # Deprecated 0.3
 
-export conv2d, maxpool2d, avgpool2d
+export conv2d, maxpool2d, avgpool2d, depthwiseconv
 
 @deprecate conv2d(x, w; kw...) NNlib.conv(x, w; kw...)
 @deprecate maxpool2d(x::AbstractArray{<:Real,4}, k::Integer) maxpool(x, (k,k))
