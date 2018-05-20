@@ -156,18 +156,29 @@ function im2col_dims(w,y)
     return (r, c)
 end
 
+function im2col_dims(w::NTuple{4, Int}, y)
+    N = ndims(y)
+    r,c = 1,1
+    for i=1:N-2
+        r *= size(y,i)
+        c *= w[i]
+    end
+    c *= w[N-1]
+    return (r, c)
+end
+
 function depthwiseconv2d!(y::AbstractArray{T,4}, x::AbstractArray{T,4}, w::AbstractArray{T,4};
                   padding = 0, stride = 1, mode = 0, alpha = T(1)) where {T<:Real}
     Wx,Hx,Cx,Nx = size(x)
     Ww,Hw,Cm,Cw = size(w) # Cm = Channel Multiplier
     @assert Cx == Cw DimensionMismatch()
     Wy,Hy,Cy,Ny = size(y) # Cy = Cw * Cm
-    x2dims = im2col_dims(w,y)
+    dims_w = (Ww,Hw,Cw,Cm*Cw)
+    x2dims = im2col_dims(dims_w,y)
     x2 = similar(x, x2dims)
     (p1,p2) = psize(padding,x)
     (s1,s2) = psize(stride,x)
     M,N,K,Y = Wy*Hy,Cm,Ww*Hw,Wy*Hy*Cm
-    dims_w = (Ww,Hw,Cw,Cm*Cw)
     yidx = 1
     @inbounds for n in 1:Nx
         im2col2d!(dims_w, x, x2, n, p1, p2, s1, s2, mode)
