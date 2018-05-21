@@ -180,14 +180,14 @@ function depthwiseconv2d!(y::AbstractArray{T,4}, x::AbstractArray{T,4}, w::Abstr
     (s1,s2) = psize(stride,x)
     M,N,K,Y = Wy*Hy,Cm,Ww*Hw,Wy*Hy*Cm
     yidx = 1
-    @inbounds for n in 1:Nx
-        im2col2d!(dims_w, x, x2, n, p1, p2, s1, s2, mode)
-        @inbounds for m in 1:Cx
-            gemm!('N','N',M,N,K,alpha,pointer(x2,(m-1)*M*K),pointer(w,(m-1)*K*N),T(0),pointer(y,yidx))
+    @inbounds for i in 1:Nx
+        im2col2d!(dims_w, x, x2, i, p1, p2, s1, s2, mode)
+        @inbounds for j in 1:Cx
+            gemm!('N','N',M,N,K,alpha,pointer(x2,(j-1)*M*K+1),pointer(w,(j-1)*K*N+1),T(0),pointer(y,yidx))
             yidx += Y
         end
     end
-    y
+    return y
 end
 
 function conv2d!{T}(y::AbstractArray{T,4}, x::AbstractArray{T,4}, w::AbstractArray{T,4};
