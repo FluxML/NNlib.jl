@@ -168,7 +168,7 @@ function im2col_dims(w::NTuple{4, Int}, y)
 end
 
 function depthwiseconv2d!(y::AbstractArray{T,4}, x::AbstractArray{T,4}, w::AbstractArray{T,4};
-                  padding = 0, stride = 1, mode = 0, alpha = T(1)) where {T<:Real}
+                  padding = 0, stride = 1, mode = 1, alpha = T(1)) where {T<:Real}
     Wx,Hx,Cx,Nx = size(x)
     Ww,Hw,Cm,Cw = size(w) # Cm = Channel Multiplier
     @assert Cx == Cw DimensionMismatch()
