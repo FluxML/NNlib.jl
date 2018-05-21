@@ -24,66 +24,66 @@ padtuple(x::Tuple,p::Integer) = map(_->p, head(head(x)))
 padtuple(x::Tuple,p::Tuple) = p
 padtuple(x::AbstractArray,p) = padtuple(size(x),p)
 
-function conv(x::A, w::A; pad = 0, stride = 1) where A<:AbstractArray
+function conv(x::A, w::A; pad = 0, stride = 1, dilation = 1) where A<:AbstractArray
   pad_, stride_ = padtuple(x, pad), padtuple(x, stride)
-  conv!(similar(x, cdims(size(x), size(w), pad_, stride_)),
-        x, w, pad = pad_, stride = stride_)
+  conv!(similar(x, cdims(size(x), dilation_dims(w, dilation), pad_, stride_)),
+        x, w, pad = pad_, stride = stride_, dilation = dilation)
 end
 
-∇conv_data(dy::A, x::A, w::A; pad = 0, stride = 1) where A<:AbstractArray =
-  ∇conv_data!(zeros(x), dy, x, w; pad = pad, stride = stride)
+∇conv_data(dy::A, x::A, w::A; pad = 0, stride = 1, dilation = 1) where A<:AbstractArray =
+  ∇conv_data!(zeros(x), dy, x, w; pad = pad, stride = stride, dilation = dilation)
 
-∇conv_filter(dy::A, x::A, w::A; pad = 0, stride = 1) where A<:AbstractArray =
-  ∇conv_filter!(zeros(w), dy, x, w; pad = pad, stride = stride)
+∇conv_filter(dy::A, x::A, w::A; pad = 0, stride = 1, dilation = 1) where A<:AbstractArray =
+  ∇conv_filter!(zeros(w), dy, x, w; pad = pad, stride = stride, dilation = dilation)
 
 # N-D dispatch
 
 function conv!(y::AbstractArray{T,3}, x::AbstractArray{T,3}, w::AbstractArray{T,3};
-               pad = 0, stride = 1) where T
+               pad = 0, stride = 1, dilation = 1) where T
     args = map(x -> reshape(x, size(x,1),1,size(x,2),size(x,3)), (y, x, w))
-    conv!(args..., pad = (pad...,0), stride = (stride...,1))
+    conv!(args..., pad = (pad...,0), stride = (stride...,1), dilation = (dilation...,1))
     return y
 end
 
 function ∇conv_filter!(dw::AbstractArray{T,3}, dy::AbstractArray{T,3},
                        x::AbstractArray{T,3}, w::AbstractArray{T,3};
-                       pad = 0, stride = 1) where T
+                       pad = 0, stride = 1, dilation = 1) where T
     args = map(x -> reshape(x, size(x,1),1,size(x,2),size(x,3)), (dw, dy, x, w))
-    ∇conv_filter!(args..., pad = (pad...,0), stride = (stride...,1))
+    ∇conv_filter!(args..., pad = (pad...,0), stride = (stride...,1), dilation = (dilation...,1))
     return dw
 end
 
 function ∇conv_data!(dx::AbstractArray{T,3}, dy::AbstractArray{T,3},
                      x::AbstractArray{T,3}, w::AbstractArray{T,3};
-                     pad = 0, stride = 1) where T
+                     pad = 0, stride = 1, dilation = 1) where T
     args = map(x -> reshape(x, size(x,1),1,size(x,2),size(x,3)), (dx, dy, x, w))
-    ∇conv_data!(args..., pad = (pad...,0), stride = (stride...,1))
+    ∇conv_data!(args..., pad = (pad...,0), stride = (stride...,1), dilation = (dilation..., 1))
     return dx
 end
 
 conv!(y::AbstractArray{T,4}, x::AbstractArray{T,4}, w::AbstractArray{T,4};
-      pad = 0, stride = 1) where T =
-  conv2d!(y, x, w, padding = pad, stride = stride)
+      pad = 0, stride = 1, dilation = 1) where T =
+  conv2d!(y, x, w, padding = pad, stride = stride, dilation = dilation)
 
 ∇conv_filter!(dw::AbstractArray{T,4}, dy::AbstractArray{T,4}, x::AbstractArray{T,4}, w::AbstractArray{T,4};
-              pad = 0, stride = 1) where T =
-  conv2d_grad_w!(dw, x, w, dy, padding = pad, stride = stride)
+              pad = 0, stride = 1, dilation = 1) where T =
+  conv2d_grad_w!(dw, x, w, dy, padding = pad, stride = stride, dilation = dilation)
 
 ∇conv_data!(dx::AbstractArray{T,4}, dy::AbstractArray{T,4}, x::AbstractArray{T,4}, w::AbstractArray{T,4};
-            pad = 0, stride = 1) where T =
-  conv2d_grad_x!(dx, x, w, dy, padding = pad, stride = stride)
+            pad = 0, stride = 1, dilation = 1) where T =
+  conv2d_grad_x!(dx, x, w, dy, padding = pad, stride = stride, dilation = dilation)
 
 conv!(y::AbstractArray{T,5}, x::AbstractArray{T,5}, w::AbstractArray{T,5};
-      pad = 0, stride = 1) where T =
-  conv3d!(y, x, w, padding = pad, stride = stride)
+      pad = 0, stride = 1, dilation = 1) where T =
+  conv3d!(y, x, w, padding = pad, stride = stride, dilation = dilation)
 
 ∇conv_filter!(dw::AbstractArray{T,5}, dy::AbstractArray{T,5}, x::AbstractArray{T,5}, w::AbstractArray{T,5};
-              pad = 0, stride = 1) where T =
-  conv3d_grad_w!(dw, x, w, dy, padding = pad, stride = stride)
+              pad = 0, stride = 1, dilation = 1) where T =
+  conv3d_grad_w!(dw, x, w, dy, padding = pad, stride = stride, dilation = dilation)
 
 ∇conv_data!(dx::AbstractArray{T,5}, dy::AbstractArray{T,5}, x::AbstractArray{T,5}, w::AbstractArray{T,5};
-            pad = 0, stride = 1) where T =
-  conv3d_grad_x!(dx, x, w, dy, padding = pad, stride = stride)
+            pad = 0, stride = 1, dilation = 1) where T =
+  conv3d_grad_x!(dx, x, w, dy, padding = pad, stride = stride, dilation = dilation)
 
 # Depthwise Conv
 

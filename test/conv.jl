@@ -23,7 +23,10 @@ using NNlib: conv, ∇conv_filter, ∇conv_data, ∇maxpool, maxpool
         10.0  40.0   70.0  100.0   80.0
     ]
 
-
+    @test squeeze(conv(x, w; dilation=2),(3,4)) == [
+        48 98;
+        58 108;
+        68 118.]
     # for gradients, check only size
     # correctness of gradients is cross-checked with CUDNN.jl
     # (it's assumed convolution code won't change often)
@@ -32,10 +35,10 @@ using NNlib: conv, ∇conv_filter, ∇conv_data, ∇maxpool, maxpool
     @test size(∇conv_data(reshape(rand(4,3), 4, 3, 1, 1), x, w)) == size(x)
 
     # Test that stride/pad work backward as well
-    y = conv(x, w; stride=2, pad=1)
-    @test size(y) == (3, 3, 1, 1)
-    @test size(∇conv_filter(y, x, w; stride=2, pad=1)) == size(w)
-    @test size(∇conv_data(y, x, w; stride=2, pad=1)) == size(x)
+    y = conv(x, w; stride=2, pad=1, dilation=2)
+    @test size(y) == (3, 2, 1, 1)
+    @test size(∇conv_filter(y, x, w; stride=2, pad=1, dilation=2)) == size(w)
+    @test size(∇conv_data(y, x, w; stride=2, pad=1, dilation=2)) == size(x)
 end
 
 
@@ -114,6 +117,11 @@ end
         270.0   660.0   730.0   800.0  480.0]
     @test squeeze(conv(x, w; pad=1),(4,5)) == res
 
+    @test squeeze(conv(x, w; dilation=2),(3,4,5)) == [
+        608 788;
+        644 824;
+        680 860.
+    ]
 
     # for gradients, check only size
     # correctness of gradients is cross-checked with CUDNN.jl
