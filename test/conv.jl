@@ -1,4 +1,4 @@
-using NNlib: conv, ∇conv_filter, ∇conv_data, ∇maxpool, maxpool
+using NNlib: conv, ∇conv_filter, ∇conv_data, ∇maxpool, maxpool, depthwiseconv
 
 @testset "conv2d" begin
     x = reshape(Float64[1:20;], 5, 4, 1, 1)
@@ -41,6 +41,18 @@ using NNlib: conv, ∇conv_filter, ∇conv_data, ∇maxpool, maxpool
     @test size(∇conv_data(y, x, w; stride=2, pad=1, dilation=2)) == size(x)
 end
 
+@testset "depthwiseconv2d" begin
+    x = reshape(Float64[1:18;], 3, 3, 2, 1)
+    w = reshape(Float64[1:8;], 2, 2, 1, 2)
+
+    @test depthwiseconv(x, w)[:] == [37.0, 47.0, 67.0, 77.0, 319.0, 345.0, 397.0, 423.0]
+
+    @test depthwiseconv(x, w, stride = 2, pad = 1)[:] == [4.0, 18.0, 36.0, 77.0, 80.0, 173.0, 206.0, 423.0]
+
+    @test depthwiseconv(x, w, stride = 2)[:] == [37.0, 319.0]
+
+    @test depthwiseconv(x, w, pad = 1)[:] == [4.0, 11.0, 18.0, 9.0, 18.0, 37.0, 47.0, 21.0, 36.0, 67.0, 77.0, 33.0, 14.0, 23.0, 26.0, 9.0, 80.0, 158.0, 173.0, 84.0, 164.0, 319.0, 345.0, 165.0, 206.0, 397.0, 423.0, 201.0, 96.0, 182.0, 193.0, 90.0]
+end
 
 @testset "maxpool2d" begin
 
