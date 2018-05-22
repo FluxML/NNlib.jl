@@ -1,4 +1,4 @@
-using NNlib: conv, ∇conv_filter, ∇conv_data, ∇maxpool, maxpool, depthwiseconv
+using NNlib: conv, ∇conv_filter, ∇conv_data, ∇maxpool, maxpool, depthwiseconv, ∇depthwiseconv_filter, ∇depthwiseconv_data
 
 @testset "conv2d" begin
     x = reshape(Float64[1:20;], 5, 4, 1, 1)
@@ -52,6 +52,18 @@ end
     @test depthwiseconv(x, w, stride = 2)[:] == [37.0, 319.0]
 
     @test depthwiseconv(x, w, pad = 1)[:] == [4.0, 11.0, 18.0, 9.0, 18.0, 37.0, 47.0, 21.0, 36.0, 67.0, 77.0, 33.0, 14.0, 23.0, 26.0, 9.0, 80.0, 158.0, 173.0, 84.0, 164.0, 319.0, 345.0, 165.0, 206.0, 397.0, 423.0, 201.0, 96.0, 182.0, 193.0, 90.0]
+
+    # the correctness of the gradients have been verified by calling
+    # the corresponding counvolution gradients
+
+    @test size(∇depthwiseconv_filter(rand(2,2,2,1), x, w)) == size(w)
+    @test size(∇depthwiseconv_data(rand(2,2,2,1), x, w)) == size(x)
+
+    # Test for the stride/pad for backward pass
+    y = depthwiseconv(x,w,stride=2,pad=1)
+    @test size(y) == (2,2,2,1)
+    @test size(∇depthwiseconv_filter(rand(size(y)), x, w, stride=2, pad=1)) == size(w)
+    @test size(∇depthwiseconv_data(rand(size(y)), x, w, stride=2, pad=1)) == size(x)
 end
 
 @testset "maxpool2d" begin
