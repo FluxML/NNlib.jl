@@ -100,6 +100,20 @@ depthwiseconv!(y::AbstractArray{T,4}, x::AbstractArray{T,4}, w::AbstractArray{T,
       pad = 0, stride = 1) where T =
   depthwiseconv2d!(y, x, w, padding = pad, stride = stride)
 
+∇depthwiseconv_data(dy::A, x::A, w::A; pad = 0, stride = 1) where A<:AbstractArray =
+  ∇depthwiseconv_data!(zeros(x), dy, x, w; pad = pad, stride = stride)
+
+∇depthwiseconv_filter(dy::A, x::A, w::A; pad = 0, stride = 1) where A<:AbstractArray =
+  ∇depthwiseconv_filter!(zeros(w), dy, x, w; pad = pad, stride = stride)
+
+∇depthwiseconv_filter!(dw::AbstractArray{T,4}, dy::AbstractArray{T,4}, x::AbstractArray{T,4}, w::AbstractArray{T,4};
+              pad = 0, stride = 1) where T =
+  depthwiseconv2d_grad_w!(dw, x, w, dy, padding = pad, stride = stride)
+
+∇depthwiseconv_data!(dx::AbstractArray{T,4}, dy::AbstractArray{T,4}, x::AbstractArray{T,4}, w::AbstractArray{T,4};
+            pad = 0, stride = 1) where T =
+  depthwiseconv2d_grad_x!(dx, x, w, dy, padding = pad, stride = stride)
+
 # Pooling
 
 function pdims(dims::Dims{N}, window, padding, stride) where N
