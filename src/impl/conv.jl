@@ -175,7 +175,7 @@ function conv2d!{T}(y::AbstractArray{T,4}, x::AbstractArray{T,4}, w::AbstractArr
                   padding=0, stride=1, dilation=1, mode=0, alpha=T(1))
     if mode != 0 && mode != 1; throw(ArgumentError("conv2d only supports mode=0 or 1.")); end
     Wx,Hx,Cx,Nx = size(x)
-    Ww,Hw,C1,C2 = dilation_dims(w, dilation)
+    Ww,Hw,C1,C2 = size(w)#dilation_dims(w, dilation)
     if Cx!=C1; throw(DimensionMismatch()); end
     Wy,Hy,Cy,Ny = size(y)
     x2dims = im2col_dims(w,y,dilation)
@@ -197,7 +197,7 @@ function conv2d_grad_w!{T}(dw::AbstractArray{T,4}, x::AbstractArray{T,4}, w::Abs
                    padding=0, stride=1, dilation=1, mode=0, alpha=1)
     # dw = x'*dy
     Wx,Hx,Cx,Nx = size(x)
-    Ww,Hw,C1,C2 = dilation_dims(w, dilation)
+    Ww,Hw,C1,C2 = size(w)#dilation_dims(w, dilation)
     Wy,Hy,Cy,Ny = size(dy)
     # if mode != 0 && mode != 1; throw(ArgumentError("conv2d only supports mode=0 or 1.")); end
     # @assert Cx==C1 && Cy==C2 && Ny==Nx
@@ -222,7 +222,7 @@ function conv2d_grad_x!{T}(dx::AbstractArray{T,4}, x::AbstractArray{T,4}, w::Abs
                    padding=0, stride=1, dilation=1, mode=0, alpha=1)
     # dx = dy*w'
     Wx,Hx,Cx,Nx = size(x)
-    Ww,Hw,C1,C2 = dilation_dims(w, dilation)
+    Ww,Hw,C1,C2 = size(w)#dilation_dims(w, dilation)
     Wy,Hy,Cy,Ny = size(dy)
     # if mode != 0 && mode != 1; throw(ArgumentError("conv2d only supports mode=0 or 1.")); end
     @assert Cx==C1 && Cy==C2 && Ny==Nx
@@ -266,7 +266,7 @@ function conv3d!{T}(y::AbstractArray{T,5}, x::AbstractArray{T,5}, w::AbstractArr
                   padding=0, stride=1, dilation = 1, mode=0, alpha=T(1))
     if mode != 0 && mode != 1; throw(ArgumentError("conv3d only supports mode=0 or 1.")); end
     Wx,Hx,Dx,Cx,Nx = size(x)
-    Ww,Hw,Dw,C1,C2 = dilation_dims(w, dilation)
+    Ww,Hw,Dw,C1,C2 = size(w)#dilation_dims(w, dilation)
     if Cx!=C1; throw(DimensionMismatch()); end
     Wy,Hy,Dy,Cy,Ny = size(y)
     # @assert Cy==C2 && Ny==Nx
@@ -290,7 +290,7 @@ function conv3d_grad_w!{T}(dw::AbstractArray{T,5}, x::AbstractArray{T,5}, w::Abs
                    padding=0, stride=1, dilation = 1, mode=0, alpha=1)
     # dw = x'*dy
     Wx,Hx,Dx,Cx,Nx = size(x)
-    Ww,Hw,Dw,C1,C2 = dilation_dims(w, dilation)
+    Ww,Hw,Dw,C1,C2 = size(w)#dilation_dims(w, dilation)
     Wy,Hy,Dy,Cy,Ny = size(dy)
     # if mode != 0 && mode != 1; throw(ArgumentError("conv2d only supports mode=0 or 1.")); end
     # @assert Cx==C1 && Cy==C2 && Ny==Nx
@@ -315,7 +315,7 @@ function conv3d_grad_x!{T}(dx::AbstractArray{T,5}, x::AbstractArray{T,5}, w::Abs
                    padding=0, stride=1, dilation = 1, mode=0, alpha=1)
     # dx = dy*w'
     Wx,Hx,Dx,Cx,Nx = size(x)
-    Ww,Hw,Dw,C1,C2 = dilation_dims(w, dilation)
+    Ww,Hw,Dw,C1,C2 = size(w)#dilation_dims(w, dilation)
     Wy,Hy,Dy,Cy,Ny = size(dy)
     # if mode != 0 && mode != 1; throw(ArgumentError("conv2d only supports mode=0 or 1.")); end
     @assert Cx==C1 && Cy==C2 && Ny==Nx
