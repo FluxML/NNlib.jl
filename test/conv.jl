@@ -53,8 +53,27 @@ end
 
     @test depthwiseconv(x, w, pad = 1)[:] == [4.0, 11.0, 18.0, 9.0, 18.0, 37.0, 47.0, 21.0, 36.0, 67.0, 77.0, 33.0, 14.0, 23.0, 26.0, 9.0, 80.0, 158.0, 173.0, 84.0, 164.0, 319.0, 345.0, 165.0, 206.0, 397.0, 423.0, 201.0, 96.0, 182.0, 193.0, 90.0]
 
-    # the correctness of the gradients have been verified by calling
+    # the correctness of the gradients are being verified by calling
     # the corresponding counvolution gradients
+
+    dy = reshape(Float64[1:8;], 2,2,2,1)
+    local z = ∇depthwiseconv_data(dy,x,w)
+    for i in 1:2
+        X = copy(x[:,:,i:i,:]);
+        W = copy(permutedims(w[:,:,:,i:i],[1,2,4,3]));
+        DY = copy(dy[:,:,i:i,:]);
+        res = ∇conv_data(DY,X,W)
+        @test squeeze(z[:,:,i:i,:], (3,4)) == squeeze(res, (3,4))
+    end
+
+    z = ∇depthwiseconv_filter(dy, x, w)
+    for i in 1:2
+        X = copy(x[:,:,i:i,:]);
+        W = copy(permutedims(w[:,:,:,i:i],[1,2,4,3]))
+        DY = copy(dy[:,:,i:i,:])
+        res = ∇conv_filter(DY,X,W)
+        @test squeeze(z[:,:,:,i:i], (3,4)) == squeeze(res, (3,4))
+    end
 
     @test size(∇depthwiseconv_filter(rand(2,2,2,1), x, w)) == size(w)
     @test size(∇depthwiseconv_data(rand(2,2,2,1), x, w)) == size(x)
