@@ -39,6 +39,8 @@ end
 @testset "Activation Functions" begin
 
   @test σ(0.0) == 0.5
+  @test hardσ(0.0) == 0.5
+  @test hardσ_keras(0.0) == 0.5
   @test relu(0.0) == 0.0
   @test leakyrelu(0.0) == 0.0
   @test elu(0.0) == 0.0
@@ -46,8 +48,11 @@ end
   @test softplus(0.0) ≈ log(2.0)
   @test softsign(0.0) == 0.0
   @test selu(0.0) == 0.0
+  @test hard_tanh(0.0) == 0.0
 
   @test σ(1.0) == 1.0 / (1.0 + exp(-1.0))
+  @test hardσ(1.0) == 0.75
+  @test hardσ_keras(1.0) == 0.7
   @test relu(1.0) == 1.0
   @test leakyrelu(1.0) == 1.0
   @test elu(1.0) == 1.0
@@ -55,8 +60,11 @@ end
   @test softplus(1.0) ≈ log(exp(1.0) + 1.0)
   @test softsign(1.0) == 0.5
   @test selu(1.0) == 1.0507009873554804934193349852946
+  @test hard_tanh(1.0) == 1.0
 
   @test σ(-1.0) == 1.0 / (1.0 + exp(1.0))
+  @test hardσ(-1.0) == 0.25
+  @test hardσ_keras(-1.0) == 0.3
   @test relu(-1.0) == 0.0
   @test leakyrelu(-1.0) == -0.01
   @test elu(-1.0) == exp(-1.0) - 1.0
@@ -64,6 +72,15 @@ end
   @test softplus(-1.0) ≈ log(exp(-1.0) + 1.0)
   @test softsign(-1.0) == -0.5
   @test selu(-1.0) == 1.0507009873554804934193349852946 * 1.6732632423543772848170429916717 * (exp(-1.0) - 1.0)
+  @test hard_tanh(-1.0) == -1.0
+
+  # clipping
+  @test hardσ(3.0) == 1.0
+  @test hardσ_keras(3.0) == 1.0
+  @test hard_tanh(3.0) == 1.0
+  @test hardσ(-3.0) == 0.0
+  @test hardσ_keras(-3.0) == 0.0
+  @test hard_tanh(-3.0) == -1.0
 
   @testset "Float inference" begin
     test_value_float_precision_preserving.(ACTIVATION_FUNCTIONS)

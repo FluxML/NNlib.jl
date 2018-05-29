@@ -39,6 +39,34 @@ end
 
 const logsigmoid = logσ
 
+macro hard_sigmoid(cutoff)
+    local c = eval(cutoff)
+    local m = eval(1/(2*c))
+    return quote
+        x -> ifelse(x ≤ -$c, zero(x/1),
+                    ifelse(x ≥ $c, one(x/1),
+                           x*oftype(x/1, $m) + oftype(x/1, 0.5)))
+    end
+end
+
+"""
+    hardσ(x) = max(min(0.25x + 0.5, 1), 0)
+
+Hard sigmoid activation function the first-order Maclaurin expansion of `σ(x)`,
+clipped at `±2.0`; it hard-saturates its domain.
+"""
+hard_sigmoid = @hard_sigmoid(2.0)
+const hardσ = hard_sigmoid
+
+"""
+    hardσ_keras(x) = max(min(0.2x + 0.5, 1), 0)
+
+Like `hardσ(x)`, but using a different slope and clipped at `±2.5`.
+"""
+hard_sigmoid_keras = @hard_sigmoid(2.5)
+const hardσ_keras = hard_sigmoid_keras
+
+
 """
     relu(x) = max(0, x)
 
@@ -104,3 +132,10 @@ softsign(x) = x / (one(x) + abs(x))
 See [Deep Sparse Rectifier Neural Networks](http://proceedings.mlr.press/v15/glorot11a/glorot11a.pdf).
 """
 softplus(x) = log1p(exp(x))
+
+"""
+    hard_tanh(x) = max(min(x, 1), -1)
+
+First-order Maclaurin expansion of `tanh`, clipped at `±1`.
+"""
+hard_tanh(x) = ifelse(x ≥ 1, one(x/1), ifelse(x ≤ -1, -one(x/1), x/1))
