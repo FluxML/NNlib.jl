@@ -1,6 +1,6 @@
 using Base.Threads
 
-function softmax!(out::AbstractVecOrMat, xs::AbstractVecOrMat)
+function softmax!(out::AbstractVecOrMat{T}, xs::AbstractVecOrMat{T}) where T<:AbstractFloat
   @threads for j = 1:size(xs, 2)
     @inbounds begin
       # out[end, :] .= maximum(xs, 1)
