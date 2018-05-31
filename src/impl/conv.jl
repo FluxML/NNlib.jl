@@ -44,7 +44,7 @@ end
 
 function col2im_2d!{T}(col::AbstractArray{T,2}, img::AbstractArray{T,3}, width::Int, height::Int,
   channels::Int, kernel_w::Int, kernel_h::Int, pad_w::Int, pad_h::Int, stride_w::Int,
-  stride_h::Int, dil_h::Int, dil_w::Int, mode::Int)
+  stride_h::Int, dil_w::Int, dil_h::Int, mode::Int)
 
   height_col = div(height + 2pad_h - (kernel_h - 1) * dil_h - 1, stride_h) + 1
   width_col = div(width + 2pad_w - (kernel_w - 1) * dil_w - 1, stride_w) + 1
@@ -159,15 +159,14 @@ function dilation_dims(w, dilation = 1)
   end
 end
 
-function im2col_dims(w,y,dilation=1)
+function im2col_dims(w,y)
     N = ndims(y)
-    dil = dilation_dims(w, dilation)
     r,c = 1,1
     for i=1:N-2
         r *= size(y,i)
-        c *= dil[i]
+        c *= size(w,i)
     end
-    c *= dil[N-1]
+    c *= size(w,N-1)
     return (r, c)
 end
 
@@ -175,10 +174,10 @@ function conv2d!{T}(y::AbstractArray{T,4}, x::AbstractArray{T,4}, w::AbstractArr
                   padding=0, stride=1, dilation=1, mode=0, alpha=T(1))
     if mode != 0 && mode != 1; throw(ArgumentError("conv2d only supports mode=0 or 1.")); end
     Wx,Hx,Cx,Nx = size(x)
-    Ww,Hw,C1,C2 = dilation_dims(w, dilation)
+    Ww,Hw,C1,C2 = size(w)
     if Cx!=C1; throw(DimensionMismatch()); end
     Wy,Hy,Cy,Ny = size(y)
-    x2dims = im2col_dims(w,y,dilation)
+    x2dims = im2col_dims(w,y)
     x2 = similar(x, x2dims)
     (p1,p2) = psize(padding,x)
     (s1,s2) = psize(stride,x)
@@ -197,11 +196,11 @@ function conv2d_grad_w!{T}(dw::AbstractArray{T,4}, x::AbstractArray{T,4}, w::Abs
                    padding=0, stride=1, dilation=1, mode=0, alpha=1)
     # dw = x'*dy
     Wx,Hx,Cx,Nx = size(x)
-    Ww,Hw,C1,C2 = dilation_dims(w, dilation)
+    Ww,Hw,C1,C2 = size(w)
     Wy,Hy,Cy,Ny = size(dy)
     # if mode != 0 && mode != 1; throw(ArgumentError("conv2d only supports mode=0 or 1.")); end
     # @assert Cx==C1 && Cy==C2 && Ny==Nx
-    x2dims = im2col_dims(w,dy,dilation)
+    x2dims = im2col_dims(w,dy)
     x2 = similar(x, x2dims)
     # op(A) is an m-by-k matrix, op(B) is a k-by-n matrix, C is an m-by-n matrix.
     Y,M,N,K = Wy*Hy*Cy,Ww*Hw*Cx,Cy,Wy*Hy
@@ -222,11 +221,11 @@ function conv2d_grad_x!{T}(dx::AbstractArray{T,4}, x::AbstractArray{T,4}, w::Abs
                    padding=0, stride=1, dilation=1, mode=0, alpha=1)
     # dx = dy*w'
     Wx,Hx,Cx,Nx = size(x)
-    Ww,Hw,C1,C2 = dilation_dims(w, dilation)
+    Ww,Hw,C1,C2 = size(w)
     Wy,Hy,Cy,Ny = size(dy)
     # if mode != 0 && mode != 1; throw(ArgumentError("conv2d only supports mode=0 or 1.")); end
     @assert Cx==C1 && Cy==C2 && Ny==Nx
-    x2dims = im2col_dims(w,dy,dilation)
+    x2dims = im2col_dims(w,dy)
     x2 = similar(x, x2dims)
     # op(A) is an m-by-k matrix, op(B) is a k-by-n matrix, C is an m-by-n matrix.
     Y,M,N,K = Wy*Hy*Cy,Wy*Hy,Ww*Hw*Cx,Cy
@@ -266,11 +265,11 @@ function conv3d!{T}(y::AbstractArray{T,5}, x::AbstractArray{T,5}, w::AbstractArr
                   padding=0, stride=1, dilation = 1, mode=0, alpha=T(1))
     if mode != 0 && mode != 1; throw(ArgumentError("conv3d only supports mode=0 or 1.")); end
     Wx,Hx,Dx,Cx,Nx = size(x)
-    Ww,Hw,Dw,C1,C2 = dilation_dims(w, dilation)
+    Ww,Hw,Dw,C1,C2 = size(w)
     if Cx!=C1; throw(DimensionMismatch()); end
     Wy,Hy,Dy,Cy,Ny = size(y)
     # @assert Cy==C2 && Ny==Nx
-    x2dims = im2col_dims(w,y,dilation)
+    x2dims = im2col_dims(w,y)
     x2 = similar(x, x2dims)
     (p1,p2,p3) = psize(padding,x)
     (s1,s2,s3) = psize(stride,x)
@@ -290,11 +289,11 @@ function conv3d_grad_w!{T}(dw::AbstractArray{T,5}, x::AbstractArray{T,5}, w::Abs
                    padding=0, stride=1, dilation = 1, mode=0, alpha=1)
     # dw = x'*dy
     Wx,Hx,Dx,Cx,Nx = size(x)
-    Ww,Hw,Dw,C1,C2 = dilation_dims(w, dilation)
+    Ww,Hw,Dw,C1,C2 = size(w)
     Wy,Hy,Dy,Cy,Ny = size(dy)
     # if mode != 0 && mode != 1; throw(ArgumentError("conv2d only supports mode=0 or 1.")); end
     # @assert Cx==C1 && Cy==C2 && Ny==Nx
-    x2dims = im2col_dims(w,dy,dilation)
+    x2dims = im2col_dims(w,dy)
     x2 = similar(x, x2dims)
     # op(A) is an m-by-k matrix, op(B) is a k-by-n matrix, C is an m-by-n matrix.
     Y,M,N,K = Wy*Hy*Dy*Cy,Ww*Hw*Dw*Cx,Cy,Wy*Hy*Dy
@@ -315,11 +314,11 @@ function conv3d_grad_x!{T}(dx::AbstractArray{T,5}, x::AbstractArray{T,5}, w::Abs
                    padding=0, stride=1, dilation = 1, mode=0, alpha=1)
     # dx = dy*w'
     Wx,Hx,Dx,Cx,Nx = size(x)
-    Ww,Hw,Dw,C1,C2 = dilation_dims(w, dilation)
+    Ww,Hw,Dw,C1,C2 = size(w)
     Wy,Hy,Dy,Cy,Ny = size(dy)
     # if mode != 0 && mode != 1; throw(ArgumentError("conv2d only supports mode=0 or 1.")); end
     @assert Cx==C1 && Cy==C2 && Ny==Nx
-    x2dims = im2col_dims(w,dy,dilation)
+    x2dims = im2col_dims(w,dy)
     x2 = similar(x, x2dims)
     # op(A) is an m-by-k matrix, op(B) is a k-by-n matrix, C is an m-by-n matrix.
     Y,M,N,K = Wy*Hy*Dy*Cy,Wy*Hy*Dy,Ww*Hw*Dw*Cx,Cy
