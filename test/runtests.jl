@@ -1,5 +1,4 @@
-using NNlib
-using Base.Test
+using NNlib, Test
 
 @testset "NNlib" begin
 
@@ -15,7 +14,7 @@ xs = rand(5)
 @test logsigmoid.(xs) ≈ log.(sigmoid.(xs))
 
 xs = rand(5,10)
-@test softmax(xs) ≈ exp.(xs) ./ sum(exp.(xs),1)
+@test softmax(xs) ≈ exp.(xs) ./ sum(exp.(xs), dims = 1)
 @test logsoftmax(xs) ≈ log.(softmax(xs))
 @test logsigmoid.(xs) ≈ log.(sigmoid.(xs))
 

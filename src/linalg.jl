@@ -1,8 +1,8 @@
 ## Low level gemm! call with pointers
 ## Borrowed from Knet.jl
 
-using Base.LinAlg
-using Base.LinAlg.BLAS: libblas, BlasInt,  @blasfunc
+using LinearAlgebra
+using LinearAlgebra.BLAS: libblas, BlasInt,  @blasfunc
 
 # C := alpha*op(A)*op(B) + beta*C, where:
 # op(X) is one of op(X) = X, or op(X) = XT, or op(X) = XH,
@@ -18,7 +18,7 @@ for (gemm, elty) in ((:dgemm_,:Float64), (:sgemm_,:Float32))
             if transA=='N'; lda=M; else; lda=K; end
             if transB=='N'; ldb=K; else; ldb=N; end
             ldc = M;
-            ccall((@blasfunc(dgemm_), libblas), Void,
+            ccall((@blasfunc(dgemm_), libblas), Nothing,
                   (Ref{UInt8}, Ref{UInt8}, Ref{BlasInt}, Ref{BlasInt},
                    Ref{BlasInt}, Ref{Float64}, Ptr{Float64}, Ref{BlasInt},
                    Ptr{Float64}, Ref{BlasInt}, Ref{Float64}, Ptr{Float64},

@@ -28,7 +28,7 @@ end
 #         @testset "$(a): " begin
 #         for T in [Float32, Float64, Int32, Int64]
 #           val = @inferred a(ForwardDiff.Dual(float(T(1)), one(float(T))))
-#           @test typeof(val) == ForwardDiff.Dual{Void,float(T),1}
+#           @test typeof(val) == ForwardDiff.Dual{Nothing,float(T),1}
 #         end
 #         end
 #     end
@@ -82,7 +82,7 @@ end
 
   xs = rand(5,5)
 
-  @test all(sum(softmax(xs), 1) .≈ 1)
+  @test all(sum(softmax(xs), dims = 1) .≈ 1)
 
   @test sum(softmax(vec(xs))) ≈ 1
 
