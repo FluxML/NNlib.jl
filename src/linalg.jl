@@ -18,13 +18,13 @@ for (gemm, elty) in ((:dgemm_,:Float64), (:sgemm_,:Float32))
             if transA=='N'; lda=M; else; lda=K; end
             if transB=='N'; ldb=K; else; ldb=N; end
             ldc = M;
-            ccall((@blasfunc($gemm), libblas), Void,
-                  (Ptr{UInt8}, Ptr{UInt8}, Ptr{BlasInt}, Ptr{BlasInt},
-                   Ptr{BlasInt}, Ptr{$elty}, Ptr{$elty}, Ptr{BlasInt},
-                   Ptr{$elty}, Ptr{BlasInt}, Ptr{$elty}, Ptr{$elty},
-                   Ptr{BlasInt}),
-                  &transA, &transB, &M, &N, &K,
-                  &alpha, A, &lda, B, &ldb, &beta, C, &ldc)
+            ccall((@blasfunc(dgemm_), libblas), Void,
+                  (Ref{UInt8}, Ref{UInt8}, Ref{BlasInt}, Ref{BlasInt},
+                   Ref{BlasInt}, Ref{Float64}, Ptr{Float64}, Ref{BlasInt},
+                   Ptr{Float64}, Ref{BlasInt}, Ref{Float64}, Ptr{Float64},
+                   Ref{BlasInt}),
+                  transA, transB, M, N, K,
+                  alpha, A, lda, B, ldb, beta, C, ldc)
         end
     end
 end
