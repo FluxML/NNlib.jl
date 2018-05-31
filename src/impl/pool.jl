@@ -1,7 +1,7 @@
-function max_pooling2d_fwd!{T}(x::AbstractArray{T,4}, y::AbstractArray{T,4},
-                               width::Int, height::Int, channels::Int, num::Int, pooled_width::Int,
-                               pooled_height::Int, kernel_w::Int, kernel_h::Int, pad_w::Int, pad_h::Int,
-                               stride_w::Int, stride_h::Int)
+function max_pooling2d_fwd!(x::AbstractArray{T,4}, y::AbstractArray{T,4},
+                            width::Int, height::Int, channels::Int, num::Int, pooled_width::Int,
+                            pooled_height::Int, kernel_w::Int, kernel_h::Int, pad_w::Int, pad_h::Int,
+                            stride_w::Int, stride_h::Int) where T
   for n = 1:num, c = 1:channels, ph = 1:pooled_height, pw = 1:pooled_width
     hstart = (ph - 1)*stride_h - pad_h
     wstart = (pw - 1)*stride_w - pad_w
@@ -27,10 +27,10 @@ function maxpool2d!(y::AbstractArray{T,4}, x::AbstractArray{T,4};
     return y
 end
 
-function max_pooling2d_bwd!{T}(x::AbstractArray{T,4}, y::AbstractArray{T,4},
+function max_pooling2d_bwd!(x::AbstractArray{T,4}, y::AbstractArray{T,4},
   grad_output::AbstractArray{T,4}, grad_input::AbstractArray{T,4}, width::Int, height::Int,
   channels::Int, num::Int, pooled_width::Int, pooled_height::Int, kernel_w::Int,
-  kernel_h::Int, pad_w::Int, pad_h::Int, stride_w::Int, stride_h::Int)
+  kernel_h::Int, pad_w::Int, pad_h::Int, stride_w::Int, stride_h::Int) where T
 
   grad_input[:, :, :, :] = 0
   #pragma omp parallel for
@@ -64,10 +64,10 @@ function maxpool2d_grad!(dx::AbstractArray{T,4}, dy::AbstractArray{T,4}, y::Abst
 end
 
 
-function mean_pooling2d_fwd!{T}(x::AbstractArray{T,4}, y::AbstractArray{T,4},
+function mean_pooling2d_fwd!(x::AbstractArray{T,4}, y::AbstractArray{T,4},
   width::Int, height::Int, channels::Int, num::Int, pooled_width::Int,
   pooled_height::Int, kernel_w::Int, kernel_h::Int,pad_w::Int, pad_h::Int,
-  stride_w::Int, stride_h::Int)
+  stride_w::Int, stride_h::Int) where T
   kernel_size = kernel_w * kernel_h
   for n = 1:num, c = 1:channels, ph = 1:pooled_height, pw = 1:pooled_width
     hstart = (ph - 1) * stride_h - pad_h
@@ -94,10 +94,10 @@ function meanpool2d!(y::AbstractArray{T,4}, x::AbstractArray{T,4};
     return y
 end
 
-function mean_pooling2d_bwd!{T}(x::AbstractArray{T,4}, y::AbstractArray{T,4},
+function mean_pooling2d_bwd!(x::AbstractArray{T,4}, y::AbstractArray{T,4},
   width::Int, height::Int, channels::Int, num::Int, pooled_width::Int,
   pooled_height::Int, kernel_w::Int, kernel_h::Int, pad_w::Int, pad_h::Int,
-  stride_w::Int, stride_h::Int)
+  stride_w::Int, stride_h::Int) where T
 
   x[:, :, :, :] = 0
   kernel_size = kernel_w * kernel_h
@@ -128,10 +128,10 @@ function meanpool2d_grad!(dx::AbstractArray{T,4}, dy::AbstractArray{T,4}, y::Abs
     return dx
 end
 
-function max_pooling3d_fwd!{T}(x::AbstractArray{T,5}, y::AbstractArray{T,5},
+function max_pooling3d_fwd!(x::AbstractArray{T,5}, y::AbstractArray{T,5},
   width::Int, height::Int, depth::Int, channels::Int, num::Int, pooled_width::Int,
   pooled_height::Int, pooled_depth::Int, kernel_w::Int, kernel_h::Int, kernel_d::Int,
-  pad_w::Int, pad_h::Int, pad_d::Int, stride_w::Int, stride_h::Int, stride_d::Int)
+  pad_w::Int, pad_h::Int, pad_d::Int, stride_w::Int, stride_h::Int, stride_d::Int) where T
   for n = 1:num, c = 1:channels, pd = 1:pooled_depth, ph = 1:pooled_height, pw = 1:pooled_width
     dstart = (pd - 1)* stride_d - pad_d
     hstart = (ph - 1)* stride_h - pad_h
@@ -162,11 +162,11 @@ function maxpool3d!(y::AbstractArray{T,5}, x::AbstractArray{T,5};
     return y
 end
 
-function max_pooling3d_bwd!{T}(x::AbstractArray{T,5}, y::AbstractArray{T,5},
+function max_pooling3d_bwd!(x::AbstractArray{T,5}, y::AbstractArray{T,5},
   grad_output::AbstractArray{T,5}, grad_input::AbstractArray{T,5}, width::Int, height::Int, depth::Int,
   channels::Int, num::Int, pooled_width::Int, pooled_height::Int, pooled_depth::Int,
   kernel_w::Int, kernel_h::Int, kernel_d::Int, pad_w::Int, pad_h::Int, pad_d::Int,
-  stride_w::Int, stride_h::Int, stride_d::Int)
+  stride_w::Int, stride_h::Int, stride_d::Int) where T
 
   grad_input[:, :, :, :, :] = 0
 
@@ -206,10 +206,10 @@ function maxpool3d_grad!(dx::AbstractArray{T,5}, dy::AbstractArray{T,5}, y::Abst
     return dx
 end
 
-function mean_pooling3d_fwd!{T}(x::AbstractArray{T,5}, y::AbstractArray{T,5},
+function mean_pooling3d_fwd!(x::AbstractArray{T,5}, y::AbstractArray{T,5},
   width::Int, height::Int, depth::Int, channels::Int, num::Int, pooled_width::Int,
   pooled_height::Int, pooled_depth::Int, kernel_w::Int, kernel_h::Int, kernel_d::Int,
-  pad_w::Int, pad_h::Int, pad_d::Int, stride_w::Int, stride_h::Int, stride_d::Int)
+  pad_w::Int, pad_h::Int, pad_d::Int, stride_w::Int, stride_h::Int, stride_d::Int) where T
 
   kernel_size = kernel_w * kernel_h * kernel_d
   #pragma omp parallel for
@@ -243,10 +243,10 @@ function meanpool3d!(y::AbstractArray{T,5}, x::AbstractArray{T,5};
     return y
 end
 
-function mean_pooling3d_bwd!{T}(grad_input::AbstractArray{T,5}, grad_output::AbstractArray{T,5},
+function mean_pooling3d_bwd!(grad_input::AbstractArray{T,5}, grad_output::AbstractArray{T,5},
   width::Int, height::Int, depth::Int, channels::Int, num::Int, pooled_width::Int,
   pooled_height::Int, pooled_depth::Int, kernel_w::Int, kernel_h::Int, kernel_d::Int,
-  pad_w::Int, pad_h::Int, pad_d::Int, stride_w::Int, stride_h::Int, stride_d::Int)
+  pad_w::Int, pad_h::Int, pad_d::Int, stride_w::Int, stride_h::Int, stride_d::Int) where T
 
   kernel_size = kernel_w * kernel_h * kernel_d
   fill!(grad_input, 0.0)
