@@ -32,7 +32,7 @@ function max_pooling2d_bwd!(x::AbstractArray{T,4}, y::AbstractArray{T,4},
   channels::Int, num::Int, pooled_width::Int, pooled_height::Int, kernel_w::Int,
   kernel_h::Int, pad_w::Int, pad_h::Int, stride_w::Int, stride_h::Int) where T
 
-  grad_input[:, :, :, :] = 0
+  grad_input .= 0
   #pragma omp parallel for
   for n = 1:num, c = 1:channels, ph = 1:pooled_height, pw = 1:pooled_width
     hstart = (ph - 1) * stride_h - pad_h
@@ -168,7 +168,7 @@ function max_pooling3d_bwd!(x::AbstractArray{T,5}, y::AbstractArray{T,5},
   kernel_w::Int, kernel_h::Int, kernel_d::Int, pad_w::Int, pad_h::Int, pad_d::Int,
   stride_w::Int, stride_h::Int, stride_d::Int) where T
 
-  grad_input[:, :, :, :, :] = 0
+  grad_input .= 0
 
   #pragma omp parallel for
   for n = 1:num, c = 1:channels, pd = 1:pooled_depth, ph = 1:pooled_height, pw = 1:pooled_width
