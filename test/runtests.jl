@@ -9,6 +9,10 @@ if Base.find_in_path("CuArrays") ≠ nothing
   include("cubroadcast.jl")
 end
 
+xs = [-100_000, -100_000.]
+@test softmax(xs) ≈ [0.5, 0.5]
+@test logsoftmax(xs) ≈ log.([0.5, 0.5])
+
 xs = rand(5)
 @test softmax(xs) ≈ exp.(xs) ./ sum(exp.(xs))
 @test logsoftmax(xs) ≈ log.(softmax(xs))

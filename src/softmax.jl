@@ -4,7 +4,7 @@ function softmax!(out::AbstractVecOrMat{T}, xs::AbstractVecOrMat{T}) where T<:Ab
   @threads for j = 1:size(xs, 2)
     @inbounds begin
       # out[end, :] .= maximum(xs, 1)
-      out[end, j] = 0
+      out[end, j] = xs[end, j]
       for i = 1:size(xs, 1)
         out[end, j] = max(out[end, j], xs[i, j])
       end
