@@ -92,15 +92,10 @@ function im2col_3d!{T}(img::AbstractArray{T,4}, col::AbstractArray{T,2}, width::
       d_offset = kernel_d - 1 - d_offset
     end
     for d = 1:depth_col, h = 1:height_col, w = 1:width_col
-<<<<<<< HEAD
-      d_pad = (d - 1) * stride_d - pad_d + d_offset
-      h_pad = (h - 1) * stride_h - pad_h + h_offset
-      w_pad = (w - 1) * stride_w - pad_w + w_offset
-=======
       d_pad = (d - 1) * stride_d - pad_d + d_offset * dil_d
       h_pad = (h - 1) * stride_h - pad_h + h_offset * dil_h
       w_pad = (w - 1) * stride_w - pad_w + w_offset * dil_w
->>>>>>> upstream/master
+
       if d_pad >= 0 && d_pad < depth && h_pad >= 0 && h_pad < height &&
         w_pad >= 0 && w_pad < width
         col[(((c - 1) * depth_col + d - 1) * height_col + h - 1) * width_col + w] =
@@ -151,7 +146,6 @@ function col2im_3d!{T}(col::AbstractArray{T,2}, img::AbstractArray{T,4}, width::
   end
 end
 
-<<<<<<< HEAD
 function im2col_nd!{T}(img::AbstractArray, col::AbstractArray{T,2},
   kernel_dim::NTuple, pad::AbstractArray, stride::AbstractArray, mode::Int)
 
@@ -295,7 +289,10 @@ function col2im_nd!{T}(col::AbstractArray{T,2}, img::AbstractArray{T},
         end
         img[img_ind + 1] += col[col_ind + 1]
       end
-=======
+    end
+  end
+end
+
 function dilation_dims(w, dilation = 1)
   N = ndims(w)
   dims_w = size(w)
@@ -305,16 +302,10 @@ function dilation_dims(w, dilation = 1)
       (dims_w[i] - 1) * dil[i] + 1
     else
       dims_w[i]
->>>>>>> upstream/master
     end
   end
 end
 
-<<<<<<< HEAD
-function im2col_dims(w,y)
-    N = ndims(y)
-    r,c = prod(size(y)[1:N-2]),prod(size(w)[1:N-1])
-=======
 function im2col_dims(w,y,dilation=1)
     N = ndims(y)
     dil = dilation_dims(w, dilation)
@@ -324,7 +315,6 @@ function im2col_dims(w,y,dilation=1)
         c *= dil[i]
     end
     c *= dil[N-1]
->>>>>>> upstream/master
     return (r, c)
 end
 
