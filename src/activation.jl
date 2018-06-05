@@ -45,7 +45,7 @@ const logsigmoid = logσ
 [Rectified Linear Unit](https://en.wikipedia.org/wiki/Rectifier_(neural_networks))
 activation function.
 """
-relu(x) = max(zero(x), x)
+relu(x) = max.(zero(x), x)
 
 
 """
