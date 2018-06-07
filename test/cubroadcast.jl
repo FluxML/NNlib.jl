@@ -1,7 +1,7 @@
 using CuArrays
 using NNlib: @fix
 
-"""https://github.com/FluxML/NNlib.jl/issues/37"""
+# https://github.com/FluxML/NNlib.jl/issues/37
 @testset "fix#37" begin
   m1(x,f) = @fix x.*f.(x)
 
