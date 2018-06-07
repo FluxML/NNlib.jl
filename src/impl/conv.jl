@@ -170,6 +170,92 @@ function im2col_dims(w,y)
     return (r, c)
 end
 
+function im2col_dims(w::NTuple{4, Int}, y)
+    N = ndims(y)
+    r,c = 1,1
+    for i=1:N-2
+        r *= size(y,i)
+        c *= w[i]
+    end
+    c *= w[N-1]
+    return (r, c)
+end
+
+function depthwiseconv2d!(y::AbstractArray{T,4}, x::AbstractArray{T,4}, w::AbstractArray{T,4};
+                  padding = 0, stride = 1, mode = 1, alpha = T(1)) where T
+    Wx,Hx,Cx,Nx = size(x)
+    Ww,Hw,Cm,Cw = size(w) # Cm = Channel Multiplier
+    @assert Cx == Cw DimensionMismatch()
+    Wy,Hy,Cy,Ny = size(y) # Cy = Cw * Cm
+    dims_w = (Ww,Hw,Cw,Cm*Cw)
+    x2dims = im2col_dims(dims_w,y)
+    x2 = similar(x, x2dims)
+    (p1,p2) = psize(padding,x)
+    (s1,s2) = psize(stride,x)
+    M,N,K,Y = Wy*Hy,Cm,Ww*Hw,Wy*Hy*Cm
+    yidx = 1
+    @inbounds for i in 1:Nx
+        im2col2d!(dims_w, x, x2, i, p1, p2, s1, s2, mode)
+        @inbounds for j in 1:Cx
+            gemm!('N','N',M,N,K,alpha,pointer(x2,(j-1)*M*K+1),pointer(w,(j-1)*K*N+1),T(0),pointer(y,yidx))
+            yidx += Y
+        end
+    end
+    return y
+end
+
+function depthwiseconv2d_grad_w!(dw::AbstractArray{T,4}, x::AbstractArray{T,4}, w::AbstractArray{T,4}, dy::AbstractArray{T,4};
+        padding=0, stride=1, mode=0, alpha=1) where T
+    Wx,Hx,Cx,Nx = size(x)
+    Ww,Hw,Cm,Cw = size(w) # Cm = Channel Multiplier
+    @assert Cx == Cw DimensionMismatch()
+    Wy,Hy,Cy,Ny = size(dy) # Cy = Cw * Cm
+    @assert Cy == Cw * Cm DimensionMismatch()
+    dims_w = (Ww,Hw,Cw,Cm*Cw)
+    x2dims = im2col_dims(dims_w,dy)
+    x2 = similar(x, x2dims)
+    (p1,p2) = psize(padding,x)
+    (s1,s2) = psize(stride,x)
+    M,N,K,Y,W = Ww*Hw,Cm,Wy*Hy,Wy*Hy*Cm*Cx,Ww*Hw*Cm
+    alpha,beta = T(alpha),T(1)
+    dyidx = 1
+    @inbounds for i in 1:Nx
+        im2col2d!(dims_w, x, x2, i, p1, p2, s1, s2, mode)
+        dwidx = 1
+        @inbounds for j in 1:Cx
+            gemm!('T','T',M,N,K,alpha,pointer(x2,(j-1)*M*K+1),pointer(dy,dyidx+(j-1)*K*N),beta,pointer(dw,dwidx))
+            dwidx += W
+        end
+        dyidx += Y
+    end
+    return dw
+end
+
+function depthwiseconv2d_grad_x!(dx::AbstractArray{T,4}, x::AbstractArray{T,4}, w::AbstractArray{T,4}, dy::AbstractArray{T,4};
+                   padding=0, stride=1, mode=0, alpha=1) where T
+    Wx,Hx,Cx,Nx = size(x)
+    Ww,Hw,Cm,Cw = size(w) # Cm = Channel Multiplier
+    @assert Cx == Cw DimensionMismatch()
+    Wy,Hy,Cy,Ny = size(dy) # Cy = Cw * Cm
+    @assert Cy == Cw * Cm DimensionMismatch()
+    dims_w = (Ww,Hw,Cw,Cm*Cw)
+    x2dims = im2col_dims(dims_w,dy)
+    x2 = similar(x, x2dims)
+    M,N,K,Y,W = Wy*Hy,Ww*Hw,Cm,Wy*Hy*Cm*Cx,Ww*Hw*Cm
+    alpha,beta = T(alpha),T(0)
+    (p1,p2) = psize(padding,x)
+    (s1,s2) = psize(stride,x)
+    dyidx = 1
+    @inbounds for i in 1:Nx
+        @inbounds for j in 1:Cx
+            gemm!('N','T',M,N,K,alpha,pointer(dy,dyidx+(j-1)*K*M),pointer(w,(j-1)*K*N+1),beta,pointer(x2,(j-1)*M*N+1))        
+        end
+        col2im2d!(dims_w,dx,x2,i,p1,p2,s1,s2,mode)
+        dyidx += Y
+    end
+    return dx
+end
+
 function conv2d!(y::AbstractArray{T,4}, x::AbstractArray{T,4}, w::AbstractArray{T,4};
                padding=0, stride=1, dilation=1, mode=0, alpha=T(1)) where T
     if mode != 0 && mode != 1; throw(ArgumentError("conv2d only supports mode=0 or 1.")); end
@@ -242,6 +328,15 @@ function conv2d_grad_x!(dx::AbstractArray{T,4}, x::AbstractArray{T,4}, w::Abstra
     return dx
 end
 
+function im2col2d!(w::NTuple{4,Int}, x::AbstractArray{T,4}, x2::AbstractArray{T,2},
+                 n::Int, p1::Int, p2::Int, s1::Int, s2::Int, mode::Int) where T
+    Wx,Hx,Cx,Nx = size(x)
+    Ww,Hw,C1,C2 = w
+    xn = x[:, :, :, n]
+    im2col_2d!(xn,x2,Wx,Hx,Cx,Ww,Hw,p1,p2,s1,s2,1,1,mode)
+    return x2
+end
+
 function im2col2d!(w::AbstractArray{T,4}, x::AbstractArray{T,4}, x2::AbstractArray{T,2},
                  n::Int, p1::Int, p2::Int, s1::Int, s2::Int, d1::Int, d2::Int, mode::Int) where T
     Wx,Hx,Cx,Nx = size(x)
@@ -249,6 +344,16 @@ function im2col2d!(w::AbstractArray{T,4}, x::AbstractArray{T,4}, x2::AbstractArr
     xn = x[:, :, :, n]
     im2col_2d!(xn,x2,Wx,Hx,Cx,Ww,Hw,p1,p2,s1,s2,d1,d2,mode)
     return x2
+end
+
+function col2im2d!(w::NTuple{4,Int}, x::AbstractArray{T,4}, x2::AbstractArray{T,2},
+                 n::Int, p1::Int, p2::Int, s1::Int, s2::Int, mode::Int) where T
+    Wx,Hx,Cx,Nx = size(x)
+    Ww,Hw,C1,C2 = w
+    xn = x[:, :, :, n]
+    col2im_2d!(x2,xn,Wx,Hx,Cx,Ww,Hw,p1,p2,s1,s2,1,1,mode)
+    x[:, :, :, n] = xn
+    return x
 end
 
 function col2im2d!(w::AbstractArray{T,4}, x::AbstractArray{T,4}, x2::AbstractArray{T,2},
