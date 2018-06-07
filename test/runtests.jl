@@ -1,12 +1,13 @@
-using NNlib, Test
+using NNlib
+using Base.Test
 
 @testset "NNlib" begin
 
 include("activation.jl")
 include("conv.jl")
-# if Base.find_in_path("CuArrays") ≠ nothing
-#   include("cubroadcast.jl")
-# end
+if Base.find_in_path("CuArrays") ≠ nothing
+  include("cubroadcast.jl")
+end
 
 xs = [-100_000, -100_000.]
 @test softmax(xs) ≈ [0.5, 0.5]
@@ -18,7 +19,7 @@ xs = rand(5)
 @test logsigmoid.(xs) ≈ log.(sigmoid.(xs))
 
 xs = rand(5,10)
-@test softmax(xs) ≈ exp.(xs) ./ sum(exp.(xs), dims = 1)
+@test softmax(xs) ≈ exp.(xs) ./ sum(exp.(xs),1)
 @test logsoftmax(xs) ≈ log.(softmax(xs))
 @test logsigmoid.(xs) ≈ log.(sigmoid.(xs))
 
