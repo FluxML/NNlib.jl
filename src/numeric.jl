@@ -1,9 +1,9 @@
 using Base.Math: @horner, significand_bits, exponent_raw_max, exponent_bias
 
 if VERSION < v"0.7.0-DEV.1430"
-    using Base.Math.fpinttype
+    using Base.Math: fpinttype
 else
-    using Base.uinttype
+    using Base: uinttype
 end
 
 # log_fast from
