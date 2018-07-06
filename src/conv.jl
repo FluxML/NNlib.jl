@@ -91,14 +91,14 @@ function dcdims(x::NTuple{4,Int}, w::NTuple{4,Int}, pad, stride)
   ((x[1] + 2 * pad[1] - w[1])÷stride[1] + 1,(x[2] + 2 * pad[2] - w[2])÷stride[2] + 1,w[3]*w[4],x[4])
 end
 
-function depthwiseconv(x::A, w::A; pad = 0, stride = 1) where A<:AbstractArray
+function depthwiseconv(x::A, w::A; pad = 0, stride = 1, flipkernel = true) where A<:AbstractArray
   pad_, stride_ = padtuple(x, pad), padtuple(x, stride)
-  depthwiseconv!(similar(x, dcdims(size(x), size(w), pad_, stride_)), x, w, pad = pad_, stride = stride_)
+  depthwiseconv!(similar(x, dcdims(size(x), size(w), pad_, stride_)), x, w, pad = pad_, stride = stride_, flipkernel = flipkernel)
 end
 
 depthwiseconv!(y::AbstractArray{T,4}, x::AbstractArray{T,4}, w::AbstractArray{T,4};
-      pad = 0, stride = 1) where T =
-  depthwiseconv2d!(y, x, w, padding = pad, stride = stride)
+      pad = 0, stride = 1, flipkernel = true) where T =
+  depthwiseconv2d!(y, x, w, padding = pad, stride = stride, flipkernel = flipkernel)
 
 ∇depthwiseconv_data(dy::A, x::A, w::A; pad = 0, stride = 1) where A<:AbstractArray =
   ∇depthwiseconv_data!(zeros(x), dy, x, w; pad = pad, stride = stride)
