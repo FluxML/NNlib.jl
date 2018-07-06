@@ -23,7 +23,7 @@ function im2col_2d!(img::AbstractArray{T,3}, col::AbstractArray{T,2}, width::Int
     w_offset = (c - 1) % kernel_w
     h_offset = div(c - 1, kernel_w) % kernel_h
     c_im = div(c - 1, kernel_h * kernel_w)
-    if mode == 0
+    if flipkernel
       w_offset = kernel_w - 1 - w_offset
       h_offset = kernel_h - 1 - h_offset
     end
@@ -44,7 +44,7 @@ end
 
 function col2im_2d!(col::AbstractArray{T,2}, img::AbstractArray{T,3}, width::Int, height::Int,
   channels::Int, kernel_w::Int, kernel_h::Int, pad_w::Int, pad_h::Int, stride_w::Int,
-  stride_h::Int, dil_w::Int, dil_h::Int, mode::Int) where T
+  stride_h::Int, dil_w::Int, dil_h::Int, flipkernel::Bool) where T
 
   height_col = div(height + 2pad_h - (kernel_h - 1) * dil_h - 1, stride_h) + 1
   width_col = div(width + 2pad_w - (kernel_w - 1) * dil_w - 1, stride_w) + 1
@@ -56,7 +56,7 @@ function col2im_2d!(col::AbstractArray{T,2}, img::AbstractArray{T,3}, width::Int
     w_offset = (c - 1) % kernel_w
     h_offset = div(c - 1,  kernel_w) % kernel_h
     c_im = div(c - 1, kernel_h * kernel_w)
-    if mode == 0
+    if flipkernel
       w_offset = kernel_w - 1 - w_offset
       h_offset = kernel_h - 1 - h_offset
     end
@@ -73,7 +73,7 @@ end
 
 function im2col_3d!(img::AbstractArray{T,4}, col::AbstractArray{T,2}, width::Int, height::Int, depth::Int,
   channels::Int, kernel_w::Int, kernel_h::Int, kernel_d::Int, pad_w::Int, pad_h::Int, pad_d::Int,
-  stride_w::Int, stride_h::Int, stride_d::Int, dil_w::Int, dil_h::Int, dil_d::Int, mode::Int) where T
+  stride_w::Int, stride_h::Int, stride_d::Int, dil_w::Int, dil_h::Int, dil_d::Int, flipkernel::Bool) where T
 
   height_col = div(height + 2pad_h - (kernel_h - 1) * dil_h - 1, stride_h) + 1
   width_col = div(width + 2pad_w - (kernel_w - 1) * dil_w - 1, stride_w) + 1
@@ -87,7 +87,7 @@ function im2col_3d!(img::AbstractArray{T,4}, col::AbstractArray{T,2}, width::Int
     h_offset = div(c - 1, kernel_w) % kernel_h
     d_offset = div(c - 1, kernel_w * kernel_h) % kernel_d
     c_im = div(c - 1, kernel_w * kernel_h * kernel_d)
-    if mode == 0
+    if flipkernel
       w_offset = kernel_w - 1 - w_offset
       h_offset = kernel_h - 1 - h_offset
       d_offset = kernel_d - 1 - d_offset
@@ -110,7 +110,7 @@ end
 function col2im_3d!(col::AbstractArray{T,2}, img::AbstractArray{T,4}, width::Int, height::Int,
   depth::Int, channels::Int, kernel_w::Int, kernel_h::Int, kernel_d::Int,
   pad_w::Int, pad_h::Int, pad_d::Int, stride_w::Int, stride_h::Int, stride_d::Int,
-  dil_w::Int, dil_h::Int, dil_d::Int, mode::Int) where T
+  dil_w::Int, dil_h::Int, dil_d::Int, flipkernel::Bool) where T
 
   height_col = div(height + 2pad_h - (kernel_h - 1) * dil_h - 1, stride_h) + 1
   width_col = div(width + 2pad_w - (kernel_w - 1) * dil_w - 1, stride_w) + 1
@@ -125,7 +125,7 @@ function col2im_3d!(col::AbstractArray{T,2}, img::AbstractArray{T,4}, width::Int
     d_offset = div(c - 1, kernel_w * kernel_h) % kernel_d
     c_im = div(c - 1, kernel_h * kernel_w * kernel_d)
 
-    if mode == 0
+    if flipkernel
       w_offset = kernel_w - 1 - w_offset
       h_offset = kernel_h - 1 - h_offset
       d_offset = kernel_d - 1 - d_offset
@@ -257,8 +257,7 @@ function depthwiseconv2d_grad_x!(dx::AbstractArray{T,4}, x::AbstractArray{T,4}, 
 end
 
 function conv2d!(y::AbstractArray{T,4}, x::AbstractArray{T,4}, w::AbstractArray{T,4};
-               padding=0, stride=1, dilation=1, mode=0, alpha=T(1)) where T
-    if mode != 0 && mode != 1; throw(ArgumentError("conv2d only supports mode=0 or 1.")); end
+               padding=0, stride=1, dilation=1, flipkernel=true, alpha=T(1)) where T
     Wx,Hx,Cx,Nx = size(x)
     Ww,Hw,C1,C2 = size(w)
     if Cx!=C1; throw(DimensionMismatch()); end
@@ -271,7 +270,7 @@ function conv2d!(y::AbstractArray{T,4}, x::AbstractArray{T,4}, w::AbstractArray{
     M,N,K,Y = Wy*Hy,Cy,Ww*Hw*Cx,Wy*Hy*Cy
     yidx = 1
     @inbounds for n in 1:Nx
-        im2col2d!(w, x, x2, n, p1, p2, s1, s2, d1, d2, mode)
+        im2col2d!(w, x, x2, n, p1, p2, s1, s2, d1, d2, flipkernel)
         gemm!('N','N',M,N,K,alpha,pointer(x2),pointer(w),T(0),pointer(y,yidx))
         yidx += Y
     end
@@ -279,7 +278,7 @@ function conv2d!(y::AbstractArray{T,4}, x::AbstractArray{T,4}, w::AbstractArray{
 end
 
 function conv2d_grad_w!(dw::AbstractArray{T,4}, x::AbstractArray{T,4}, w::AbstractArray{T,4}, dy::AbstractArray{T,4};
-                   padding=0, stride=1, dilation=1, mode=0, alpha=1) where T
+                   padding=0, stride=1, dilation=1, flipkernel=true, alpha=1) where T
     # dw = x'*dy
     Wx,Hx,Cx,Nx = size(x)
     Ww,Hw,C1,C2 = size(w)
@@ -296,7 +295,7 @@ function conv2d_grad_w!(dw::AbstractArray{T,4}, x::AbstractArray{T,4}, w::Abstra
     (d1,d2) = psize(dilation,x)
     dyi = 1
     @inbounds for n in 1:Nx
-        im2col2d!(w, x, x2, n, p1, p2, s1, s2, d1, d2, mode)
+        im2col2d!(w, x, x2, n, p1, p2, s1, s2, d1, d2, flipkernel)
         gemm!('T','N',M,N,K,alpha,pointer(x2),pointer(dy,dyi),beta,pointer(dw))
         dyi += Y
     end
@@ -304,7 +303,7 @@ function conv2d_grad_w!(dw::AbstractArray{T,4}, x::AbstractArray{T,4}, w::Abstra
 end
 
 function conv2d_grad_x!(dx::AbstractArray{T,4}, x::AbstractArray{T,4}, w::AbstractArray{T,4}, dy::AbstractArray{T,4};
-                   padding=0, stride=1, dilation=1, mode=0, alpha=1) where T
+                   padding=0, stride=1, dilation=1, flipkernel=true, alpha=1) where T
     # dx = dy*w'
     Wx,Hx,Cx,Nx = size(x)
     Ww,Hw,C1,C2 = size(w)
@@ -322,53 +321,52 @@ function conv2d_grad_x!(dx::AbstractArray{T,4}, x::AbstractArray{T,4}, w::Abstra
     dyi = 1
     @inbounds for n in 1:Nx
         gemm!('N','T',M,N,K,alpha,pointer(dy,dyi),pointer(w),beta,pointer(x2))
-        col2im2d!(w,dx,x2,n,p1,p2,s1,s2,d1,d2,mode)
+        col2im2d!(w,dx,x2,n,p1,p2,s1,s2,d1,d2,flipkernel)
         dyi += Y
     end
     return dx
 end
 
 function im2col2d!(w::NTuple{4,Int}, x::AbstractArray{T,4}, x2::AbstractArray{T,2},
-                 n::Int, p1::Int, p2::Int, s1::Int, s2::Int, mode::Int) where T
+                 n::Int, p1::Int, p2::Int, s1::Int, s2::Int, flipkernel::Bool) where T
     Wx,Hx,Cx,Nx = size(x)
     Ww,Hw,C1,C2 = w
     xn = x[:, :, :, n]
-    im2col_2d!(xn,x2,Wx,Hx,Cx,Ww,Hw,p1,p2,s1,s2,1,1,mode)
+    im2col_2d!(xn,x2,Wx,Hx,Cx,Ww,Hw,p1,p2,s1,s2,1,1,flipkernel)
     return x2
 end
 
 function im2col2d!(w::AbstractArray{T,4}, x::AbstractArray{T,4}, x2::AbstractArray{T,2},
-                 n::Int, p1::Int, p2::Int, s1::Int, s2::Int, d1::Int, d2::Int, mode::Int) where T
+                 n::Int, p1::Int, p2::Int, s1::Int, s2::Int, d1::Int, d2::Int, flipkernel::Bool) where T
     Wx,Hx,Cx,Nx = size(x)
     Ww,Hw,C1,C2 = size(w)
     xn = x[:, :, :, n]
-    im2col_2d!(xn,x2,Wx,Hx,Cx,Ww,Hw,p1,p2,s1,s2,d1,d2,mode)
+    im2col_2d!(xn,x2,Wx,Hx,Cx,Ww,Hw,p1,p2,s1,s2,d1,d2,flipkernel)
     return x2
 end
 
 function col2im2d!(w::NTuple{4,Int}, x::AbstractArray{T,4}, x2::AbstractArray{T,2},
-                 n::Int, p1::Int, p2::Int, s1::Int, s2::Int, mode::Int) where T
+                 n::Int, p1::Int, p2::Int, s1::Int, s2::Int, flipkernel::Bool) where T
     Wx,Hx,Cx,Nx = size(x)
     Ww,Hw,C1,C2 = w
     xn = x[:, :, :, n]
-    col2im_2d!(x2,xn,Wx,Hx,Cx,Ww,Hw,p1,p2,s1,s2,1,1,mode)
+    col2im_2d!(x2,xn,Wx,Hx,Cx,Ww,Hw,p1,p2,s1,s2,1,1,flipkernel)
     x[:, :, :, n] = xn
     return x
 end
 
 function col2im2d!(w::AbstractArray{T,4}, x::AbstractArray{T,4}, x2::AbstractArray{T,2},
-                 n::Int, p1::Int, p2::Int, s1::Int, s2::Int, d1::Int, d2::Int, mode::Int) where T
+                 n::Int, p1::Int, p2::Int, s1::Int, s2::Int, d1::Int, d2::Int, flipkernel::Bool) where T
     Wx,Hx,Cx,Nx = size(x)
     Ww,Hw,C1,C2 = size(w)
     xn = x[:, :, :, n]
-    col2im_2d!(x2,xn,Wx,Hx,Cx,Ww,Hw,p1,p2,s1,s2,d1,d2,mode)
+    col2im_2d!(x2,xn,Wx,Hx,Cx,Ww,Hw,p1,p2,s1,s2,d1,d2,flipkernel)
     x[:, :, :, n] = xn
     return x
 end
 
 function conv3d!(y::AbstractArray{T,5}, x::AbstractArray{T,5}, w::AbstractArray{T,5};
-               padding=0, stride=1, dilation = 1, mode=0, alpha=T(1)) where T
-    if mode != 0 && mode != 1; throw(ArgumentError("conv3d only supports mode=0 or 1.")); end
+               padding=0, stride=1, dilation = 1, flipkernel=true, alpha=T(1)) where T
     Wx,Hx,Dx,Cx,Nx = size(x)
     Ww,Hw,Dw,C1,C2 = size(w)
     if Cx!=C1; throw(DimensionMismatch()); end
@@ -383,7 +381,7 @@ function conv3d!(y::AbstractArray{T,5}, x::AbstractArray{T,5}, w::AbstractArray{
     yidx = 1
     W = reshape(w, (size(w, 1),:,C1,C2))
     @inbounds for n in 1:Nx
-        im2col3d!(w, x, x2, n, p1, p2, p3, s1, s2, s3, d1, d2, d3, mode)
+        im2col3d!(w, x, x2, n, p1, p2, p3, s1, s2, s3, d1, d2, d3, flipkernel)
         gemm!('N','N',M,N,K,alpha,pointer(x2),pointer(W),T(0),pointer(y,yidx))
         yidx += Y
     end
@@ -391,7 +389,7 @@ function conv3d!(y::AbstractArray{T,5}, x::AbstractArray{T,5}, w::AbstractArray{
 end
 
 function conv3d_grad_w!(dw::AbstractArray{T,5}, x::AbstractArray{T,5}, w::AbstractArray{T,5}, dy::AbstractArray{T,5};
-                   padding=0, stride=1, dilation = 1, mode=0, alpha=1) where T
+                   padding=0, stride=1, dilation = 1, flipkernel=true, alpha=1) where T
     # dw = x'*dy
     Wx,Hx,Dx,Cx,Nx = size(x)
     Ww,Hw,Dw,C1,C2 = size(w)
@@ -408,7 +406,7 @@ function conv3d_grad_w!(dw::AbstractArray{T,5}, x::AbstractArray{T,5}, w::Abstra
     (d1,d2,d3) = psize(dilation,x)
     dyi = 1
     @inbounds for n in 1:Nx
-        im2col3d!(w, x, x2, n, p1, p2, p3, s1, s2, s3, d1, d2, d3, mode)
+        im2col3d!(w, x, x2, n, p1, p2, p3, s1, s2, s3, d1, d2, d3, flipkernel)
         gemm!('T','N',M,N,K,alpha,pointer(x2),pointer(dy,dyi),beta,pointer(dw))
         dyi += Y
     end
@@ -416,7 +414,7 @@ function conv3d_grad_w!(dw::AbstractArray{T,5}, x::AbstractArray{T,5}, w::Abstra
 end
 
 function conv3d_grad_x!(dx::AbstractArray{T,5}, x::AbstractArray{T,5}, w::AbstractArray{T,5}, dy::AbstractArray{T,5};
-                   padding=0, stride=1, dilation = 1, mode=0, alpha=1) where T
+                   padding=0, stride=1, dilation = 1, flipkernel=true, alpha=1) where T
     # dx = dy*w'
     Wx,Hx,Dx,Cx,Nx = size(x)
     Ww,Hw,Dw,C1,C2 = size(w)
@@ -434,7 +432,7 @@ function conv3d_grad_x!(dx::AbstractArray{T,5}, x::AbstractArray{T,5}, w::Abstra
     dyi = 1
     @inbounds for n in 1:Nx
         gemm!('N','T',M,N,K,alpha,pointer(dy,dyi),pointer(w),beta,pointer(x2))
-        col2im3d!(w,dx,x2,n,p1,p2,p3,s1,s2,s3,d1,d2,d3,mode)
+        col2im3d!(w,dx,x2,n,p1,p2,p3,s1,s2,s3,d1,d2,d3,flipkernel)
         dyi += Y
     end
     return dx
@@ -442,21 +440,21 @@ end
 
 function im2col3d!(w::AbstractArray{T,5}, x::AbstractArray{T,5}, x2::AbstractArray{T,2},
                  n::Int, p1::Int, p2::Int, p3::Int, s1::Int, s2::Int,
-                 s3::Int, d1::Int, d2::Int, d3::Int, mode::Int) where T
+                 s3::Int, d1::Int, d2::Int, d3::Int, flipkernel::Bool) where T
     Wx,Hx,Dx,Cx,Nx = size(x)
     Ww,Hw,Dw,C1,C2 = size(w)
     xn = x[:, :, :, :, n]
-    im2col_3d!(xn,x2,Wx,Hx,Dx,Cx,Ww,Hw,Dw,p1,p2,p3,s1,s2,s3,d1,d2,d3,mode)
+    im2col_3d!(xn,x2,Wx,Hx,Dx,Cx,Ww,Hw,Dw,p1,p2,p3,s1,s2,s3,d1,d2,d3,flipkernel)
     return x2
 end
 
 function col2im3d!(w::AbstractArray{T,5}, x::AbstractArray{T,5}, x2::AbstractArray{T,2},
                  n::Int, p1::Int, p2::Int, p3::Int, s1::Int, s2::Int,
-                 s3::Int, d1::Int, d2::Int, d3::Int, mode::Int) where T
+                 s3::Int, d1::Int, d2::Int, d3::Int, flipkernel::Bool) where T
     Wx,Hx,Dx,Cx,Nx = size(x)
     Ww,Hw,Dw,C1,C2 = size(w)
     xn = x[:, :, :, :, n]
-    col2im_3d!(x2,xn,Wx,Hx,Dx,Cx,Ww,Hw,Dw,p1,p2,p3,s1,s2,s3,d1,d2,d3,mode)
+    col2im_3d!(x2,xn,Wx,Hx,Dx,Cx,Ww,Hw,Dw,p1,p2,p3,s1,s2,s3,d1,d2,d3,flipkernel)
     x[:, :, :, :, n] = xn
     return x
 end
