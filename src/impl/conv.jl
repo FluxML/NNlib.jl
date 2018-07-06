@@ -12,7 +12,7 @@ end
 
 function im2col_2d!(img::AbstractArray{T,3}, col::AbstractArray{T,2}, width::Int, height::Int, channels::Int,
   kernel_w::Int, kernel_h::Int, pad_w::Int, pad_h::Int, stride_w::Int, stride_h::Int,
-  dil_w::Int, dil_h::Int, mode::Int) where T
+  dil_w::Int, dil_h::Int, flipkernel::Bool) where T
 
   height_col = div(height + 2pad_h - (kernel_h - 1) * dil_h - 1, stride_h) + 1
   width_col = div(width + 2pad_w - (kernel_w - 1) * dil_w - 1, stride_w) + 1
