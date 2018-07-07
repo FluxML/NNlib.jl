@@ -45,8 +45,27 @@ const logsigmoid = logσ
 [Rectified Linear Unit](https://en.wikipedia.org/wiki/Rectifier_(neural_networks))
 activation function.
 """
-relu(x) = max(zero(x), x)
+relu_(x) = max(zero(x), x)
 
+function relu_(x, out)
+         ptp = ccall((:pthreadpool_create, :libnnpack), Ptr{Void}, (Csize_t,), 1)
+         input = Cfloat.(x)
+       
+         ccall((:nnp_initialize,"libnnpack"),Void,(),)
+         ccall((:nnp_relu_output,"libnnpack"),Void,(Csize_t, Csize_t, Ptr{Cfloat}, Ptr{Cfloat}, Cfloat, Ptr{Void}), Csize_t(size(input, 2)), Csize_t(size(input, 1)), input, out, Cfloat(0), ptp)
+       
+         return convert(typeof(x), out)
+end
+
+function relu(x)
+  @show length(size(x))
+  if (is_linux() || is_mac()) && length(size(x)) > 0
+    out = zeros(Cfloat, size(x))
+    return relu_(x, out)
+  else
+    return relu_(x)
+  end
+end
 
 """
     leakyrelu(x) = max(0.01x, x)
