@@ -26,7 +26,18 @@ function softmax!(out::AbstractVecOrMat{T}, xs::AbstractVecOrMat{T}) where T<:Ab
 end
 
 softmax!(xs) = softmax!(xs, xs)
-softmax(xs) = softmax!(similar(xs), xs)
+function softmax(xs)
+  if is_linux() || is_mac()
+    input = Cfloat.(xs)
+    out = zeros(Cfloat, size(xs))
+    ptp = ccall((:pthreadpool_create, :libnnpack), Ptr{Void}, (Csize_t,), 0)
+    ccall((:nnp_initialize,"libnnpack"),Void,(),)
+    ccall((:nnp_softmax_output,"libnnpack"),Void,(Csize_t, Csize_t, Ptr{Cfloat}, Ptr{Cfloat}, Ptr{Void}), Csize_t(size(xs, 2)), Csize_t(size(xs, 1)), input, out, ptp)
+    return convert(typeof(xs), out)
+  else
+    softmax!(similar(xs), xs)
+  end
+end
 
 function ∇softmax!(out::AbstractVecOrMat, Δ::AbstractVecOrMat, xs::AbstractVecOrMat)
   s = sum(exp, xs, 1)
