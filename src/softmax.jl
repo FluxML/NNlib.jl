@@ -27,7 +27,7 @@ end
 
 softmax!(xs) = softmax!(xs, xs)
 function softmax(xs)
-  if is_linux() || is_mac()
+  if is_linux() || is_apple()
     input = Cfloat.(xs)
     out = zeros(Cfloat, size(xs))
     ptp = ccall((:pthreadpool_create, :libnnpack), Ptr{Void}, (Csize_t,), 0)
