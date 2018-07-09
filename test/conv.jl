@@ -101,12 +101,12 @@ end
         @test squeeze(z[:,:,:,i:i], (4)) == squeeze(res, (3))
     end
 
-    @test size(∇depthwiseconv_filter(rand(2,2,2,1), x, w)) == size(w)
-    @test size(∇depthwiseconv_data(rand(2,2,2,1), x, w)) == size(x)
+    @test size(∇depthwiseconv_filter(rand(2,2,4,1), x, w)) == size(w)
+    @test size(∇depthwiseconv_data(rand(2,2,4,1), x, w)) == size(x)
 
     # Test for the stride/pad for backward pass
     y = depthwiseconv(x,w,stride=2,pad=1)
-    @test size(y) == (2,2,2,1)
+    @test size(y) == (2,2,4,1)
     @test size(∇depthwiseconv_filter(rand(size(y)), x, w, stride=2, pad=1)) == size(w)
     @test size(∇depthwiseconv_data(rand(size(y)), x, w, stride=2, pad=1)) == size(x)
 end
