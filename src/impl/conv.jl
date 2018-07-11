@@ -182,7 +182,7 @@ function im2col_dims(w::NTuple{4, Int}, y)
 end
 
 function depthwiseconv2d!(y::AbstractArray{T,4}, x::AbstractArray{T,4}, w::AbstractArray{T,4};
-                  padding = 0, stride = 1, mode = 1, alpha = T(1)) where T
+                  padding = 0, stride = 1, mode = 0, alpha = T(1)) where T
     Wx,Hx,Cx,Nx = size(x)
     Ww,Hw,Cm,Cw = size(w) # Cm = Channel Multiplier
     @assert Cx == Cw DimensionMismatch()
@@ -223,7 +223,7 @@ function depthwiseconv2d_grad_w!(dw::AbstractArray{T,4}, x::AbstractArray{T,4}, 
         im2col2d!(dims_w, x, x2, i, p1, p2, s1, s2, mode)
         dwidx = 1
         @inbounds for j in 1:Cx
-            gemm!('T','T',M,N,K,alpha,pointer(x2,(j-1)*M*K+1),pointer(dy,dyidx+(j-1)*K*N),beta,pointer(dw,dwidx))
+            gemm!('T','N',M,N,K,alpha,pointer(x2,(j-1)*M*K+1),pointer(dy,dyidx+(j-1)*K*N),beta,pointer(dw,dwidx))
             dwidx += W
         end
         dyidx += Y
@@ -248,7 +248,7 @@ function depthwiseconv2d_grad_x!(dx::AbstractArray{T,4}, x::AbstractArray{T,4}, 
     dyidx = 1
     @inbounds for i in 1:Nx
         @inbounds for j in 1:Cx
-            gemm!('N','T',M,N,K,alpha,pointer(dy,dyidx+(j-1)*K*M),pointer(w,(j-1)*K*N+1),beta,pointer(x2,(j-1)*M*N+1))        
+            gemm!('N','T',M,N,K,alpha,pointer(dy,dyidx+(j-1)*K*M),pointer(w,(j-1)*K*N+1),beta,pointer(x2,(j-1)*M*N+1))
         end
         col2im2d!(dims_w,dx,x2,i,p1,p2,s1,s2,mode)
         dyidx += Y

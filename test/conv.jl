@@ -69,25 +69,25 @@ end
 
 @testset "depthwiseconv2d" begin
     x = reshape(Float64[1:18;], 3, 3, 2, 1)
-    w = reshape(Float64[1:8;], 2, 2, 1, 2)
+    w = reshape(Float64[1:16;], 2, 2, 2, 2)
 
-    @test depthwiseconv(x, w)[:] == [37.0, 47.0, 67.0, 77.0, 319.0, 345.0, 397.0, 423.0]
+    @test depthwiseconv(x, w)[:] == [23.0, 33.0, 53.0, 63.0, 71.0, 97.0, 149.0, 175.0, 497.0, 539.0, 623.0, 665.0, 689.0, 747.0, 863.0, 921.0]
 
-    @test depthwiseconv(x, w, stride = 2, pad = 1)[:] == [4.0, 18.0, 36.0, 77.0, 80.0, 173.0, 206.0, 423.0]
+    @test depthwiseconv(x, w, stride = 2, pad = 1)[:] == [1.0, 7.0, 19.0, 63.0, 5.0, 27.0, 63.0, 175.0, 90.0, 218.0, 287.0, 665.0, 130.0, 310.0, 403.0, 921.0]
 
-    @test depthwiseconv(x, w, stride = 2)[:] == [37.0, 319.0]
+    @test depthwiseconv(x, w, stride = 2)[:] == [23.0, 71.0, 497.0, 689.0]
 
-    @test depthwiseconv(x, w, pad = 1)[:] == [4.0, 11.0, 18.0, 9.0, 18.0, 37.0, 47.0, 21.0, 36.0, 67.0, 77.0, 33.0, 14.0, 23.0, 26.0, 9.0, 80.0, 158.0, 173.0, 84.0, 164.0, 319.0, 345.0, 165.0, 206.0, 397.0, 423.0, 201.0, 96.0, 182.0, 193.0, 90.0]
+    @test depthwiseconv(x, w, pad = 1)[:] == [1.0, 4.0, 7.0, 6.0, 7.0, 23.0, 33.0, 24.0, 19.0, 53.0, 63.0, 42.0, 21.0, 52.0, 59.0, 36.0, 5.0, 16.0, 27.0, 18.0, 27.0, 71.0, 97.0, 60.0, 63.0, 149.0, 175.0, 102.0, 49.0, 112.0, 127.0, 72.0, 90.0, 199.0, 218.0, 120.0, 227.0, 497.0, 539.0, 294.0, 287.0, 623.0, 665.0, 360.0, 176.0, 379.0, 402.0, 216.0, 130.0, 283.0, 310.0, 168.0, 319.0, 689.0, 747.0, 402.0, 403.0, 863.0, 921.0, 492.0, 240.0, 511.0, 542.0, 288.0]
 
     # the correctness of the gradients are being verified by calling
     # the corresponding counvolution gradients
 
-    dy = reshape(Float64[1:8;], 2,2,2,1)
+    dy = reshape(Float64[1:16;], 2,2,4,1)
     local z = ∇depthwiseconv_data(dy,x,w)
     for i in 1:2
         X = copy(x[:,:,i:i,:]);
         W = copy(permutedims(w[:,:,:,i:i],[1,2,4,3]));
-        DY = copy(dy[:,:,i:i,:]);
+        DY = copy(dy[:,:,2i-1:2i,:]);
         res = ∇conv_data(DY,X,W)
         @test squeeze(z[:,:,i:i,:], (3,4)) == squeeze(res, (3,4))
     end
@@ -96,17 +96,17 @@ end
     for i in 1:2
         X = copy(x[:,:,i:i,:]);
         W = copy(permutedims(w[:,:,:,i:i],[1,2,4,3]))
-        DY = copy(dy[:,:,i:i,:])
+        DY = copy(dy[:,:,2i-1:2i,:])
         res = ∇conv_filter(DY,X,W)
-        @test squeeze(z[:,:,:,i:i], (3,4)) == squeeze(res, (3,4))
+        @test squeeze(z[:,:,:,i:i], (4)) == squeeze(res, (3))
     end
 
-    @test size(∇depthwiseconv_filter(rand(2,2,2,1), x, w)) == size(w)
-    @test size(∇depthwiseconv_data(rand(2,2,2,1), x, w)) == size(x)
+    @test size(∇depthwiseconv_filter(rand(2,2,4,1), x, w)) == size(w)
+    @test size(∇depthwiseconv_data(rand(2,2,4,1), x, w)) == size(x)
 
     # Test for the stride/pad for backward pass
     y = depthwiseconv(x,w,stride=2,pad=1)
-    @test size(y) == (2,2,2,1)
+    @test size(y) == (2,2,4,1)
     @test size(∇depthwiseconv_filter(rand(size(y)), x, w, stride=2, pad=1)) == size(w)
     @test size(∇depthwiseconv_data(rand(size(y)), x, w, stride=2, pad=1)) == size(x)
 end
