@@ -46,7 +46,7 @@ function conv!(y::Array{Float32,4}, x::Array{Float32,4}, w::Array{Float32,4};
       pad = 0, stride = 1, dilation = 1)
   input_size = nnp_size(size(x, 1), size(x, 2))
   
-  input_padding = nnp_padding(pad, pad, pad, pad)
+  input_padding = nnp_padding(pad[2], pad[1], pad[2], pad[1])
   kernel_size = nnp_size(size(w,1), size(w,2))
 
   bias = zeros(Cfloat, size(x, 3))
@@ -57,4 +57,5 @@ function conv!(y::Array{Float32,4}, x::Array{Float32,4}, w::Array{Float32,4};
                   Ptr{Void}, Csize_t, Cint, Ptr{Void}, Ptr{Void}, Ptr{Void}),
                  0, size(x, 4), size(x, 3), size(y, 3), input_size, input_padding, kernel_size,
                  x, w, bias, y, C_NULL, 0, 0, C_NULL, C_NULL, C_NULL)
+  return y
 end
