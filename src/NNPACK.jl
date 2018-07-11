@@ -1,6 +1,18 @@
 ccall((:nnp_initialize,"libnnpack"),Void,(),)
 ptp = ccall((:pthreadpool_create, :libnnpack), Ptr{Void}, (Csize_t,), 0)
 
+struct nnp_size
+ width::Csize_t
+ height::Csize_t
+end
+
+struct nnp_padding
+  top::Csize_t
+  right::Csize_t
+  bottom::Csize_t
+  left::Csize_t
+end
+
 function softmax!(out::AbstractVecOrMat{T}, xs::AbstractVecOrMat{T}) where T<:AbstractFloat
   input = Cfloat.(xs)
   output = similar(input)
@@ -28,4 +40,21 @@ function relu(x)
     out = convert(typeof(x), output[1])
   end
   return out
+end
+
+function conv!(y::Array{Float32,4}, x::Array{Float32,4}, w::Array{Float32,4};
+      pad = 0, stride = 1, dilation = 1)
+  input_size = nnp_size(size(x, 1), size(x, 2))
+  
+  input_padding = nnp_padding(pad, pad, pad, pad)
+  kernel_size = nnp_size(size(w,1), size(w,2))
+
+  bias = zeros(Cfloat, size(x, 3))
+
+  status = ccall((:nnp_convolution_output,:libnnpack),Cint,
+                 (Cint, Csize_t, Csize_t, Csize_t, nnp_size, nnp_padding, nnp_size,
+                  Ptr{Float32}, Ptr{Float32}, Ptr{Float32}, Ptr{Float32},
+                  Ptr{Void}, Csize_t, Cint, Ptr{Void}, Ptr{Void}, Ptr{Void}),
+                 0, size(x, 4), size(x, 3), size(y, 3), input_size, input_padding, kernel_size,
+                 x, w, bias, y, C_NULL, 0, 0, C_NULL, C_NULL, C_NULL)
 end

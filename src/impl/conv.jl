@@ -257,7 +257,7 @@ function depthwiseconv2d_grad_x!(dx::AbstractArray{T,4}, x::AbstractArray{T,4}, 
 end
 
 function conv2d!(y::AbstractArray{T,4}, x::AbstractArray{T,4}, w::AbstractArray{T,4};
-               padding=0, stride=1, dilation=1, mode=0, alpha=T(1)) where T
+               padding=0, stride=1, dilation=1, mode=1, alpha=T(1)) where T
     if mode != 0 && mode != 1; throw(ArgumentError("conv2d only supports mode=0 or 1.")); end
     Wx,Hx,Cx,Nx = size(x)
     Ww,Hw,C1,C2 = size(w)
