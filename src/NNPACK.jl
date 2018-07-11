@@ -57,5 +57,23 @@ function conv!(y::Array{Float32,4}, x::Array{Float32,4}, w::Array{Float32,4};
                   Ptr{Void}, Csize_t, Cint, Ptr{Void}, Ptr{Void}, Ptr{Void}),
                  0, size(x, 4), size(x, 3), size(y, 3), input_size, input_padding, kernel_size,
                  x, w, bias, y, C_NULL, 0, 0, C_NULL, C_NULL, C_NULL)
+
+  return y
+end
+
+function maxpool2d!(y::Array{Float32,4}, x::Array{Float32,4};
+                    window::Dims{2}=(2,2), padding::Dims{2}=(0,0),
+                    stride::Dims{2}=window)
+
+  input_size = nnp_size(Csize_t(size(x,1)), Csize_t(size(x,2)))
+  input_padding = nnp_padding(Csize_t(padding[2]), Csize_t(padding[1]), Csize_t(padding[2]), Csize_t(padding[1]))
+  pooling_size = nnp_size(Csize_t(window[1]), Csize_t(window[2]))
+  pooling_stride = nnp_size(Csize_t(stride[1]), Csize_t(stride[2]))
+
+  status = ccall((:nnp_max_pooling_output,"libnnpack"),Cint,(Csize_t, Csize_t, nnp_size, nnp_padding, nnp_size, nnp_size, Ptr{Cfloat}, Ptr{Cfloat}, Ptr{Void}), size(x, 4), size(x, 3), input_size, input_padding, pooling_size, pooling_stride, x, y, ptp)
+  if (status == 50)
+      ccall((:nnp_initialize,"libnnpack"),Void,(),)
+      ccall((:nnp_max_pooling_output,"libnnpack"),Cint,(Csize_t, Csize_t, nnp_size, nnp_padding, nnp_size, nnp_size, Ptr{Cfloat}, Ptr{Cfloat}, Ptr{Void}), size(x, 4), size(x, 3), input_size, input_padding, pooling_size, pooling_stride, x, y, ptp)
+  end
   return y
 end
