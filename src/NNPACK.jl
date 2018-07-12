@@ -88,25 +88,24 @@ end
 function conv2d!(y::AbstractArray{Float32,4}, x::AbstractArray{Float32,4}, w::AbstractArray{Float32,4};
       pad = 0, stride = 1, dilation = 1, activation = 0, bias = zeros(Float32, size(x,3)))
   input_size = nnp_size(size(x, 1), size(x, 2))
-  
+
   input_padding = nnp_padding(pad[2], pad[1], pad[2], pad[1])
   kernel_size = nnp_size(size(w,1), size(w,2))
-  @show typeof(y)
   status = ccall((:nnp_convolution_output,:libnnpack),Cint,
                  (Cint, Csize_t, Csize_t, Csize_t, nnp_size, nnp_padding, nnp_size,
                   Ptr{Float32}, Ptr{Float32}, Ptr{Float32}, Ptr{Float32},
                   Ptr{Void}, Csize_t, Cint, Ptr{Void}, Ptr{Void}, Ptr{Void}),
                  0, size(x, 4), size(x, 3), size(y, 3), input_size, input_padding, kernel_size,
-                 x.data, w.data, bias, y, C_NULL, 0, activation, C_NULL, C_NULL, C_NULL)
+                 x, w, bias.data, y, C_NULL, 0, activation, C_NULL, C_NULL, C_NULL)
 
   if status == 50
       ccall((:nnp_initialize,"libnnpack"),Void,(),)
-  status = ccall((:nnp_convolution_output,:libnnpack),Cint,
+      status = ccall((:nnp_convolution_output,:libnnpack),Cint,
                  (Cint, Csize_t, Csize_t, Csize_t, nnp_size, nnp_padding, nnp_size,
                   Ptr{Float32}, Ptr{Float32}, Ptr{Float32}, Ptr{Float32},
                   Ptr{Void}, Csize_t, Cint, Ptr{Void}, Ptr{Void}, Ptr{Void}),
                  0, size(x, 4), size(x, 3), size(y, 3), input_size, input_padding, kernel_size,
-                 x.data, w.data, bias, y, C_NULL, 0, activation, C_NULL, C_NULL, C_NULL)
+                 x, w, bias.data, y, C_NULL, 0, activation, C_NULL, C_NULL, C_NULL)
     end
 
   return y
@@ -179,7 +178,7 @@ function  conv2d_grad_w!(dw::Array{Float32,4}, x::Array{Float32,4}, w::Array{Flo
   return dw
 end
 
-function conv(x::A, w::A; pad = 0, stride = 1, dilation = 1, activation = 0, bias = zeros(Float32, size(x, 3))) where A<:AbstractArray
+function convo(x::A, w::A, bias; pad = 0, stride = 1, dilation = 1, activation = 0) where A<:AbstractArray
   pad_, stride_ = padtuple(x, pad), padtuple(x, stride)
   conv!(similar(x, cdims(size(x), dilation_dims(w, dilation), pad_, stride_)),
         x, w, pad = pad_, stride = stride_, dilation = dilation, activation = activation, bias = bias)
@@ -194,6 +193,6 @@ end
 
 conv!(y::AbstractArray{Float32,4}, x::AbstractArray{Float32,4}, w::AbstractArray{Float32,4};
       pad = 0, stride = 1, dilation = 1, activation = 0, bias = zeros(Float32, size(x,3))) =
-  conv2d!(y, x, w, pad = pad, stride = stride, dilation = dilation)
+  conv2d!(y, x, w, pad = pad, stride = stride, dilation = dilation, activation = activation, bias = bias)
 
 end

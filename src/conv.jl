@@ -25,6 +25,9 @@ padtuple(x::Tuple,p::Tuple) = p
 padtuple(x::AbstractArray,p) = padtuple(size(x),p)
 
 function conv(x::A, w::A; pad = 0, stride = 1, dilation = 1) where A<:AbstractArray
+  println("\n\nOnly here:")
+  @show typeof(x)
+  @show typeof(w)
   pad_, stride_ = padtuple(x, pad), padtuple(x, stride)
   conv!(similar(x, cdims(size(x), dilation_dims(w, dilation), pad_, stride_)),
         x, w, pad = pad_, stride = stride_, dilation = dilation)
