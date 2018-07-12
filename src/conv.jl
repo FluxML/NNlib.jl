@@ -41,6 +41,8 @@ end
 function conv!(y::AbstractArray{T,3}, x::AbstractArray{T,3}, w::AbstractArray{T,3};
                pad = 0, stride = 1, dilation = 1) where T
     args = map(x -> reshape(x, size(x,1),1,size(x,2),size(x,3)), (y, x, w))
+    println("At here 1")
+    @show typeof(y)
     conv!(args..., pad = (pad...,0), stride = (stride...,1), dilation = (dilation...,1))
     return y
 end
@@ -61,9 +63,12 @@ function ∇conv_data!(dx::AbstractArray{T,3}, dy::AbstractArray{T,3},
     return dx
 end
 
-conv!(y::AbstractArray{T,4}, x::AbstractArray{T,4}, w::AbstractArray{T,4};
-      pad = 0, stride = 1, dilation = 1) where T =
+function conv!(y::AbstractArray{T,4}, x::AbstractArray{T,4}, w::AbstractArray{T,4};
+      pad = 0, stride = 1, dilation = 1) where T
+  println("At here 2")
+  @show typeof(y)
   conv2d!(y, x, w, padding = pad, stride = stride, dilation = dilation)
+end
 
 ∇conv_filter!(dw::AbstractArray{T,4}, dy::AbstractArray{T,4}, x::AbstractArray{T,4}, w::AbstractArray{T,4};
               pad = 0, stride = 1, dilation = 1) where T =
