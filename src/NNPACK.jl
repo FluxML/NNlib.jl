@@ -1,3 +1,5 @@
+module NNPACK
+
 ccall((:nnp_initialize,"libnnpack"),Void,(),)
 ptp = ccall((:pthreadpool_create, :libnnpack), Ptr{Void}, (Csize_t,), 0)
 
@@ -11,6 +13,47 @@ struct nnp_padding
   right::Csize_t
   bottom::Csize_t
   left::Csize_t
+end
+
+function cdims(x::NTuple{N}, w::NTuple{N}, pad, stride) where N
+  ntuple(Val{N}) do i
+    if i < N-1
+      1 + div(x[i] - w[i] + 2*pad[i], stride[i])
+    elseif i == N-1
+      w[N]
+    else # i == N
+      x[N]
+    end
+  end
+end
+
+head(x) = reverse(Base.tail(reverse(x)))
+padtuple(x::Tuple,p::Integer) = map(_->p, head(head(x)))
+padtuple(x::Tuple,p::Tuple) = p
+padtuple(x::AbstractArray,p) = padtuple(size(x),p)
+
+function psize(p, x)
+  nd = ndims(x)-2
+  if isa(p,Number)
+    fill(Int(p),nd)
+  elseif length(p)==nd
+    collect(Int,p)
+  else
+    throw(DimensionMismatch("psize: $p $nd"))
+  end
+end
+
+function dilation_dims(w, dilation = 1)
+  N = ndims(w)
+  dims_w = size(w)
+  dil = psize(dilation, w)
+  ntuple(N) do i
+    if i < N - 1
+      (dims_w[i] - 1) * dil[i] + 1
+    else
+      dims_w[i]
+    end
+  end
 end
 
 function softmax!(out::AbstractVecOrMat{T}, xs::AbstractVecOrMat{T}) where T<:AbstractFloat
@@ -42,21 +85,28 @@ function relu(x)
   return out
 end
 
-function conv!(y::Array{Float32,4}, x::Array{Float32,4}, w::Array{Float32,4};
-      pad = 0, stride = 1, dilation = 1)
+function conv2d!(y::AbstractArray{Float32,4}, x::AbstractArray{Float32,4}, w::AbstractArray{Float32,4};
+      pad = 0, stride = 1, dilation = 1, activation = 0, bias = zeros(Float32, size(x,3)))
   input_size = nnp_size(size(x, 1), size(x, 2))
   
   input_padding = nnp_padding(pad[2], pad[1], pad[2], pad[1])
   kernel_size = nnp_size(size(w,1), size(w,2))
-
-  bias = zeros(Cfloat, size(x, 3))
-
   status = ccall((:nnp_convolution_output,:libnnpack),Cint,
                  (Cint, Csize_t, Csize_t, Csize_t, nnp_size, nnp_padding, nnp_size,
                   Ptr{Float32}, Ptr{Float32}, Ptr{Float32}, Ptr{Float32},
                   Ptr{Void}, Csize_t, Cint, Ptr{Void}, Ptr{Void}, Ptr{Void}),
                  0, size(x, 4), size(x, 3), size(y, 3), input_size, input_padding, kernel_size,
-                 x, w, bias, y, C_NULL, 0, 0, C_NULL, C_NULL, C_NULL)
+                 x.data, w.data, bias, y, C_NULL, 0, activation, C_NULL, C_NULL, C_NULL)
+
+  if status == 50
+      ccall((:nnp_initialize,"libnnpack"),Void,(),)
+  status = ccall((:nnp_convolution_output,:libnnpack),Cint,
+                 (Cint, Csize_t, Csize_t, Csize_t, nnp_size, nnp_padding, nnp_size,
+                  Ptr{Float32}, Ptr{Float32}, Ptr{Float32}, Ptr{Float32},
+                  Ptr{Void}, Csize_t, Cint, Ptr{Void}, Ptr{Void}, Ptr{Void}),
+                 0, size(x, 4), size(x, 3), size(y, 3), input_size, input_padding, kernel_size,
+                 x.data, w.data, bias.data, y, C_NULL, 0, activation, C_NULL, C_NULL, C_NULL)
+    end
 
   return y
 end
@@ -126,4 +176,23 @@ function  conv2d_grad_w!(dw::Array{Float32,4}, x::Array{Float32,4}, w::Array{Flo
                        x, dy, dw, C_NULL, 0, 0, C_NULL, C_NULL, C_NULL)
   end
   return dw
+end
+
+function conv(x::A, w::A; pad = 0, stride = 1, dilation = 1, activation = 0, bias = zeros(Float32, size(x, 3))) where A<:AbstractArray{Float32}
+  pad_, stride_ = padtuple(x, pad), padtuple(x, stride)
+  conv!(similar(x, cdims(size(x), dilation_dims(w, dilation), pad_, stride_)),
+        x, w, pad = pad_, stride = stride_, dilation = dilation, activation = activation, bias = bias)
+end
+
+function conv!(y::AbstractArray{Float32,3}, x::AbstractArray{Float32,3}, w::AbstractArray{Float32,3};
+               pad = 0, stride = 1, dilation = 1, activation = 0, bias = zeros(Float32, size(x,2)))
+    args = map(x -> reshape(x, size(x,1),1,size(x,2),size(x,3)), (y, x, w))
+    conv!(args..., pad = (pad...,0), stride = (stride...,1), dilation = (dilation...,1), activation = activation, bias = bias)
+    return y
+end
+
+conv!(y::AbstractArray{Float32,4}, x::AbstractArray{Float32,4}, w::AbstractArray{Float32,4};
+      pad = 0, stride = 1, dilation = 1, activation = 0, bias = zeros(Float32, size(x,3))) =
+  conv2d!(y, x, w, pad = pad, stride = stride, dilation = dilation)
+
 end

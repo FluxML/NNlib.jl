@@ -3,9 +3,9 @@ module NNlib
 using Requires
 
 export σ, sigmoid, relu, leakyrelu, elu, swish, selu, softplus, softsign, logσ, logsigmoid,
-  softmax, logsoftmax, maxpool, meanpool
+  softmax, logsoftmax, maxpool, meanpool, nnpack_available
 
-nnpack_available=(is_linux() || is_apple()) && isfile("libnnpack.so")
+nnpack_available()=(is_linux() || is_apple()) && isfile("libnnpack.so")
 
 include("numeric.jl")
 include("activation.jl")
@@ -15,8 +15,8 @@ include("linalg.jl")
 include("conv.jl")
 include("cubroadcast.jl")
 
-if nnpack_available
-  include("NNPACK.jl")
+if nnpack_available()
+	include("NNPACK.jl")
 end
 
 end # module
