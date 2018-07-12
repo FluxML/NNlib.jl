@@ -77,3 +77,28 @@ function maxpool2d!(y::Array{Float32,4}, x::Array{Float32,4};
   end
   return y
 end
+
+function conv2d_grad_x!(dx::Array{Float32,4}, x::Array{Float32,4}, w::Array{Float32,4}, dy::Array{Float32,4};
+                   padding=0, stride=1, dilation=1, mode=0, alpha=1)
+
+  input_size = nnp_size(Csize_t(size(x,1)), Csize_t(size(x,2)))
+  input_padding = nnp_padding(padding, padding, padding, padding)
+  kernel_size = nnp_size(size(w,1), size(w,2))
+
+  status = ccall((:nnp_convolution_input_gradient,:libnnpack),Cint,
+                 (Cint, Csize_t, Csize_t, Csize_t, nnp_size, nnp_padding, nnp_size,
+                  Ptr{Float32}, Ptr{Float32}, Ptr{Float32},
+                  Ptr{Void}, Csize_t, Cint, Ptr{Void}, Ptr{Void}, Ptr{Void}),
+                 0, size(x, 4), size(x, 3), size(dy, 3), input_size, input_padding, kernel_size,
+                 dy, w, dx, C_NULL, 0, 0, C_NULL, C_NULL, C_NULL)
+  if (status == 50)
+      ccall((:nnp_initialize,"libnnpack"),Void,(),)
+      ccall((:nnp_convolution_input_gradient,:libnnpack),Cint,
+                       (Cint, Csize_t, Csize_t, Csize_t, nnp_size, nnp_padding, nnp_size,
+                        Ptr{Float32}, Ptr{Float32}, Ptr{Float32},
+                        Ptr{Void}, Csize_t, Cint, Ptr{Void}, Ptr{Void}, Ptr{Void}),
+                       0, size(x, 4), size(x, 3), size(dy, 3), input_size, input_padding, kernel_size,
+                       dy, w, dx, C_NULL, 0, 0, C_NULL, C_NULL, C_NULL)
+  end
+  return dx
+end
