@@ -205,7 +205,7 @@ function depthwiseconv2d!(y::AbstractArray{T,4}, x::AbstractArray{T,4}, w::Abstr
 end
 
 function depthwiseconv2d_grad_w!(dw::AbstractArray{T,4}, x::AbstractArray{T,4}, w::AbstractArray{T,4}, dy::AbstractArray{T,4};
-        padding=0, stride=1, mode=0, alpha=1) where T
+        padding=0, stride=1, mode=1, alpha=1) where T
     Wx,Hx,Cx,Nx = size(x)
     Ww,Hw,Cm,Cw = size(w) # Cm = Channel Multiplier
     @assert Cx == Cw DimensionMismatch()
@@ -232,7 +232,7 @@ function depthwiseconv2d_grad_w!(dw::AbstractArray{T,4}, x::AbstractArray{T,4}, 
 end
 
 function depthwiseconv2d_grad_x!(dx::AbstractArray{T,4}, x::AbstractArray{T,4}, w::AbstractArray{T,4}, dy::AbstractArray{T,4};
-                   padding=0, stride=1, mode=0, alpha=1) where T
+                   padding=0, stride=1, mode=1, alpha=1) where T
     Wx,Hx,Cx,Nx = size(x)
     Ww,Hw,Cm,Cw = size(w) # Cm = Channel Multiplier
     @assert Cx == Cw DimensionMismatch()
@@ -279,7 +279,7 @@ function conv2d!(y::AbstractArray{T,4}, x::AbstractArray{T,4}, w::AbstractArray{
 end
 
 function conv2d_grad_w!(dw::AbstractArray{T,4}, x::AbstractArray{T,4}, w::AbstractArray{T,4}, dy::AbstractArray{T,4};
-                   padding=0, stride=1, dilation=1, mode=0, alpha=1) where T
+                   padding=0, stride=1, dilation=1, mode=1, alpha=1) where T
     # dw = x'*dy
     Wx,Hx,Cx,Nx = size(x)
     Ww,Hw,C1,C2 = size(w)
@@ -304,7 +304,7 @@ function conv2d_grad_w!(dw::AbstractArray{T,4}, x::AbstractArray{T,4}, w::Abstra
 end
 
 function conv2d_grad_x!(dx::AbstractArray{T,4}, x::AbstractArray{T,4}, w::AbstractArray{T,4}, dy::AbstractArray{T,4};
-                   padding=0, stride=1, dilation=1, mode=0, alpha=1) where T
+                   padding=0, stride=1, dilation=1, mode=1, alpha=1) where T
     # dx = dy*w'
     Wx,Hx,Cx,Nx = size(x)
     Ww,Hw,C1,C2 = size(w)
@@ -367,7 +367,7 @@ function col2im2d!(w::AbstractArray{T,4}, x::AbstractArray{T,4}, x2::AbstractArr
 end
 
 function conv3d!(y::AbstractArray{T,5}, x::AbstractArray{T,5}, w::AbstractArray{T,5};
-               padding=0, stride=1, dilation = 1, mode=0, alpha=T(1)) where T
+               padding=0, stride=1, dilation = 1, mode=1, alpha=T(1)) where T
     if mode != 0 && mode != 1; throw(ArgumentError("conv3d only supports mode=0 or 1.")); end
     Wx,Hx,Dx,Cx,Nx = size(x)
     Ww,Hw,Dw,C1,C2 = size(w)
@@ -391,7 +391,7 @@ function conv3d!(y::AbstractArray{T,5}, x::AbstractArray{T,5}, w::AbstractArray{
 end
 
 function conv3d_grad_w!(dw::AbstractArray{T,5}, x::AbstractArray{T,5}, w::AbstractArray{T,5}, dy::AbstractArray{T,5};
-                   padding=0, stride=1, dilation = 1, mode=0, alpha=1) where T
+                   padding=0, stride=1, dilation = 1, mode=1, alpha=1) where T
     # dw = x'*dy
     Wx,Hx,Dx,Cx,Nx = size(x)
     Ww,Hw,Dw,C1,C2 = size(w)
@@ -416,7 +416,7 @@ function conv3d_grad_w!(dw::AbstractArray{T,5}, x::AbstractArray{T,5}, w::Abstra
 end
 
 function conv3d_grad_x!(dx::AbstractArray{T,5}, x::AbstractArray{T,5}, w::AbstractArray{T,5}, dy::AbstractArray{T,5};
-                   padding=0, stride=1, dilation = 1, mode=0, alpha=1) where T
+                   padding=0, stride=1, dilation = 1, mode=1, alpha=1) where T
     # dx = dy*w'
     Wx,Hx,Dx,Cx,Nx = size(x)
     Ww,Hw,Dw,C1,C2 = size(w)
