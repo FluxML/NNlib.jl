@@ -258,8 +258,6 @@ end
 
 function conv2d!(y::AbstractArray{T,4}, x::AbstractArray{T,4}, w::AbstractArray{T,4};
                padding=0, stride=1, dilation=1, mode=1, alpha=T(1)) where T
-    println("At here 3")
-    @show typeof(y)
     if mode != 0 && mode != 1; throw(ArgumentError("conv2d only supports mode=0 or 1.")); end
     Wx,Hx,Cx,Nx = size(x)
     Ww,Hw,C1,C2 = size(w)
@@ -277,8 +275,6 @@ function conv2d!(y::AbstractArray{T,4}, x::AbstractArray{T,4}, w::AbstractArray{
         gemm!('N','N',M,N,K,alpha,pointer(x2),pointer(w),T(0),pointer(y,yidx))
         yidx += Y
     end
-    println("At here 4")
-    @show typeof(y)
     return y
 end
 
