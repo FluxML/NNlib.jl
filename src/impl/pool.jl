@@ -28,7 +28,7 @@ function maxpool2d!(y::AbstractArray{T,4}, x::AbstractArray{T,4};
 end
 
 function max_pooling2d_bwd!(x::AbstractArray{T,4}, y::AbstractArray{T,4},
-  grad_output::AbstractArray{T,4}, grad_input::AbstractArray{T,4}, width::Int, height::Int,
+  grad_output, grad_input::AbstractArray{T,4}, width::Int, height::Int,
   channels::Int, num::Int, pooled_width::Int, pooled_height::Int, kernel_w::Int,
   kernel_h::Int, pad_w::Int, pad_h::Int, stride_w::Int, stride_h::Int) where T
 
@@ -51,7 +51,7 @@ function max_pooling2d_bwd!(x::AbstractArray{T,4}, y::AbstractArray{T,4},
   end
 end
 
-function maxpool2d_grad!(dx::AbstractArray{T,4}, dy::AbstractArray{T,4}, y::AbstractArray{T,4}, x::AbstractArray{T,4};
+function maxpool2d_grad!(dx::AbstractArray{T,4}, dy, y::AbstractArray{T,4}, x::AbstractArray{T,4};
                          window::Dims{2}=(2,2), padding::Dims{2}=(0,0),
                          stride::Dims{2}=window) where T
     Wx,Hx,Cx,Nx = size(x)

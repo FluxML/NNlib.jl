@@ -25,6 +25,9 @@ padtuple(x::Tuple,p::Tuple) = p
 padtuple(x::AbstractArray,p) = padtuple(size(x),p)
 
 function conv(x::A, w::A; pad = 0, stride = 1, dilation = 1) where A<:AbstractArray
+  # println("\n\nOnly here:")
+  # @show typeof(x)
+  # @show typeof(w)
   pad_, stride_ = padtuple(x, pad), padtuple(x, stride)
   conv!(similar(x, cdims(size(x), dilation_dims(w, dilation), pad_, stride_)),
         x, w, pad = pad_, stride = stride_, dilation = dilation)
@@ -41,6 +44,8 @@ end
 function conv!(y::AbstractArray{T,3}, x::AbstractArray{T,3}, w::AbstractArray{T,3};
                pad = 0, stride = 1, dilation = 1) where T
     args = map(x -> reshape(x, size(x,1),1,size(x,2),size(x,3)), (y, x, w))
+    # println("At here 1")
+    # @show typeof(y)
     conv!(args..., pad = (pad...,0), stride = (stride...,1), dilation = (dilation...,1))
     return y
 end
@@ -61,9 +66,12 @@ function ∇conv_data!(dx::AbstractArray{T,3}, dy::AbstractArray{T,3},
     return dx
 end
 
-conv!(y::AbstractArray{T,4}, x::AbstractArray{T,4}, w::AbstractArray{T,4};
-      pad = 0, stride = 1, dilation = 1) where T =
+function conv!(y::AbstractArray{T,4}, x::AbstractArray{T,4}, w::AbstractArray{T,4};
+      pad = 0, stride = 1, dilation = 1) where T
+  # println("At here 2")
+  # @show typeof(y)
   conv2d!(y, x, w, padding = pad, stride = stride, dilation = dilation)
+end
 
 ∇conv_filter!(dw::AbstractArray{T,4}, dy::AbstractArray{T,4}, x::AbstractArray{T,4}, w::AbstractArray{T,4};
               pad = 0, stride = 1, dilation = 1) where T =
@@ -139,11 +147,11 @@ maxpool(x::AbstractArray, k; pad = map(_->0,k), stride = k) =
 maxpool!(y::A, x::A, k; kw...) where A<:AbstractArray =
   maxpool_cpu!(y, x, k; kw...)
 
-∇maxpool(dy::A, y::A, x::A, k; pad = map(_->0,k), stride = k) where A<:AbstractArray =
+∇maxpool(dy, y::A, x::A, k; pad = map(_->0,k), stride = k) where A<:AbstractArray =
   ∇maxpool!(similar(x), dy, y, x, k, pad = expand(Val{length(k)}, pad),
             stride = expand(Val{length(k)}, stride))
 
-∇maxpool!(dx::A, dy::A, y::A, x::A, k; kw...) where A<:AbstractArray =
+∇maxpool!(dx::A, dy, y::A, x::A, k; kw...) where A<:AbstractArray =
   ∇maxpool_cpu!(dx, dy, y, x, k; kw...)
 
 meanpool(x::AbstractArray, k; pad = map(_->0,k), stride = k) =
