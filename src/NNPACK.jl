@@ -132,7 +132,7 @@ function maxpool2d!(y::Array{Float32,4}, x::Array{Float32,4};
 end
 
 function conv2d_grad_x!(dx::Array{Float32,4}, x::Array{Float32,4}, w::Array{Float32,4}, dy;
-                   padding=0, stride=1, dilation=1, mode=1, alpha=1)
+                   padding=0, stride=1, dilation=1, mode=1, alpha=1, activation = 0)
   println("Here")
   input_size = nnp_size(Csize_t(size(x,1)), Csize_t(size(x,2)))
   input_padding = nnp_padding(padding, padding, padding, padding)
@@ -143,7 +143,7 @@ function conv2d_grad_x!(dx::Array{Float32,4}, x::Array{Float32,4}, w::Array{Floa
                   Ptr{Float32}, Ptr{Float32}, Ptr{Float32},
                   Ptr{Void}, Csize_t, Cint, Ptr{Void}, Ptr{Void}, Ptr{Void}),
                  0, size(x, 4), size(x, 3), size(dy, 3), input_size, input_padding, kernel_size,
-                 dy, w, dx, C_NULL, 0, 0, C_NULL, C_NULL, C_NULL)
+                 dy, w, dx, C_NULL, 0, activation, C_NULL, C_NULL, C_NULL)
   if (status == 50)
       ccall((:nnp_initialize,"libnnpack"),Void,(),)
       ccall((:nnp_convolution_input_gradient,:libnnpack),Cint,
@@ -151,13 +151,13 @@ function conv2d_grad_x!(dx::Array{Float32,4}, x::Array{Float32,4}, w::Array{Floa
                         Ptr{Float32}, Ptr{Float32}, Ptr{Float32},
                         Ptr{Void}, Csize_t, Cint, Ptr{Void}, Ptr{Void}, Ptr{Void}),
                        0, size(x, 4), size(x, 3), size(dy, 3), input_size, input_padding, kernel_size,
-                       dy, w, dx, C_NULL, 0, 0, C_NULL, C_NULL, C_NULL)
+                       dy, w, dx, C_NULL, 0, activation, C_NULL, C_NULL, C_NULL)
   end
   return dx
 end
 
 function  conv2d_grad_w!(dw::Array{Float32,4}, x::Array{Float32,4}, w::Array{Float32,4}, dy;
-                   padding=0, stride=1, dilation=1, mode=0, alpha=1)
+                   padding=0, stride=1, dilation=1, mode=0, alpha=1, activation = 0)
 
   input_size = nnp_size(Csize_t(size(x,1)), Csize_t(size(x,2)))
   input_padding = nnp_padding(padding, padding, padding, padding)
@@ -168,7 +168,7 @@ function  conv2d_grad_w!(dw::Array{Float32,4}, x::Array{Float32,4}, w::Array{Flo
                   Ptr{Float32}, Ptr{Float32}, Ptr{Float32},
                   Ptr{Void}, Csize_t, Cint, Ptr{Void}, Ptr{Void}, Ptr{Void}),
                  0, size(x, 4), size(x, 3), size(dy, 3), input_size, input_padding, kernel_size,
-                 x, dy, dw, C_NULL, 0, 0, C_NULL, C_NULL, C_NULL)
+                 x, dy, dw, C_NULL, 0, activation, C_NULL, C_NULL, C_NULL)
   if (status == 50)
       ccall((:nnp_initialize,"libnnpack"),Void,(),)
       ccall((:nnp_convolution_kernel_gradient,:libnnpack),Cint,
@@ -176,7 +176,7 @@ function  conv2d_grad_w!(dw::Array{Float32,4}, x::Array{Float32,4}, w::Array{Flo
                         Ptr{Float32}, Ptr{Float32}, Ptr{Float32},
                         Ptr{Void}, Csize_t, Cint, Ptr{Void}, Ptr{Void}, Ptr{Void}),
                        0, size(x, 4), size(x, 3), size(dy, 3), input_size, input_padding, kernel_size,
-                       x, dy, dw, C_NULL, 0, 0, C_NULL, C_NULL, C_NULL)
+                       x, dy, dw, C_NULL, 0, activation, C_NULL, C_NULL, C_NULL)
   end
   return dw
 end
@@ -199,37 +199,37 @@ conv!(y::AbstractArray{Float32,4}, x::AbstractArray{Float32,4}, w::AbstractArray
   conv2d!(y, x, w, pad = pad, stride = stride, dilation = dilation, activation = activation, bias = bias)
 
 
-function ∇conv_data(dy, x, w; pad = 0, stride = 1, dilation = 1)
+function ∇conv_data(dy, x, w; pad = 0, stride = 1, dilation = 1, activation = 0)
   println("here 5")
-  ∇conv_data!(zeros(Float32, size(x)), dy, x, w; pad = pad, stride = stride, dilation = dilation)
+  ∇conv_data!(zeros(Float32, size(x)), dy, x, w; pad = pad, stride = stride, dilation = dilation, activation = activation)
 end
 
-function ∇conv_filter(dy, x, w; pad = 0, stride = 1, dilation = 1)
-  ∇conv_filter!(zeros(Float32, size(w)), dy, x, w; pad = pad, stride = stride, dilation = dilation)
+function ∇conv_filter(dy, x, w; pad = 0, stride = 1, dilation = 1, activation = 0)
+  ∇conv_filter!(zeros(Float32, size(w)), dy, x, w; pad = pad, stride = stride, dilation = dilation, activation = activation)
 end
 
 ∇conv_filter!(dw::AbstractArray{T,4}, dy, x::AbstractArray{T,4}, w::AbstractArray{T,4};
-              pad = 0, stride = 1, dilation = 1) where T<:AbstractFloat =
-  conv2d_grad_w!(dw, x, w, dy, padding = pad, stride = stride, dilation = dilation)
+              pad = 0, stride = 1, dilation = 1, activation = 0) where T<:AbstractFloat =
+  conv2d_grad_w!(dw, x, w, dy, padding = pad, stride = stride, dilation = dilation, activation = activation)
 
 ∇conv_data!(dx::AbstractArray{T,4}, dy, x::AbstractArray{T,4}, w::AbstractArray{T,4};
-            pad = 0, stride = 1, dilation = 1) where T<:AbstractFloat =
-  conv2d_grad_x!(dx, x, w, dy, padding = pad, stride = stride, dilation = dilation)
+            pad = 0, stride = 1, dilation = 1, activation = 0) where T<:AbstractFloat =
+  conv2d_grad_x!(dx, x, w, dy, padding = pad, stride = stride, dilation = dilation, activation = activation)
 
 
 function ∇conv_filter!(dw::AbstractArray{T,3}, dy,
                        x::AbstractArray{T,3}, w::AbstractArray{T,3};
-                       pad = 0, stride = 1, dilation = 1) where T<:AbstractFloat
+                       pad = 0, stride = 1, dilation = 1, activation = 0) where T<:AbstractFloat
     args = map(x -> reshape(x, size(x,1),1,size(x,2),size(x,3)), (dw, dy, x, w))
-    ∇conv_filter!(args..., pad = (pad...,0), stride = (stride...,1), dilation = (dilation...,1))
+    ∇conv_filter!(args..., pad = (pad...,0), stride = (stride...,1), dilation = (dilation...,1), activation = activation)
     return dw
 end
 
 function ∇conv_data!(dx::AbstractArray{T,3}, dy,
                      x::AbstractArray{T,3}, w::AbstractArray{T,3};
-                     pad = 0, stride = 1, dilation = 1) where T<:AbstractFloat
+                     pad = 0, stride = 1, dilation = 1, activation = 0) where T<:AbstractFloat
     args = map(x -> reshape(x, size(x,1),1,size(x,2),size(x,3)), (dx, dy, x, w))
-    ∇conv_data!(args..., pad = (pad...,0), stride = (stride...,1), dilation = (dilation..., 1))
+    ∇conv_data!(args..., pad = (pad...,0), stride = (stride...,1), dilation = (dilation..., 1), activation = activation)
     return dx
 end
 
