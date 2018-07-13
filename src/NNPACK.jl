@@ -59,7 +59,11 @@ end
 function softmax!(out::AbstractVecOrMat{T}, xs::AbstractVecOrMat{T}) where T<:AbstractFloat
   input = Cfloat.(xs)
   output = similar(input)
-  ccall((:nnp_softmax_output,"libnnpack"),Void,(Csize_t, Csize_t, Ptr{Cfloat}, Ptr{Cfloat}, Ptr{Void}), Csize_t(size(xs, 2)), Csize_t(size(xs, 1)), input, output, ptp)
+  status = ccall((:nnp_softmax_output,"libnnpack"),Void,(Csize_t, Csize_t, Ptr{Cfloat}, Ptr{Cfloat}, Ptr{Void}), Csize_t(size(xs, 2)), Csize_t(size(xs, 1)), input, output, ptp)
+  if status == 50
+    ccall((:nnp_initialize,"libnnpack"),Void,(),)
+    status = ccall((:nnp_softmax_output,"libnnpack"),Void,(Csize_t, Csize_t, Ptr{Cfloat}, Ptr{Cfloat}, Ptr{Void}), Csize_t(size(xs, 2)), Csize_t(size(xs, 1)), input, output, ptp)
+  end
   out .= output
   return out
 end
@@ -76,7 +80,11 @@ function relu(x)
     input = [Cfloat(x)]
   end
   output = similar(input)
-  ccall((:nnp_relu_output,"libnnpack"),Void,(Csize_t, Csize_t, Ptr{Cfloat}, Ptr{Cfloat}, Cfloat, Ptr{Void}), Csize_t(size(input, 2)), Csize_t(size(input, 1)), input, output, Cfloat(0), ptp)
+  status = ccall((:nnp_relu_output,"libnnpack"),Void,(Csize_t, Csize_t, Ptr{Cfloat}, Ptr{Cfloat}, Cfloat, Ptr{Void}), Csize_t(size(input, 2)), Csize_t(size(input, 1)), input, output, Cfloat(0), ptp)
+  if status == 50
+    ccall((:nnp_initialize,"libnnpack"),Void,(),)
+    status = ccall((:nnp_relu_output,"libnnpack"),Void,(Csize_t, Csize_t, Ptr{Cfloat}, Ptr{Cfloat}, Cfloat, Ptr{Void}), Csize_t(size(input, 2)), Csize_t(size(input, 1)), input, output, Cfloat(0), ptp)
+  end
   if length(size(x))>0
     out .= output
   else
@@ -89,9 +97,9 @@ function conv2d!(y::AbstractArray{Float32,4}, x::AbstractArray{Float32,4}, w::Ab
       pad = 0, stride = 1, dilation = 1, activation = 0, bias = zeros(Float32, size(x,3)))
   input_size = nnp_size(size(x, 1), size(x, 2))
 
-  @show typeof(x)
-  @show typeof(w)
-  @show typeof(bias)
+  # @show typeof(x)
+  # @show typeof(w)
+  # @show typeof(bias)
   input_padding = nnp_padding(pad[2], pad[1], pad[2], pad[1])
   kernel_size = nnp_size(size(w,1), size(w,2))
   status = ccall((:nnp_convolution_output,:libnnpack),Cint,
@@ -133,7 +141,7 @@ end
 
 function conv2d_grad_x!(dx::Array{Float32,4}, x::Array{Float32,4}, w::Array{Float32,4}, dy;
                    padding=0, stride=1, dilation=1, mode=1, alpha=1, activation = 0)
-  println("Here")
+  # println("Here")
   input_size = nnp_size(Csize_t(size(x,1)), Csize_t(size(x,2)))
   input_padding = nnp_padding(padding, padding, padding, padding)
   kernel_size = nnp_size(size(w,1), size(w,2))
@@ -200,7 +208,7 @@ conv!(y::AbstractArray{Float32,4}, x::AbstractArray{Float32,4}, w::AbstractArray
 
 
 function ∇conv_data(dy, x, w; pad = 0, stride = 1, dilation = 1, activation = 0)
-  println("here 5")
+  # println("here 5")
   ∇conv_data!(zeros(Float32, size(x)), dy, x, w; pad = pad, stride = stride, dilation = dilation, activation = activation)
 end
 
