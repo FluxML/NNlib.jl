@@ -147,11 +147,11 @@ maxpool(x::AbstractArray, k; pad = map(_->0,k), stride = k) =
 maxpool!(y::A, x::A, k; kw...) where A<:AbstractArray =
   maxpool_cpu!(y, x, k; kw...)
 
-∇maxpool(dy::A, y::A, x::A, k; pad = map(_->0,k), stride = k) where A<:AbstractArray =
+∇maxpool(dy, y::A, x::A, k; pad = map(_->0,k), stride = k) where A<:AbstractArray =
   ∇maxpool!(similar(x), dy, y, x, k, pad = expand(Val{length(k)}, pad),
             stride = expand(Val{length(k)}, stride))
 
-∇maxpool!(dx::A, dy::A, y::A, x::A, k; kw...) where A<:AbstractArray =
+∇maxpool!(dx::A, dy, y::A, x::A, k; kw...) where A<:AbstractArray =
   ∇maxpool_cpu!(dx, dy, y, x, k; kw...)
 
 meanpool(x::AbstractArray, k; pad = map(_->0,k), stride = k) =

@@ -6,7 +6,7 @@ export σ, sigmoid, relu, leakyrelu, elu, swish, selu, softplus, softsign, logσ
   softmax, logsoftmax, maxpool, meanpool, nnpack_available
 
 nnpack_available()= false ||  (is_linux() || is_apple()) && isfile("libnnpack.so")
-
+	
 include("numeric.jl")
 include("activation.jl")
 include("softmax.jl")
@@ -17,6 +17,8 @@ include("cubroadcast.jl")
 
 if nnpack_available()
 	include("NNPACK.jl")
+else
+	println("NNPACK not found.")
 end
 
 end # module
