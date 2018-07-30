@@ -40,10 +40,13 @@ end
 
   @test σ(0.0) == 0.5
   @test relu(0.0) == 0.0
+  @test relu(1e8) == 1e8
+  @test relu(-1e8) == 0.0
   @test leakyrelu(0.0) == 0.0
-  @test elu(0.0) == 0.0
   @test swish(0.0) == 0.0
   @test softplus(0.0) ≈ log(2.0)
+  @test softplus(1e8) ≈ 1e8
+  @test softplus(-1e8) ≈ 0.0
   @test softsign(0.0) == 0.0
   @test selu(0.0) == 0.0
 
