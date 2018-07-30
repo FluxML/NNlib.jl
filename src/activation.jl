@@ -102,4 +102,4 @@ softsign(x) = x / (one(x) + abs(x))
 
 See [Deep Sparse Rectifier Neural Networks](http://proceedings.mlr.press/v15/glorot11a/glorot11a.pdf).
 """
-softplus(x) = log1p(exp(x))
+softplus(x) = ifelse(x > 0, x + log1p(exp(-x)), log1p(exp(x)))

@@ -6,7 +6,7 @@ include("impl/conv.jl")
 # Convolutions
 
 function cdims(x::NTuple{N}, w::NTuple{N}, pad, stride) where N
-  ntuple(Val(N)) do i
+  ntuple(Val{N}) do i
     if i < N-1
       1 + div(x[i] - w[i] + 2*pad[i], stride[i])
     elseif i == N-1
@@ -31,10 +31,10 @@ function conv(x::A, w::A; pad = 0, stride = 1, dilation = 1) where A<:AbstractAr
 end
 
 ∇conv_data(dy::A, x::A, w::A; pad = 0, stride = 1, dilation = 1) where A<:AbstractArray =
-  ∇conv_data!(zero(x), dy, x, w; pad = pad, stride = stride, dilation = dilation)
+  ∇conv_data!(zeros(x), dy, x, w; pad = pad, stride = stride, dilation = dilation)
 
 ∇conv_filter(dy::A, x::A, w::A; pad = 0, stride = 1, dilation = 1) where A<:AbstractArray =
-  ∇conv_filter!(zero(w), dy, x, w; pad = pad, stride = stride, dilation = dilation)
+  ∇conv_filter!(zeros(w), dy, x, w; pad = pad, stride = stride, dilation = dilation)
 
 # N-D dispatch
 
@@ -117,7 +117,7 @@ depthwiseconv!(y::AbstractArray{T,4}, x::AbstractArray{T,4}, w::AbstractArray{T,
 # Pooling
 
 function pdims(dims::Dims{N}, window, padding, stride) where N
-  ntuple(Val(N)) do i
+  ntuple(Val{N}) do i
     if i < N-1
       1 + (dims[i] + 2*padding[i] - window[i])÷stride[i]
     else
@@ -126,7 +126,7 @@ function pdims(dims::Dims{N}, window, padding, stride) where N
   end
 end
 
-expand(::Type{Val{N}}, i::Integer) where N = ntuple(_ -> i, Val(N))
+expand(::Type{Val{N}}, i::Integer) where N = ntuple(_ -> i, Val{N})
 expand(::Type{Val{N}}, i::NTuple{N, Integer}) where N = i
 
 # Interface

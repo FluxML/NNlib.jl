@@ -22,28 +22,31 @@ function test_value_int_input_forces_float64(a)
     end
 end
 
-# if Base.find_in_path("ForwardDiff") ≠ nothing
-#     using ForwardDiff
-#     function test_value_duals(a)
-#         @testset "$(a): " begin
-#         for T in [Float32, Float64, Int32, Int64]
-#           val = @inferred a(ForwardDiff.Dual(float(T(1)), one(float(T))))
-#           @test typeof(val) == ForwardDiff.Dual{Nothing,float(T),1}
-#         end
-#         end
-#     end
-#
-#     test_value_duals.(ACTIVATION_FUNCTIONS)
-# end
+if Base.find_in_path("ForwardDiff") ≠ nothing
+    using ForwardDiff
+    function test_value_duals(a)
+        @testset "$(a): " begin
+        for T in [Float32, Float64, Int32, Int64]
+          val = @inferred a(ForwardDiff.Dual(float(T(1)), one(float(T))))
+          @test typeof(val) == ForwardDiff.Dual{Void,float(T),1}
+        end
+        end
+    end
+
+    test_value_duals.(ACTIVATION_FUNCTIONS)
+end
 
 @testset "Activation Functions" begin
 
   @test σ(0.0) == 0.5
   @test relu(0.0) == 0.0
+  @test relu(1e8) == 1e8
+  @test relu(-1e8) == 0.0
   @test leakyrelu(0.0) == 0.0
-  @test elu(0.0) == 0.0
   @test swish(0.0) == 0.0
   @test softplus(0.0) ≈ log(2.0)
+  @test softplus(1e8) ≈ 1e8
+  @test softplus(-1e8) ≈ 0.0
   @test softsign(0.0) == 0.0
   @test selu(0.0) == 0.0
 
@@ -82,7 +85,7 @@ end
 
   xs = rand(5,5)
 
-  @test all(sum(softmax(xs), dims = 1) .≈ 1)
+  @test all(sum(softmax(xs), 1) .≈ 1)
 
   @test sum(softmax(vec(xs))) ≈ 1
 
