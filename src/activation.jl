@@ -13,7 +13,7 @@ const sigmoid = σ
 
 σ(x::Float32) = σ_stable(x)
 
-@require ForwardDiff="f6369f11-7733-5829-9624-2563aa707210" begin
+@init @require ForwardDiff="f6369f11-7733-5829-9624-2563aa707210" begin
   σ(x::ForwardDiff.Dual{T,Float32}) where T = σ_stable(x)
 end
 
