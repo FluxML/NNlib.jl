@@ -89,7 +89,7 @@ end
         W = copy(permutedims(w[:,:,:,i:i],[1,2,4,3]));
         DY = copy(dy[:,:,2i-1:2i,:]);
         res = ∇conv_data(DY,X,W)
-        @test dropdims(z[:,:,i:i,:], (3,4)) == dropdims(res, (3,4))
+        @test dropdims(z[:,:,i:i,:], dims=(3,4)) == dropdims(res, dims=(3,4))
     end
 
     z = ∇depthwiseconv_filter(dy, x, w)
