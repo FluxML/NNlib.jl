@@ -4,17 +4,17 @@ using NNlib: conv, ∇conv_filter, ∇conv_data, ∇maxpool, maxpool, depthwisec
     x = reshape(Float64[1:20;], 5, 4, 1, 1)
     w = reshape(Float64[1:4;], 2, 2, 1, 1)
 
-    @test squeeze(conv(x, w), dims = (3,4)) == [
+    @test dropdims(conv(x, w), dims = (3,4)) == [
         29 79 129;
         39 89 139;
         49 99 149;
         59 109 159.]
 
-    @test squeeze(conv(x, w; stride=2), dims = (3,4)) == [
+    @test dropdims(conv(x, w; stride=2), dims = (3,4)) == [
         29 129;
         49 149.]
 
-    @test squeeze(conv(x, w; pad=1), dims = (3,4)) == [
+    @test dropdims(conv(x, w; pad=1), dims = (3,4)) == [
         1.0   9.0   29.0   49.0   48.0;
         4.0  29.0   79.0  129.0  115.0;
         7.0  39.0   89.0  139.0  122.0;
@@ -23,7 +23,7 @@ using NNlib: conv, ∇conv_filter, ∇conv_data, ∇maxpool, maxpool, depthwisec
         10.0  40.0   70.0  100.0   80.0
     ]
 
-    @test squeeze(conv(x, w; dilation=2), dims = (3,4)) == [
+    @test dropdims(conv(x, w; dilation=2), dims = (3,4)) == [
         48 98;
         58 108;
         68 118.]
@@ -89,7 +89,7 @@ end
         W = copy(permutedims(w[:,:,:,i:i],[1,2,4,3]));
         DY = copy(dy[:,:,2i-1:2i,:]);
         res = ∇conv_data(DY,X,W)
-        @test squeeze(z[:,:,i:i,:], (3,4)) == squeeze(res, (3,4))
+        @test dropdims(z[:,:,i:i,:], (3,4)) == dropdims(res, (3,4))
     end
 
     z = ∇depthwiseconv_filter(dy, x, w)
@@ -98,7 +98,7 @@ end
         W = copy(permutedims(w[:,:,:,i:i],[1,2,4,3]))
         DY = copy(dy[:,:,2i-1:2i,:])
         res = ∇conv_filter(DY,X,W)
-        @test squeeze(z[:,:,:,i:i], (4)) == squeeze(res, (3))
+        @test dropdims(z[:,:,:,i:i]; dims=(4)) == dropdims(res; dims=(3))
     end
 
     @test size(∇depthwiseconv_filter(rand(2,2,4,1), x, w)) == size(w)
@@ -107,17 +107,17 @@ end
     # Test for the stride/pad for backward pass
     y = depthwiseconv(x,w,stride=2,pad=1)
     @test size(y) == (2,2,4,1)
-    @test size(∇depthwiseconv_filter(rand(size(y)), x, w, stride=2, pad=1)) == size(w)
-    @test size(∇depthwiseconv_data(rand(size(y)), x, w, stride=2, pad=1)) == size(x)
+    @test size(∇depthwiseconv_filter(rand(Float64, size(y)), x, w, stride=2, pad=1)) == size(w)
+    @test size(∇depthwiseconv_data(rand(Float64, size(y)), x, w, stride=2, pad=1)) == size(x)
 end
 
 @testset "maxpool2d" begin
 
     x = reshape(Float64[1:20;], 5, 4, 1, 1)
 
-    @test squeeze(maxpool(x, (2,2)), dims = (3,4)) == [7 17; 9 19]
-    @test squeeze(maxpool(x, (2,2); stride=(2,2)), dims = (3,4)) == [7 17; 9 19]
-    @test squeeze(maxpool(x, (2,2); pad=(1,1)), dims = (3,4)) == [
+    @test dropdims(maxpool(x, (2,2)), dims = (3,4)) == [7 17; 9 19]
+    @test dropdims(maxpool(x, (2,2); stride=(2,2)), dims = (3,4)) == [7 17; 9 19]
+    @test dropdims(maxpool(x, (2,2); pad=(1,1)), dims = (3,4)) == [
         1.0  11.0  16.0;
         3.0  13.0  18.0;
         5.0  15.0  20.0;
@@ -149,9 +149,9 @@ end
         1078.0  1258.0  1438.0;
         1114.0  1294.0  1474.0;
         1150.0  1330.0  1510.0]
-    @test squeeze(conv(x, w), dims = (4,5)) == res
+    @test dropdims(conv(x, w), dims = (4,5)) == res
 
-    @test squeeze(conv(x, w; stride=2), dims = (3,4,5)) == [
+    @test dropdims(conv(x, w; stride=2), dims = (3,4,5)) == [
         322.0 682.0;
         394.0 754.0]
 
@@ -184,9 +184,9 @@ end
         478.0  1185.0  1315.0  1445.0  877.0;
         489.0  1211.0  1341.0  1471.0  892.0;
         270.0   660.0   730.0   800.0  480.0]
-    @test squeeze(conv(x, w; pad=1), dims = (4,5)) == res
+    @test dropdims(conv(x, w; pad=1), dims = (4,5)) == res
 
-    @test squeeze(conv(x, w; dilation=2), dims = (3,4,5)) == [
+    @test dropdims(conv(x, w; dilation=2), dims = (3,4,5)) == [
         608 788;
         644 824;
         680 860.
@@ -230,8 +230,8 @@ end
 
     x = reshape(Float64[1:60;], 5, 4, 3, 1, 1)
 
-    @test squeeze(maxpool(x, (2,2,2)), dims = (3,4,5)) == [27 37; 29 39.]
-    @test squeeze(maxpool(x, (2,2,2); stride=(2,2,2)), dims = (3,4,5)) == [27 37; 29 39.]
+    @test dropdims(maxpool(x, (2,2,2)), dims = (3,4,5)) == [27 37; 29 39.]
+    @test dropdims(maxpool(x, (2,2,2); stride=(2,2,2)), dims = (3,4,5)) == [27 37; 29 39.]
     res = zeros(3,3,2)
     res[:, :, 1] = [
         1.0  11.0  16.0;
@@ -241,7 +241,7 @@ end
         41.0  51.0  56.0;
         43.0  53.0  58.0;
         45.0  55.0  60.0]
-    @test squeeze(maxpool(x, (2,2,2), pad=(1,1,1)), dims = (4,5)) == res
+    @test dropdims(maxpool(x, (2,2,2), pad=(1,1,1)), dims = (4,5)) == res
 
     # for gradients, check only size
     # correctness of gradients is cross-checked with CUDNN.jl
