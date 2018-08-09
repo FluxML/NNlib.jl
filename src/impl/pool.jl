@@ -99,7 +99,7 @@ function mean_pooling2d_bwd!(x::AbstractArray{T,4}, y::AbstractArray{T,4},
   pooled_height::Int, kernel_w::Int, kernel_h::Int, pad_w::Int, pad_h::Int,
   stride_w::Int, stride_h::Int) where T
 
-  x[:, :, :, :] = 0
+  x[:, :, :, :] .= 0
   kernel_size = kernel_w * kernel_h
 
   #pragma omp parallel for
@@ -112,7 +112,7 @@ function mean_pooling2d_bwd!(x::AbstractArray{T,4}, y::AbstractArray{T,4},
     wstart = max(wstart, 0) + 1
 
     oval = y[pw, ph, c, n] / kernel_size
-    x[wstart:wend, hstart:hend, c, n] += oval
+    x[wstart:wend, hstart:hend, c, n] .+= oval
   end
 end
 
@@ -263,7 +263,7 @@ function mean_pooling3d_bwd!(grad_input::AbstractArray{T,5}, grad_output::Abstra
     hstart = max(hstart, 0) + 1
     wstart = max(wstart, 0) + 1
 
-    grad_input[wstart:wend, hstart:hend, dstart:dend, c, n] += grad_output[pw, ph, pd, c, n] / kernel_size
+    grad_input[wstart:wend, hstart:hend, dstart:dend, c, n] .+= grad_output[pw, ph, pd, c, n] ./ kernel_size
   end
 end
 
