@@ -4,9 +4,6 @@ using NNlib, Test
 
 include("activation.jl")
 include("conv.jl")
-# if Base.find_in_path("CuArrays") ≠ nothing
-#   include("cubroadcast.jl")
-# end
 
 xs = [-100_000, -100_000.]
 @test softmax(xs) ≈ [0.5, 0.5]
