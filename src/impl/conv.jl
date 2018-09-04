@@ -270,10 +270,12 @@ function conv2d!(y::AbstractArray{T,4}, x::AbstractArray{T,4}, w::AbstractArray{
     (d1,d2) = psize(dilation, x)
     M,N,K,Y = Wy*Hy,Cy,Ww*Hw*Cx,Wy*Hy*Cy
     yidx = 1
-    @inbounds for n in 1:Nx
-        im2col2d!(w, x, x2, n, p1, p2, s1, s2, d1, d2, mode)
-        gemm!('N','N',M,N,K,alpha,pointer(x2),pointer(w),T(0),pointer(y,yidx))
-        yidx += Y
+    GC.@preserve w x x2 y begin
+      for n in 1:Nx
+          # im2col2d!(w, x, x2, n, p1, p2, s1, s2, d1, d2, mode)
+          gemm!('N','N',M,N,K,alpha,x2,w,T(0),pointer(y,yidx))
+          yidx += Y
+      end
     end
     return y
 end

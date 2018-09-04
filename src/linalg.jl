@@ -14,14 +14,14 @@ using LinearAlgebra.BLAS: libblas, BlasInt,  @blasfunc
 
 for (gemm, elty) in ((:dgemm_,:Float64), (:sgemm_,:Float32))
     @eval begin
-        function gemm!(transA::Char, transB::Char, M::Int, N::Int, K::Int, alpha::($elty), A::Ptr{$elty}, B::Ptr{$elty}, beta::($elty), C::Ptr{$elty})
+        function gemm!(transA::Char, transB::Char, M::Int, N::Int, K::Int, alpha::$elty, A::Array{$elty}, B::Array{$elty}, beta::$elty, C::Ptr{$elty})
             if transA=='N'; lda=M; else; lda=K; end
             if transB=='N'; ldb=K; else; ldb=N; end
             ldc = M;
             ccall((@blasfunc(dgemm_), libblas), Nothing,
                   (Ref{UInt8}, Ref{UInt8}, Ref{BlasInt}, Ref{BlasInt},
-                   Ref{BlasInt}, Ref{Float64}, Ptr{Float64}, Ref{BlasInt},
-                   Ptr{Float64}, Ref{BlasInt}, Ref{Float64}, Ptr{Float64},
+                   Ref{BlasInt}, Ref{$elty}, Ptr{$elty}, Ref{BlasInt},
+                   Ptr{$elty}, Ref{BlasInt}, Ref{$elty}, Ptr{$elty},
                    Ref{BlasInt}),
                   transA, transB, M, N, K,
                   alpha, A, lda, B, ldb, beta, C, ldc)
