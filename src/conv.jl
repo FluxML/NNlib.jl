@@ -24,16 +24,16 @@ padtuple(x::Tuple,p::Integer) = map(_->p, head(head(x)))
 padtuple(x::Tuple,p::Tuple) = p
 padtuple(x::AbstractArray,p) = padtuple(size(x),p)
 
-function conv(x::A, w::A; pad = 0, stride = 1, dilation = 1) where A<:AbstractArray
+function conv(x::A, w::B; pad = 0, stride = 1, dilation = 1) where {A<:AbstractArray, B<:AbstractArray}
   pad_, stride_ = padtuple(x, pad), padtuple(x, stride)
   conv!(similar(x, cdims(size(x), dilation_dims(w, dilation), pad_, stride_)),
         x, w, pad = pad_, stride = stride_, dilation = dilation)
 end
 
-∇conv_data(dy::A, x::A, w::A; pad = 0, stride = 1, dilation = 1) where A<:AbstractArray =
+∇conv_data(dy::A, x::B, w::C; pad = 0, stride = 1, dilation = 1) where {A<:AbstractArray, B<:AbstractArray, C<:AbstractArray} =
   ∇conv_data!(zero(x), dy, x, w; pad = pad, stride = stride, dilation = dilation)
 
-∇conv_filter(dy::A, x::A, w::A; pad = 0, stride = 1, dilation = 1) where A<:AbstractArray =
+∇conv_filter(dy::A, x::B, w::C; pad = 0, stride = 1, dilation = 1) where {A<:AbstractArray, B<:AbstractArray, C<:AbstractArray} =
   ∇conv_filter!(zero(w), dy, x, w; pad = pad, stride = stride, dilation = dilation)
 
 # N-D dispatch
@@ -91,7 +91,7 @@ function dcdims(x::NTuple{4,Int}, w::NTuple{4,Int}, pad, stride)
   ((x[1] + 2 * pad[1] - w[1])÷stride[1] + 1,(x[2] + 2 * pad[2] - w[2])÷stride[2] + 1,w[3]*w[4],x[4])
 end
 
-function depthwiseconv(x::A, w::A; pad = 0, stride = 1) where A<:AbstractArray
+function depthwiseconv(x::A, w::B; pad = 0, stride = 1) where {A<:AbstractArray, B<:AbstractArray}
   pad_, stride_ = padtuple(x, pad), padtuple(x, stride)
   depthwiseconv!(similar(x, dcdims(size(x), size(w), pad_, stride_)), x, w, pad = pad_, stride = stride_)
 end
@@ -100,10 +100,10 @@ depthwiseconv!(y::AbstractArray{T,4}, x::AbstractArray{T,4}, w::AbstractArray{T,
       pad = 0, stride = 1) where T =
   depthwiseconv2d!(y, x, w, padding = pad, stride = stride)
 
-∇depthwiseconv_data(dy::A, x::A, w::A; pad = 0, stride = 1) where A<:AbstractArray =
+∇depthwiseconv_data(dy::A, x::B, w::C; pad = 0, stride = 1) where {A<:AbstractArray, B<:AbstractArray, C<:AbstractArray} =
   ∇depthwiseconv_data!(zero(x), dy, x, w; pad = pad, stride = stride)
 
-∇depthwiseconv_filter(dy::A, x::A, w::A; pad = 0, stride = 1) where A<:AbstractArray =
+∇depthwiseconv_filter(dy::A, x::B, w::C; pad = 0, stride = 1) where {A<:AbstractArray, B<:AbstractArray, C<:AbstractArray} =
   ∇depthwiseconv_filter!(zero(w), dy, x, w; pad = pad, stride = stride)
 
 ∇depthwiseconv_filter!(dw::AbstractArray{T,4}, dy::AbstractArray{T,4}, x::AbstractArray{T,4}, w::AbstractArray{T,4};

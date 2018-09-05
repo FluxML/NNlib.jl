@@ -9,6 +9,12 @@ using NNlib: conv, ∇conv_filter, ∇conv_data, ∇maxpool, maxpool, depthwisec
         39 89 139;
         49 99 149;
         59 109 159.]
+    
+    @test dropdims(conv(view(x, :, :, :, :), w), dims = (3,4)) == [
+        29 79 129;
+        39 89 139;
+        49 99 149;
+        59 109 159.]
 
     @test dropdims(conv(x, w; stride=2), dims = (3,4)) == [
         29 129;
