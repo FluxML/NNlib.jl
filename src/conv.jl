@@ -17,6 +17,21 @@ function cdims(x::NTuple{N}, w::NTuple{N}, pad, stride) where N
   end
 end
 
+
+# Conv Transpose dims
+
+function ctdims(x::NTuple{N}, w::NTuple{N}, pad, stride, dilation) where N
+  ntuple(Val(N)) do i
+    if i < N-1
+      (x[i] - 1) * stride[i] + dilation[i] * (w[i] - 1) - 2*pad[i] + 1
+    elseif i == N-1
+      w[N-1]
+    else # i == N
+      x[N]
+    end
+  end
+end
+
 # Interface
 
 head(x) = reverse(Base.tail(reverse(x)))
