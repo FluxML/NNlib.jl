@@ -182,7 +182,7 @@ function im2col_dims(w::NTuple{4, Int}, y)
 end
 
 function depthwiseconv2d!(y::AbstractArray{T,4}, x::AbstractArray{T,4}, w::AbstractArray{T,4};
-                  padding = 0, stride = 1, mode = 0, alpha = T(1)) where T
+                  padding = 0, stride = 1, mode = 0, alpha = one(T)) where T
     Wx,Hx,Cx,Nx = size(x)
     Ww,Hw,Cm,Cw = size(w) # Cm = Channel Multiplier
     @assert Cx == Cw DimensionMismatch()
@@ -197,7 +197,7 @@ function depthwiseconv2d!(y::AbstractArray{T,4}, x::AbstractArray{T,4}, w::Abstr
     @inbounds for i in 1:Nx
         im2col2d!(dims_w, x, x2, i, p1, p2, s1, s2, mode)
         @inbounds for j in 1:Cx
-            gemm!('N','N',M,N,K,alpha,pointer(x2,(j-1)*M*K+1),pointer(w,(j-1)*K*N+1),T(0),pointer(y,yidx))
+            gemm!('N','N',M,N,K,alpha,pointer(x2,(j-1)*M*K+1),pointer(w,(j-1)*K*N+1),zero(T),pointer(y,yidx))
             yidx += Y
         end
     end
@@ -205,7 +205,7 @@ function depthwiseconv2d!(y::AbstractArray{T,4}, x::AbstractArray{T,4}, w::Abstr
 end
 
 function depthwiseconv2d_grad_w!(dw::AbstractArray{T,4}, x::AbstractArray{T,4}, w::AbstractArray{T,4}, dy::AbstractArray{T,4};
-        padding=0, stride=1, mode=0, alpha=1) where T
+        padding=0, stride=1, mode=0, alpha=one(T)) where T
     Wx,Hx,Cx,Nx = size(x)
     Ww,Hw,Cm,Cw = size(w) # Cm = Channel Multiplier
     @assert Cx == Cw DimensionMismatch()
@@ -217,7 +217,7 @@ function depthwiseconv2d_grad_w!(dw::AbstractArray{T,4}, x::AbstractArray{T,4}, 
     (p1,p2) = psize(padding,x)
     (s1,s2) = psize(stride,x)
     M,N,K,Y,W = Ww*Hw,Cm,Wy*Hy,Wy*Hy*Cm*Cx,Ww*Hw*Cm
-    alpha,beta = T(alpha),T(1)
+    alpha,beta = T(alpha),one(T)
     dyidx = 1
     @inbounds for i in 1:Nx
         im2col2d!(dims_w, x, x2, i, p1, p2, s1, s2, mode)
@@ -232,7 +232,7 @@ function depthwiseconv2d_grad_w!(dw::AbstractArray{T,4}, x::AbstractArray{T,4}, 
 end
 
 function depthwiseconv2d_grad_x!(dx::AbstractArray{T,4}, x::AbstractArray{T,4}, w::AbstractArray{T,4}, dy::AbstractArray{T,4};
-                   padding=0, stride=1, mode=0, alpha=1) where T
+                   padding=0, stride=1, mode=0, alpha=one(T)) where T
     Wx,Hx,Cx,Nx = size(x)
     Ww,Hw,Cm,Cw = size(w) # Cm = Channel Multiplier
     @assert Cx == Cw DimensionMismatch()
@@ -242,7 +242,7 @@ function depthwiseconv2d_grad_x!(dx::AbstractArray{T,4}, x::AbstractArray{T,4}, 
     x2dims = im2col_dims(dims_w,dy)
     x2 = similar(x, x2dims)
     M,N,K,Y,W = Wy*Hy,Ww*Hw,Cm,Wy*Hy*Cm*Cx,Ww*Hw*Cm
-    alpha,beta = T(alpha),T(0)
+    alpha,beta = T(alpha),zero(T)
     (p1,p2) = psize(padding,x)
     (s1,s2) = psize(stride,x)
     dyidx = 1
@@ -257,7 +257,7 @@ function depthwiseconv2d_grad_x!(dx::AbstractArray{T,4}, x::AbstractArray{T,4}, 
 end
 
 function conv2d!(y::AbstractArray{T,4}, x::AbstractArray{T,4}, w::AbstractArray{T,4};
-               padding=0, stride=1, dilation=1, mode=0, alpha=T(1)) where T
+               padding=0, stride=1, dilation=1, mode=0, alpha=one(T)) where T
     if mode != 0 && mode != 1; throw(ArgumentError("conv2d only supports mode=0 or 1.")); end
     Wx,Hx,Cx,Nx = size(x)
     Ww,Hw,C1,C2 = size(w)
@@ -272,14 +272,14 @@ function conv2d!(y::AbstractArray{T,4}, x::AbstractArray{T,4}, w::AbstractArray{
     yidx = 1
     @inbounds for n in 1:Nx
         im2col2d!(w, x, x2, n, p1, p2, s1, s2, d1, d2, mode)
-        gemm!('N','N',M,N,K,alpha,pointer(x2),pointer(w),T(0),pointer(y,yidx))
+        gemm!('N','N',M,N,K,alpha,pointer(x2),pointer(w),zero(T),pointer(y,yidx))
         yidx += Y
     end
     return y
 end
 
 function conv2d_grad_w!(dw::AbstractArray{T,4}, x::AbstractArray{T,4}, w::AbstractArray{T,4}, dy::AbstractArray{T,4};
-                   padding=0, stride=1, dilation=1, mode=0, alpha=1) where T
+                   padding=0, stride=1, dilation=1, mode=0, alpha=one(T)) where T
     # dw = x'*dy
     Wx,Hx,Cx,Nx = size(x)
     Ww,Hw,C1,C2 = size(w)
@@ -290,7 +290,7 @@ function conv2d_grad_w!(dw::AbstractArray{T,4}, x::AbstractArray{T,4}, w::Abstra
     x2 = similar(x, x2dims)
     # op(A) is an m-by-k matrix, op(B) is a k-by-n matrix, C is an m-by-n matrix.
     Y,M,N,K = Wy*Hy*Cy,Ww*Hw*Cx,Cy,Wy*Hy
-    alpha,beta = T(alpha),T(1)
+    alpha,beta = T(alpha),one(T)
     (p1,p2) = psize(padding,x)
     (s1,s2) = psize(stride,x)
     (d1,d2) = psize(dilation,x)
@@ -304,7 +304,7 @@ function conv2d_grad_w!(dw::AbstractArray{T,4}, x::AbstractArray{T,4}, w::Abstra
 end
 
 function conv2d_grad_x!(dx::AbstractArray{T,4}, x::AbstractArray{T,4}, w::AbstractArray{T,4}, dy::AbstractArray{T,4};
-                   padding=0, stride=1, dilation=1, mode=0, alpha=1) where T
+                   padding=0, stride=1, dilation=1, mode=0, alpha=one(T)) where T
     # dx = dy*w'
     Wx,Hx,Cx,Nx = size(x)
     Ww,Hw,C1,C2 = size(w)
@@ -315,7 +315,7 @@ function conv2d_grad_x!(dx::AbstractArray{T,4}, x::AbstractArray{T,4}, w::Abstra
     x2 = similar(x, x2dims)
     # op(A) is an m-by-k matrix, op(B) is a k-by-n matrix, C is an m-by-n matrix.
     Y,M,N,K = Wy*Hy*Cy,Wy*Hy,Ww*Hw*Cx,Cy
-    alpha,beta = T(alpha),T(0)
+    alpha,beta = T(alpha),zero(T)
     (p1,p2) = psize(padding,x)
     (s1,s2) = psize(stride,x)
     (d1,d2) = psize(dilation,x)
@@ -367,7 +367,7 @@ function col2im2d!(w::AbstractArray{T,4}, x::AbstractArray{T,4}, x2::AbstractArr
 end
 
 function conv3d!(y::AbstractArray{T,5}, x::AbstractArray{T,5}, w::AbstractArray{T,5};
-               padding=0, stride=1, dilation = 1, mode=0, alpha=T(1)) where T
+               padding=0, stride=1, dilation = 1, mode=0, alpha=one(T)) where T
     if mode != 0 && mode != 1; throw(ArgumentError("conv3d only supports mode=0 or 1.")); end
     Wx,Hx,Dx,Cx,Nx = size(x)
     Ww,Hw,Dw,C1,C2 = size(w)
@@ -384,14 +384,14 @@ function conv3d!(y::AbstractArray{T,5}, x::AbstractArray{T,5}, w::AbstractArray{
     W = reshape(w, (size(w, 1),:,C1,C2))
     @inbounds for n in 1:Nx
         im2col3d!(w, x, x2, n, p1, p2, p3, s1, s2, s3, d1, d2, d3, mode)
-        gemm!('N','N',M,N,K,alpha,pointer(x2),pointer(W),T(0),pointer(y,yidx))
+        gemm!('N','N',M,N,K,alpha,pointer(x2),pointer(W),zero(T),pointer(y,yidx))
         yidx += Y
     end
     return y
 end
 
 function conv3d_grad_w!(dw::AbstractArray{T,5}, x::AbstractArray{T,5}, w::AbstractArray{T,5}, dy::AbstractArray{T,5};
-                   padding=0, stride=1, dilation = 1, mode=0, alpha=1) where T
+                   padding=0, stride=1, dilation = 1, mode=0, alpha=one(T)) where T
     # dw = x'*dy
     Wx,Hx,Dx,Cx,Nx = size(x)
     Ww,Hw,Dw,C1,C2 = size(w)
@@ -402,7 +402,7 @@ function conv3d_grad_w!(dw::AbstractArray{T,5}, x::AbstractArray{T,5}, w::Abstra
     x2 = similar(x, x2dims)
     # op(A) is an m-by-k matrix, op(B) is a k-by-n matrix, C is an m-by-n matrix.
     Y,M,N,K = Wy*Hy*Dy*Cy,Ww*Hw*Dw*Cx,Cy,Wy*Hy*Dy
-    alpha,beta = T(alpha),T(1)
+    alpha,beta = T(alpha),one(T)
     (p1,p2,p3) = psize(padding,x)
     (s1,s2,s3) = psize(stride,x)
     (d1,d2,d3) = psize(dilation,x)
@@ -416,7 +416,7 @@ function conv3d_grad_w!(dw::AbstractArray{T,5}, x::AbstractArray{T,5}, w::Abstra
 end
 
 function conv3d_grad_x!(dx::AbstractArray{T,5}, x::AbstractArray{T,5}, w::AbstractArray{T,5}, dy::AbstractArray{T,5};
-                   padding=0, stride=1, dilation = 1, mode=0, alpha=1) where T
+                   padding=0, stride=1, dilation = 1, mode=0, alpha=one(T)) where T
     # dx = dy*w'
     Wx,Hx,Dx,Cx,Nx = size(x)
     Ww,Hw,Dw,C1,C2 = size(w)
@@ -427,7 +427,7 @@ function conv3d_grad_x!(dx::AbstractArray{T,5}, x::AbstractArray{T,5}, w::Abstra
     x2 = similar(x, x2dims)
     # op(A) is an m-by-k matrix, op(B) is a k-by-n matrix, C is an m-by-n matrix.
     Y,M,N,K = Wy*Hy*Dy*Cy,Wy*Hy*Dy,Ww*Hw*Dw*Cx,Cy
-    alpha,beta = T(alpha),T(0)
+    alpha,beta = T(alpha),one(T)
     (p1,p2,p3) = psize(padding,x)
     (s1,s2,s3) = psize(stride,x)
     (d1,d2,d3) = psize(dilation,x)
