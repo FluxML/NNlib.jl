@@ -7,3 +7,6 @@
 *.dll
 *~
 \#*
+deps/usr
+deps.jl
+*.log

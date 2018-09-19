@@ -13,4 +13,9 @@ include("linalg.jl")
 include("conv.jl")
 include("cubroadcast.jl")
 
+if Sys.islinux()
+    include("nnpack/NNPACK.jl")
+    using NNPACK
+end
+
 end # module
