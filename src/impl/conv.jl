@@ -2,9 +2,9 @@
 function psize(p, x)
   nd = ndims(x)-2
   if isa(p,Number)
-    fill(Int(p),nd)
+    ntuple(_->Int(p), nd)
   elseif length(p)==nd
-    collect(Int,p)
+    tuple(p...)
   else
     throw(DimensionMismatch("psize: $p $nd"))
   end
