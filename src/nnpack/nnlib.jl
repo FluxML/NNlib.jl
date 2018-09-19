@@ -1,16 +1,3 @@
-# NNlib utility functions
-using ..NNlib: expand, cdims, head, padtuple, psize,
-             dilation_dims, pdims
-
-# Functions to be overloaded
-import ..NNlib: relu, leakyrelu, softmax!, softmax, maxpool, maxpool!,
-              conv, ∇conv_data, ∇conv_filter, conv!, ∇conv_data!,
-              ∇conv_filter!
-
-# Overloaded function exports
-export relu, leakyrelu, softmax, maxpool, conv, ∇conv_data,
-       ∇conv_filter
-
 const AA{N} = AbstractArray{Float32,N}
 const AA1 = Union{AA{2}, AA{3}, AA{4}, AA{5}}
 
