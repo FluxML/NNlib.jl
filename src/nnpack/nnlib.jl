@@ -25,7 +25,7 @@ maxpool!(y::AA{4}, x::AA{4}, k; pad = map(_->0,k), stride = k, threadpool = noth
     nnp_max_pooling_output(x, y, k, padding = expand(Val{length(k)}, pad), stride = expand(Val{length(k)}, stride), threadpool = threadpool)
 
 function conv(x::AA{4}, w::AA{4}; pad = 0, stride = 1, dilation = 1, algo = 0, nthreads = NNPACK_CPU_THREADS)
-    dilation == 1 || error("NNPACK does not support dilation > 1")
+    dilation == 1 || dilation == (1, 1) || error("NNPACK does not support dilation > 1")
     pad_, stride_ = padtuple(x, pad), padtuple(x, stride)
     y = similar(x, cdims(size(x), dilation_dims(w, dilation), pad_, stride_))
     b = zeros(Float32, size(y, 3))
