@@ -1,6 +1,16 @@
 using NNlib: conv, ∇conv_filter, ∇conv_data, ∇maxpool, maxpool, depthwiseconv, ∇depthwiseconv_filter, ∇depthwiseconv_data
 
 @testset "conv2d" begin
+
+    x = reshape(Float32[1:16;], 4, 4, 1, 1)
+    w = reshape(Float32[1:9;], 3, 3, 1, 1)
+
+    @test dropdims(conv(x, w[end:-1:1,:,:,:][:,end:-1:1,:,:], pad=1), dims=(3,4)) ≈ Float32.([
+        29.0   99.0  207.0  263.0
+        62.0  192.0  372.0  446.0
+        83.0  237.0  417.0  485.0
+        75.0  198.0  330.0  365.0])
+
     x = reshape(Float64[1:20;], 5, 4, 1, 1)
     w = reshape(Float64[1:4;], 2, 2, 1, 1)
 
@@ -10,19 +20,9 @@ using NNlib: conv, ∇conv_filter, ∇conv_data, ∇maxpool, maxpool, depthwisec
         49 99 149;
         59 109 159.]
 
-    @test dropdims(conv(Float32.(x), Float32.(w)), dims=(3,4)) == Float32.([
-        29 79 129;
-        39 89 139;
-        49 99 149;
-        59 109 159.])
-
     @test dropdims(conv(x, w; stride=2), dims = (3,4)) == [
         29 129;
         49 149.]
-
-    @test dropdims(conv(Float32.(x), Float32.(w); stride=2), dims = (3,4)) == Float32.([
-        29 129;
-        49 149.])    
 
     @test dropdims(conv(x, w; pad=1), dims = (3,4)) == [
         1.0   9.0   29.0   49.0   48.0;
@@ -32,15 +32,6 @@ using NNlib: conv, ∇conv_filter, ∇conv_data, ∇maxpool, maxpool, depthwisec
         13.0  59.0  109.0  159.0  136.0;
         10.0  40.0   70.0  100.0   80.0
     ]
-
-    @test dropdims(conv(Float32.(x), Float32.(w); pad=1), dims = (3,4)) == Float32.([
-        1.0   9.0   29.0   49.0   48.0;
-        4.0  29.0   79.0  129.0  115.0;
-        7.0  39.0   89.0  139.0  122.0;
-        10.0  49.0   99.0  149.0  129.0;
-        13.0  59.0  109.0  159.0  136.0;
-        10.0  40.0   70.0  100.0   80.0
-    ])
 
     @test dropdims(conv(x, w; dilation=2), dims = (3,4)) == [
         48 98;
@@ -149,6 +140,17 @@ end
     y = maxpool(x, (2,2))
     dy = reshape(rand(2,2), 2, 2, 1, 1)
     @test size(∇maxpool(dy, y, x, (2,2))) == size(x)
+
+    x = reshape(Float64[1:16;], 4, 4, 1, 1)
+
+    @test dropdims(maxpool(x, (2,2)), dims = (3,4)) == [6 14; 8 16]
+    @test dropdims(maxpool(x, (2,2); stride=(2,2)), dims = (3,4)) == [6 14; 8 16]
+    @test dropdims(maxpool(x, (3,3); stride=(1,1), pad=(1,1)), dims = (3,4)) == [
+         6.0  10.0  14.0  14.0;
+         7.0  11.0  15.0  15.0;
+         8.0  12.0  16.0  16.0;
+         8.0  12.0  16.0  16.0;
+    ]
 
 end
 
