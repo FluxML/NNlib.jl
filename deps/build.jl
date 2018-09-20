@@ -25,12 +25,12 @@ if haskey(download_info, platform_key())
         # Download and install binaries
         install(url, tarball_hash; prefix=prefix, force=true, verbose=verbose)
     end
+
+    # Write out a deps.jl file that will contain mappings for our products
+    write_deps_file(joinpath(@__DIR__, "deps.jl"), products)
 elseif unsatisfied
     # If we don't have a BinaryProvider-compatible .tar.gz to download, complain.
     # Alternatively, you could attempt to install from a separate provider,
     # build from source or something even more ambitious here.
     @warn "Your platform $(triplet(platform_key())) is not supported by this NNPACK. So building NNlib without NNPACK"
 end
-
-# Write out a deps.jl file that will contain mappings for our products
-write_deps_file(joinpath(@__DIR__, "deps.jl"), products)
