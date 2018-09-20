@@ -48,7 +48,7 @@ function ∇conv_data(dy::AA{4}, x::AA{4}, w::AA{4}; pad = 0, stride = 1, dilati
 end
 
 ∇conv_data!(dx::AA{4}, dy::AA{4}, x::AA{4}, w::AA{4}; pad = 0, stride = 1, dilation = 1, algo = 0, threadpool = nothing) =
-    nnp_convolution_input_gradient(dx, x, dy, w, padding = pad, stride = stride, dilation = dilation, algo = algo, threadpool = threadpool)
+    nnp_convolution_input_gradient(dx, x, dy, w, padding = pad, stride = stride, algo = algo, threadpool = threadpool)
 
 function ∇conv_filter(dy::AA{4}, x::AA{4}, w::AA{4}; pad = 0, stride = 1, dilation = 1, algo = 0, nthreads = NNPACK_CPU_THREADS)
     dilation == 1 || dilation == (1, 1) || error("NNPACK does not support dilation > 1")
@@ -57,4 +57,4 @@ function ∇conv_filter(dy::AA{4}, x::AA{4}, w::AA{4}; pad = 0, stride = 1, dila
 end
 
 ∇conv_filter!(dw::AA{4}, dy::AA{4}, x::AA{4}, w::AA{4}; pad = 0, stride = 1, dilation = 1, algo = 0, threadpool = nothing) =
-    nnp_convolution_kernel_gradient(dw, x, dy, w, padding = pad, stride = stride, dilation = dilation, algo = algo, threadpool = threadpool)
+    nnp_convolution_kernel_gradient(dw, x, dy, w, padding = pad, stride = stride, algo = algo, threadpool = threadpool)
