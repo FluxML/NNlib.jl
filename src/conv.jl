@@ -24,10 +24,10 @@ padtuple(x::Tuple,p::Integer) = map(_->p, head(head(x)))
 padtuple(x::Tuple,p::Tuple) = p
 padtuple(x::AbstractArray,p) = padtuple(size(x),p)
 
-function conv(x::A, w::A; pad = 0, stride = 1, dilation = 1) where A<:AbstractArray
+function conv(x::A, w::A; pad = 0, stride = 1, dilation = 1, mode = 0) where A<:AbstractArray
   pad_, stride_ = padtuple(x, pad), padtuple(x, stride)
   conv!(similar(x, cdims(size(x), dilation_dims(w, dilation), pad_, stride_)),
-        x, w, pad = pad_, stride = stride_, dilation = dilation)
+        x, w, pad = pad_, stride = stride_, dilation = dilation, mode = mode)
 end
 
 ∇conv_data(dy::A, x::A, w::A; pad = 0, stride = 1, dilation = 1) where A<:AbstractArray =
@@ -62,8 +62,8 @@ function ∇conv_data!(dx::AbstractArray{T,3}, dy::AbstractArray{T,3},
 end
 
 conv!(y::AbstractArray{T,4}, x::AbstractArray{T,4}, w::AbstractArray{T,4};
-      pad = 0, stride = 1, dilation = 1) where T =
-  conv2d!(y, x, w, padding = pad, stride = stride, dilation = dilation)
+      pad = 0, stride = 1, dilation = 1, mode=0) where T =
+  conv2d!(y, x, w, padding = pad, stride = stride, dilation = dilation, mode=mode)
 
 ∇conv_filter!(dw::AbstractArray{T,4}, dy::AbstractArray{T,4}, x::AbstractArray{T,4}, w::AbstractArray{T,4};
               pad = 0, stride = 1, dilation = 1) where T =
