@@ -20,7 +20,7 @@ softmax(x::AbstractVecOrMat{Float32}; nthreads = NNPACK_CPU_THREADS) =
 
 function maxpool(x::AA{4}, k; pad = map(_->0,k), stride = k, nthreads = NNPACK_CPU_THREADS)
     pad_, stride_ = expand(Val{length(k)}, pad), expand(Val{length(k)}, stride)
-    (size(x, 1) - size(w, 1) + 2 * pad_[1]) % stride_[1] != 0 || (size(x, 2) - size(w, 2) + 2 * pad_[2]) % stride_[2] != 0 || error("Choose the stride, pad and kernel size properly")
+    ((size(x, 1) - k[1] + 2 * pad_[1]) % stride_[1] == 0 && (size(x, 2) - k[2] + 2 * pad_[2]) % stride_[2] == 0) || error("Choose the stride, pad and kernel size properly")
     maxpool!(similar(x, pdims(size(x), k, pad_, stride_)), x, k, pad = pad_, stride = stride_, threadpool = pthreadpool_create(nthreads))
 end
 
@@ -30,7 +30,7 @@ maxpool!(y::AA{4}, x::AA{4}, k; pad = map(_->0,k), stride = k, threadpool = noth
 function conv(x::AA{4}, w::AA{4}; pad = 0, stride = 1, dilation = 1, algo = 0, nthreads = NNPACK_CPU_THREADS)
     dilation == 1 || dilation == (1, 1) || error("NNPACK does not support dilation > 1")
     pad_, stride_ = padtuple(x, pad), padtuple(x, stride)
-    (size(x, 1) - size(w, 1) + 2 * pad_[1]) % stride_[1] != 0 || (size(x, 2) - size(w, 2) + 2 * pad_[2]) % stride_[2] != 0 || error("Choose the stride, pad and kernel size properly")
+    ((size(x, 1) - size(w, 1) + 2 * pad_[1]) % stride_[1] == 0 && (size(x, 2) - size(w, 2) + 2 * pad_[2]) % stride_[2] == 0) || error("Choose the stride, pad and kernel size properly")
     w = w[end:-1:1, end:-1:1, :, :] # Needs to be fixed once the flipkernel and crosscor PR is merged
     y = similar(x, cdims(size(x), dilation_dims(w, dilation), pad_, stride_))
     b = zeros(Float32, size(y, 3))
@@ -40,7 +40,7 @@ end
 function conv(x::AA{4}, w::AA{4}, b::AA{1}; pad = 0, stride = 1, dilation = 1, algo = 0, nthreads = NNPACK_CPU_THREADS)
     dilation == 1 || dilation == (1, 1) || error("NNPACK does not support dilation > 1")
     pad_, stride_ = padtuple(x, pad), padtuple(x, stride)
-    (size(x, 1) - size(w, 1) + 2 * pad_[1]) % stride_[1] != 0 || (size(x, 2) - size(w, 2) + 2 * pad_[2]) % stride_[2] != 0 || error("Choose the stride, pad and kernel size properly")
+    ((size(x, 1) - size(w, 1) + 2 * pad_[1]) % stride_[1] == 0 && (size(x, 2) - size(w, 2) + 2 * pad_[2]) % stride_[2] == 0) || error("Choose the stride, pad and kernel size properly")
     w = w[end:-1:1, end:-1:1, :, :] # Needs to be fixed once the flipkernel and crosscor PR is merged
     conv!(similar(x, cdims(size(x), dilation_dims(w, dilation), pad_, stride_)), x, w, b, pad = pad_, stride = stride_, dilation = dilation, algo = UInt32(algo), threadpool = pthreadpool_create(nthreads))
 end
@@ -51,7 +51,7 @@ conv!(y::AA{4}, x::AA{4}, w::AA{4}, b::AA{1}; pad = 0, stride = 1, dilation = 1,
 function ∇conv_data(dy::AA{4}, x::AA{4}, w::AA{4}; pad = 0, stride = 1, dilation = 1, algo = 0, nthreads = NNPACK_CPU_THREADS)
     dilation == 1 || dilation == (1, 1) || error("NNPACK does not support dilation > 1")
     pad_, stride_ = padtuple(x, pad), padtuple(x, stride)
-    (size(x, 1) - size(w, 1) + 2 * pad_[1]) % stride_[1] != 0 || (size(x, 2) - size(w, 2) + 2 * pad_[2]) % stride_[2] != 0 || error("Choose the stride, pad and kernel size properly")
+    ((size(x, 1) - size(w, 1) + 2 * pad_[1]) % stride_[1] == 0 && (size(x, 2) - size(w, 2) + 2 * pad_[2]) % stride_[2] == 0) || error("Choose the stride, pad and kernel size properly")
     w = w[end:-1:1, end:-1:1, :, :] # Needs to be fixed once the flipkernel and crosscor PR is merged
     ∇conv_data!(zeros(Float32, size(x)), dy, x, w; pad = pad, stride = stride, dilation = dilation, algo = UInt32(algo), threadpool = pthreadpool_create(nthreads))
 end
@@ -62,7 +62,7 @@ end
 function ∇conv_filter(dy::AA{4}, x::AA{4}, w::AA{4}; pad = 0, stride = 1, dilation = 1, algo = 0, nthreads = NNPACK_CPU_THREADS)
     dilation == 1 || dilation == (1, 1) || error("NNPACK does not support dilation > 1")
     pad_, stride_ = padtuple(x, pad), padtuple(x, stride)
-    (size(x, 1) - size(w, 1) + 2 * pad_[1]) % stride_[1] != 0 || (size(x, 2) - size(w, 2) + 2 * pad_[2]) % stride_[2] != 0 || error("Choose the stride, pad and kernel size properly")
+    ((size(x, 1) - size(w, 1) + 2 * pad_[1]) % stride_[1] == 0 && (size(x, 2) - size(w, 2) + 2 * pad_[2]) % stride_[2] == 0) || error("Choose the stride, pad and kernel size properly")
     w = w[end:-1:1, end:-1:1, :, :] # Needs to be fixed once the flipkernel and crosscor PR is merged
     ∇conv_filter!(zeros(Float32, size(w)), dy, x, w; pad = pad, stride = stride, dilation = dilation, algo = UInt32(algo), threadpool = pthreadpool_create(nthreads))
 end

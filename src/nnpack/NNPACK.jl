@@ -8,11 +8,12 @@ if !isfile(depsjl_path)
 end
 include(depsjl_path)
 
+const nnlib_interface_path = joinpath(dirname(@__FILE__), "nnlib.jl")
 @init begin
     check_deps()
     try
         nnp_initialize()
-        include("nnlib.jl")
+        include(nnlib_interface_path)
     catch
         @warn "HARDWARE is unsupported by NNPACK so falling back to default NNlib"
     end
