@@ -1,7 +1,6 @@
 include("libnnpack_types.jl")
 include("error.jl")
 include("libnnpack.jl")
-include("nnlib.jl")
 
 const depsjl_path = joinpath(dirname(@__FILE__), "..", "..", "deps", "deps.jl")
 if !isfile(depsjl_path)
@@ -11,7 +10,12 @@ include(depsjl_path)
 
 @init begin
     check_deps()
-    nnp_initialize()
+    try
+        nnp_initialize()
+        include("nnlib.jl")
+    catch
+        @warn "HARDWARE is unsupported by NNPACK so falling back to default NNlib"
+    end
     try
         global NNPACK_CPU_THREADS = parse(UInt64, ENV["JULIA_NUM_THREADS"])
     catch

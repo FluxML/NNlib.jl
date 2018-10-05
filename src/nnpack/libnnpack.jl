@@ -1,9 +1,9 @@
 function nnp_initialize()
-    ccall((:nnp_initialize, libnnpack), nnp_status, (),)
+    @check ccall((:nnp_initialize, libnnpack), nnp_status, (),)
 end
 
 function nnp_deinitialize()
-    ccall((:nnp_deinitialize, libnnpack), nnp_status, (),)
+    @check ccall((:nnp_deinitialize, libnnpack), nnp_status, (),)
 end
 
 function pthreadpool_create(n = 0)
