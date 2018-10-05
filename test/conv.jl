@@ -5,7 +5,7 @@ using NNlib: conv, ∇conv_filter, ∇conv_data, ∇maxpool, maxpool, depthwisec
     x = reshape(Float32[1:16;], 4, 4, 1, 1)
     w = reshape(Float32[1:9;], 3, 3, 1, 1)
 
-    @test dropdims(conv(x, w[end:-1:1,:,:,:][:,end:-1:1,:,:], pad=1), dims=(3,4)) ≈ Float32.([
+    @test dropdims(conv(x, w, pad=1), dims=(3,4)) ≈ Float32.([
         29.0   99.0  207.0  263.0
         62.0  192.0  372.0  446.0
         83.0  237.0  417.0  485.0
@@ -122,6 +122,10 @@ end
 end
 
 @testset "maxpool2d" begin
+
+	x = reshape(Float32[1:16;], 4, 4, 1, 1)
+
+	@test dropdims(maxpool(x, (2,2)), dims = (3,4)) == Float32.([6.0 14.0; 8.0 16.0])
 
     x = reshape(Float64[1:20;], 5, 4, 1, 1)
 
