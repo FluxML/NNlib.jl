@@ -30,9 +30,9 @@ function conv(x::A, w::A; pad = 0, stride = 1, dilation = 1) where A<:AbstractAr
         x, w, pad = pad_, stride = stride_, dilation = dilation)
 end
 
-function crossconv(x::A, w::A; pad = 0, stride = 1, dilation = 1) where A<:AbstractArray
+function crosscor(x::A, w::A; pad = 0, stride = 1, dilation = 1) where A<:AbstractArray
   pad_, stride_ = padtuple(x, pad), padtuple(x, stride)
-  crossconv!(similar(x, cdims(size(x), dilation_dims(w, dilation), pad_, stride_)),
+  crosscor!(similar(x, cdims(size(x), dilation_dims(w, dilation), pad_, stride_)),
         x, w, pad = pad_, stride = stride_, dilation = dilation)
 end
 
@@ -51,7 +51,7 @@ function conv!(y::AbstractArray{T,3}, x::AbstractArray{T,3}, w::AbstractArray{T,
     return y
 end
 
-function crossconv!(y::AbstractArray, x::AbstractArray, w::AbstractArray;
+function crosscor!(y::AbstractArray, x::AbstractArray, w::AbstractArray;
                pad = 0, stride = 1, dilation = 1)
     conv!(y, x, w, pad=pad, stride=stride, dilation=dilation, flipkernel=1)
 end
@@ -107,16 +107,16 @@ function depthwiseconv(x::A, w::A; pad = 0, stride = 1) where A<:AbstractArray
   depthwiseconv!(similar(x, dcdims(size(x), size(w), pad_, stride_)), x, w, pad = pad_, stride = stride_)
 end
 
-function depthwisecrossconv(x::A, w::A; pad = 0, stride = 1) where A<:AbstractArray
+function depthwisecrosscor(x::A, w::A; pad = 0, stride = 1) where A<:AbstractArray
   pad_, stride_ = padtuple(x, pad), padtuple(x, stride)
-  depthwisecrossconv!(similar(x, dcdims(size(x), size(w), pad_, stride_)), x, w, pad = pad_, stride = stride_)
+  depthwisecrosscor!(similar(x, dcdims(size(x), size(w), pad_, stride_)), x, w, pad = pad_, stride = stride_)
 end
 
 depthwiseconv!(y::AbstractArray{T,4}, x::AbstractArray{T,4}, w::AbstractArray{T,4};
       pad = 0, stride = 1, flipkernel=0) where T =
   depthwiseconv2d!(y, x, w, padding = pad, stride = stride, mode= flipkernel)
 
-depthwisecrossconv!(y::AbstractArray{T,4}, x::AbstractArray{T,4}, w::AbstractArray{T,4};
+depthwisecrosscor!(y::AbstractArray{T,4}, x::AbstractArray{T,4}, w::AbstractArray{T,4};
       pad = 0, stride = 1) where T =
   depthwiseconv!(y, x, w, pad = pad, stride = stride, flipkernel=1)
 
