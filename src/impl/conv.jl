@@ -285,7 +285,7 @@ function conv2d_grad_w!(dw::AbstractArray{T,4}, x::AbstractArray{T,4}, w::Abstra
     Ww,Hw,C1,C2 = size(w)
     Wy,Hy,Cy,Ny = size(dy)
     # if mode != 0 && mode != 1; throw(ArgumentError("conv2d only supports mode=0 or 1.")); end
-    # @assert Cx==C1 && Cy==C2 && Ny==Nx
+    @assert Cx==C1 && Cy==C2 && Ny==Nx
     x2dims = im2col_dims(w,dy)
     x2 = similar(x, x2dims)
     # op(A) is an m-by-k matrix, op(B) is a k-by-n matrix, C is an m-by-n matrix.
@@ -397,7 +397,7 @@ function conv3d_grad_w!(dw::AbstractArray{T,5}, x::AbstractArray{T,5}, w::Abstra
     Ww,Hw,Dw,C1,C2 = size(w)
     Wy,Hy,Dy,Cy,Ny = size(dy)
     # if mode != 0 && mode != 1; throw(ArgumentError("conv2d only supports mode=0 or 1.")); end
-    # @assert Cx==C1 && Cy==C2 && Ny==Nx
+    @assert Cx==C1 && Cy==C2 && Ny==Nx
     x2dims = im2col_dims(w,dy)
     x2 = similar(x, x2dims)
     # op(A) is an m-by-k matrix, op(B) is a k-by-n matrix, C is an m-by-n matrix.
