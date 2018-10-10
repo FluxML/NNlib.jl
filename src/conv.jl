@@ -36,11 +36,11 @@ function crosscor(x::A, w::A; pad = 0, stride = 1, dilation = 1) where A<:Abstra
         x, w, pad = pad_, stride = stride_, dilation = dilation)
 end
 
-∇conv_data(dy::A, x::A, w::A; pad = 0, stride = 1, dilation = 1) where A<:AbstractArray =
-  ∇conv_data!(zero(x), dy, x, w; pad = pad, stride = stride, dilation = dilation)
+∇conv_data(dy::A, x::A, w::A; pad = 0, stride = 1, dilation = 1, flipkernel = 0) where A<:AbstractArray =
+  ∇conv_data!(zero(x), dy, x, w; pad = pad, stride = stride, dilation = dilation, flipkernel=flipkernel)
 
-∇conv_filter(dy::A, x::A, w::A; pad = 0, stride = 1, dilation = 1) where A<:AbstractArray =
-  ∇conv_filter!(zero(w), dy, x, w; pad = pad, stride = stride, dilation = dilation)
+∇conv_filter(dy::A, x::A, w::A; pad = 0, stride = 1, dilation = 1, flipkernel=0) where A<:AbstractArray =
+  ∇conv_filter!(zero(w), dy, x, w; pad = pad, stride = stride, dilation = dilation, flipkernel=flipkernel)
 
 # N-D dispatch
 
@@ -58,17 +58,17 @@ end
 
 function ∇conv_filter!(dw::AbstractArray{T,3}, dy::AbstractArray{T,3},
                        x::AbstractArray{T,3}, w::AbstractArray{T,3};
-                       pad = 0, stride = 1, dilation = 1) where T
+                       pad = 0, stride = 1, dilation = 1, flipkernel=0) where T
     args = map(x -> reshape(x, size(x,1),1,size(x,2),size(x,3)), (dw, dy, x, w))
-    ∇conv_filter!(args..., pad = (pad...,0), stride = (stride...,1), dilation = (dilation...,1))
+    ∇conv_filter!(args..., pad = (pad...,0), stride = (stride...,1), dilation = (dilation...,1), flipkernel=flipkernel)
     return dw
 end
 
 function ∇conv_data!(dx::AbstractArray{T,3}, dy::AbstractArray{T,3},
                      x::AbstractArray{T,3}, w::AbstractArray{T,3};
-                     pad = 0, stride = 1, dilation = 1) where T
+                     pad = 0, stride = 1, dilation = 1, flipkernel = 0) where T
     args = map(x -> reshape(x, size(x,1),1,size(x,2),size(x,3)), (dx, dy, x, w))
-    ∇conv_data!(args..., pad = (pad...,0), stride = (stride...,1), dilation = (dilation..., 1))
+    ∇conv_data!(args..., pad = (pad...,0), stride = (stride...,1), dilation = (dilation..., 1), flipkernel = flipkernel)
     return dx
 end
 
@@ -77,24 +77,24 @@ conv!(y::AbstractArray{T,4}, x::AbstractArray{T,4}, w::AbstractArray{T,4};
   conv2d!(y, x, w, padding = pad, stride = stride, dilation = dilation, mode=flipkernel)
 
 ∇conv_filter!(dw::AbstractArray{T,4}, dy::AbstractArray{T,4}, x::AbstractArray{T,4}, w::AbstractArray{T,4};
-              pad = 0, stride = 1, dilation = 1) where T =
-  conv2d_grad_w!(dw, x, w, dy, padding = pad, stride = stride, dilation = dilation)
+              pad = 0, stride = 1, dilation = 1, flipkernel=0) where T =
+  conv2d_grad_w!(dw, x, w, dy, padding = pad, stride = stride, dilation = dilation, mode=flipkernel)
 
 ∇conv_data!(dx::AbstractArray{T,4}, dy::AbstractArray{T,4}, x::AbstractArray{T,4}, w::AbstractArray{T,4};
-            pad = 0, stride = 1, dilation = 1) where T =
-  conv2d_grad_x!(dx, x, w, dy, padding = pad, stride = stride, dilation = dilation)
+            pad = 0, stride = 1, dilation = 1, flipkernel=0) where T =
+  conv2d_grad_x!(dx, x, w, dy, padding = pad, stride = stride, dilation = dilation, mode=flipkernel)
 
 conv!(y::AbstractArray{T,5}, x::AbstractArray{T,5}, w::AbstractArray{T,5};
       pad = 0, stride = 1, dilation = 1, flipkernel=0) where T =
   conv3d!(y, x, w, padding = pad, stride = stride, dilation = dilation, mode=flipkernel)
 
 ∇conv_filter!(dw::AbstractArray{T,5}, dy::AbstractArray{T,5}, x::AbstractArray{T,5}, w::AbstractArray{T,5};
-              pad = 0, stride = 1, dilation = 1) where T =
-  conv3d_grad_w!(dw, x, w, dy, padding = pad, stride = stride, dilation = dilation)
+              pad = 0, stride = 1, dilation = 1, flipkernel=0) where T =
+  conv3d_grad_w!(dw, x, w, dy, padding = pad, stride = stride, dilation = dilation, mode=flipkernel)
 
 ∇conv_data!(dx::AbstractArray{T,5}, dy::AbstractArray{T,5}, x::AbstractArray{T,5}, w::AbstractArray{T,5};
-            pad = 0, stride = 1, dilation = 1) where T =
-  conv3d_grad_x!(dx, x, w, dy, padding = pad, stride = stride, dilation = dilation)
+            pad = 0, stride = 1, dilation = 1, flipkernel=0) where T =
+  conv3d_grad_x!(dx, x, w, dy, padding = pad, stride = stride, dilation = dilation, mode=flipkernel)
 
   # Depthwise Conv
 
@@ -120,19 +120,19 @@ depthwisecrosscor!(y::AbstractArray{T,4}, x::AbstractArray{T,4}, w::AbstractArra
       pad = 0, stride = 1) where T =
   depthwiseconv!(y, x, w, pad = pad, stride = stride, flipkernel=1)
 
-∇depthwiseconv_data(dy::A, x::A, w::A; pad = 0, stride = 1) where A<:AbstractArray =
-  ∇depthwiseconv_data!(zero(x), dy, x, w; pad = pad, stride = stride)
+∇depthwiseconv_data(dy::A, x::A, w::A; pad = 0, stride = 1, flipkernel=0) where A<:AbstractArray =
+  ∇depthwiseconv_data!(zero(x), dy, x, w; pad = pad, stride = stride, flipkernel=flipkernel)
 
-∇depthwiseconv_filter(dy::A, x::A, w::A; pad = 0, stride = 1) where A<:AbstractArray =
-  ∇depthwiseconv_filter!(zero(w), dy, x, w; pad = pad, stride = stride)
+∇depthwiseconv_filter(dy::A, x::A, w::A; pad = 0, stride = 1, flipkernel=0) where A<:AbstractArray =
+  ∇depthwiseconv_filter!(zero(w), dy, x, w; pad = pad, stride = stride, flipkernel=flipkernel)
 
 ∇depthwiseconv_filter!(dw::AbstractArray{T,4}, dy::AbstractArray{T,4}, x::AbstractArray{T,4}, w::AbstractArray{T,4};
-              pad = 0, stride = 1) where T =
-  depthwiseconv2d_grad_w!(dw, x, w, dy, padding = pad, stride = stride)
+              pad = 0, stride = 1, flipkernel=0) where T =
+  depthwiseconv2d_grad_w!(dw, x, w, dy, padding = pad, stride = stride, mode=flipkernel)
 
 ∇depthwiseconv_data!(dx::AbstractArray{T,4}, dy::AbstractArray{T,4}, x::AbstractArray{T,4}, w::AbstractArray{T,4};
-            pad = 0, stride = 1) where T =
-  depthwiseconv2d_grad_x!(dx, x, w, dy, padding = pad, stride = stride)
+            pad = 0, stride = 1, flipkernel=0) where T =
+  depthwiseconv2d_grad_x!(dx, x, w, dy, padding = pad, stride = stride, mode=flipkernel)
 
 # Pooling
 
