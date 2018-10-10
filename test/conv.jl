@@ -16,9 +16,19 @@ using NNlib: conv, ∇conv_filter, ∇conv_data, ∇maxpool, maxpool, depthwisec
         49 99 149;
         59 109 159.]
 
+    @test dropdims(conv(Float32.(x), Float32.(w)), dims=(3,4)) == Float32.([
+        29 79 129;
+        39 89 139;
+        49 99 149;
+        59 109 159.])
+
     @test dropdims(conv(x, w; stride=2), dims = (3,4)) == [
         29 129;
         49 149.]
+
+    @test dropdims(conv(Float32.(x), Float32.(w); stride=2), dims = (3,4)) == Float32.([
+        29 129;
+        49 149.])    
 
     @test dropdims(conv(x, w; pad=1), dims = (3,4)) == [
         1.0   9.0   29.0   49.0   48.0;
@@ -28,6 +38,15 @@ using NNlib: conv, ∇conv_filter, ∇conv_data, ∇maxpool, maxpool, depthwisec
         13.0  59.0  109.0  159.0  136.0;
         10.0  40.0   70.0  100.0   80.0
     ]
+
+    @test dropdims(conv(Float32.(x), Float32.(w); pad=1), dims = (3,4)) == Float32.([
+        1.0   9.0   29.0   49.0   48.0;
+        4.0  29.0   79.0  129.0  115.0;
+        7.0  39.0   89.0  139.0  122.0;
+        10.0  49.0   99.0  149.0  129.0;
+        13.0  59.0  109.0  159.0  136.0;
+        10.0  40.0   70.0  100.0   80.0
+    ])
 
     @test dropdims(conv(x, w; dilation=2), dims = (3,4)) == [
         48 98;
@@ -157,9 +176,15 @@ end
         1150.0  1330.0  1510.0]
     @test dropdims(conv(x, w), dims = (4,5)) == res
 
+    @test dropdims(conv(Float32.(x), Float32.(w)), dims = (4,5)) == Float32.(res)
+
     @test dropdims(conv(x, w; stride=2), dims = (3,4,5)) == [
         322.0 682.0;
         394.0 754.0]
+
+    @test dropdims(conv(Float32.(x), Float32.(w); stride=2), dims = (3,4,5)) == Float32.([
+        322.0 682.0;
+        394.0 754.0])
 
     res = zeros(6,5,4)
     res[:, :, 1] = [
@@ -192,12 +217,19 @@ end
         270.0   660.0   730.0   800.0  480.0]
     @test dropdims(conv(x, w; pad=1), dims = (4,5)) == res
 
+    @test dropdims(conv(Float32.(x), Float32.(w); pad=1), dims = (4,5)) == Float32.(res)
+
     @test dropdims(conv(x, w; dilation=2), dims = (3,4,5)) == [
         608 788;
         644 824;
         680 860.
     ]
 
+    @test dropdims(conv(Float32.(x), Float32.(w); dilation=2), dims = (3,4,5)) == Float32.([
+        608 788;
+        644 824;
+        680 860.
+    ])
 	# NaN tests for dilation forward pass
 
 	ys = []
