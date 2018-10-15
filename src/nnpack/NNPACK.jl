@@ -20,8 +20,8 @@ const nnlib_interface_path = joinpath(dirname(@__FILE__), "nnlib.jl")
     try
         global NNPACK_CPU_THREADS = parse(UInt64, ENV["JULIA_NUM_THREADS"])
     catch
-        @warn "`JULIA_NUM_THREADS` not set. So taking the NNPACK default `4`"
-        global NNPACK_CPU_THREADS = UInt64(4)
+        global NNPACK_CPU_THREADS = Sys.CPU_THREADS
+        @warn "JULIA_NUM_THREADS not set. So taking the NNPACK default $(NNPACK_CPU_THREADS)"
     end
     global shared_threadpool = pthreadpool_create(NNPACK_CPU_THREADS)
 end
