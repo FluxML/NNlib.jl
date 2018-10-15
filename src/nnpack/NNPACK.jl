@@ -11,11 +11,11 @@ include(depsjl_path)
 const nnlib_interface_path = joinpath(dirname(@__FILE__), "nnlib.jl")
 @init begin
     check_deps()
-    try
-        nnp_initialize()
-        include(nnlib_interface_path)
-    catch
+    status = nnp_initialize()
+    if status == nnp_status_unsupported_hardware
         @warn "HARDWARE is unsupported by NNPACK so falling back to default NNlib"
+    else
+        include(nnlib_interface_path)
     end
     try
         global NNPACK_CPU_THREADS = parse(UInt64, ENV["JULIA_NUM_THREADS"])
@@ -23,4 +23,5 @@ const nnlib_interface_path = joinpath(dirname(@__FILE__), "nnlib.jl")
         @warn "`JULIA_NUM_THREADS` not set. So taking the NNPACK default `4`"
         global NNPACK_CPU_THREADS = UInt64(4)
     end
+    global shared_threadpool = pthreadpool_create(NNPACK_CPU_THREADS)
 end

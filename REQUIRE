@@ -1,4 +1,4 @@
 julia 0.7-
 Requires
 MacroTools
-BinaryProvider
+BinaryProvider 0.3.0-

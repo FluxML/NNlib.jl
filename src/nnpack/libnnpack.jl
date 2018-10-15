@@ -1,5 +1,6 @@
+#NOTE: We do the error handling of nnp_initialize while loading NNPACK
 function nnp_initialize()
-    @check ccall((:nnp_initialize, libnnpack), nnp_status, (),)
+    ccall((:nnp_initialize, libnnpack), nnp_status, (),)
 end
 
 function nnp_deinitialize()
@@ -43,6 +44,7 @@ function nnp_softmax_output(x::AbstractVecOrMat{Float32}, y::AbstractVecOrMat{Fl
 end
 
 #FIXME: Output of fully connected not consistent with `kernel * input`
+#NOTE: This most likely due to nnpack being row major. Investigate this.
 
 function nnp_fully_connected_output(batch_size, input_channels, output_channels, input, kernel, output, threadpool, profile)
     @check ccall((:nnp_fully_connected_output, libnnpack), nnp_status, (Csize_t, Csize_t, Csize_t, Ptr{Cfloat}, Ptr{Cfloat}, Ptr{Cfloat}, pthreadpool_t, Ptr{Cvoid}), batch_size, input_channels, output_channels, input, kernel, output, threadpool, C_NULL)
