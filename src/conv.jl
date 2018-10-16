@@ -24,23 +24,38 @@ padtuple(x::Tuple,p::Integer) = map(_->p, head(head(x)))
 padtuple(x::Tuple,p::Tuple) = p
 padtuple(x::AbstractArray,p) = padtuple(size(x),p)
 
-function conv(x::A, w::A; pad = 0, stride = 1, dilation = 1) where A<:AbstractArray
+# These are defined as an interface for users that are sensitive to type inference
+# (e.g. Zygote/XLA). By avoiding keyword arguments, we can make things a little easier
+# on the compiler for now.
+struct _conv{stride, pad, dilation}; end
+struct _∇conv_data{stride, pad, dilation, flipkernel}; end
+struct _∇conv_filter{stride, pad, dilation, flipkernel}; end
+
+# Convenience wrappers for the above with keyword arguments
+conv(x::AbstractArray, w::AbstractArray; pad = 0, stride = 1, dilation = 1) =
+  _conv{pad, stride, dilation}()(x, w)
+∇conv_data(dy::AbstractArray, x::AbstractArray, w::AbstractArray; pad = 0, stride = 1, dilation = 1, flipkernel=0) =
+  _∇conv_data{pad, stride, dilation, flipkernel}()(dy, x, w)
+∇conv_filter(dy::AbstractArray, x::AbstractArray, w::AbstractArray; pad = 0, stride = 1, dilation = 1, flipkernel=0) =
+  _∇conv_filter{pad, stride, dilation, flipkernel}()(dy, x, w)
+
+function (::_conv{pad, stride, dilation})(x::A, w::A) where {A<:AbstractArray, pad, stride, dilation}
   pad_, stride_ = padtuple(x, pad), padtuple(x, stride)
   conv!(similar(x, cdims(size(x), dilation_dims(w, dilation), pad_, stride_)),
         x, w, pad = pad_, stride = stride_, dilation = dilation)
 end
+
+(::_∇conv_data{pad, stride, dilation, flipkernel})(dy::A, x::A, w::A) where {A<:AbstractArray, pad, stride, dilation, flipkernel} =
+    ∇conv_data!(zero(x), dy, x, w; pad = pad, stride = stride, dilation = dilation, flipkernel=flipkernel)
+
+(::_∇conv_filter{pad, stride, dilation, flipkernel})(dy::A, x::A, w::A) where {A<:AbstractArray, pad, stride, dilation, flipkernel} =
+    ∇conv_filter!(zero(w), dy, x, w; pad = pad, stride = stride, dilation = dilation, flipkernel=flipkernel)
 
 function crosscor(x::A, w::A; pad = 0, stride = 1, dilation = 1) where A<:AbstractArray
   pad_, stride_ = padtuple(x, pad), padtuple(x, stride)
   crosscor!(similar(x, cdims(size(x), dilation_dims(w, dilation), pad_, stride_)),
         x, w, pad = pad_, stride = stride_, dilation = dilation)
 end
-
-∇conv_data(dy::A, x::A, w::A; pad = 0, stride = 1, dilation = 1, flipkernel = 0) where A<:AbstractArray =
-  ∇conv_data!(zero(x), dy, x, w; pad = pad, stride = stride, dilation = dilation, flipkernel=flipkernel)
-
-∇conv_filter(dy::A, x::A, w::A; pad = 0, stride = 1, dilation = 1, flipkernel=0) where A<:AbstractArray =
-  ∇conv_filter!(zero(w), dy, x, w; pad = pad, stride = stride, dilation = dilation, flipkernel=flipkernel)
 
 # N-D dispatch
 
