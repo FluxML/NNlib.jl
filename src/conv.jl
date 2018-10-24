@@ -58,8 +58,8 @@ function ∇conv_data(dy::A, w::A; size=nothing, pad = 0, stride = 1, dilation =
   if size === nothing
     size = ctdims(Base.size(dy), Base.size(w), pad_, stride_, dilation_)
   end
-  x = similar(dy, size) 
-  ∇conv_data!(zero(x), dy, x, w, pad = pad_, stride = stride_, dilation = dilation_, flipkernel=flipkernel)
+  dx = zeros(eltype(dy), size) 
+  ∇conv_data!(dx, dy, w, pad = pad_, stride = stride_, dilation = dilation_, flipkernel=flipkernel)
 end
 
 ∇conv_filter(dy::A, x::A, w::A; pad = 0, stride = 1, dilation = 1, flipkernel=0) where A<:AbstractArray =
@@ -87,10 +87,9 @@ function ∇conv_filter!(dw::AbstractArray{T,3}, dy::AbstractArray{T,3},
     return dw
 end
 
-function ∇conv_data!(dx::AbstractArray{T,3}, dy::AbstractArray{T,3},
-                     x::AbstractArray{T,3}, w::AbstractArray{T,3};
-                     pad = 0, stride = 1, dilation = 1, flipkernel = 0) where T
-    args = map(x -> reshape(x, size(x,1),1,size(x,2),size(x,3)), (dx, dy, x, w))
+function ∇conv_data!(dx::AbstractArray{T,3}, dy::AbstractArray{T,3}, w::AbstractArray{T,3}; 
+		     pad = 0, stride = 1, dilation = 1, flipkernel = 0) where T
+    args = map(x -> reshape(x, size(x,1),1,size(x,2),size(x,3)), (dx, dy, w))
     ∇conv_data!(args..., pad = (pad...,0), stride = (stride...,1), dilation = (dilation..., 1), flipkernel = flipkernel)
     return dx
 end
@@ -103,9 +102,9 @@ conv!(y::AbstractArray{T,4}, x::AbstractArray{T,4}, w::AbstractArray{T,4};
               pad = 0, stride = 1, dilation = 1, flipkernel=0) where T =
   conv2d_grad_w!(dw, x, w, dy, padding = pad, stride = stride, dilation = dilation, mode=flipkernel)
 
-∇conv_data!(dx::AbstractArray{T,4}, dy::AbstractArray{T,4}, x::AbstractArray{T,4}, w::AbstractArray{T,4};
+∇conv_data!(dx::AbstractArray{T,4}, dy::AbstractArray{T,4}, w::AbstractArray{T,4};
             pad = 0, stride = 1, dilation = 1, flipkernel=0) where T =
-  conv2d_grad_x!(dx, x, w, dy, padding = pad, stride = stride, dilation = dilation, mode=flipkernel)
+  conv2d_grad_x!(dx, w, dy, padding = pad, stride = stride, dilation = dilation, mode=flipkernel)
 
 conv!(y::AbstractArray{T,5}, x::AbstractArray{T,5}, w::AbstractArray{T,5};
       pad = 0, stride = 1, dilation = 1, flipkernel=0) where T =
@@ -115,9 +114,9 @@ conv!(y::AbstractArray{T,5}, x::AbstractArray{T,5}, w::AbstractArray{T,5};
               pad = 0, stride = 1, dilation = 1, flipkernel=0) where T =
   conv3d_grad_w!(dw, x, w, dy, padding = pad, stride = stride, dilation = dilation, mode=flipkernel)
 
-∇conv_data!(dx::AbstractArray{T,5}, dy::AbstractArray{T,5}, x::AbstractArray{T,5}, w::AbstractArray{T,5};
+∇conv_data!(dx::AbstractArray{T,5}, dy::AbstractArray{T,5}, w::AbstractArray{T,5};
             pad = 0, stride = 1, dilation = 1, flipkernel=0) where T =
-  conv3d_grad_x!(dx, x, w, dy, padding = pad, stride = stride, dilation = dilation, mode=flipkernel)
+  conv3d_grad_x!(dx, w, dy, padding = pad, stride = stride, dilation = dilation, mode=flipkernel)
 
   # Depthwise Conv
 
