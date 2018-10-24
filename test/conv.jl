@@ -60,13 +60,13 @@ using NNlib: conv, ∇conv_filter, ∇conv_data, ∇maxpool, maxpool, depthwisec
     # (it's assumed convolution code won't change often)
 
     @test size(∇conv_filter(reshape(rand(4,3), 4, 3, 1, 1), x, w)) == size(w)
-    @test size(∇conv_data(reshape(rand(4,3), 4, 3, 1, 1), x, w)) == size(x)
+    @test size(∇conv_data(reshape(rand(4,3), 4, 3, 1, 1), w, size(x))) == size(x)
 
     # Test that stride/pad work backward as well
     y = conv(x, w; stride=2, pad=1, dilation=2)
     @test size(y) == (3, 2, 1, 1)
     @test size(∇conv_filter(y, x, w; stride=2, pad=1, dilation=2)) == size(w)
-    @test size(∇conv_data(y, x, w; stride=2, pad=1, dilation=2)) == size(x)
+    @test size(∇conv_data(y, w, size(x); stride=2, pad=1, dilation=2)) == size(x)
 
 	# NaN tests for dilation backward pass: filters
 	dy = randn(size(ys[1]))
@@ -78,7 +78,7 @@ using NNlib: conv, ∇conv_filter, ∇conv_data, ∇maxpool, maxpool, depthwisec
 	# NaN tests for dilation backward pass: input
 	dxs = []
 	for idx in 1:1000
-	    push!(dxs, ∇conv_data(dy, x, w; dilation=2))
+	    push!(dxs, ∇conv_data(dy, w, size(x); dilation=2))
 	end
 
 	@test !any([any(isnan.(dws[idx])) for idx in 1:1000])
@@ -107,7 +107,7 @@ end
         X = copy(x[:,:,i:i,:]);
         W = copy(permutedims(w[:,:,:,i:i],[1,2,4,3]));
         DY = copy(dy[:,:,2i-1:2i,:]);
-        res = ∇conv_data(DY,X,W)
+        res = ∇conv_data(DY,W,size(X))
         @test dropdims(z[:,:,i:i,:], dims=(3,4)) == dropdims(res, dims=(3,4))
     end
 
@@ -237,7 +237,7 @@ end
     # (it's assumed convolution code won't change often)
 
     @test size(∇conv_filter(reshape(rand(4,3,2), 4, 3, 2, 1, 1), x, w)) == size(w)
-    @test size(∇conv_data(reshape(rand(4,3,2), 4, 3, 2, 1, 1), x, w)) == size(x)
+    @test size(∇conv_data(reshape(rand(4,3,2), 4, 3, 2, 1, 1), w, size(x))) == size(x)
 
 	# NaN tests for dilation backward pass: filters
 	dy = randn(size(ys[1]))
@@ -249,7 +249,7 @@ end
 	# NaN tests for dilation backward pass: input
 	dxs = []
 	for idx in 1:1000
-	    push!(dxs, ∇conv_data(dy, x, w; dilation=2))
+	    push!(dxs, ∇conv_data(dy, w, size(x); dilation=2))
 	end
 
 	@test !any([any(isnan.(dws[idx])) for idx in 1:1000])

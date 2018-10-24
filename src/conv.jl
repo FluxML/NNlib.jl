@@ -39,14 +39,13 @@ padtuple(x::Tuple,p::Integer) = map(_->p, head(head(x)))
 padtuple(x::Tuple,p::Tuple) = p
 padtuple(x::AbstractArray,p) = padtuple(size(x),p)
 
-function conv(x::A, w::A; pad = 0, stride = 1, dilation = 1) where A<:AbstractArray
+function conv(x::A, w::A, y_dims=nothing; pad = 0, stride = 1, dilation = 1) where A<:AbstractArray
   pad_, stride_ = padtuple(x, pad), padtuple(x, stride)
-  conv!(similar(x, cdims(size(x), dilation_dims(w, dilation), pad_, stride_)),
-        x, w, pad = pad_, stride = stride_, dilation = dilation)
+  if y_dims == nothing
+    y_dims = cdims(size(x), dilation_dims(w, dilation), pad_, stride_)
+  end
+  conv!(similar(x, y_dims), x, w, pad = pad_, stride = stride_, dilation = dilation)
 end
-
-conv(y::A, x::A, w::A; pad = 0, stride = 1, dilation = 1) where A<:AbstractArray =
-  conv!(zero(y), x, w; pad = pad, stride = stride, dilation = dilation)
 
 function crosscor(x::A, w::A; pad = 0, stride = 1, dilation = 1) where A<:AbstractArray
   pad_, stride_ = padtuple(x, pad), padtuple(x, stride)
@@ -54,14 +53,14 @@ function crosscor(x::A, w::A; pad = 0, stride = 1, dilation = 1) where A<:Abstra
         x, w, pad = pad_, stride = stride_, dilation = dilation)
 end
 
-function ∇conv_data(dy::A, w::A; pad = 0, stride = 1, dilation = 1) where A<:AbstractArray
+function ∇conv_data(dy::A, w::A, x_dims=nothing; pad = 0, stride = 1, dilation = 1, flipkernel = 0) where A<:AbstractArray
   pad_, stride_, dilation_ = padtuple(dy, pad), padtuple(dy, stride), padtuple(dy, dilation)
-  x = similar(dy, ctdims(size(dy), size(w), pad_, stride_, dilation_))
-  ∇conv_data!(zero(x), dy, x, w, pad = pad_, stride = stride_, dilation = dilation_)
+  if x_dims == nothing
+    x_dims = ctdims(size(dy), size(w), pad_, stride_, dilation_)
+  end
+  x = similar(dy, x_dims)    
+  ∇conv_data!(zero(x), dy, x, w, pad = pad_, stride = stride_, dilation = dilation_, flipkernel=flipkernel)
 end
-
-∇conv_data(dy::A, x::A, w::A; pad = 0, stride = 1, dilation = 1) where A<:AbstractArray =
-  ∇conv_data!(zero(x), dy, x, w; pad = pad, stride = stride, dilation = dilation)
 
 ∇conv_filter(dy::A, x::A, w::A; pad = 0, stride = 1, dilation = 1, flipkernel=0) where A<:AbstractArray =
   ∇conv_filter!(zero(w), dy, x, w; pad = pad, stride = stride, dilation = dilation, flipkernel=flipkernel)
