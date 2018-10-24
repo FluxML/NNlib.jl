@@ -76,6 +76,7 @@ function ∇conv_data(dy::A, w::A; size=nothing, pad = 0, stride = 1, dilation =
   ∇conv_data!(similar(dy, size), dy, w, pad = pad_, stride = stride_, dilation = dilation_, flipkernel=flipkernel)
 end
 
+<<<<<<< HEAD
 function ∇conv_filter(dy::A, x::A; size = nothing, pad = 0, stride = 1, dilation = 1, flipkernel=0) where A<:AbstractArray
   pad_, stride_, dilation_ = padtuple(dy, pad), padtuple(dy, stride), padtuple(dy, dilation)
   if size === nothing
@@ -83,6 +84,10 @@ function ∇conv_filter(dy::A, x::A; size = nothing, pad = 0, stride = 1, dilati
   end
   ∇conv_filter!(similar(dy, size), dy, x; pad = pad, stride = stride, dilation = dilation, flipkernel=flipkernel)
 end
+=======
+∇conv_filter(dy::A, x::A, size::Tuple; pad = 0, stride = 1, dilation = 1, flipkernel=0) where A<:AbstractArray = 
+  ∇conv_filter!(zeros(eltype(dy),size), dy, x; pad = pad, stride = stride, dilation = dilation, flipkernel=flipkernel)
+>>>>>>> conv_filter api changes
 
 # N-D dispatch
 
@@ -258,12 +263,6 @@ meanpool_cpu!(y::AbstractArray{<:Real,5}, x::AbstractArray{<:Real,5}, k::Dims{3}
                    window = k, padding = pad, stride = stride)
 
 # Deprecated
-
-export conv2d, maxpool2d, avgpool2d
-# 0.3
-@deprecate conv2d(x, w; kw...) NNlib.conv(x, w; kw...)
-@deprecate maxpool2d(x::AbstractArray{<:Real,4}, k::Integer) maxpool(x, (k,k))
-@deprecate meanpool2d(x::AbstractArray{<:Real,4}, k::Integer) meanpool(x, (k,k))
 
 # 0.4.2
 @deprecate ∇conv_data(dy::A, x::A, w::A; kw...) where A<:AbstractArray ∇conv_data(dy, w; size=size(x), kw...)
