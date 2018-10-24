@@ -39,12 +39,12 @@ padtuple(x::Tuple,p::Integer) = map(_->p, head(head(x)))
 padtuple(x::Tuple,p::Tuple) = p
 padtuple(x::AbstractArray,p) = padtuple(size(x),p)
 
-function conv(x::A, w::A, y_dims=nothing; pad = 0, stride = 1, dilation = 1) where A<:AbstractArray
+function conv(x::A, w::A; size=nothing, pad = 0, stride = 1, dilation = 1) where A<:AbstractArray
   pad_, stride_ = padtuple(x, pad), padtuple(x, stride)
-  if y_dims == nothing
-    y_dims = cdims(size(x), dilation_dims(w, dilation), pad_, stride_)
+  if size === nothing
+    size = cdims(Base.size(x), dilation_dims(w, dilation), pad_, stride_)
   end
-  conv!(similar(x, y_dims), x, w, pad = pad_, stride = stride_, dilation = dilation)
+  conv!(similar(x, size), x, w, pad = pad_, stride = stride_, dilation = dilation)
 end
 
 function crosscor(x::A, w::A; pad = 0, stride = 1, dilation = 1) where A<:AbstractArray
@@ -53,12 +53,12 @@ function crosscor(x::A, w::A; pad = 0, stride = 1, dilation = 1) where A<:Abstra
         x, w, pad = pad_, stride = stride_, dilation = dilation)
 end
 
-function ∇conv_data(dy::A, w::A, x_dims=nothing; pad = 0, stride = 1, dilation = 1, flipkernel = 0) where A<:AbstractArray
+function ∇conv_data(dy::A, w::A; size=nothing, pad = 0, stride = 1, dilation = 1, flipkernel = 0) where A<:AbstractArray
   pad_, stride_, dilation_ = padtuple(dy, pad), padtuple(dy, stride), padtuple(dy, dilation)
-  if x_dims == nothing
-    x_dims = ctdims(size(dy), size(w), pad_, stride_, dilation_)
+  if size === nothing
+    size = ctdims(Base.size(dy), Base.size(w), pad_, stride_, dilation_)
   end
-  x = similar(dy, x_dims)    
+  x = similar(dy, size) 
   ∇conv_data!(zero(x), dy, x, w, pad = pad_, stride = stride_, dilation = dilation_, flipkernel=flipkernel)
 end
 
@@ -239,3 +239,14 @@ meanpool_cpu!(y::AbstractArray{<:Real,5}, x::AbstractArray{<:Real,5}, k::Dims{3}
               k::Dims{3}; pad = (0,0), stride = k) =
   meanpool3d_grad!(dx, dy, y, x,
                    window = k, padding = pad, stride = stride)
+
+# Deprecated
+
+export conv2d, maxpool2d, avgpool2d
+# 0.3
+@deprecate conv2d(x, w; kw...) NNlib.conv(x, w; kw...)
+@deprecate maxpool2d(x::AbstractArray{<:Real,4}, k::Integer) maxpool(x, (k,k))
+@deprecate meanpool2d(x::AbstractArray{<:Real,4}, k::Integer) meanpool(x, (k,k))
+
+# 0.4.2
+@deprecate ∇conv_data(dy::A, x::A, w::A; kw...) where A<:AbstractArray ∇conv_data(dy, w; size=size(x), kw...)
