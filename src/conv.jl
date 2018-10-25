@@ -73,8 +73,7 @@ function ∇conv_data(dy::A, w::A; size=nothing, pad = 0, stride = 1, dilation =
   if size === nothing
     size = ctdims(Base.size(dy), Base.size(w), pad_, stride_, dilation_)
   end
-  dx = zeros(eltype(dy), size) 
-  ∇conv_data!(dx, dy, w, pad = pad_, stride = stride_, dilation = dilation_, flipkernel=flipkernel)
+  ∇conv_data!(similar(dy, size), dy, w, pad = pad_, stride = stride_, dilation = dilation_, flipkernel=flipkernel)
 end
 
 function ∇conv_filter(dy::A, x::A; size = nothing, pad = 0, stride = 1, dilation = 1, flipkernel=0) where A<:AbstractArray
@@ -82,7 +81,7 @@ function ∇conv_filter(dy::A, x::A; size = nothing, pad = 0, stride = 1, dilati
   if size === nothing
     size = wdims(Base.size(x), Base.size(dy), pad_, stride_, dilation_)
   end
-  ∇conv_filter!(zero(similar(dy,size)), dy, x; pad = pad, stride = stride, dilation = dilation, flipkernel=flipkernel)
+  ∇conv_filter!(similar(dy, size), dy, x; pad = pad, stride = stride, dilation = dilation, flipkernel=flipkernel)
 end
 
 # N-D dispatch
