@@ -32,6 +32,21 @@ function ctdims(x::NTuple{N}, w::NTuple{N}, pad, stride, dilation) where N
   end
 end
 
+
+# Kernel dims
+
+function wdims(x::NTuple{N}, y::NTuple{N}, pad, stride, dilation) where N
+  ntuple(Val(N)) do i
+    if i < N-1
+      1 + div((1 - y[i]) * stride[i] + x[i] + 2pad[i] - 1, dilation[i])
+    elseif i == N-1
+      x[i]
+    else # i == N
+      y[i]
+    end
+  end
+end
+
 # Interface
 
 head(x) = reverse(Base.tail(reverse(x)))
@@ -62,8 +77,13 @@ function ∇conv_data(dy::A, w::A; size=nothing, pad = 0, stride = 1, dilation =
   ∇conv_data!(dx, dy, w, pad = pad_, stride = stride_, dilation = dilation_, flipkernel=flipkernel)
 end
 
-∇conv_filter(dy::A, x::A, size::Tuple; pad = 0, stride = 1, dilation = 1, flipkernel=0) where A<:AbstractArray = 
-  ∇conv_filter!(zeros(eltype(dy),size), dy, x; pad = pad, stride = stride, dilation = dilation, flipkernel=flipkernel)
+function ∇conv_filter(dy::A, x::A; size = nothing, pad = 0, stride = 1, dilation = 1, flipkernel=0) where A<:AbstractArray
+  pad_, stride_, dilation_ = padtuple(dy, pad), padtuple(dy, stride), padtuple(dy, dilation)
+  if size === nothing
+    size = wdims(Base.size(x), Base.size(dy), pad_, stride_, dilation_)
+  end
+  ∇conv_filter!(zero(similar(dy,size)), dy, x; pad = pad, stride = stride, dilation = dilation, flipkernel=flipkernel)
+end
 
 # N-D dispatch
 

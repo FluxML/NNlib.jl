@@ -59,20 +59,20 @@ using NNlib: conv, ∇conv_filter, ∇conv_data, ∇maxpool, maxpool, depthwisec
     # correctness of gradients is cross-checked with CUDNN.jl
     # (it's assumed convolution code won't change often)
 
-    @test size(∇conv_filter(reshape(rand(4,3), 4, 3, 1, 1), x, size(w))) == size(w)
+    @test size(∇conv_filter(reshape(rand(4,3), 4, 3, 1, 1), x; size=size(w))) == size(w)
     @test size(∇conv_data(reshape(rand(4,3), 4, 3, 1, 1), w; size=size(x))) == size(x)
 
     # Test that stride/pad work backward as well
     y = conv(x, w; stride=2, pad=1, dilation=2)
     @test size(y) == (3, 2, 1, 1)
-    @test size(∇conv_filter(y, x, size(w); stride=2, pad=1, dilation=2)) == size(w)
+    @test size(∇conv_filter(y, x; size=size(w), stride=2, pad=1, dilation=2)) == size(w)
     @test size(∇conv_data(y, w; size=size(x), stride=2, pad=1, dilation=2)) == size(x)
 
 	# NaN tests for dilation backward pass: filters
 	dy = randn(size(ys[1]))
 	dws = []
 	for idx in 1:1000
-	    push!(dws, ∇conv_filter(dy, x, size(w); dilation=2))
+	    push!(dws, ∇conv_filter(dy, x; size=size(w), dilation=2))
 	end
 
 	# NaN tests for dilation backward pass: input
@@ -116,7 +116,7 @@ end
         X = copy(x[:,:,i:i,:]);
         W = copy(permutedims(w[:,:,:,i:i],[1,2,4,3]))
         DY = copy(dy[:,:,2i-1:2i,:])
-        res = ∇conv_filter(DY,X,size(W))
+        res = ∇conv_filter(DY,X; size=size(W))
         @test dropdims(z[:,:,:,i:i]; dims=(4)) == dropdims(res; dims=(3))
     end
 
@@ -236,14 +236,14 @@ end
     # correctness of gradients is cross-checked with CUDNN.jl
     # (it's assumed convolution code won't change often)
 
-    @test size(∇conv_filter(reshape(rand(4,3,2), 4, 3, 2, 1, 1), x, size(w))) == size(w)
+    @test size(∇conv_filter(reshape(rand(4,3,2), 4, 3, 2, 1, 1), x; size=size(w))) == size(w)
     @test size(∇conv_data(reshape(rand(4,3,2), 4, 3, 2, 1, 1), w; size=size(x))) == size(x)
 
 	# NaN tests for dilation backward pass: filters
 	dy = randn(size(ys[1]))
 	dws = []
 	for idx in 1:1000
-	    push!(dws, ∇conv_filter(dy, x, size(w); dilation=2))
+	    push!(dws, ∇conv_filter(dy, x; size=size(w), dilation=2))
 	end
 
 	# NaN tests for dilation backward pass: input
