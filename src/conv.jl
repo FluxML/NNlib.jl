@@ -76,7 +76,6 @@ function ∇conv_data(dy::A, w::A; size=nothing, pad = 0, stride = 1, dilation =
   ∇conv_data!(similar(dy, size), dy, w, pad = pad_, stride = stride_, dilation = dilation_, flipkernel=flipkernel)
 end
 
-<<<<<<< HEAD
 function ∇conv_filter(dy::A, x::A; size = nothing, pad = 0, stride = 1, dilation = 1, flipkernel=0) where A<:AbstractArray
   pad_, stride_, dilation_ = padtuple(dy, pad), padtuple(dy, stride), padtuple(dy, dilation)
   if size === nothing
@@ -84,10 +83,6 @@ function ∇conv_filter(dy::A, x::A; size = nothing, pad = 0, stride = 1, dilati
   end
   ∇conv_filter!(similar(dy, size), dy, x; pad = pad, stride = stride, dilation = dilation, flipkernel=flipkernel)
 end
-=======
-∇conv_filter(dy::A, x::A, size::Tuple; pad = 0, stride = 1, dilation = 1, flipkernel=0) where A<:AbstractArray = 
-  ∇conv_filter!(zeros(eltype(dy),size), dy, x; pad = pad, stride = stride, dilation = dilation, flipkernel=flipkernel)
->>>>>>> conv_filter api changes
 
 # N-D dispatch
 
