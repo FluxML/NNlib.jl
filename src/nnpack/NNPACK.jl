@@ -18,7 +18,7 @@ const nnlib_interface_path = joinpath(dirname(@__FILE__), "nnlib.jl")
         include(nnlib_interface_path)
     end
     try
-        global NNPACK_CPU_THREADS = parse(UInt64, ENV["JULIA_NUM_THREADS"])
+        global NNPACK_CPU_THREADS = parse(UInt64, ENV["NNPACK_CPU_THREADS"])
     catch
         global NNPACK_CPU_THREADS = 4
     end
