@@ -117,5 +117,6 @@ end
 
 function ∇conv_filter!(dw::AA{4}, dy::AA{4}, x::AA{4}, w::AA{4}; pad = 0, stride = 1, dilation = 1, algo = UInt32(0), flipkernel = 0)
     flipkernel == 0 && (w = reverse(reverse(w, dims=1), dims=2))
-    nnp_convolution_kernel_gradient(dw, x, dy, w, padding = pad, stride = stride, algo = algo, threadpool = shared_threadpool)
+    dw .= nnp_convolution_kernel_gradient(dw, x, dy, w, padding = pad, stride = stride, algo = algo, threadpool = shared_threadpool)
+    flipkernel == 0 ? reverse(reverse(dw, dims=1), dims=2) : dw
 end
