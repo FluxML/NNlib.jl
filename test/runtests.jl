@@ -29,4 +29,6 @@ xs = Float32[1, 2, 3000.]
 
 xs = Float32[1 2 3; 1000 2000 3000]
 @test logsoftmax(xs) ≈ [-999 -1998 -2997; 0 0 0.]
+@test NNlib.∇logsoftmax(ones(size(xs)), xs) ≈ zeros(Float32, size(xs))
+@test NNlib.∇softmax(ones(size(xs)), xs) ≈ zeros(Float32, size(xs))
 end

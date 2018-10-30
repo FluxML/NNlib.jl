@@ -23,7 +23,7 @@ end
 logsoftmax!(xs) = logsoftmax!(xs, xs)
 logsoftmax(xs) = logsoftmax!(similar(xs), xs)
 
-∇logsoftmax(Δ, xs) = ∇softmax(Δ ./ softmax(xs), xs)
+∇logsoftmax(Δ, xs) = ∇softmax(Δ ./ max.(eps(eltype(xs)),softmax(xs)), xs)
 
 """
     logsoftmax(xs) = log.(exp.(xs) ./ sum(exp.(xs)))
