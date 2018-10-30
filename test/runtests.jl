@@ -1,4 +1,4 @@
-using NNlib, Test
+using NNlib, Test, Flux
 
 @testset "NNlib" begin
 
@@ -29,6 +29,14 @@ xs = Float32[1, 2, 3000.]
 
 xs = Float32[1 2 3; 1000 2000 3000]
 @test logsoftmax(xs) ≈ [-999 -1998 -2997; 0 0 0.]
+
 @test NNlib.∇logsoftmax(ones(size(xs)), xs) ≈ zeros(Float32, size(xs))
 @test NNlib.∇softmax(ones(size(xs)), xs) ≈ zeros(Float32, size(xs))
+gradtest(f, xs::AbstractArray...) = Flux.Tracker.gradcheck((xs...) -> sum(sin.(f(xs...))), xs...)
+@test gradtest(logsoftmax, xs)
+@test gradtest(softmax, xs)
+
+xs = randn(5, 10)
+@test gradtest(logsoftmax, xs)
+@test gradtest(softmax, xs)
 end
