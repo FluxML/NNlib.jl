@@ -82,9 +82,9 @@ end
 
   xs = rand(5,5)
 
-  @test all(sum(softmax(xs), dims = 1) .≈ 1)
+  @test all(sum(softmax(xs), dims = 1) .≈ Float32(1))
 
-  @test sum(softmax(vec(xs))) ≈ 1
+  @test sum(softmax(vec(xs))) ≈ Float32(1)
 
   @testset "elu" begin
       @test elu(42) == 42

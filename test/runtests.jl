@@ -10,14 +10,14 @@ xs = [-100_000, -100_000.]
 @test logsoftmax(xs) ≈ log.([0.5, 0.5])
 
 xs = rand(5)
-@test softmax(xs) ≈ exp.(xs) ./ sum(exp.(xs))
-@test logsoftmax(xs) ≈ log.(softmax(xs))
-@test logsigmoid.(xs) ≈ log.(sigmoid.(xs))
+@test softmax(xs) ≈ Float32.(exp.(xs) ./ sum(exp.(xs)))
+@test logsoftmax(xs) ≈ Float32.(log.(softmax(xs)))
+@test logsigmoid.(xs) ≈ Float32.(log.(sigmoid.(xs)))
 
 xs = rand(5,10)
-@test softmax(xs) ≈ exp.(xs) ./ sum(exp.(xs), dims = 1)
-@test logsoftmax(xs) ≈ log.(softmax(xs))
-@test logsigmoid.(xs) ≈ log.(sigmoid.(xs))
+@test softmax(xs) ≈ Float32.(exp.(xs) ./ sum(exp.(xs), dims = 1))
+@test logsoftmax(xs) ≈ Float32.(log.(softmax(xs)))
+@test logsigmoid.(xs) ≈ Float32.(log.(sigmoid.(xs)))
 
 for T in [:Float32, :Float64]
   @eval @test logsigmoid.($T[-100_000, 100_000.]) ≈ $T[-100_000, 0.]
