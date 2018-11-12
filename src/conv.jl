@@ -216,11 +216,3 @@ meanpool_cpu!(y::AbstractArray{<:Real,5}, x::AbstractArray{<:Real,5}, k::Dims{3}
               k::Dims{3}; pad = (0,0), stride = k) =
   meanpool3d_grad!(dx, dy, y, x,
                    window = k, padding = pad, stride = stride)
-
-# Deprecated 0.3
-
-export conv2d, maxpool2d, avgpool2d
-
-@deprecate conv2d(x, w; kw...) NNlib.conv(x, w; kw...)
-@deprecate maxpool2d(x::AbstractArray{<:Real,4}, k::Integer) maxpool(x, (k,k))
-@deprecate meanpool2d(x::AbstractArray{<:Real,4}, k::Integer) meanpool(x, (k,k))
