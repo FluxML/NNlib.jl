@@ -57,7 +57,7 @@ using NNlib: conv, ∇conv_filter, ∇conv_data, ∇maxpool, maxpool, depthwisec
     @test size(∇conv_data(reshape(rand(4,3), 4, 3, 1, 1), x, w)) == size(x)
 
     # Test that stride/pad work backward as well
-    y = conv(x, w; stride=2, pad=1, dilation=2)
+    y = Float64.(conv(x, w; stride=2, pad=1, dilation=2))
     @test size(y) == (3, 2, 1, 1)
     @test size(∇conv_filter(y, x, w; stride=2, pad=1, dilation=2)) == size(w)
     @test size(∇conv_data(y, x, w; stride=2, pad=1, dilation=2)) == size(x)

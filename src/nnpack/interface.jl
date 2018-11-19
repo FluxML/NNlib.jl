@@ -50,12 +50,11 @@ conv(x::A, w::A; pad = 0, stride = 1, dilation = 1, algo = UInt32(0)) where A<:A
     conv(Float32.(x), Float32.(w), pad = pad, stride = stride, dilation = dilation, algo = algo)
 
 function conv(x::A, w::A; pad = 0, stride = 1, dilation = 1, algo = UInt32(0)) where A<:AbstractArray{Float32, 4}
-    pad_, stride_, fallback = check_support(x, (size(w, 1), size(w, 2)), pad, stride)
+    pad_, stride_, fallback = check_support(x, (size(w, 1), size(w, 2)), pad, stride, dilation)
     y = similar(x, cdims(size(x), dilation_dims(w, dilation), pad_, stride_))
     if fallback
         conv2d!(y, x, w, padding = pad, stride = stride, dilation = dilation)
     else
-        @warn "Accessed"
         conv!(y, x, w, zeros(Float32, size(y, 3)), pad = pad_, stride = stride_, dilation = dilation, algo = UInt32(algo))
     end
 end
@@ -64,12 +63,11 @@ conv(x::A1, w::A1, b::A2; pad = 0, stride = 1, dilation = 1, algo = UInt32(0)) w
     conv(Float32.(x), Float32.(w), Float32.(b), pad = pad, stride = stride, dilation = dilation, algo = algo)
 
 function conv(x::A1, w::A1, b::A2; pad = 0, stride = 1, dilation = 1, algo = UInt32(0)) where {A1<:AbstractArray{Float32, 4}, A2<:AbstractArray{Float32, 1}}
-    pad_, stride_, fallback = check_support(x, (size(w, 1), size(w, 2)), pad, stride)
+    pad_, stride_, fallback = check_support(x, (size(w, 1), size(w, 2)), pad, stride, dilation)
     y = similar(x, cdims(size(x), dilation_dims(w, dilation), pad_, stride_))
     if fallback
         conv2d!(y, x, w, padding = pad, stride = stride, dilation = dilation)
     else
-        @warn "Accessed 2.0"
         conv!(y, x, w, b, pad = pad_, stride = stride_, dilation = dilation, algo = UInt32(algo))
     end
 end
@@ -78,7 +76,7 @@ crosscor(x::A1, w::A1, b::A2; pad = 0, stride = 1, dilation = 1, algo = UInt32(0
     crosscor(Float32.(x), Float32.(w), Float32.(b), pad = pad, stride = stride, dilation = dilation, algo = algo)
 
 function crosscor(x::A1, w::A1, b::A2; pad = 0, stride = 1, dilation = 1, algo = UInt32(0)) where {A1<:AbstractArray{Float32, 4}, A2<:AbstractArray{Float32, 1}}
-    pad_, stride_, fallback = check_support(x, (size(w, 1), size(w, 2)), pad, stride)
+    pad_, stride_, fallback = check_support(x, (size(w, 1), size(w, 2)), pad, stride, dilation)
     y = similar(x, cdims(size(x), dilation_dims(w, dilation), pad_, stride_))
     if fallback
         conv2d!(y, x, w, padding = pad, stride = stride, dilation = dilation, mode = 1)
@@ -88,10 +86,12 @@ function crosscor(x::A1, w::A1, b::A2; pad = 0, stride = 1, dilation = 1, algo =
 end
 
 conv!(y::A1, x::A1, w::A1, b::A2; pad = 0, stride = 1, dilation = 1, algo = UInt32(0), flipkernel = 0) where {A1<:AbstractArray{Float64, 4}, A2<:AbstractArray{Float64, 1}} =
-    conv(Float32.(y), Float32.(x), Float32.(w), Float32.(b), pad = pad, stride = stride, dilation = dilation, algo = algo, flipkernel = flipkernel)
+    conv!(Float32.(y), Float32.(x), Float32.(w), Float32.(b), pad = pad, stride = stride, dilation = dilation, algo = algo, flipkernel = flipkernel)
 
 function conv!(y::A1, x::A1, w::A1, b::A2; pad = 0, stride = 1, dilation = 1, algo = UInt32(0), flipkernel = 0) where {A1<:AbstractArray{Float32, 4}, A2<:AbstractArray{Float32, 1}}
-    flipkernel == 0 && (w = reverse(reverse(w, dims=1), dims=2))
+    if flipkernel == 0
+        w = reverse(reverse(w, dims=1), dims=2)
+    end
     nnp_convolution_output(y, x, w, b, algo = algo, padding = pad, stride = stride, threadpool = shared_threadpool[])
 end
 
@@ -105,9 +105,9 @@ crosscor!(y::A1, x::A1, w::A1, b::A2; pad = 0, stride = 1, dilation = 1, algo = 
     ∇conv_data(Float32.(dy), Float32.(x), Float32.(w), pad = pad, stride = stride, dilation = dilation, algo = algo)
 
 function ∇conv_data(dy::A, x::A, w::A; pad = 0, stride = 1, dilation = 1, algo = UInt32(0)) where A<:AbstractArray{Float32, 4}
-    pad_, stride_, fallback = check_support(x, (size(w, 1), size(w, 2)), pad, stride)
+    pad_, stride_, fallback = check_support(x, (size(w, 1), size(w, 2)), pad, stride, dilation)
     if fallback
-        error("Unsupported Operation")
+        conv2d_grad_x!(zeros(Float32, size(x)), x, w, dy, padding = pad_, stride = stride_, dilation = dilation)
     else  
         ∇conv_data!(zeros(Float32, size(x)), dy, x, w; pad = pad_, stride = stride_, dilation = dilation, algo = UInt32(algo))
     end
@@ -125,9 +125,9 @@ end
     ∇conv_filter(Float32.(dy), Float32.(x), Float32.(w), pad = pad, stride = stride, dilation = dilation, algo = algo)
 
 function ∇conv_filter(dy::A, x::A, w::A; pad = 0, stride = 1, dilation = 1, algo = UInt32(0)) where A<:AbstractArray{Float32, 4}
-    pad_, stride_, fallback = check_support(x, (size(w, 1), size(w, 2)), pad, stride)
+    pad_, stride_, fallback = check_support(x, (size(w, 1), size(w, 2)), pad, stride, dilation)
     if fallback
-        error("Unsupported Operation")
+        conv2d_grad_w!(zeros(Float32, size(w)), x, w, dy, padding = pad_, stride = stride_, dilation = dilation)
     else 
         ∇conv_filter!(zeros(Float32, size(w)), dy, x, w; pad = pad_, stride = stride_, dilation = dilation, algo = UInt32(algo))
     end
