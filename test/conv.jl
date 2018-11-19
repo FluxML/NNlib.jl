@@ -147,7 +147,7 @@ end
     # correctness of gradients is cross-checked with CUDNN.jl
     # (it's assumed maxpooling code won't change often)
 
-    y = maxpool(x, (2,2))
+    y = Float64.(maxpool(x, (2,2)))
     dy = reshape(rand(2,2), 2, 2, 1, 1)
     @test size(∇maxpool(dy, y, x, (2,2))) == size(x)
 
