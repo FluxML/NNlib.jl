@@ -8,7 +8,9 @@ if !isfile(depsjl_path)
 end
 include(depsjl_path)
 
-const nnlib_interface_path = joinpath(dirname(@__FILE__), "nnlib.jl")
+const nnlib_interface_path = joinpath(dirname(@__FILE__), "interface.jl")
+global shared_threadpool = Ref(C_NULL)
+
 @init begin
     check_deps()
     status = nnp_initialize()
@@ -22,5 +24,5 @@ const nnlib_interface_path = joinpath(dirname(@__FILE__), "nnlib.jl")
     catch
         global NNPACK_CPU_THREADS = 4
     end
-    global shared_threadpool = Ref(pthreadpool_create(NNPACK_CPU_THREADS), 1)
+    global shared_threadpool = Ref(pthreadpool_create(NNPACK_CPU_THREADS))
 end
