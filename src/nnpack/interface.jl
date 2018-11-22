@@ -6,14 +6,10 @@ function check_support(x, k, pad, stride, dilation = 1)
     return pad_, stride_, fallback
 end
 
-#NOTE: Commenting out the activation functions until sure what to do
-
-# relu(x::AA1) = nnp_relu_output(x, inplace ? x : similar(x), threadpool = shared_threadpool[])
-
-# leakyrelu(x::AA1, a = oftype(x/1, 0.01)) =
-#     nnp_relu_output(x, inplace ? x : similar(x), negative_slope = a, threadpool = shared_threadpool[])
-
-softmax!(x::A) where A<:AbstractVecOrMat{Float64} = softmax!(Float32.(x))
+function softmax!(x::A) where A<:AbstractVecOrMat{Float64}
+    x = Float32.(x)
+    softmax!(x)
+end
 
 softmax!(x::A) where A<:AbstractVecOrMat{Float32} =
     nnp_softmax_output(x, x, threadpool = shared_threadpool[])
