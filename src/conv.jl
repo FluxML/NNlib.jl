@@ -62,10 +62,12 @@ function conv(x::A, w::A; size=nothing, pad = 0, stride = 1, dilation = 1) where
   conv!(similar(x, size), x, w, pad = pad_, stride = stride_, dilation = dilation)
 end
 
-function crosscor(x::A, w::A; pad = 0, stride = 1, dilation = 1) where A<:AbstractArray
+function crosscor(x::A, w::A; size=nothing, pad = 0, stride = 1, dilation = 1) where A<:AbstractArray
   pad_, stride_ = padtuple(x, pad), padtuple(x, stride)
-  crosscor!(similar(x, cdims(size(x), dilation_dims(w, dilation), pad_, stride_)),
-        x, w, pad = pad_, stride = stride_, dilation = dilation)
+  if size === nothing
+    size = cdims(Base.size(x), dilation_dims(w, dilation), pad_, stride_)
+  end
+  crosscor!(similar(x, size), x, w, pad = pad_, stride = stride_, dilation = dilation)
 end
 
 function ∇conv_data(dy::A, w::A; size=nothing, pad = 0, stride = 1, dilation = 1, flipkernel = 0) where A<:AbstractArray
