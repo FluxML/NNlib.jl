@@ -1,3 +1,5 @@
+flipweight(w::AbstractArray{<:Any,4}) = w[end:-1:1,end:-1:1,:,:]
+
 function check_support(x, k, pad, stride, dilation = 1)
     fallback = false
     dilation == 1 || dilation == (1, 1) || (fallback = true)
@@ -53,7 +55,7 @@ end
 
 function conv!(y::A1, x::A1, w::A1, b::A2; pad = 0, stride = 1, dilation = 1, algo = UInt32(0), flipkernel = 0) where {A1<:AbstractArray{Float32, 4}, A2<:AbstractArray{Float32, 1}}
     if flipkernel == 0
-        w = reverse(reverse(w, dims=1), dims=2)
+        w = flipweight(w)
     end
     nnp_convolution_output(y, x, w, b, algo = algo, padding = pad, stride = stride)
 end
@@ -74,7 +76,7 @@ function ∇conv_data(dy::A, x::A, w::A; pad = 0, stride = 1, dilation = 1, algo
 end
 
 function ∇conv_data!(dx::A, dy::A, x::A, w::A; pad = 0, stride = 1, dilation = 1, algo = UInt32(0), flipkernel = 0) where A<:AbstractArray{Float32, 4}
-    flipkernel == 0 && (w = reverse(reverse(w, dims=1), dims=2))
+    flipkernel == 0 && (w = flipweight(w))
     nnp_convolution_input_gradient(dx, x, dy, w, padding = pad, stride = stride, algo = algo)
 end
 
@@ -88,7 +90,7 @@ function ∇conv_filter(dy::A, x::A, w::A; pad = 0, stride = 1, dilation = 1, al
 end
 
 function ∇conv_filter!(dw::A, dy::A, x::A, w::A; pad = 0, stride = 1, dilation = 1, algo = UInt32(0), flipkernel = 0) where A<:AbstractArray{Float32, 4}
-    flipkernel == 0 && (w = reverse(reverse(w, dims=1), dims=2))
-    dw .= nnp_convolution_kernel_gradient(dw, x, dy, w, padding = pad, stride = stride, algo = algo)
-    flipkernel == 0 ? reverse(reverse(dw, dims=1), dims=2) : dw
+    flipkernel == 0 && (w = flipweight(w))
+    nnp_convolution_kernel_gradient(dw, x, dy, w, padding = pad, stride = stride, algo = algo)
+    flipkernel == 0 ? flipweight(dw) : dw
 end
