@@ -8,8 +8,7 @@ function check_support(x, k, pad, stride, dilation = 1)
     return pad_, stride_, fallback
 end
 
-softmax!(y::A, x::A) where A<:AbstractVecOrMat{Float32} =
-    nnp_softmax_output(x, y)
+softmax!(y::A, x::A) where A<:AbstractVecOrMat{Float32} = nnp_softmax_output(x, y)
 
 function maxpool!(y::A, x::A, k; pad = map(_->0,k), stride = k) where A<:Array{Float32, 4}
     pad_, stride_, fallback = check_support(x, k, pad, stride)
