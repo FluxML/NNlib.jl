@@ -83,7 +83,7 @@ function ∇conv_filter(dy::A, x::A; size = nothing, pad = 0, stride = 1, dilati
   if size === nothing
     size = wdims(Base.size(x), Base.size(dy), pad_, stride_, dilation_)
   end
-  ∇conv_filter!(similar(dy, size), dy, x; pad = pad, stride = stride, dilation = dilation, flipkernel=flipkernel)
+  ∇conv_filter!(zero(similar(dy, size)), dy, x; pad = pad, stride = stride, dilation = dilation, flipkernel=flipkernel)
 end
 
 # N-D dispatch
