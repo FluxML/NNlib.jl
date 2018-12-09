@@ -42,7 +42,7 @@ function wdims(x::NTuple{N}, y::NTuple{N}, pad, stride, dilation) where N
     elseif i == N-1
       x[i]
     else # i == N
-      y[i]
+      y[i-1]
     end
   end
 end
