@@ -42,4 +42,4 @@ test_script:
 #   - C:\julia\bin\julia -e "%JL_CODECOV_SCRIPT%"
 
 after_test:
-  - C:\projects\julia\bin\julia -e "cd(Pkg.dir(\"NNlib\")); Pkg.add(\"Coverage\"); using Coverage; Codecov.submit(process_folder())"
+  - C:\julia\bin\julia -e "using Pkg; Pkg.add(\"Coverage\"); using Coverage; Codecov.submit(process_folder())"

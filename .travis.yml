@@ -12,4 +12,4 @@ git:
 
 # Submit to Codecov  
 after_success:
-   - julia -e 'cd(Pkg.dir("NNlib")); Pkg.add("Coverage"); using Coverage; Codecov.submit(process_folder())'
+   - julia -e 'using Pkg; Pkg.add("Coverage"); using Coverage; Codecov.submit(process_folder())'
