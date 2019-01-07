@@ -30,6 +30,12 @@ function conv(x::A, w::A; pad = 0, stride = 1, dilation = 1) where A<:AbstractAr
         x, w, pad = pad_, stride = stride_, dilation = dilation)
 end
 
+function conv(x::A, w::A; pad::NTuple{4,Int} = (0, 0, 0, 0), stride = 1, dilation = 1) where A<:AbstractArray
+  stride_ = padtuple(x, stride)
+  conv!(similar(x, cdims(size(x), dilation_dims(w, dilation), pad, stride_)),
+        x, w, pad = pad, stride = stride_, dilation = dilation)
+end
+
 function crosscor(x::A, w::A; pad = 0, stride = 1, dilation = 1) where A<:AbstractArray
   pad_, stride_ = padtuple(x, pad), padtuple(x, stride)
   crosscor!(similar(x, cdims(size(x), dilation_dims(w, dilation), pad_, stride_)),
