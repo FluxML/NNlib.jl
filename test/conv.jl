@@ -1,4 +1,4 @@
-using NNlib: conv, ∇conv_filter, ∇conv_data, ∇maxpool, maxpool, depthwiseconv, ∇depthwiseconv_filter, ∇depthwiseconv_data
+using NNlib: conv, crosscor, ∇conv_filter, ∇conv_data, ∇maxpool, maxpool, depthwiseconv, ∇depthwiseconv_filter, ∇depthwiseconv_data
 
 @testset "conv2d" begin
     x = reshape(Float64[1:20;], 5, 4, 1, 1)
@@ -9,6 +9,12 @@ using NNlib: conv, ∇conv_filter, ∇conv_data, ∇maxpool, maxpool, depthwisec
         39 89 139;
         49 99 149;
         59 109 159.]
+
+    @test dropdims(crosscor(x, w), dims = (3,4)) == [
+	 51  101  151;
+	 61  111  161;
+ 	 71  121  171;
+	 81  131  181.]
 
     @test dropdims(conv(Float32.(x), Float32.(w)), dims=(3,4)) == Float32.([
         29 79 129;
@@ -59,8 +65,8 @@ using NNlib: conv, ∇conv_filter, ∇conv_data, ∇maxpool, maxpool, depthwisec
     # correctness of gradients is cross-checked with CUDNN.jl
     # (it's assumed convolution code won't change often)
 
-    @test size(∇conv_filter(reshape(rand(4,3), 4, 3, 1, 1), x; size=size(w))) == size(w)
-    @test size(∇conv_data(reshape(rand(4,3), 4, 3, 1, 1), w; size=size(x))) == size(x)
+    @test size(∇conv_filter(reshape(rand(4,3), 4, 3, 1, 1), x)) == size(w)
+    @test size(∇conv_data(reshape(rand(4,3), 4, 3, 1, 1), w)) == size(x)
 
     # Test that stride/pad work backward as well
     y = conv(x, w; stride=2, pad=1, dilation=2)
