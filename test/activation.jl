@@ -1,4 +1,4 @@
-ACTIVATION_FUNCTIONS = [σ, relu, leakyrelu, elu, swish, selu, softplus, softsign];
+ACTIVATION_FUNCTIONS = [σ, relu, leakyrelu, elu, gelu, swish, selu, softplus, softsign];
 
 function test_value_float_precision_preserving(a)
     @testset "$(a): " begin
@@ -42,6 +42,7 @@ end
   @test relu(0.0) == 0.0
   @test leakyrelu(0.0) == 0.0
   @test elu(0.0) == 0.0
+  @test gelu(0.0) == 0.0
   @test swish(0.0) == 0.0
   @test softplus(0.0) ≈ log(2.0)
   @test softsign(0.0) == 0.0
@@ -51,6 +52,7 @@ end
   @test relu(1.0) == 1.0
   @test leakyrelu(1.0) == 1.0
   @test elu(1.0) == 1.0
+  @test gelu(1.0) == 0.8411919906082768
   @test swish(1.0) == 1.0 / (1.0 + exp(-1.0))
   @test softplus(1.0) ≈ log(exp(1.0) + 1.0)
   @test softsign(1.0) == 0.5
@@ -60,6 +62,7 @@ end
   @test relu(-1.0) == 0.0
   @test leakyrelu(-1.0) == -0.01
   @test elu(-1.0) == exp(-1.0) - 1.0
+  @test gelu(-1.0) == -0.15880800939172324
   @test swish(-1.0) == -1.0 / (1.0 + exp(1.0))
   @test softplus(-1.0) ≈ log(exp(-1.0) + 1.0)
   @test softsign(-1.0) == -0.5
