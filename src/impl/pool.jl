@@ -13,7 +13,7 @@ function max_pooling2d_fwd!(x::AbstractArray{T,4}, y::AbstractArray{T,4},
 
     m = typemin(T)
     for j in hstart:hend, i in wstart:wend
-        m = max(x[i, j, c, n])
+        m = max(m, x[i, j, c, n])
     end
     y[pw, ph, c, n] = m
   end
@@ -155,7 +155,7 @@ function max_pooling3d_fwd!(x::AbstractArray{T,5}, y::AbstractArray{T,5},
 
     m = typemin(T)
     for k in dstart:dend, j in hstart:hend, i in wstart:wend
-      m = max(x[i, j, k, c, n])
+      m = max(m, x[i, j, k, c, n])
     end
     y[pw, ph, pd, c, n] = m
   end
