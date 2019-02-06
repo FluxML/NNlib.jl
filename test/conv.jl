@@ -1,4 +1,4 @@
-using NNlib: conv, ∇conv_filter, ∇conv_data, ∇maxpool, maxpool, depthwiseconv, ∇depthwiseconv_filter, ∇depthwiseconv_data
+using NNlib: conv, crosscor, ∇conv_filter, ∇conv_data, ∇maxpool, maxpool, depthwiseconv, ∇depthwiseconv_filter, ∇depthwiseconv_data
 
 @testset "conv2d" begin
     x = reshape(Float64[1:20;], 5, 4, 1, 1)
@@ -15,6 +15,12 @@ using NNlib: conv, ∇conv_filter, ∇conv_data, ∇maxpool, maxpool, depthwisec
         39 89 139;
         49 99 149;
         59 109 159.]
+
+    @test dropdims(crosscor(x, w), dims = (3,4)) == [
+	 51  101  151;
+	 61  111  161;
+ 	 71  121  171;
+	 81  131  181.]
 
     @test dropdims(conv(Float32.(x), Float32.(w)), dims=(3,4)) == Float32.([
         29 79 129;
@@ -65,26 +71,26 @@ using NNlib: conv, ∇conv_filter, ∇conv_data, ∇maxpool, maxpool, depthwisec
     # correctness of gradients is cross-checked with CUDNN.jl
     # (it's assumed convolution code won't change often)
 
-    @test size(∇conv_filter(reshape(rand(4,3), 4, 3, 1, 1), x, w)) == size(w)
-    @test size(∇conv_data(reshape(rand(4,3), 4, 3, 1, 1), x, w)) == size(x)
+    @test size(∇conv_filter(reshape(rand(4,3), 4, 3, 1, 1), x)) == size(w)
+    @test size(∇conv_data(reshape(rand(4,3), 4, 3, 1, 1), w)) == size(x)
 
     # Test that stride/pad work backward as well
     y = conv(x, w; stride=2, pad=1, dilation=2)
     @test size(y) == (3, 2, 1, 1)
-    @test size(∇conv_filter(y, x, w; stride=2, pad=1, dilation=2)) == size(w)
-    @test size(∇conv_data(y, x, w; stride=2, pad=1, dilation=2)) == size(x)
+    @test size(∇conv_filter(y, x; size=size(w), stride=2, pad=1, dilation=2)) == size(w)
+    @test size(∇conv_data(y, w; size=size(x), stride=2, pad=1, dilation=2)) == size(x)
 
 	# NaN tests for dilation backward pass: filters
 	dy = randn(size(ys[1]))
 	dws = []
 	for idx in 1:1000
-	    push!(dws, ∇conv_filter(dy, x, w; dilation=2))
+	    push!(dws, ∇conv_filter(dy, x; size=size(w), dilation=2))
 	end
 
 	# NaN tests for dilation backward pass: input
 	dxs = []
 	for idx in 1:1000
-	    push!(dxs, ∇conv_data(dy, x, w; dilation=2))
+	    push!(dxs, ∇conv_data(dy, w; size=size(x), dilation=2))
 	end
 
 	@test !any([any(isnan.(dws[idx])) for idx in 1:1000])
@@ -113,7 +119,7 @@ end
         X = copy(x[:,:,i:i,:]);
         W = copy(permutedims(w[:,:,:,i:i],[1,2,4,3]));
         DY = copy(dy[:,:,2i-1:2i,:]);
-        res = ∇conv_data(DY,X,W)
+        res = ∇conv_data(DY,W;size=size(X))
         @test dropdims(z[:,:,i:i,:], dims=(3,4)) == dropdims(res, dims=(3,4))
     end
 
@@ -122,7 +128,7 @@ end
         X = copy(x[:,:,i:i,:]);
         W = copy(permutedims(w[:,:,:,i:i],[1,2,4,3]))
         DY = copy(dy[:,:,2i-1:2i,:])
-        res = ∇conv_filter(DY,X,W)
+        res = ∇conv_filter(DY,X; size=size(W))
         @test dropdims(z[:,:,:,i:i]; dims=(4)) == dropdims(res; dims=(3))
     end
 
@@ -242,20 +248,20 @@ end
     # correctness of gradients is cross-checked with CUDNN.jl
     # (it's assumed convolution code won't change often)
 
-    @test size(∇conv_filter(reshape(rand(4,3,2), 4, 3, 2, 1, 1), x, w)) == size(w)
-    @test size(∇conv_data(reshape(rand(4,3,2), 4, 3, 2, 1, 1), x, w)) == size(x)
+    @test size(∇conv_filter(reshape(rand(4,3,2), 4, 3, 2, 1, 1), x; size=size(w))) == size(w)
+    @test size(∇conv_data(reshape(rand(4,3,2), 4, 3, 2, 1, 1), w; size=size(x))) == size(x)
 
 	# NaN tests for dilation backward pass: filters
 	dy = randn(size(ys[1]))
 	dws = []
 	for idx in 1:1000
-	    push!(dws, ∇conv_filter(dy, x, w; dilation=2))
+	    push!(dws, ∇conv_filter(dy, x; size=size(w), dilation=2))
 	end
 
 	# NaN tests for dilation backward pass: input
 	dxs = []
 	for idx in 1:1000
-	    push!(dxs, ∇conv_data(dy, x, w; dilation=2))
+	    push!(dxs, ∇conv_data(dy, w; size=size(x), dilation=2))
 	end
 
 	@test !any([any(isnan.(dws[idx])) for idx in 1:1000])

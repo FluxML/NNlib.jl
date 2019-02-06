@@ -67,6 +67,20 @@ You can also specify the coefficient explicitly, e.g. `elu(x, 1)`.
 elu(x, α = one(x)) = ifelse(x ≥ 0, x/1, α * (exp(x) - one(x)))
 
 """
+    gelu(x) = 0.5x*(1 + tanh(√(2/π)*(x + 0.044715x^3)))
+
+[Gaussian Error Linear Unit](https://arxiv.org/pdf/1606.08415.pdf)
+activation function.
+"""
+function gelu(x)
+    λ = oftype(x/1, √(2/π))
+    α = oftype(x/1, 0.044715)
+    h = oftype(x/1, 0.5)
+    h * x * (one(x) + tanh(λ * (x + α * x^3)))
+end
+
+
+"""
     swish(x) = x * σ(x)
 
 Self-gated actvation function.

@@ -87,5 +87,3 @@ log_fast(x::Union{Int32,Int64}) = log_fast(float(x))
     Dual{T}(log_fast(x), inv(x) * ForwardDiff.partials(d))
   end
 end
-
-@init @require DataFrames="a93c6f00-e57d-5684-b7b6-d8193f3e46c0" println("loaded")

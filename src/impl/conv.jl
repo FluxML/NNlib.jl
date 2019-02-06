@@ -278,15 +278,15 @@ function conv2d!(y::AbstractArray{T,4}, x::AbstractArray{T,4}, w::AbstractArray{
     return y
 end
 
-function conv2d_grad_w!(dw::AbstractArray{T,4}, x::AbstractArray{T,4}, w::AbstractArray{T,4}, dy::AbstractArray{T,4};
+function conv2d_grad_w!(dw::AbstractArray{T,4}, x::AbstractArray{T,4}, dy::AbstractArray{T,4};
                    padding=0, stride=1, dilation=1, mode=0, alpha=1) where T
     # dw = x'*dy
     Wx,Hx,Cx,Nx = size(x)
-    Ww,Hw,C1,C2 = size(w)
+    Ww,Hw,C1,C2 = size(dw)
     Wy,Hy,Cy,Ny = size(dy)
     # if mode != 0 && mode != 1; throw(ArgumentError("conv2d only supports mode=0 or 1.")); end
-    # @assert Cx==C1 && Cy==C2 && Ny==Nx
-    x2dims = im2col_dims(w,dy)
+    @assert Cx==C1 && Cy==C2 && Ny==Nx
+    x2dims = im2col_dims(dw,dy)
     x2 = similar(x, x2dims)
     # op(A) is an m-by-k matrix, op(B) is a k-by-n matrix, C is an m-by-n matrix.
     Y,M,N,K = Wy*Hy*Cy,Ww*Hw*Cx,Cy,Wy*Hy
@@ -296,29 +296,29 @@ function conv2d_grad_w!(dw::AbstractArray{T,4}, x::AbstractArray{T,4}, w::Abstra
     (d1,d2) = psize(dilation,x)
     dyi = 1
     @inbounds for n in 1:Nx
-        im2col2d!(w, x, x2, n, p1, p2, s1, s2, d1, d2, mode)
+        im2col2d!(dw, x, x2, n, p1, p2, s1, s2, d1, d2, mode)
         gemm!('T','N',M,N,K,alpha,pointer(x2),pointer(dy,dyi),beta,pointer(dw))
         dyi += Y
     end
     return dw
 end
 
-function conv2d_grad_x!(dx::AbstractArray{T,4}, x::AbstractArray{T,4}, w::AbstractArray{T,4}, dy::AbstractArray{T,4};
+function conv2d_grad_x!(dx::AbstractArray{T,4}, w::AbstractArray{T,4}, dy::AbstractArray{T,4};
                    padding=0, stride=1, dilation=1, mode=0, alpha=1) where T
     # dx = dy*w'
-    Wx,Hx,Cx,Nx = size(x)
+    Wx,Hx,Cx,Nx = size(dx)
     Ww,Hw,C1,C2 = size(w)
     Wy,Hy,Cy,Ny = size(dy)
     # if mode != 0 && mode != 1; throw(ArgumentError("conv2d only supports mode=0 or 1.")); end
     @assert Cx==C1 && Cy==C2 && Ny==Nx
     x2dims = im2col_dims(w,dy)
-    x2 = similar(x, x2dims)
+    x2 = similar(dx, x2dims)
     # op(A) is an m-by-k matrix, op(B) is a k-by-n matrix, C is an m-by-n matrix.
     Y,M,N,K = Wy*Hy*Cy,Wy*Hy,Ww*Hw*Cx,Cy
     alpha,beta = T(alpha),T(0)
-    (p1,p2) = psize(padding,x)
-    (s1,s2) = psize(stride,x)
-    (d1,d2) = psize(dilation,x)
+    (p1,p2) = psize(padding,dx)
+    (s1,s2) = psize(stride,dx)
+    (d1,d2) = psize(dilation,dx)
     dyi = 1
     @inbounds for n in 1:Nx
         gemm!('N','T',M,N,K,alpha,pointer(dy,dyi),pointer(w),beta,pointer(x2))
@@ -352,7 +352,7 @@ function col2im2d!(w::NTuple{4,Int}, x::AbstractArray{T,4}, x2::AbstractArray{T,
     Ww,Hw,C1,C2 = w
     xn = x[:, :, :, n]
     col2im_2d!(x2,xn,Wx,Hx,Cx,Ww,Hw,p1,p2,s1,s2,1,1,mode)
-    x[:, :, :, n] = xn
+    x[:, :, :, n] .= xn
     return x
 end
 
@@ -362,7 +362,7 @@ function col2im2d!(w::AbstractArray{T,4}, x::AbstractArray{T,4}, x2::AbstractArr
     Ww,Hw,C1,C2 = size(w)
     xn = x[:, :, :, n]
     col2im_2d!(x2,xn,Wx,Hx,Cx,Ww,Hw,p1,p2,s1,s2,d1,d2,mode)
-    x[:, :, :, n] = xn
+    x[:, :, :, n] .= xn
     return x
 end
 
@@ -390,15 +390,15 @@ function conv3d!(y::AbstractArray{T,5}, x::AbstractArray{T,5}, w::AbstractArray{
     return y
 end
 
-function conv3d_grad_w!(dw::AbstractArray{T,5}, x::AbstractArray{T,5}, w::AbstractArray{T,5}, dy::AbstractArray{T,5};
+function conv3d_grad_w!(dw::AbstractArray{T,5}, x::AbstractArray{T,5}, dy::AbstractArray{T,5};
                    padding=0, stride=1, dilation = 1, mode=0, alpha=1) where T
     # dw = x'*dy
     Wx,Hx,Dx,Cx,Nx = size(x)
-    Ww,Hw,Dw,C1,C2 = size(w)
+    Ww,Hw,Dw,C1,C2 = size(dw)
     Wy,Hy,Dy,Cy,Ny = size(dy)
     # if mode != 0 && mode != 1; throw(ArgumentError("conv2d only supports mode=0 or 1.")); end
-    # @assert Cx==C1 && Cy==C2 && Ny==Nx
-    x2dims = im2col_dims(w,dy)
+    @assert Cx==C1 && Cy==C2 && Ny==Nx
+    x2dims = im2col_dims(dw,dy)
     x2 = similar(x, x2dims)
     # op(A) is an m-by-k matrix, op(B) is a k-by-n matrix, C is an m-by-n matrix.
     Y,M,N,K = Wy*Hy*Dy*Cy,Ww*Hw*Dw*Cx,Cy,Wy*Hy*Dy
@@ -408,29 +408,29 @@ function conv3d_grad_w!(dw::AbstractArray{T,5}, x::AbstractArray{T,5}, w::Abstra
     (d1,d2,d3) = psize(dilation,x)
     dyi = 1
     @inbounds for n in 1:Nx
-        im2col3d!(w, x, x2, n, p1, p2, p3, s1, s2, s3, d1, d2, d3, mode)
+        im2col3d!(dw, x, x2, n, p1, p2, p3, s1, s2, s3, d1, d2, d3, mode)
         gemm!('T','N',M,N,K,alpha,pointer(x2),pointer(dy,dyi),beta,pointer(dw))
         dyi += Y
     end
     return dw
 end
 
-function conv3d_grad_x!(dx::AbstractArray{T,5}, x::AbstractArray{T,5}, w::AbstractArray{T,5}, dy::AbstractArray{T,5};
+function conv3d_grad_x!(dx::AbstractArray{T,5}, w::AbstractArray{T,5}, dy::AbstractArray{T,5};
                    padding=0, stride=1, dilation = 1, mode=0, alpha=1) where T
     # dx = dy*w'
-    Wx,Hx,Dx,Cx,Nx = size(x)
+    Wx,Hx,Dx,Cx,Nx = size(dx)
     Ww,Hw,Dw,C1,C2 = size(w)
     Wy,Hy,Dy,Cy,Ny = size(dy)
     # if mode != 0 && mode != 1; throw(ArgumentError("conv2d only supports mode=0 or 1.")); end
     @assert Cx==C1 && Cy==C2 && Ny==Nx
     x2dims = im2col_dims(w,dy)
-    x2 = similar(x, x2dims)
+    x2 = similar(dx, x2dims)
     # op(A) is an m-by-k matrix, op(B) is a k-by-n matrix, C is an m-by-n matrix.
     Y,M,N,K = Wy*Hy*Dy*Cy,Wy*Hy*Dy,Ww*Hw*Dw*Cx,Cy
     alpha,beta = T(alpha),T(0)
-    (p1,p2,p3) = psize(padding,x)
-    (s1,s2,s3) = psize(stride,x)
-    (d1,d2,d3) = psize(dilation,x)
+    (p1,p2,p3) = psize(padding,dx)
+    (s1,s2,s3) = psize(stride,dx)
+    (d1,d2,d3) = psize(dilation,dx)
     dyi = 1
     @inbounds for n in 1:Nx
         gemm!('N','T',M,N,K,alpha,pointer(dy,dyi),pointer(w),beta,pointer(x2))
