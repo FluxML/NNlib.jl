@@ -9,6 +9,12 @@ using NNlib: conv, crosscor, ∇conv_filter, ∇conv_data, ∇maxpool, maxpool, 
         39 89 139;
         49 99 149;
         59 109 159.]
+    
+    @test dropdims(conv(view(x, :, :, :, :), w), dims = (3,4)) == [
+        29 79 129;
+        39 89 139;
+        49 99 149;
+        59 109 159.]
 
     @test dropdims(crosscor(x, w), dims = (3,4)) == [
 	 51  101  151;

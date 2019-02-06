@@ -54,7 +54,7 @@ padtuple(x::Tuple,p::Integer) = map(_->p, head(head(x)))
 padtuple(x::Tuple,p::Tuple) = p
 padtuple(x::AbstractArray,p) = padtuple(size(x),p)
 
-function conv(x::A, w::A; size=nothing, pad = 0, stride = 1, dilation = 1) where A<:AbstractArray
+function conv(x::AbstractArray, w::AbstractArray; size=nothing, pad = 0, stride = 1, dilation = 1)
   pad_, stride_ = padtuple(x, pad), padtuple(x, stride)
   if size === nothing
     size = cdims(Base.size(x), dilation_dims(w, dilation), pad_, stride_)
@@ -70,7 +70,7 @@ function crosscor(x::A, w::A; size=nothing, pad = 0, stride = 1, dilation = 1) w
   crosscor!(similar(x, size), x, w, pad = pad_, stride = stride_, dilation = dilation)
 end
 
-function ∇conv_data(dy::A, w::A; size=nothing, pad = 0, stride = 1, dilation = 1, flipkernel = 0) where A<:AbstractArray
+function ∇conv_data(dy::AbstractArray, w::AbstractArray; size=nothing, pad = 0, stride = 1, dilation = 1, flipkernel = 0)
   pad_, stride_, dilation_ = padtuple(dy, pad), padtuple(dy, stride), padtuple(dy, dilation)
   if size === nothing
     size = ctdims(Base.size(dy), Base.size(w), pad_, stride_, dilation_)
@@ -78,7 +78,7 @@ function ∇conv_data(dy::A, w::A; size=nothing, pad = 0, stride = 1, dilation =
   ∇conv_data!(similar(dy, size), dy, w, pad = pad_, stride = stride_, dilation = dilation_, flipkernel=flipkernel)
 end
 
-function ∇conv_filter(dy::A, x::A; size = nothing, pad = 0, stride = 1, dilation = 1, flipkernel=0) where A<:AbstractArray
+function ∇conv_filter(dy::AbstractArray, x::AbstractArray; size = nothing, pad = 0, stride = 1, dilation = 1, flipkernel=0)
   pad_, stride_, dilation_ = padtuple(dy, pad), padtuple(dy, stride), padtuple(dy, dilation)
   if size === nothing
     size = wdims(Base.size(x), Base.size(dy), pad_, stride_, dilation_)
@@ -144,7 +144,7 @@ function dcdims(x::NTuple{4,Int}, w::NTuple{4,Int}, pad, stride)
   ((x[1] + 2 * pad[1] - w[1])÷stride[1] + 1,(x[2] + 2 * pad[2] - w[2])÷stride[2] + 1,w[3]*w[4],x[4])
 end
 
-function depthwiseconv(x::A, w::A; pad = 0, stride = 1) where A<:AbstractArray
+function depthwiseconv(x::AbstractArray, w::AbstractArray; pad = 0, stride = 1) 
   pad_, stride_ = padtuple(x, pad), padtuple(x, stride)
   depthwiseconv!(similar(x, dcdims(size(x), size(w), pad_, stride_)), x, w, pad = pad_, stride = stride_)
 end
@@ -162,10 +162,10 @@ depthwisecrosscor!(y::AbstractArray{T,4}, x::AbstractArray{T,4}, w::AbstractArra
       pad = 0, stride = 1) where T =
   depthwiseconv!(y, x, w, pad = pad, stride = stride, flipkernel=1)
 
-∇depthwiseconv_data(dy::A, x::A, w::A; pad = 0, stride = 1, flipkernel=0) where A<:AbstractArray =
+∇depthwiseconv_data(dy::AbstractArray, x::AbstractArray, w::AbstractArray; pad = 0, stride = 1, flipkernel=0) =
   ∇depthwiseconv_data!(zero(x), dy, x, w; pad = pad, stride = stride, flipkernel=flipkernel)
 
-∇depthwiseconv_filter(dy::A, x::A, w::A; pad = 0, stride = 1, flipkernel=0) where A<:AbstractArray =
+∇depthwiseconv_filter(dy::AbstractArray, x::AbstractArray, w::AbstractArray; pad = 0, stride = 1, flipkernel=0) =
   ∇depthwiseconv_filter!(zero(w), dy, x, w; pad = pad, stride = stride, flipkernel=flipkernel)
 
 ∇depthwiseconv_filter!(dw::AbstractArray{T,4}, dy::AbstractArray{T,4}, x::AbstractArray{T,4}, w::AbstractArray{T,4};
