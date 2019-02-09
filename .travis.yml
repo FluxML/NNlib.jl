@@ -9,6 +9,8 @@ notifications:
   email: false
 git:
   depth: 99999999
+env:
+  - NNLIB_TEST_FUZZING=true
 
 # Submit to Codecov  
 after_success:

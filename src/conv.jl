@@ -1,266 +1,157 @@
-Dims{N} = NTuple{N,Integer}
+export conv, conv!, ∇conv_data, ∇conv_data!, ∇conv_filter, ∇conv_filter!
 
-include("impl/pool.jl")
-include("impl/conv.jl")
+## Convolution API
+#
+#  We provide the following generic methods, for 3d, 4d, and 5d tensors, calculating 1d,
+#  2d and 3d convolutions, based on the rank of the input tensors, in both mutating and
+#  non-mutating auto-allocating variants:
+#   - Convolution:
+#     - conv(x, w, cdims)
+#     - conv!(y, x, w, cdims)
+#   - Convolution data backpropagation
+#     - ∇conv_data(dy, w, cdims)
+#     - ∇conv_data!(dx, dy, w, cdims)
+#   - Convolution filter backpropagation
+#     - ∇conv_filter(x, dy, cdims)
+#     - ∇conv_filter!(dw, x, dy, cdims)
+#
+#   All methods require a `ConvDims` object to define the dimensions and optional
+#   elements of the convolution (padding, stride, dilation, kernel-flipping, etc...),
+#   which is easily constructable through something like `DenseConvDims(x, w)`.  All
+#   methods take in the `ConvDims` of the associated normal, forward-pass convolution,
+#   that is, the following is legal:
+#
+#       cdims = ConvDims(x, w; stride=2, dilation=(3,2))
+#       dx = ∇conv_data(conv(x, w, cdims), w, cdims)
 
-# Convolutions
 
-function cdims(x::NTuple{N}, w::NTuple{N}, pad, stride) where N
-  ntuple(Val(N)) do i
-    if i < N-1
-      1 + div(x[i] - w[i] + 2*pad[i], stride[i])
-    elseif i == N-1
-      w[N]
-    else # i == N
-      x[N]
+
+# First, we will define mappings from the generic API names to our accelerated backend
+# implementations. For homogenous-datatype 1, 2 and 3d convolutions, we default to using
+# im2col + GEMM.  Do so in a loop, here:
+for (front_name, backend) in (
+        # This maps from public, front-facing name, to internal backend name
+        :conv                   => :im2col,
+        :∇conv_data             => :im2col,
+        :∇conv_filter           => :im2col,
+        :depthwiseconv          => :im2col,
+        :∇depthwiseconv_data    => :im2col,
+        :∇depthwiseconv_filter  => :im2col,
+    )
+
+    # These are the GEMM types we will accelerate with `im2col`
+    G = Union{[x[2] for x in gemm_datatype_mappings]...}
+
+    # We only define 3d conv primitives, we reshape lower down to get 1d and 2d convolution
+    @eval begin
+        # im2col-accelerated function forwarding definition
+        function $(Symbol("$(front_name)!"))(
+                out::AbstractArray{T,5}, in1::AbstractArray{T,5},
+                in2::AbstractArray{T,5}, cdims::ConvDims; kwargs...) where {T <: $G}
+            $(Symbol("$(front_name)_$(backend)!"))(out, in1, in2, cdims; kwargs...)
+        end
     end
-  end
 end
 
+# Our strategy for 1d and 2d convolution is to reshape from to 3d convolutions, which
+# makes things MUCH EASIER for us on the backend side, and is in general pretty fast,
+# since we can specialize on sizes.
+for front_name in (:conv, :∇conv_data, :∇conv_filter,
+                   :depthwiseconv, :∇depthwiseconv_data, :∇depthwiseconv_filter)
+    for backend in (Symbol(), :_direct, :_im2col)
+        for N in (3, 4)
+            @eval begin
+                function $(Symbol("$(front_name)$(backend)!"))(
+                        y::AbstractArray{yT,$N}, x::AbstractArray{xT,$N},
+                        w::AbstractArray{wT,$N}, cdims::ConvDims;
+                        kwargs...) where {yT, xT, wT}
+                    $(Symbol("$(front_name)$(backend)!"))(
+                        insert_singleton_spatial_dimension(y, $(5 - N)),
+                        insert_singleton_spatial_dimension(x, $(5 - N)),
+                        insert_singleton_spatial_dimension(w, $(5 - N)),
+                        insert_singleton_spatial_dimension(cdims, $(5 - N));
+                        kwargs...
+                    )
 
-# Conv Transpose dims
-
-function ctdims(x::NTuple{N}, w::NTuple{N}, pad, stride, dilation) where N
-  ntuple(Val(N)) do i
-    if i < N-1
-      (x[i] - 1) * stride[i] + dilation[i] * (w[i] - 1) - 2*pad[i] + 1
-    elseif i == N-1
-      w[N-1]
-    else # i == N
-      x[N]
+                    # We explicitly return `y` here, because the backend call
+                    # itself may return a reshaped view, which we don't want.
+                    return y
+                end
+            end
+        end
     end
-  end
 end
 
-
-# Kernel dims
-
-function wdims(x::NTuple{N}, y::NTuple{N}, pad, stride, dilation) where N
-  ntuple(Val(N)) do i
-    if i < N-1
-      1 + div((1 - y[i]) * stride[i] + x[i] + 2pad[i] - 1, dilation[i])
-    elseif i == N-1
-      x[i]
-    else # i == N
-      y[i-1]
+# We always support a fallback, non-accelerated path, where we use the direct, but
+# slow, implementations.  These should not typically be used, hence the `@debug`,
+# but let's ggo ahead and define them first:
+for front_name in (:conv, :∇conv_data, :∇conv_filter,
+                   :depthwiseconv, :∇depthwiseconv_data, :∇depthwiseconv_filter)
+    @eval begin
+        function $(Symbol("$(front_name)!"))(out::AbstractArray, in1::AbstractArray,
+                                            in2::AbstractArray, cdims::ConvDims; kwargs...)
+            @debug "Slow Fallback $(front_name) invoked!  You probably don't want this; check your datatypes."
+            $(Symbol("$(front_name)_direct!"))(out, in1, in2, cdims; kwargs...)
+        end
     end
-  end
 end
 
-# Interface
-
-head(x) = reverse(Base.tail(reverse(x)))
-padtuple(x::Tuple,p::Integer) = map(_->p, head(head(x)))
-padtuple(x::Tuple,p::Tuple) = p
-padtuple(x::AbstractArray,p) = padtuple(size(x),p)
-
-function conv(x::AbstractArray, w::AbstractArray; size=nothing, pad = 0, stride = 1, dilation = 1)
-  pad_, stride_ = padtuple(x, pad), padtuple(x, stride)
-  if size === nothing
-    size = cdims(Base.size(x), dilation_dims(w, dilation), pad_, stride_)
-  end
-  conv!(similar(x, size), x, w, pad = pad_, stride = stride_, dilation = dilation)
-end
-
-function crosscor(x::A, w::A; size=nothing, pad = 0, stride = 1, dilation = 1) where A<:AbstractArray
-  pad_, stride_ = padtuple(x, pad), padtuple(x, stride)
-  if size === nothing
-    size = cdims(Base.size(x), dilation_dims(w, dilation), pad_, stride_)
-  end
-  crosscor!(similar(x, size), x, w, pad = pad_, stride = stride_, dilation = dilation)
-end
-
-function ∇conv_data(dy::AbstractArray, w::AbstractArray; size=nothing, pad = 0, stride = 1, dilation = 1, flipkernel = 0)
-  pad_, stride_, dilation_ = padtuple(dy, pad), padtuple(dy, stride), padtuple(dy, dilation)
-  if size === nothing
-    size = ctdims(Base.size(dy), Base.size(w), pad_, stride_, dilation_)
-  end
-  ∇conv_data!(similar(dy, size), dy, w, pad = pad_, stride = stride_, dilation = dilation_, flipkernel=flipkernel)
-end
-
-function ∇conv_filter(dy::AbstractArray, x::AbstractArray; size = nothing, pad = 0, stride = 1, dilation = 1, flipkernel=0)
-  pad_, stride_, dilation_ = padtuple(dy, pad), padtuple(dy, stride), padtuple(dy, dilation)
-  if size === nothing
-    size = wdims(Base.size(x), Base.size(dy), pad_, stride_, dilation_)
-  end
-  ∇conv_filter!(zero(similar(dy, size)), dy, x; pad = pad, stride = stride, dilation = dilation, flipkernel=flipkernel)
-end
-
-# N-D dispatch
-
-function conv!(y::AbstractArray{T,3}, x::AbstractArray{T,3}, w::AbstractArray{T,3};
-               pad = 0, stride = 1, dilation = 1, flipkernel =0) where T
-    args = map(x -> reshape(x, size(x,1),1,size(x,2),size(x,3)), (y, x, w))
-    conv!(args..., pad = (pad...,0), stride = (stride...,1), dilation = (dilation...,1), flipkernel=flipkernel)
-    return y
-end
-
-function crosscor!(y::AbstractArray, x::AbstractArray, w::AbstractArray;
-               pad = 0, stride = 1, dilation = 1)
-    conv!(y, x, w, pad=pad, stride=stride, dilation=dilation, flipkernel=1)
-end
-
-function ∇conv_filter!(dw::AbstractArray{T,3}, dy::AbstractArray{T,3}, x::AbstractArray{T,3};
-                       pad = 0, stride = 1, dilation = 1, flipkernel=0) where T
-    args = map(x -> reshape(x, size(x,1),1,size(x,2),size(x,3)), (dw, dy, x))
-    ∇conv_filter!(args..., pad = (pad...,0), stride = (stride...,1), dilation = (dilation...,1), flipkernel=flipkernel)
-    return dw
-end
-
-function ∇conv_data!(dx::AbstractArray{T,3}, dy::AbstractArray{T,3}, w::AbstractArray{T,3}; 
-		     pad = 0, stride = 1, dilation = 1, flipkernel = 0) where T
-    args = map(x -> reshape(x, size(x,1),1,size(x,2),size(x,3)), (dx, dy, w))
-    ∇conv_data!(args..., pad = (pad...,0), stride = (stride...,1), dilation = (dilation..., 1), flipkernel = flipkernel)
-    return dx
-end
-
-conv!(y::AbstractArray{T,4}, x::AbstractArray{T,4}, w::AbstractArray{T,4};
-      pad = 0, stride = 1, dilation = 1, flipkernel=0) where T =
-  conv2d!(y, x, w, padding = pad, stride = stride, dilation = dilation, mode=flipkernel)
-
-∇conv_filter!(dw::AbstractArray{T,4}, dy::AbstractArray{T,4}, x::AbstractArray{T,4};
-              pad = 0, stride = 1, dilation = 1, flipkernel=0) where T =
-  conv2d_grad_w!(dw, x, dy, padding = pad, stride = stride, dilation = dilation, mode=flipkernel)
-
-∇conv_data!(dx::AbstractArray{T,4}, dy::AbstractArray{T,4}, w::AbstractArray{T,4};
-            pad = 0, stride = 1, dilation = 1, flipkernel=0) where T =
-  conv2d_grad_x!(dx, w, dy, padding = pad, stride = stride, dilation = dilation, mode=flipkernel)
-
-conv!(y::AbstractArray{T,5}, x::AbstractArray{T,5}, w::AbstractArray{T,5};
-      pad = 0, stride = 1, dilation = 1, flipkernel=0) where T =
-  conv3d!(y, x, w, padding = pad, stride = stride, dilation = dilation, mode=flipkernel)
-
-∇conv_filter!(dw::AbstractArray{T,5}, dy::AbstractArray{T,5}, x::AbstractArray{T,5};
-              pad = 0, stride = 1, dilation = 1, flipkernel=0) where T =
-  conv3d_grad_w!(dw, x, dy, padding = pad, stride = stride, dilation = dilation, mode=flipkernel)
-
-∇conv_data!(dx::AbstractArray{T,5}, dy::AbstractArray{T,5}, w::AbstractArray{T,5};
-            pad = 0, stride = 1, dilation = 1, flipkernel=0) where T =
-  conv3d_grad_x!(dx, w, dy, padding = pad, stride = stride, dilation = dilation, mode=flipkernel)
-
-  # Depthwise Conv
-
-function dcdims(x::NTuple{4,Int}, w::NTuple{4,Int}, pad, stride)
-  ((x[1] + 2 * pad[1] - w[1])÷stride[1] + 1,(x[2] + 2 * pad[2] - w[2])÷stride[2] + 1,w[3]*w[4],x[4])
-end
-
-function depthwiseconv(x::AbstractArray, w::AbstractArray; pad = 0, stride = 1) 
-  pad_, stride_ = padtuple(x, pad), padtuple(x, stride)
-  depthwiseconv!(similar(x, dcdims(size(x), size(w), pad_, stride_)), x, w, pad = pad_, stride = stride_)
-end
-
-function depthwisecrosscor(x::A, w::A; pad = 0, stride = 1) where A<:AbstractArray
-  pad_, stride_ = padtuple(x, pad), padtuple(x, stride)
-  depthwisecrosscor!(similar(x, dcdims(size(x), size(w), pad_, stride_)), x, w, pad = pad_, stride = stride_)
-end
-
-depthwiseconv!(y::AbstractArray{T,4}, x::AbstractArray{T,4}, w::AbstractArray{T,4};
-      pad = 0, stride = 1, flipkernel=0) where T =
-  depthwiseconv2d!(y, x, w, padding = pad, stride = stride, mode= flipkernel)
-
-depthwisecrosscor!(y::AbstractArray{T,4}, x::AbstractArray{T,4}, w::AbstractArray{T,4};
-      pad = 0, stride = 1) where T =
-  depthwiseconv!(y, x, w, pad = pad, stride = stride, flipkernel=1)
-
-∇depthwiseconv_data(dy::AbstractArray, x::AbstractArray, w::AbstractArray; pad = 0, stride = 1, flipkernel=0) =
-  ∇depthwiseconv_data!(zero(x), dy, x, w; pad = pad, stride = stride, flipkernel=flipkernel)
-
-∇depthwiseconv_filter(dy::AbstractArray, x::AbstractArray, w::AbstractArray; pad = 0, stride = 1, flipkernel=0) =
-  ∇depthwiseconv_filter!(zero(w), dy, x, w; pad = pad, stride = stride, flipkernel=flipkernel)
-
-∇depthwiseconv_filter!(dw::AbstractArray{T,4}, dy::AbstractArray{T,4}, x::AbstractArray{T,4}, w::AbstractArray{T,4};
-              pad = 0, stride = 1, flipkernel=0) where T =
-  depthwiseconv2d_grad_w!(dw, x, w, dy, padding = pad, stride = stride, mode=flipkernel)
-
-∇depthwiseconv_data!(dx::AbstractArray{T,4}, dy::AbstractArray{T,4}, x::AbstractArray{T,4}, w::AbstractArray{T,4};
-            pad = 0, stride = 1, flipkernel=0) where T =
-  depthwiseconv2d_grad_x!(dx, x, w, dy, padding = pad, stride = stride, mode=flipkernel)
-
-# Pooling
-
-function pdims(dims::Dims{N}, window, padding, stride) where N
-  ntuple(Val(N)) do i
-    if i < N-1
-      1 + (dims[i] + 2*padding[i] - window[i])÷stride[i]
-    else
-      dims[i]
+# Finally, let's generate auto-allocating versions of all our functions, for all backends:
+for backend in (Symbol(), :_direct, :_im2col)
+    # First make auto-allocating versions of the conv()-like calls:
+    for name in (:conv, :depthwiseconv)
+        @eval begin
+            function $(Symbol("$(name)$(backend)"))(
+                    x::AbstractArray{xT,N}, w::AbstractArray{wT,N},
+                    cdims::ConvDims; kwargs...) where {xT, wT, N}
+                yT = promote_type(xT, wT)
+                # Annoyingly, we must allocate with `zeros()` because if we were to use
+                # the faster `similar()`, it may have NaNs within it, which will poison
+                # the output because we support accumulation (even with `beta = 0` the
+                # NaNs poison us as NaN * 0 == NaN).  This is a bit of a shame, but it's
+                # not really that bad as if you're truly interested in performance, you
+                # should be allocating your own `y` and calling the non-allocating
+                # variant of this method anyway.                
+                y = zeros(yT, output_size(cdims)..., channels_out(cdims), size(x, N))
+                return $(Symbol("$(name)$(backend)!"))(y, x, w, cdims; kwargs...)
+            end
+        end
     end
-  end
+
+    for name in (:∇conv_data, :∇depthwiseconv_data)
+        @eval begin
+            function $(Symbol("$(name)$(backend)"))(
+                    dy::AbstractArray{yT,N}, w::AbstractArray{wT,N},
+                    cdims::cdT; kwargs...) where {yT, wT, N, cdT <: ConvDims}
+                # Again, allocate with zeros
+                dx = zeros(yT, input_size(cdims)..., channels_in(cdims), size(dy, N))
+                return $(Symbol("$(name)$(backend)!"))(dx, dy, w, cdims; kwargs...)
+            end
+        end
+    end
+
+    # We do the conv/depthwiseconv filter backprops separately, as the shape calculation
+    # for `w` is slightly different for depthwise than for normal dense convolution.
+    @eval begin
+        function $(Symbol("∇conv_filter$(backend)"))(
+                x::AbstractArray{xT,N}, dy::AbstractArray{yT,N},
+                cdims::cdT; kwargs...) where {xT, yT, N, cdT <: ConvDims}
+            # Again, allocate with zeros
+            dw = zeros(yT, kernel_size(cdims)..., channels_in(cdims),
+                                                   channels_out(cdims))
+            return $(Symbol("∇conv_filter$(backend)!"))(dw, x, dy, cdims; kwargs...)
+        end
+    end
+
+    @eval begin
+        function $(Symbol("∇depthwiseconv_filter$(backend)"))(
+                x::AbstractArray{xT,N}, dy::AbstractArray{yT,N},
+                cdims::cdT; kwargs...) where {xT, yT, N, cdT <: ConvDims}
+            # Again, allocate with zeros
+            dw = zeros(yT, kernel_size(cdims)..., channel_multiplier(cdims),
+                                                  channels_in(cdims))
+            return $(Symbol("∇depthwiseconv_filter$(backend)!"))(dw, x, dy, cdims;
+                                                                 kwargs...)
+        end
+    end
 end
-
-expand(::Type{Val{N}}, i::Integer) where N = ntuple(_ -> i, Val(N))
-expand(::Type{Val{N}}, i::NTuple{N, Integer}) where N = i
-
-# Interface
-
-maxpool(x::AbstractArray, k; pad = map(_->0,k), stride = k) =
-  maxpool!(similar(x, pdims(size(x), k, expand(Val{length(k)}, pad),
-            expand(Val{length(k)}, stride))), x, k, pad = expand(Val{length(k)}, pad),
-            stride = expand(Val{length(k)}, stride))
-
-maxpool!(y::A, x::A, k; kw...) where A<:AbstractArray =
-  maxpool_cpu!(y, x, k; kw...)
-
-∇maxpool(dy::A, y::A, x::A, k; pad = map(_->0,k), stride = k) where A<:AbstractArray =
-  ∇maxpool!(similar(x), dy, y, x, k, pad = expand(Val{length(k)}, pad),
-            stride = expand(Val{length(k)}, stride))
-
-∇maxpool!(dx::A, dy::A, y::A, x::A, k; kw...) where A<:AbstractArray =
-  ∇maxpool_cpu!(dx, dy, y, x, k; kw...)
-
-meanpool(x::AbstractArray, k; pad = map(_->0,k), stride = k) =
-  meanpool!(similar(x, pdims(size(x), k, expand(Val{length(k)}, pad),
-            expand(Val{length(k)}, stride))), x, k, pad = expand(Val{length(k)}, pad),
-            stride = expand(Val{length(k)}, stride))
-
-meanpool!(y::A, x::A, k; kw...) where A<:AbstractArray =
-  meanpool_cpu!(y, x, k; kw...)
-
-∇meanpool(dy::A, y::A, x::A, k; pad = map(_->0,k), stride = k) where A<:AbstractArray =
-  ∇meanpool!(similar(x), dy, y, x, k, pad = expand(Val{length(k)}, pad),
-            stride = expand(Val{length(k)}, stride))
-
-∇meanpool!(dx::A, dy::A, y::A, x::A, k; kw...) where A<:AbstractArray =
-  ∇meanpool_cpu!(dx, dy, y, x, k; kw...)
-
-# N-D dispatch
-# We use a separate function to avoid ambiguity issues
-# (more specific array types vs. more specific dimensions)
-
-maxpool_cpu!(y::A, x::A, k::Dims{2}; pad = (0,0), stride = k) where A<:AbstractArray{<:Real,4} =
-  maxpool2d!(y, x, window = k, padding = pad, stride = stride)
-
-∇maxpool_cpu!(dx::AbstractArray{<:Real,4}, dy::AbstractArray{<:Real,4}, y::AbstractArray{<:Real,4}, x::AbstractArray{<:Real,4},
-              k::Dims{2}; pad = (0,0), stride = k) =
-  maxpool2d_grad!(dx, dy, y, x,
-                  window = k, padding = pad, stride = stride)
-
-maxpool_cpu!(y::AbstractArray{<:Real,5}, x::AbstractArray{<:Real,5}, k::Dims{3}; pad = (0,0), stride = k) =
-  maxpool3d!(y, x, window = k, padding = pad, stride = stride)
-
-∇maxpool_cpu!(dx::AbstractArray{<:Real,5}, dy::AbstractArray{<:Real,5}, y::AbstractArray{<:Real,5}, x::AbstractArray{<:Real,5},
-              k::Dims{3}; pad = (0,0), stride = k) =
-  maxpool3d_grad!(dx, dy, y, x,
-                  window = k, padding = pad, stride = stride)
-
-meanpool_cpu!(y::AbstractArray{<:Real,4}, x::AbstractArray{<:Real,4}, k::Dims{2}; pad = (0,0), stride = k) =
-  meanpool2d!(y, x, window = k, padding = pad, stride = stride)
-
-∇meanpool_cpu!(dx::AbstractArray{<:Real,4}, dy::AbstractArray{<:Real,4}, y::AbstractArray{<:Real,4}, x::AbstractArray{<:Real,4},
-              k::Dims{2}; pad = (0,0), stride = k) =
-  meanpool2d_grad!(dx, dy, y, x,
-                   window = k, padding = pad, stride = stride)
-
-meanpool_cpu!(y::AbstractArray{<:Real,5}, x::AbstractArray{<:Real,5}, k::Dims{3}; pad = (0,0), stride = k) =
-  meanpool3d!(y, x, window = k, padding = pad, stride = stride)
-
-∇meanpool_cpu!(dx::AbstractArray{<:Real,5}, dy::AbstractArray{<:Real,5}, y::AbstractArray{<:Real,5}, x::AbstractArray{<:Real,5},
-              k::Dims{3}; pad = (0,0), stride = k) =
-  meanpool3d_grad!(dx, dy, y, x,
-                   window = k, padding = pad, stride = stride)
-
-# Deprecated
-
-# 0.4.2
-@deprecate ∇conv_data(dy::A, x::A, w::A; kw...) where A<:AbstractArray ∇conv_data(dy, w; size=size(x), kw...)
-@deprecate ∇conv_filter(dy::A, x::A, w::A; kw...) where A<:AbstractArray ∇conv_filter(dy, x; size=size(w), kw...)
