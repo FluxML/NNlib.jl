@@ -342,7 +342,7 @@ function conv2d!(y::AbstractArray{T,4}, x::AbstractArray{T,4}, w::AbstractArray{
     Ww, Hw = kernel_size(cdims)
     Wy, Hy = output_size(cdims)
     Cx = img_channels(cdims)
-    M, N, K, Y = Wy*Hy, size(y,4), Ww*Hw*Cx, Wy*Hy*size(y, 4)
+    M, N, K, Y = Wy*Hy, size(y,3), prod(size(w)[1:3]), prod(size(y)[1:3])
 
     x2 = similar(x, im2col_dims(w, y))
     @inbounds for n in 1:size(x,4)
