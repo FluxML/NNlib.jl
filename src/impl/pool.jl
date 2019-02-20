@@ -2,7 +2,7 @@ function max_pooling2d_fwd!(x::AbstractArray{T,4}, y::AbstractArray{T,4},
                             width::Int, height::Int, channels::Int, num::Int, pooled_width::Int,
                             pooled_height::Int, kernel_w::Int, kernel_h::Int, pad_w::Int, pad_h::Int,
                             stride_w::Int, stride_h::Int) where T
-  for n = 1:num, c = 1:channels, ph = 1:pooled_height, pw = 1:pooled_width
+  @inbounds for n = 1:num, c = 1:channels, ph = 1:pooled_height, pw = 1:pooled_width
     hstart = (ph - 1)*stride_h - pad_h
     wstart = (pw - 1)*stride_w - pad_w
     hend   = min(hstart + kernel_h, height)
@@ -11,7 +11,11 @@ function max_pooling2d_fwd!(x::AbstractArray{T,4}, y::AbstractArray{T,4},
     hstart = max(hstart, 0) + 1
     wstart = max(wstart, 0) + 1
 
-    y[pw, ph, c, n] = maximum(x[wstart:wend, hstart:hend, c, n])
+    m = typemin(T)
+    for j in hstart:hend, i in wstart:wend
+        m = max(m, x[i, j, c, n])
+    end
+    y[pw, ph, c, n] = m
   end
 end
 
@@ -69,7 +73,7 @@ function mean_pooling2d_fwd!(x::AbstractArray{T,4}, y::AbstractArray{T,4},
   pooled_height::Int, kernel_w::Int, kernel_h::Int,pad_w::Int, pad_h::Int,
   stride_w::Int, stride_h::Int) where T
   kernel_size = kernel_w * kernel_h
-  for n = 1:num, c = 1:channels, ph = 1:pooled_height, pw = 1:pooled_width
+  @inbounds for n = 1:num, c = 1:channels, ph = 1:pooled_height, pw = 1:pooled_width
     hstart = (ph - 1) * stride_h - pad_h
     wstart = (pw - 1) * stride_w - pad_w
     hend   = min(hstart + kernel_h, height)
@@ -78,7 +82,11 @@ function mean_pooling2d_fwd!(x::AbstractArray{T,4}, y::AbstractArray{T,4},
     hstart = max(hstart, 0) + 1
     wstart = max(wstart, 0) + 1
 
-    y[pw, ph, c, n] = sum(x[wstart:wend, hstart:hend, c, n]) / kernel_size
+    s = zero(T)
+    for j in hstart:hend, i in wstart:wend
+        s += x[i, j, c, n]
+    end
+    y[pw, ph, c, n] = s / kernel_size
   end
 end
 
@@ -132,7 +140,7 @@ function max_pooling3d_fwd!(x::AbstractArray{T,5}, y::AbstractArray{T,5},
   width::Int, height::Int, depth::Int, channels::Int, num::Int, pooled_width::Int,
   pooled_height::Int, pooled_depth::Int, kernel_w::Int, kernel_h::Int, kernel_d::Int,
   pad_w::Int, pad_h::Int, pad_d::Int, stride_w::Int, stride_h::Int, stride_d::Int) where T
-  for n = 1:num, c = 1:channels, pd = 1:pooled_depth, ph = 1:pooled_height, pw = 1:pooled_width
+  @inbounds for n = 1:num, c = 1:channels, pd = 1:pooled_depth, ph = 1:pooled_height, pw = 1:pooled_width
     dstart = (pd - 1)* stride_d - pad_d
     hstart = (ph - 1)* stride_h - pad_h
     wstart = (pw - 1)* stride_w - pad_w
@@ -145,8 +153,11 @@ function max_pooling3d_fwd!(x::AbstractArray{T,5}, y::AbstractArray{T,5},
     hstart = max(hstart, 0) + 1
     wstart = max(wstart, 0) + 1
 
-    y[pw, ph, pd, c, n] =
-    maximum(x[wstart:wend, hstart:hend, dstart:dend, c, n])
+    m = typemin(T)
+    for k in dstart:dend, j in hstart:hend, i in wstart:wend
+      m = max(m, x[i, j, k, c, n])
+    end
+    y[pw, ph, pd, c, n] = m
   end
 end
 
@@ -213,7 +224,7 @@ function mean_pooling3d_fwd!(x::AbstractArray{T,5}, y::AbstractArray{T,5},
 
   kernel_size = kernel_w * kernel_h * kernel_d
   #pragma omp parallel for
-  for n = 1:num, c = 1:channels, pd = 1:pooled_depth, ph = 1:pooled_height, pw = 1:pooled_width
+  @inbounds for n = 1:num, c = 1:channels, pd = 1:pooled_depth, ph = 1:pooled_height, pw = 1:pooled_width
     dstart = (pd - 1) * stride_d - pad_d
     hstart = (ph - 1) * stride_h - pad_h
     wstart = (pw - 1) * stride_w - pad_w
@@ -226,8 +237,11 @@ function mean_pooling3d_fwd!(x::AbstractArray{T,5}, y::AbstractArray{T,5},
     hstart = max(hstart, 0) + 1
     wstart = max(wstart, 0) + 1
 
-    y[pw, ph, pd, c, n] =
-    sum(x[wstart:wend, hstart:hend, dstart:dend, c, n]) / kernel_size
+    s = zero(T)
+    for k in dstart:dend, j in hstart:hend, i in wstart:wend
+        s += x[i, j, k, c, n]
+    end
+    y[pw, ph, pd, c, n] = s / kernel_size
   end
 end
 
