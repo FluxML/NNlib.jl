@@ -13,16 +13,23 @@ const shared_threadpool = Ref(C_NULL)
 
 @init begin
     check_deps()
-    status = nnp_initialize()
-    if status == nnp_status_unsupported_hardware
-        @warn "HARDWARE is unsupported by NNPACK so falling back to default NNlib"
-    else
-        include(nnlib_interface_path)
-    end
     try
-        global NNPACK_CPU_THREADS = parse(UInt64, ENV["NNPACK_CPU_THREADS"])
+        global ENABLE_NNPACK = parse(UInt64, ENV["ENABLE_NNPACK"])
     catch
-        global NNPACK_CPU_THREADS = 4
+        global ENABLE_NNPACK = 1
     end
-    shared_threadpool[] = pthreadpool_create(NNPACK_CPU_THREADS)
+    if ENABLE_NNPACK == 1
+        status = nnp_initialize()
+        if status == nnp_status_unsupported_hardware
+            @warn "HARDWARE is unsupported by NNPACK so falling back to default NNlib"
+        else
+            include(nnlib_interface_path)
+        end
+        try
+            global NNPACK_CPU_THREADS = parse(UInt64, ENV["NNPACK_CPU_THREADS"])
+        catch
+            global NNPACK_CPU_THREADS = 4
+        end
+        shared_threadpool[] = pthreadpool_create(NNPACK_CPU_THREADS)
+    end
 end
