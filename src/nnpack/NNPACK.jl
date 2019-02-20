@@ -30,6 +30,6 @@ const nnlib_interface_path = joinpath(dirname(@__FILE__), "interface.jl")
         catch
             global NNPACK_CPU_THREADS = 4
         end
-        global shared_threadpool[] = pthreadpool_create(NNPACK_CPU_THREADS)
+        global shared_threadpool = pthreadpool_create(NNPACK_CPU_THREADS)
     end
 end
