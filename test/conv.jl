@@ -5,26 +5,17 @@ using NNlib: conv, crosscor, ∇conv_filter, ∇conv_data, ∇maxpool, maxpool, 
     x = reshape(Float32[1:16;], 4, 4, 1, 1)
     w = reshape(Float32[1:9;], 3, 3, 1, 1)
 
-    # Fix these tests
-    #=
-    @test dropdims(conv(x, w), dims = (3,4)) == [
-        29 79 129;
-        39 89 139;
-        49 99 149;
-        59 109 159.]
+    @test dropdims(conv(x, w), dims = (3,4)) == Float32.([
+        192 372;
+        237 417])
     
-    @test dropdims(conv(view(x, :, :, :, :), w), dims = (3,4)) == [
-        29 79 129;
-        39 89 139;
-        49 99 149;
-        59 109 159.]
+    @test dropdims(conv(view(x, :, :, :, :), w), dims = (3,4)) == Float32.([
+        192 372;
+        237 417])
 
-    @test dropdims(crosscor(x, w), dims = (3,4)) == [
-	 51  101  151;
-	 61  111  161;
- 	 71  121  171;
-	 81  131  181.]
-    =#
+    @test dropdims(crosscor(x, w), dims = (3,4)) == Float32.([
+	 348.0 528.0;
+         393.0 573.0])
 
     @test dropdims(conv(x, w, pad=1), dims=(3,4)) ≈ Float32.([
         29   99  207  263

@@ -81,7 +81,7 @@ function nnp_max_pooling_output(batch_size, channels, input_size, input_padding,
     @check ccall((:nnp_max_pooling_output, libnnpack), nnp_status, (Csize_t, Csize_t, nnp_size, nnp_padding, nnp_size, nnp_size, Ptr{Cfloat}, Ptr{Cfloat}, pthreadpool_t), batch_size, channels, input_size, input_padding, pooling_size, pooling_stride, input, output, threadpool)
 end
 
-function nnp_max_pooling_output(x::Array{Float32,4}, y::Array{Float32,4}, kernel::Tuple; padding = 0, stride = 1, threadpool = shared_threadpool[])
+function nnp_max_pooling_output(y::Array{Float32,4}, x::Array{Float32,4}, kernel::Tuple; padding = 0, stride = 1, threadpool = shared_threadpool[])
     input_size = nnp_size(Csize_t.((size(x, 1), size(x, 2)))...)
     pooling_size = nnp_size(Csize_t.(kernel)...)
     input_padding = nnp_padding(Csize_t(padding[2]), Csize_t(padding[1]), Csize_t(padding[2]), Csize_t(padding[1]))
