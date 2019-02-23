@@ -53,7 +53,7 @@ for (front_name, backend) in (
     end
 end
 
-# Our strategy for 1d and 2d convolution is to reshape from to 3d convolutions, which
+# Our strategy for 1d and 2d convolution is to reshape to 3d convolutions, which
 # makes things MUCH EASIER for us on the backend side, and is in general pretty fast,
 # since we can specialize on sizes.
 for front_name in (:conv, :∇conv_data, :∇conv_filter,
