@@ -121,7 +121,7 @@ for name in (:max, :mean)
         return y
     end
 
-    # Same story for gradients, and although this is very similar to the orward pass,
+    # Same story for gradients, and although this is very similar to the forward pass,
     # it's unfortunately different enough that I think we need a separate function.  :(
     @eval function $((Symbol("∇$(name)pool_direct!")))(dx::AbstractArray{T,5},
                                                        dy::AbstractArray{T,5},
