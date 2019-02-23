@@ -27,7 +27,7 @@ export conv, conv!, ∇conv_data, ∇conv_data!, ∇conv_filter, ∇conv_filter!
 
 
 # First, we will define mappings from the generic API names to our accelerated backend
-# implementations. For homogenous-datatype 1, 2 and 3d convolutions, we default to using
+# implementations. For homogeneous-datatype 1, 2 and 3d convolutions, we default to using
 # im2col + GEMM.  Do so in a loop, here:
 for (front_name, backend) in (
         # This maps from public, front-facing name, to internal backend name
