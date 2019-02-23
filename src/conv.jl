@@ -90,7 +90,7 @@ for front_name in (:conv, :∇conv_data, :∇conv_filter,
     @eval begin
         function $(Symbol("$(front_name)!"))(out::AbstractArray, in1::AbstractArray,
                                             in2::AbstractArray, cdims::ConvDims; kwargs...)
-            @debug "Slow Fallback $(front_name) invoked!  You probably don't want this; check your datatypes."
+            @debug "Slow fallback implementation invoked for $(front_name)!  You probably don't want this; check your datatypes."
             $(Symbol("$(front_name)_direct!"))(out, in1, in2, cdims; kwargs...)
         end
     end
