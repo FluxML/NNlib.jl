@@ -21,4 +21,8 @@ include("impl/depthwiseconv_im2col.jl")
 
 # Direct implementations of pooling
 include("impl/pooling_direct.jl")
+
+# Upsampling implementation
+include("upsample.jl")
+
 end # module NNlib
