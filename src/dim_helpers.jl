@@ -3,6 +3,7 @@ include("dim_helpers/ConvDims.jl")
 include("dim_helpers/DenseConvDims.jl")
 include("dim_helpers/DepthwiseConvDims.jl")
 include("dim_helpers/PoolDims.jl")
+include("dim_helpers/UpsampleDims.jl")
 
 
 """
@@ -59,6 +60,14 @@ spatial dimension at the end of the spatial dimensions.  This does so for a Conv
         # Padding is always the problem child....
         P=(padding(cdims)..., 0, 0),
         D=(dilation(cdims)..., 1),
+    )
+end
+
+@inline function insert_singleton_spatial_dimension(udims::UpsampleDims)
+    return UpsampleDims(udims;
+        N=spatial_dims(udims) + 1,
+        I=(input_size(udims)..., 1),
+        S=(stride(udims)..., 1),
     )
 end
 

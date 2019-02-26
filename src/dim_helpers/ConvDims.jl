@@ -22,6 +22,8 @@ function basetype(::Type{C}) where {C <: ConvDims}
         return DenseConvDims
     elseif C <: PoolDims
         return PoolDims
+    elseif C <: UpsampleDims
+        return UpsampleDims
     else
         return nothing
     end

@@ -1,53 +1,43 @@
-export upsample, ∇upsample
+export upsample, upsample!, ∇upsample, ∇upsample!
 
-function upsample!(y, x, height, width, channels, batch, stride, scale = 1)
-    w_mul = height
-    ch_mul = w_mul * width
-    b_mul = ch_mul * channels
-    
-    @inbounds begin
-        for b in 1:batch,
-            ch in 1:channels,
-            w in 1:(width * stride[2]),
-            h in 1:(height * stride[1])
+for N in (3, 4)
+    @eval begin
+        function upsample!(y::AbstractArray{T,$N}, x::AbstractArray{T,$N},
+                           udims::UpsampleDims) where {T}
+            upsample!(
+                insert_singleton_spatial_dimension(y, $(5 - N)),
+                insert_singleton_spatial_dimension(x, $(5 - N)),
+                insert_singleton_spatial_dimension(udims, $(5 - N))
+            )
 
-            x_idx = (b - 1) * b_mul + (ch - 1) * ch_mul + ((w - 1) ÷ stride[2]) * w_mul + (h - 1) ÷ stride[1] + 1
-            y_idx = (b - 1) * b_mul * stride[2] * stride[1] + (ch - 1) * ch_mul * stride[2] * stride[1] + (w - 1) * w_mul * stride[1] + h
-            y[y_idx] = scale * x[x_idx]      
+            # We explicitly return `y` here, because the backend call
+            # itself may return a reshaped view, which we don't want.
+            return y
+        end
+
+        function ∇upsample!(dx::AbstractArray{T,$N}, dy::AbstractArray{T,$N},
+                            x::AbstractArray{T,$N}, udims::UpsampleDims) where {T}
+            ∇upsample!(
+                insert_singleton_spatial_dimension(dx, $(5 - N)),
+                insert_singleton_spatial_dimension(dy, $(5 - N)),
+                insert_singleton_spatial_dimension(x, $(5 - N)),
+                insert_singleton_spatial_dimension(udims, $(5 - N))
+            )
+
+            # We explicitly return `dx` here, because the backend call
+            # itself may return a reshaped view, which we don't want.
+            return dx
         end
     end
-    y
 end
 
-function upsample(x, stride, scale = 1)
-    (height, width, channels, batch) = size(x)
-    y = similar(x, (height * stride[1], width * stride[2], channels, batch))
-    upsample!(y, x, height, width, channels, batch, stride, scale)
+function upsample(x::AbstractArray{T,N}, udims::UpsampleDims) where {T,N}
+    y = similar(x, output_size(udims)..., channels_out(udims), size(x, N))
+    return upsample!(y, x, udims)
 end
 
-function ∇upsample!(dx, dy, height, width, channels, batch, stride, scale = 1)
-    w_mul = height
-    ch_mul = w_mul * width
-    b_mul = ch_mul * channels
-    
-    @inbounds begin
-        for b in 1:batch,
-            ch in 1:channels,
-            w in 1:(width * stride[2]),
-            h in 1:(height * stride[1])
-
-            dx_idx = (b - 1) * b_mul + (ch - 1) * ch_mul + ((w - 1) ÷ stride[2]) * w_mul + (h - 1) ÷ stride[1] + 1
-            dy_idx = (b - 1) * b_mul * stride[2] * stride[1] + (ch - 1) * ch_mul * stride[2] * stride[1] + (w - 1) * w_mul * stride[1] + h
-            dx[dx_idx] += dy[dy_idx] / scale      
-        end
-    end
-    dx
-end
-
-function ∇upsample(dy, stride, scale = 1)
-    (height, width, channels, batch) = size(dy)
-    @assert height % stride[1] == 0
-    @assert width % stride[2] == 0
-    dx = similar(dy, (height ÷ stride[1], width ÷ stride[2], channels, batch))
-    ∇upsample!(dx, dy, size(dx)..., stride, scale)
+function ∇upsample(dy::AbstractArray{T,N}, x::AbstractArray{T},
+                   udims::UpsampleDims) where {T,N}
+    dx = similar(dy, input_size(udims)..., channels_in(udims), size(dy, N))
+    return ∇upsample!(y, x, udims)
 end

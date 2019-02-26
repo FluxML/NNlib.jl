@@ -8,6 +8,7 @@ include("softmax.jl")
 include("gemm.jl")
 include("conv.jl")
 include("pooling.jl")
+include("upsample.jl")
 
 ## Include implementations
 include("impl/padding_edges.jl")
@@ -23,6 +24,6 @@ include("impl/depthwiseconv_im2col.jl")
 include("impl/pooling_direct.jl")
 
 # Upsampling implementation
-include("upsample.jl")
+include("impl/upsampling.jl")
 
 end # module NNlib
