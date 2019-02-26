@@ -115,7 +115,7 @@ for backend in (Symbol(), :_direct, :_im2col)
             function $(Symbol("∇$(name)$(backend)"))(
                     dy::AbstractArray{T,N}, x::AbstractArray{T},
                     pdims::PoolDims; kwargs...) where {T, N}
-                dx = zeros(T, input_size(pdims)..., channels_out(pdims), size(dy, N))
+                dx = zeros(T, input_size(pdims)..., channels_in(pdims), size(dy, N))
                 return $(Symbol("∇$(name)$(backend)!"))(dx, dy, x, pdims; kwargs...)
             end
         end
