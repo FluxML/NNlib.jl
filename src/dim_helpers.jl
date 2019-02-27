@@ -6,16 +6,16 @@ include("dim_helpers/PoolDims.jl")
 
 
 """
-    transpose_flipbatch(x::AbstractArray)
+    transpose_swapbatch(x::AbstractArray)
 
-Given an AbstractArray, flip its batch and channel axes, as we must during transposed
+Given an AbstractArray, swap its batch and channel axes, as we must during transposed
 convolution.  We do this to the operands during convolution, and then again to the
 output once we're done.
 """
-function transpose_flipbatch(x::AbstractArray)
+function transpose_swapbatch(x::AbstractArray)
     return permutedims(x, ((1:(ndims(x)-2))..., ndims(x), ndims(x)-1))
 end
-function transpose_flipbatch(x::Tuple)
+function transpose_swapbatch(x::Tuple)
     return (x[1:end-2]..., x[end], x[end-1])
 end
 

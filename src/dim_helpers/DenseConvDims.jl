@@ -5,18 +5,15 @@ export DenseConvDims
 
 Concrete subclass of `ConvDims` for a normal, dense, conv2d/conv3d.
 """
-struct DenseConvDims{N,S,P,D,F} <: ConvDims{N,S,P,D,F}
+struct DenseConvDims{N,K,C_in,C_out,S,P,D,F} <: ConvDims{N,S,P,D,F}
     I::NTuple{N,Int}
-    K::NTuple{N,Int}
-    C_in::Int
-    C_out::Int
 end
 
 # Getters for the fields
 input_size(c::DenseConvDims) = c.I
-kernel_size(c::DenseConvDims) = c.K
-channels_in(c::DenseConvDims) = c.C_in
-channels_out(c::DenseConvDims) = c.C_out
+kernel_size(c::DenseConvDims{N,K,C_in,C_out,S,P,D,F}) where {N,K,C_in,C_out,S,P,D,F} = K
+channels_in(c::DenseConvDims{N,K,C_in,C_out,S,P,D,F}) where {N,K,C_in,C_out,S,P,D,F} = C_in
+channels_out(c::DenseConvDims{N,K,C_in,C_out,S,P,D,F}) where {N,K,C_in,C_out,S,P,D,F} = C_out
 
 # Convenience wrapper to create DenseConvDims objects
 function DenseConvDims(x_size::NTuple{M}, w_size::NTuple{M};
@@ -34,22 +31,16 @@ function DenseConvDims(x_size::NTuple{M}, w_size::NTuple{M};
     # The type parameters are what 
     return DenseConvDims{
         M - 2,
+        w_size[1:end-2],
+        x_size[end-1],
+        w_size[end],
         stride,
         padding,
         dilation,
         flipkernel
     }(
-        # Image spatial size
+        # Input spatial size
         x_size[1:end-2],
-
-        # Kernel spatial size
-        w_size[1:end-2],
-
-        # Input channels
-        x_size[end-1],
-
-        # Output channels
-        w_size[end],
     )
 end
 
@@ -66,7 +57,7 @@ end
 function DenseConvDims(c::ConvDims; N=spatial_dims(c), I=input_size(c), K=kernel_size(c),
                        C_in=channels_in(c), C_out=channels_out(c), S=stride(c),
                        P=padding(c), D=dilation(c), F=flipkernel(c))
-    return DenseConvDims{N, S, P, D, F}(I, K, C_in, C_out)
+    return DenseConvDims{N, K, C_in, C_out, S, P, D, F}(I)
 end
 
 function check_dims(x::NTuple{M}, w::NTuple{M}, y::NTuple{M}, cdims::DenseConvDims) where {M}

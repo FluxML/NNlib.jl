@@ -13,11 +13,7 @@ struct PoolDims{N,K,S,P,D} <: ConvDims{N, S, P, D, false}
 end
 
 # Getters for both type parameters and fields
-spatial_dims(c::PoolDims{N,K,S,P,D}) where {N, K, S, P, D} = N
 kernel_size(c::PoolDims{N,K,S,P,D}) where {N, K, S, P, D} = K
-stride(c::PoolDims{N,K,S,P,D}) where {N, K, S, P, D} = S
-padding(c::PoolDims{N,K,S,P,D}) where {N, K, S, P, D} = P
-dilation(c::PoolDims{N,K,S,P,D}) where {N, K, S, P, D} = D
 input_size(c::PoolDims) = c.I
 channels_in(c::PoolDims) = c.C_in
 channels_out(c::PoolDims) = c.C_in

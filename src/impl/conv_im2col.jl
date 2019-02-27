@@ -163,7 +163,12 @@ out along the rows of `col`, one for each output pixel.  This routine is used by
 im2col-based convolutions, just with extra singleton dimensions added in the case of `2d`
 or `1d` images.
 """
-function im2col!(col::AbstractArray{T,2}, x::AbstractArray{T,4}, cdims::ConvDims) where T
+function im2col!(col::AbstractArray{T,2}, x::AbstractArray{T,4},
+                                          cdims::ConvDims) where {T}
+    if spatial_dims(cdims) != 3
+        throw(DimensionMismatch("im2col!() only accepts 3d convoluitional inputs"))
+    end
+
     # Extract those nice, compile-time constant type parameters from `cdims`.
     width, height, depth = input_size(cdims)
     kernel_w, kernel_h, kernel_d = kernel_size(cdims)
