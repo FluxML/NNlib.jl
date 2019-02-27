@@ -43,125 +43,59 @@ function calc_padding_regions(dims)
     spill_h_hi_abs = out_height - spill_h_hi + 1
     spill_d_hi_abs = out_depth  - spill_d_hi + 1
 
-    # Note; we need two special cases; for when we're actually dealing with a 1d or 2d
-    # convolution.  This is detectable when `d` is a singleton dimension and there is no
-    # padding along that dimension, or when the same holds true for `d` and `h`.  In
-    # those cases, we can simplify the padded regions and central regions a bit.
-    singleton(args...) = (args == (1, 1, 1, 1, 0, 0, 1))
-    if singleton(depth, out_depth, kernel_d, stride_d, pad_d_lo, pad_d_hi, dil_d)
-        # So we've got a singleton depth dimension.  Do the same check for height:
-        if singleton(height, out_height, kernel_h, stride_h, pad_h_lo, pad_h_hi, dil_h)
-            # This means it's a 1-d region.  So we simplify things quite a lot:
-            padded_regions = (
-                # Only two padded regions; low-w and hi-w.
-                (1:spill_w_lo, 1:1, 1:1),
-                (spill_w_hi_abs:out_width, 1:1, 1:1),
-            )
+    # These are the regions we're going to have to run with cognizance of padding.
+    # There are six of them; one for each face of the cube image.  We explicitly
+    # design this so that we run over `width` most tightly, in the expectation that
+    # this will generate better code for when `h` and `d` are singleton dimensions.
+    # We visualize this as a cube, indexed by dimensions (w, h, d).
+    padded_regions = (
+        # First region is the lower-d WH face:
+        (
+            1:out_width,
+            1:out_height,
+            1:spill_d_lo,
+        ),
 
-            # The central region that has no padding.
-            central_region = (
-                (spill_w_lo+1):(spill_w_hi_abs - 1),
-                1:1,
-                1:1,
-            )
-        else
-            # This means it's a 2-d region.  Still simplified, but not SO simplified:
-            padded_regions = (
-                # First region is the lower-H W edge:
-                (
-                    1:out_width,
-                    1:spill_h_lo,
-                    1:1,
-                ),
-                # Then the upper-H W edge
-                (
-                    1:out_width,
-                    spill_h_hi_abs:out_height,
-                    1:1,
-                ),
+        # The next largest chunk we choose will be the lower-h WD faces; we always
+        # want to maximize going across full `w`, as its contiguous in memory.
+        (
+            1:out_width,
+            1:spill_h_lo,
+            (spill_d_lo+1):(spill_d_hi_abs-1),
+        ),
+        # Then the upper-h WD face
+        (
+            1:out_width,
+            spill_h_hi_abs:out_height,
+            (spill_d_lo+1):(spill_d_hi_abs-1),
+        ),
 
-                # Next, we fit the H edges in, but without overlapping the `h` regions
-                # we've done before:
-                (
-                    1:spill_w_lo,
-                    (spill_h_lo+1):(spill_h_hi_abs-1),
-                    1:1,
-                ),
-                (
-                    spill_w_hi_abs:out_width,
-                    (spill_h_lo+1):(spill_h_hi_abs-1),
-                    1:1
-                ),
-            )
+        # Next, we fit the HD faces in, but without overlapping the `h` and `d`
+        # regions we've done before:
+        (
+            1:spill_w_lo,
+            (spill_h_lo+1):(spill_h_hi_abs-1),
+            (spill_d_lo+1):(spill_d_hi_abs-1),
+        ),
+        (
+            spill_w_hi_abs:out_width,
+            (spill_h_lo+1):(spill_h_hi_abs-1),
+            (spill_d_lo+1):(spill_d_hi_abs-1)
+        ),
+        
+        # Last region is the higher-d WH face:
+        (
+            1:out_width,
+            1:out_height,
+            spill_d_hi_abs:out_depth,
+        ),
+    )
 
-            # The central region that has no padding.
-            central_region = (
-                (spill_w_lo+1):(spill_w_hi_abs - 1),
-                (spill_h_lo+1):(spill_h_hi_abs - 1),
-                1:1,
-            )
-        end
-    else
-        # Otherwise it's the full 3d dimensional calculation.
-        # These are the regions we're going to have to run with cognizance of padding.
-        # There are six of them; one for each face of the cube image.  We explicitly
-        # design this so that we run over `width` most tightly, in the expectation that
-        # this will generate better code for when `h` and `d` are singleton dimensions.
-        # We visualize this as a cube, indexed by dimensions (w, h, d).
-        padded_regions = (
-            # First region is the lower-d WH face:
-            (
-                1:out_width,
-                1:out_height,
-                1:spill_d_lo,
-            ),
-
-            # The next largest chunk we choose will be the lower-h WD faces; we always
-            # want to maximize going across full `w`, as its contiguous in memory.
-            (
-                1:out_width,
-                1:spill_h_lo,
-                (spill_d_lo+1):(spill_d_hi_abs-1),
-            ),
-            # Then the upper-h WD face
-            (
-                1:out_width,
-                spill_h_hi_abs:out_height,
-                (spill_d_lo+1):(spill_d_hi_abs-1),
-            ),
-
-            # Next, we fit the HD faces in, but without overlapping the `h` and `d`
-            # regions we've done before:
-            (
-                1:spill_w_lo,
-                (spill_h_lo+1):(spill_h_hi_abs-1),
-                (spill_d_lo+1):(spill_d_hi_abs-1),
-            ),
-            (
-                spill_w_hi_abs:out_width,
-                (spill_h_lo+1):(spill_h_hi_abs-1),
-                (spill_d_lo+1):(spill_d_hi_abs-1)
-            ),
-            
-            # Last region is the higher-d WH face:
-            (
-                1:out_width,
-                1:out_height,
-                spill_d_hi_abs:out_depth,
-            ),
-        )
-
-        # The central region that has no padding.
-        central_region = (
-            (spill_w_lo+1):(spill_w_hi_abs - 1),
-            (spill_h_lo+1):(spill_h_hi_abs - 1),
-            (spill_d_lo+1):(spill_d_hi_abs - 1),
-        )
-    end
-
-    # Filter out regions that are empty in some dimension
-    @inline function filter_empty(regions)
-        return tuple((r for r in regions if all(!isempty(z) for z in r))...)
-    end
-    return filter_empty(padded_regions), central_region
+    # The central region that has no padding.
+    central_region = (
+        (spill_w_lo+1):(spill_w_hi_abs - 1),
+        (spill_h_lo+1):(spill_h_hi_abs - 1),
+        (spill_d_lo+1):(spill_d_hi_abs - 1),
+    )
+    return padded_regions, central_region
 end

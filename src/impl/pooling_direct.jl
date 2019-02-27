@@ -3,11 +3,9 @@ using Statistics
 # Pooling is so similar, we abstract over meanpooling and maxpooling, simply replacing
 # the inner loop operation and a few initialization parameters.
 for name in (:max, :mean)
-    @eval function $((Symbol("$(name)pool_direct!")))(y::AbstractArray{T,5},
-                                                      x::AbstractArray{T,5},
-                                                      pdims::PoolDims;
-                                                      alpha::T = T(1),
-                                                      beta::T = T(0)) where {T}
+    @eval @timeit_debug to function $((Symbol("$(name)pool_direct!")))(
+                    y::AbstractArray{T,5}, x::AbstractArray{T,5},
+                    pdims::PoolDims; alpha::T = T(1), beta::T = T(0)) where {T}
         check_dims(size(x), size(y), pdims)
 
         width, height, depth = input_size(pdims)
@@ -23,7 +21,7 @@ for name in (:max, :mean)
         padded_regions, central_region = calc_padding_regions(pdims)
 
         # A helper function to project from output (w, h) to input (input_w, input_h)
-        project(idx, stride, pad) = (idx - 1)*stride - pad + 1
+        @inline project(idx, stride, pad) = (idx - 1)*stride - pad + 1
 
         # If we're doing mean pooling, we represent division by kernel size by rolling it
         # into the `alpha` multiplier.
@@ -123,12 +121,10 @@ for name in (:max, :mean)
 
     # Same story for gradients, and although this is very similar to the forward pass,
     # it's unfortunately different enough that I think we need a separate function.  :(
-    @eval function $((Symbol("∇$(name)pool_direct!")))(dx::AbstractArray{T,5},
-                                                       dy::AbstractArray{T,5},
-                                                       x::AbstractArray{T,5},
-                                                       pdims::PoolDims;
-                                                       alpha::T = T(1),
-                                                       beta::T = T(0)) where {T}
+    @eval @timeit_debug to function $((Symbol("∇$(name)pool_direct!")))(
+                    dx::AbstractArray{T,5}, dy::AbstractArray{T,5},
+                    x::AbstractArray{T,5}, pdims::PoolDims;
+                    alpha::T = T(1), beta::T = T(0)) where {T}
         check_dims(size(x), size(dy), pdims)
 
         width, height, depth = input_size(pdims)
@@ -144,7 +140,7 @@ for name in (:max, :mean)
         padded_regions, central_region = calc_padding_regions(pdims)
 
         # A helper function to project from output (w, h) to input (input_w, input_h)
-        project(idx, stride, pad) = (idx - 1)*stride - pad + 1
+        @inline project(idx, stride, pad) = (idx - 1)*stride - pad + 1
 
         # If we're doing mean pooling, we represent division by kernel size by rolling
         # it into the `alpha` multiplier.

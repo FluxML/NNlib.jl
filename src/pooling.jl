@@ -105,16 +105,17 @@ for backend in (Symbol(), :_direct, :_im2col)
     # First make auto-allocating versions of the basic pooling calls:
     for name in (:maxpool, :meanpool)
         @eval begin
-            function $(Symbol("$(name)$(backend)"))(
-                    x::AbstractArray{xT,N}, pdims::PoolDims; kwargs...) where {xT, N}
+            @timeit_debug to function $(Symbol("$(name)$(backend)"))(
+                            x::AbstractArray{xT,N},
+                            pdims::PoolDims; kwargs...) where {xT, N}
                 y = zeros(xT,  output_size(pdims)..., channels_out(pdims), size(x, N))
                 return $(Symbol("$(name)$(backend)!"))(y, x, pdims; kwargs...)
             end
             
             # Backprops too
-            function $(Symbol("∇$(name)$(backend)"))(
-                    dy::AbstractArray{T,N}, x::AbstractArray{T},
-                    pdims::PoolDims; kwargs...) where {T, N}
+            @timeit_debug to function $(Symbol("∇$(name)$(backend)"))(
+                            dy::AbstractArray{T,N}, x::AbstractArray{T},
+                            pdims::PoolDims; kwargs...) where {T, N}
                 dx = zeros(T, input_size(pdims)..., channels_in(pdims), size(dy, N))
                 return $(Symbol("∇$(name)$(backend)!"))(dx, dy, x, pdims; kwargs...)
             end

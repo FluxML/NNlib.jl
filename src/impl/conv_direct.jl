@@ -33,13 +33,20 @@ calculates `y = alpha * x * w + beta * y`, therefore by setting `beta` to a nonz
 value, the user is able to accumulate values into a preallocated `y` buffer, or by
 setting `alpha` to a nonunitary value, an arbitrary gain factor can be applied.
 
+By defaulting `beta` to `false`, we make use of the Bradbury promotion trick to override
+`NaN`'s that may pre-exist within our output buffer, as `false*NaN == 0.0`, whereas
+`0.0*NaN == NaN`.  Only set `beta` if you are certain that none of the elements within
+`y` are `NaN`.
+
 The basic implementation performs 3-dimensional convolution; 1-dimensional and 2-
 dimensional casesa are supported by simply reshaping `y`, `x` and `w`, for which
 wrapper methods are available.
 """
-function conv_direct!(y::AbstractArray{yT,5}, x::AbstractArray{xT,5},
+conv_direct!
+
+@timeit_debug to function conv_direct!(y::AbstractArray{yT,5}, x::AbstractArray{xT,5},
                       w::AbstractArray{wT,5}, cdims::DenseConvDims;
-                      alpha::yT = yT(1), beta::yT = yT(0)) where {yT, xT, wT}
+                      alpha::yT = yT(1), beta = false) where {yT, xT, wT}
     check_dims(size(x), size(w), size(y), cdims)
 
     width, height, depth = input_size(cdims)
@@ -50,12 +57,13 @@ function conv_direct!(y::AbstractArray{yT,5}, x::AbstractArray{xT,5},
     stride_w, stride_h, stride_d = stride(cdims)
     out_width, out_height, out_depth = output_size(cdims)
     
-    project(idx, s, p) = (idx - 1)*s - p + 1
-    
     # If we're doing crosscorr instead of conv, then don't bother to flip `w`
     if !flipkernel(cdims)
         w = w[end:-1:1, end:-1:1, end:-1:1, :, :]
     end
+
+    # A helper function to project from output (w, h) to input (input_w, input_h)
+    @inline project(idx, stride, pad) = (idx - 1)*stride - pad + 1
     
     # explicit formulation of convolution.  Oh hoisting gods, hear my plea.
     @inbounds for batch in 1:size(x)[end],
@@ -94,7 +102,7 @@ function conv_direct!(y::AbstractArray{yT,5}, x::AbstractArray{xT,5},
         y[w_idx, h_idx, d_idx, c_out, batch] = alpha*convert(yT, dotprod) +
                                                beta*y[w_idx, h_idx, d_idx, c_out, batch]
     end
-    
+
     return y
 end
 
@@ -104,14 +112,18 @@ end
 
 Calculate the gradient imposed upon `x` in the convolution `y = x * w`.
 """
-function ∇conv_data_direct!(dx::AbstractArray{xT,5}, dy::AbstractArray{yT,5},
+∇conv_data_direct!
+
+@timeit_debug to function ∇conv_data_direct!(dx::AbstractArray{xT,5}, dy::AbstractArray{yT,5},
                             w::AbstractArray{wT,5}, cdims::DenseConvDims;
-                            alpha::xT=xT(1), beta::xT=xT(0)) where {xT, yT, wT}
-    w = transpose_flipbatch(w[end:-1:1, end:-1:1, end:-1:1, :, :])
+                            alpha::xT=xT(1), beta=false) where {xT, yT, wT}
+    w = transpose_swapbatch(w[end:-1:1, end:-1:1, end:-1:1, :, :])
     dy = predilate(dy, stride(cdims))
     ctdims = DenseConvDims(dy, w; padding=transpose_pad(cdims),
-                                  dilation=dilation(cdims), flipkernel=flipkernel(cdims))
-    return transpose_flipbatch(conv_direct!(dx, dy, w, ctdims; alpha=alpha, beta=beta))
+                                    dilation=dilation(cdims),
+                                    flipkernel=flipkernel(cdims))
+    dx = conv_direct!(dx, dy, w, ctdims; alpha=alpha, beta=beta)
+    return transpose_swapbatch(dx)
 end
 
 """
@@ -119,12 +131,15 @@ end
 
 Calculate the gradient imposed upon `w` in the convolution `y = x * w`.
 """
-function ∇conv_filter_direct!(dw::AbstractArray{wT,5}, x::AbstractArray{xT,5},
+∇conv_filter_direct!
+
+@timeit_debug to function ∇conv_filter_direct!(dw::AbstractArray{wT,5}, x::AbstractArray{xT,5},
                               dy::AbstractArray{yT,5}, cdims::DenseConvDims;
-                              alpha::wT=wT(1), beta::wT=wT(0)) where {xT, yT, wT}
-    x = transpose_flipbatch(x[end:-1:1, end:-1:1, end:-1:1, :, :])
-    dy = transpose_flipbatch(predilate(dy, stride(cdims)))
-    ctdims = DenseConvDims(dy, x; padding=transpose_pad(cdims), stride=dilation(cdims))
+                              alpha::wT=wT(1), beta=false) where {xT, yT, wT}
+    x = transpose_swapbatch(x[end:-1:1, end:-1:1, end:-1:1, :, :])
+    dy = transpose_swapbatch(predilate(dy, stride(cdims)))
+    ctdims = DenseConvDims(dy, x; padding=transpose_pad(cdims),
+                                    stride=dilation(cdims))
     conv_direct!(dw, dy, x, ctdims; alpha=alpha, beta=beta)
     if flipkernel(cdims)
         dw .= dw[end:-1:1, end:-1:1, end:-1:1, :, :]

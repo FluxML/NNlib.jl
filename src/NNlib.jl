@@ -1,5 +1,5 @@
 module NNlib
-using Requires
+using Requires, TimerOutputs
 
 # Include APIs
 include("dim_helpers.jl")
@@ -21,4 +21,7 @@ include("impl/depthwiseconv_im2col.jl")
 
 # Direct implementations of pooling
 include("impl/pooling_direct.jl")
+
+to = TimerOutput()
+
 end # module NNlib

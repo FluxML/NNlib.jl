@@ -8,10 +8,13 @@ Perform a depthwise convolution using im2col and GEMM, store the result in `y`.
 
 See `conv_im2col!()` for an explanation of optional parameters.
 """
-function depthwiseconv_im2col!(y::AbstractArray{T,5}, x::AbstractArray{T,5},
-                               w::AbstractArray{T,5}, cdims::DepthwiseConvDims,
-                               col::AbstractArray{T,2}=similar(x, im2col_dims(cdims));
-                               alpha=T(1), beta=T(0)) where T
+depthwiseconv_im2col!
+
+@timeit_debug to function depthwiseconv_im2col!(
+                y::AbstractArray{T,5}, x::AbstractArray{T,5},
+                w::AbstractArray{T,5}, cdims::DepthwiseConvDims;
+                col::AbstractArray{T,2} = similar(x, im2col_dims(cdims)),
+                alpha=T(1), beta=T(0)) where T
     check_dims(size(x), size(w), size(y), cdims)
     
     # This functions exactly the same as conv_im2col!(), except that we shard the
@@ -23,8 +26,11 @@ function depthwiseconv_im2col!(y::AbstractArray{T,5}, x::AbstractArray{T,5},
     N = channel_multiplier(cdims)
     K = prod(kernel_size(cdims))
 
+    dcdims = DenseConvDims(cdims)
     @inbounds for batch_idx in 1:size(x)[end]
-        im2col!(col, view(x, :, :, :, :, batch_idx), DenseConvDims(cdims))
+        # We invoke `@timeit_debug` on the outside of `im2col!()` because inference
+        # doesn't like us putting it on the inside.
+        @timeit_debug to "im2col!" im2col!(col, view(x, :, :, :, :, batch_idx), dcdims)
 
         # We do a separate convolution for each channel in x, as we must
         for c_in in 1:channels_in(cdims)
@@ -44,11 +50,13 @@ end
 Depthwise conv2d backward pass onto the weights using im2col and GEMM.
 See the documentation for `conv_im2col!()` for explanation of optional parameters.
 """
-function ∇depthwiseconv_filter_im2col!(dw::AbstractArray{T,5}, x::AbstractArray{T,5},
-                                       dy::AbstractArray{T,5}, cdims::DepthwiseConvDims,
-                                       col::AbstractArray{T,2} =
-                                            similar(dw, im2col_dims(cdims));
-                                       alpha=T(1), beta=T(0)) where T
+∇depthwiseconv_filter_im2col!
+
+@timeit_debug to function ∇depthwiseconv_filter_im2col!(
+                dw::AbstractArray{T,5}, x::AbstractArray{T,5},
+                dy::AbstractArray{T,5}, cdims::DepthwiseConvDims;
+                col::AbstractArray{T,2} = similar(dw, im2col_dims(cdims)),
+                alpha=T(1), beta=T(0)) where T
     check_dims(size(x), size(dw), size(dy), cdims)
 
     M = prod(kernel_size(cdims))
@@ -56,7 +64,9 @@ function ∇depthwiseconv_filter_im2col!(dw::AbstractArray{T,5}, x::AbstractArra
     K = prod(output_size(cdims))
 
     @inbounds for batch_idx in 1:size(x)[end]
-        im2col!(col, view(x, :, :, :, :, batch_idx), cdims)
+        # We invoke `@timeit_debug` on the outside of `im2col!()` because inference
+        # doesn't like us putting it on the inside.
+        @timeit_debug to "im2col!" im2col!(col, view(x, :, :, :, :, batch_idx), cdims)
 
         # We do a separate convolution for each channel in x, as we must
         for c_in in 1:channels_in(cdims)
@@ -81,11 +91,13 @@ end
 Depwthwise conv2d backward pass onto the input using im2col and GEMM.
 See the documentation for `conv_im2col!()` for explanation of optional parameters.
 """
-function ∇depthwiseconv_data_im2col!(dx::AbstractArray{T,5}, dy::AbstractArray{T,5},
-                                     w::AbstractArray{T,5}, cdims::DepthwiseConvDims,
-                                     col::AbstractArray{T,2} =
-                                        similar(dx, im2col_dims(cdims));
-                                     alpha=T(1), beta=T(0)) where T
+∇depthwiseconv_data_im2col!
+
+@timeit_debug to function ∇depthwiseconv_data_im2col!(
+                dx::AbstractArray{T,5}, dy::AbstractArray{T,5},
+                w::AbstractArray{T,5}, cdims::DepthwiseConvDims;
+                col::AbstractArray{T,2} = similar(dx, im2col_dims(cdims)),
+                alpha=T(1), beta=T(0)) where T
     check_dims(size(dx), size(w), size(dy), cdims)
 
     M = prod(output_size(cdims))

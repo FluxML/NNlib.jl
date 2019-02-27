@@ -18,9 +18,10 @@ channels in `x` is the last, not the second-to-last, as in a normal dense convol
 
 See the docstring for `conv_direct!()` for more on the optional parameters.
 """
-function depthwiseconv_direct!(y::AbstractArray{yT,5}, x::AbstractArray{xT,5},
-                               w::AbstractArray{wT,5}, cdims::DepthwiseConvDims;
-                               alpha::yT = yT(1), beta::yT = yT(0)) where {yT, xT, wT}
+@timeit_debug to function depthwiseconv_direct!(
+                y::AbstractArray{yT,5}, x::AbstractArray{xT,5},
+                w::AbstractArray{wT,5}, cdims::DepthwiseConvDims;
+                alpha::yT = yT(1), beta::yT = yT(0)) where {yT, xT, wT}
     check_dims(size(x), size(w), size(y), cdims)
 
     width, height, depth = input_size(cdims)
@@ -31,12 +32,13 @@ function depthwiseconv_direct!(y::AbstractArray{yT,5}, x::AbstractArray{xT,5},
     stride_w, stride_h, stride_d = stride(cdims)
     out_width, out_height, out_depth = output_size(cdims)
     
-    project(idx, s, p) = (idx - 1)*s - p + 1
-    
     # If we're doing crosscorr instead of conv, then don't bother to flip `w`
     if !flipkernel(cdims)
         w = w[end:-1:1, end:-1:1, end:-1:1, :, :]
     end
+
+    # A helper function to project from output (w, h) to input (input_w, input_h)
+    @inline project(idx, stride, pad) = (idx - 1)*stride - pad + 1
     
     # explicit formulation of convolution.  Oh hoisting gods, hear my plea.
     @inbounds for batch in 1:size(x)[end],
@@ -74,8 +76,8 @@ function depthwiseconv_direct!(y::AbstractArray{yT,5}, x::AbstractArray{xT,5},
         
         # Do the dotproduct dance, then weight by alpha/beta and git 'er done
         dotprod = sum(x_slice .* w_slice)
-        y[w_idx, h_idx, d_idx, c_out, batch] = alpha*convert(yT, dotprod) +
-                                               beta*y[w_idx, h_idx, d_idx, c_out, batch]
+        prev_yval::yT = beta*y[w_idx, h_idx, d_idx, c_out, batch]
+        y[w_idx, h_idx, d_idx, c_out, batch] = alpha*convert(yT, dotprod) + prev_yval
     end
     
     return y
@@ -91,9 +93,12 @@ get applied to it.  The output of such a convolution is the gradient imposed upo
 particular channel of `x`, and so we simply walk through `x`, calculating the gradient
 for each batch and channel independently.
 """
-function ∇depthwiseconv_data_direct!(dx::AbstractArray{xT,5}, dy::AbstractArray{yT,5},
-                                     w::AbstractArray{wT,5}, cdims::DepthwiseConvDims;
-                                     alpha::xT=xT(1), beta::xT=xT(0)) where {xT, yT, wT}
+∇depthwiseconv_data_direct!
+
+@timeit_debug to function ∇depthwiseconv_data_direct!(
+                dx::AbstractArray{xT,5}, dy::AbstractArray{yT,5},
+                w::AbstractArray{wT,5}, cdims::DepthwiseConvDims;
+                alpha::xT=xT(1), beta::xT=xT(0)) where {xT, yT, wT}
     # We do a separate convolution for each channel in x
     @inbounds for cidx in 1:channels_in(cdims)
         # For this batch and in-channel, we have a normal transposed convolution
@@ -110,7 +115,8 @@ function ∇depthwiseconv_data_direct!(dx::AbstractArray{xT,5}, dy::AbstractArra
             C_out=channel_multiplier(cdims),
         )
 
-        ∇conv_data_direct!(dx_slice, dy_slice, w_slice, cdims_slice; alpha=alpha, beta=beta)
+        ∇conv_data_direct!(dx_slice, dy_slice, w_slice, cdims_slice;
+                                               alpha=alpha, beta=beta)
     end
     return dx
 end
@@ -120,9 +126,12 @@ end
 
 Calculate the gradient imposed upon `w` in the depthwise convolution `y = x * w`.
 """
-function ∇depthwiseconv_filter_direct!(dw::AbstractArray{wT,5}, x::AbstractArray{xT,5},
-                                       dy::AbstractArray{yT,5}, cdims::DepthwiseConvDims;
-                                       alpha::wT=wT(1),beta::wT=wT(0)) where {xT, yT, wT}
+∇depthwiseconv_filter_direct!
+
+@timeit_debug to function ∇depthwiseconv_filter_direct!(
+                dw::AbstractArray{wT,5}, x::AbstractArray{xT,5},
+                dy::AbstractArray{yT,5}, cdims::DepthwiseConvDims;
+                alpha::wT=wT(1),beta::wT=wT(0)) where {xT, yT, wT}
     # We do a separate convolution for each channel in x
     @inbounds for cidx in 1:channels_in(cdims)
         # For this batch and in-channel, we have a normal transposed convolution
@@ -139,7 +148,8 @@ function ∇depthwiseconv_filter_direct!(dw::AbstractArray{wT,5}, x::AbstractArr
             C_out=channel_multiplier(cdims),
         )
 
-        ∇conv_filter_direct!(dw_slice, x_slice, dy_slice, cdims_slice; alpha=alpha, beta=beta)
+        ∇conv_filter_direct!(dw_slice, x_slice, dy_slice, cdims_slice;
+                                                alpha=alpha, beta=beta)
         dw[:, :, :, :, cidx:cidx] .= permutedims(dw_slice, (1, 2, 3, 5, 4))
     end
     return dw
