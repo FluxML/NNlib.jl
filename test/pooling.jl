@@ -280,19 +280,19 @@ for rank in (1, 2, 3)
                 pdims = PoolDims(x, 2)
                 y_hat = pool(x, pdims)
                 @test ddims(y_hat) == y
-                @test ddims(∇pool(y_hat, x, pdims)) == dx
+                @test ddims(∇pool(y_hat, y_hat, x, pdims)) == dx
 
                 # Strided pooling
                 pdims = PoolDims(x, 2; stride=1)
                 y_hat = pool(x, pdims)
                 @test ddims(y_hat) == y_nostride
-                @test ddims(∇pool(y_hat, x, pdims)) == dx_nostride
+                @test ddims(∇pool(y_hat, y_hat, x, pdims)) == dx_nostride
 
                 # Padded pooling
                 pdims = PoolDims(x, 2; padding=1)
                 y_hat = pool(x, pdims)
                 @test ddims(y_hat) == y_pad
-                @test ddims(∇pool(y_hat, x, pdims)) == dx_pad
+                @test ddims(∇pool(y_hat, y_hat, x, pdims)) == dx_pad
             end
         end
     end

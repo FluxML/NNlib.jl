@@ -47,9 +47,10 @@ for (front_name, backend) in (
     )
     @eval begin
         function $(Symbol("$(front_name)!"))(
-                dx::AbstractArray{T,5}, dy::AbstractArray{T,5},
-                x::AbstractArray{T,5}, pdims::PoolDims; kwargs...) where {T}
-            $(Symbol("$(front_name)_$(backend)!"))(dx, dy, x, pdims; kwargs...)
+                        dx::AbstractArray{T,5}, dy::AbstractArray{T,5},
+                        y::AbstractArray{T,5}, x::AbstractArray{T,5},
+                        pdims::PoolDims; kwargs...) where {T}
+            $(Symbol("$(front_name)_$(backend)!"))(dx, dy, y, x, pdims; kwargs...)
         end
     end
 end
@@ -79,12 +80,13 @@ for front_name in (:maxpool, :meanpool)
 
                 # backprops too
                 function $(Symbol("∇$(front_name)$(backend)!"))(
-                        dx::AbstractArray{T,$N}, dy::AbstractArray{T,$N},
-                        x::AbstractArray{T,$N}, pdims::PoolDims;
-                        kwargs...) where {T}
+                                dx::AbstractArray{T,$N}, dy::AbstractArray{T,$N},
+                                y::AbstractArray{T,$N}, x::AbstractArray{T,$N},
+                                pdims::PoolDims; kwargs...) where {T}
                     $(Symbol("∇$(front_name)$(backend)!"))(
                         insert_singleton_spatial_dimension(dx, $(5 - N)),
                         insert_singleton_spatial_dimension(dy, $(5 - N)),
+                        insert_singleton_spatial_dimension(y, $(5 - N)),
                         insert_singleton_spatial_dimension(x, $(5 - N)),
                         insert_singleton_spatial_dimension(pdims, $(5 - N));
                         kwargs...
@@ -114,10 +116,11 @@ for backend in (Symbol(), :_direct, :_im2col)
             
             # Backprops too
             @timeit_debug to function $(Symbol("∇$(name)$(backend)"))(
-                            dy::AbstractArray{T,N}, x::AbstractArray{T},
-                            pdims::PoolDims; kwargs...) where {T, N}
+                            dy::AbstractArray{T,N}, y::AbstractArray{T,N},
+                            x::AbstractArray{T,N}, pdims::PoolDims;
+                            kwargs...) where {T, N}
                 dx = zeros(T, input_size(pdims)..., channels_in(pdims), size(dy, N))
-                return $(Symbol("∇$(name)$(backend)!"))(dx, dy, x, pdims; kwargs...)
+                return $(Symbol("∇$(name)$(backend)!"))(dx, dy, y, x, pdims; kwargs...)
             end
         end
     end

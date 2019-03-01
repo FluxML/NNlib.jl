@@ -123,8 +123,8 @@ for name in (:max, :mean)
     # it's unfortunately different enough that I think we need a separate function.  :(
     @eval @timeit_debug to function $((Symbol("∇$(name)pool_direct!")))(
                     dx::AbstractArray{T,5}, dy::AbstractArray{T,5},
-                    x::AbstractArray{T,5}, pdims::PoolDims;
-                    alpha::T = T(1), beta::T = T(0)) where {T}
+                    y::AbstractArray{T,5}, x::AbstractArray{T,5},
+                    pdims::PoolDims; alpha::T = T(1), beta::T = T(0)) where {T}
         check_dims(size(x), size(dy), pdims)
 
         width, height, depth = input_size(pdims)
@@ -156,7 +156,8 @@ for name in (:max, :mean)
             h in h_region,
             w in w_region
 
-            # Grab the incoming gradient at this index for future use
+            # Grab the output at this index for future use
+            y_idx = y[w, h, d, c, batch_idx]
             dy_idx = dy[w, h, d, c, batch_idx]
             maxpool_already_chose = false
 
@@ -174,7 +175,7 @@ for name in (:max, :mean)
                 if $(name == :max)
                     # If it's equal; this is the one we chose. We only choose one per
                     # kernel window, all other elements of dx must be zero.
-                    if dy_idx == x[x_idxs...] && !maxpool_already_chose
+                    if y_idx == x[x_idxs...] && !maxpool_already_chose
                         dx[x_idxs...] = dy_idx*alpha + beta*dx[x_idxs...]
                         maxpool_already_chose = true
                     # Maxpooling does not support `beta` right now.  :(
@@ -199,6 +200,7 @@ for name in (:max, :mean)
                 w in w_region
 
                 # Grab the incoming gradient at this index for future use
+                y_idx = dy[w, h, d, c, batch_idx]
                 dy_idx = dy[w, h, d, c, batch_idx]
                 maxpool_already_chose = false
 
@@ -225,7 +227,7 @@ for name in (:max, :mean)
                             # Same as above
                             x_idxs = (input_kw, input_kh, input_kd, c, batch_idx)
                             if $(name == :max)
-                                if dy_idx == x[x_idxs...] && !maxpool_already_chose
+                                if y_idx == x[x_idxs...] && !maxpool_already_chose
                                     dx[x_idxs...] = dy_idx*alpha + beta*dx[x_idxs...]
                                     maxpool_already_chose = true
                                 #else
