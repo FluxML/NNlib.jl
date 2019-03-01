@@ -145,7 +145,7 @@ See the documentation for `conv_im2col!()` for explanation of other parameters.
         w_ptr = pointer(w)
         col_ptr = pointer(col)
         gemm!(Val(false), Val(true), M, N, K, alpha, dy_ptr, w_ptr, T(0), col_ptr)
-        col2im!(view(dx, :, :, :, :, batch_idx), col, cdims)
+        @timeit_debug to "col2im!" col2im!(view(dx, :, :, :, :, batch_idx), col, cdims)
     end
     return dx
 end
@@ -287,7 +287,7 @@ desperate enough yet.
 """
 col2im!
 
-@timeit_debug to function col2im!(x::AbstractArray{T,4}, col::AbstractArray{T,2},
+function col2im!(x::AbstractArray{T,4}, col::AbstractArray{T,2},
                                   cdims::ConvDims) where T
     if spatial_dims(cdims) != 3
         throw(DimensionMismatch("col2im!() only accepts 3d convoluitional inputs"))

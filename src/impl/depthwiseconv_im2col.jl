@@ -113,7 +113,7 @@ See the documentation for `conv_im2col!()` for explanation of optional parameter
             col_ptr = pointer(col, (cidx - 1)*M*N + 1)
             gemm!(Val(false), Val(true), M, N, K, alpha, dy_ptr, w_ptr, T(0), col_ptr)
         end
-        col2im!(view(dx, :, :, :, :, batch_idx), col, cdims)
+        @timeit_debug to "col2im!" col2im!(view(dx, :, :, :, :, batch_idx), col, cdims)
     end
     return dx
 end
