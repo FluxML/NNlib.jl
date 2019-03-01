@@ -23,7 +23,7 @@ end
     transpose_pad(cdims::ConvDims)
 
 Transposed convolution can be calculated in terms of typical convolution with some extra
-padding.  This method computes the `ConvDims` of the convolution that would result in the
+padding.  This method computes the padding of the convolution that would result in the
 transposed convolution of two operands, in essence taking care of that "extra padding".
 Note that this method should almost always be accompanied by a call that predilates one
 of the operands.
