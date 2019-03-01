@@ -63,8 +63,8 @@ for front_name in (:maxpool, :meanpool)
         for N in (3, 4)
             @eval begin
                 function $(Symbol("$(front_name)$(backend)!"))(
-                        y::AbstractArray{T,$N}, x::AbstractArray{T,$N},
-                        pdims::PoolDims; kwargs...) where {T}
+                                y::AbstractArray{T,$N}, x::AbstractArray{T,$N},
+                                pdims::PoolDims; kwargs...) where {T}
                     $(Symbol("$(front_name)$(backend)!"))(
                         insert_singleton_spatial_dimension(y, $(5 - N)),
                         insert_singleton_spatial_dimension(x, $(5 - N)),

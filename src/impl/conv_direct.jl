@@ -120,8 +120,8 @@ Calculate the gradient imposed upon `x` in the convolution `y = x * w`.
     w = transpose_swapbatch(w[end:-1:1, end:-1:1, end:-1:1, :, :])
     dy = predilate(dy, stride(cdims))
     ctdims = DenseConvDims(dy, w; padding=transpose_pad(cdims),
-                                    dilation=dilation(cdims),
-                                    flipkernel=flipkernel(cdims))
+                                  dilation=dilation(cdims),
+                                  flipkernel=flipkernel(cdims))
     dx = conv_direct!(dx, dy, w, ctdims; alpha=alpha, beta=beta)
     return transpose_swapbatch(dx)
 end
