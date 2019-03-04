@@ -28,6 +28,18 @@ function deblock(x, block_axis = 3)
     reshape(permutedims(x, permute), Tuple(shape))
 end
 
+##Iteration indicies, outer to inner:
+# batch - n
+# out_channels - j
+# in channels - i
+# out height - hₒ
+# out width - wₒ
+# filter height - hₖ
+# filter width - wₖ
+# filter depth - dₖ
+# out depth - dₒ
+# in blocked channels - ii
+# out blocked channels (simd'd), jj
 function blocked_conv2d_inner_loop!(Out::Array{T,5},
                                     X::Array{T,5},
                                     W::Array{T,6},
@@ -36,37 +48,41 @@ function blocked_conv2d_inner_loop!(Out::Array{T,5},
                                     pad = 0,
                                     stride = 1,
                                     dilation = 1) where {B,T}
-    cₒ, cᵢ, Wf, Hf, Cᵢ, Cₒ = size(W)
+    cₒ, cᵢ, Wₖ, Hₖ, Cᵢ, Cₒ = size(W)
     cₒ, Wₒ, Hₒ, Cₒ, N = size(Out)
     cᵢ, Wᵢ, Hᵢ, Cᵢ, N = size(X)
+
     # get fused loop indexes
     ool = ol - 1
-    batch = div(ool, Cₒ * Cᵢ * Hₒ)
-    ool -= (batch) *  Cₒ * Cᵢ * Hₒ
-    j′ =  div(ool, Cᵢ * Hₒ)
-    ool -= (j′) * Cᵢ * Hₒ
-    i′ =  div(ool,  Hₒ)
-    ool -= i′ *  Hₒ
-    l =  ool
-    batch += 1
-    j′ += 1
-    i′ += 1
-    l += 1
-    @inbounds for n = 1:Hf, m = 1:Wf, k′ = 1:Wₒ
+    n = div(ool, Cₒ * Cᵢ * Hₒ)
+    ool -= (n) *  Cₒ * Cᵢ * Hₒ
+    j =  div(ool, Cᵢ * Hₒ)
+    ool -= (j) * Cᵢ * Hₒ
+    i =  div(ool,  Hₒ)
+    ool -= i *  Hₒ
+    hₒ =  ool
+
+    n += 1
+    j += 1
+    i += 1
+    hₒ += 1
+
+    @inbounds for hₖ = 1:Hₖ, wₖ = 1:Wₖ, wₒ = 1:Wₒ
         # pre-calculate indexes for the inner loop
-        I_w = 1 + stride * (k′ - 1) + dilation * (m - 1) - pad
-        I_h = 1 + stride * (l - 1) + dilation * (n - 1) - pad
-        if (I_w < 1 || I_h < 1 || I_h > Hᵢ || I_w > Wᵢ)
+        hᵢ = 1 + stride * (hₒ - 1) + dilation * (hₖ - 1) - pad
+        wᵢ = 1 + stride * (wₒ - 1) + dilation * (wₖ - 1) - pad
+        # Check for over-input TODO(mbrookhart): move to compile step
+        if (hᵢ < 1 || wᵢ < 1 || hᵢ > Hᵢ || wᵢ > Wᵢ)
             continue
         end
-        F_w = Wf - (m - 1)
-        F_h = Hf - (n - 1)
+        F_w = Wₖ - (wₖ - 1)
+        F_h = Hₖ - (hₖ - 1)
         @inbounds for ii = 1:B
-            tmpI = Vec{8, T}(X[ii, I_w, I_h, i′, batch])
-            tmpO = vload(Vec{B, T}, view(Out, :, k′, l, j′, batch), 1)
-            tmpW = vload(Vec{B, T}, view(W, :, ii, F_w, F_h, i′, j′), 1)
+            tmpI = Vec{8, T}(X[ii, wᵢ, hᵢ, i, n])
+            tmpO = vload(Vec{B, T}, view(Out, :, wₒ, hₒ, j, n), 1)
+            tmpW = vload(Vec{B, T}, view(W, :, ii, F_w, F_h, i, j), 1)
             tmpOut = fma(tmpI, tmpW, tmpO)
-            vstore(tmpOut, view(Out, :, k′, l, j′, batch), 1)
+            vstore(tmpOut, view(Out, :, wₒ, hₒ, j, n), 1)
         end
     end
 end
@@ -85,10 +101,10 @@ end
 function blocked_conv2d(X::Array{T,5}, W::Array{T,6}; pad = 0, stride = 1, dilation = 1) where T<:Number
     @assert size(X)[1] == size(W)[2]
     @assert size(X)[4] == size(W)[5]
-    cₒ, cᵢ, Wf, Hf, Cᵢ, Cₒ = size(W)
+    cₒ, cᵢ, Wₖ, Hₖ, Cᵢ, Cₒ = size(W)
     cᵢ, Wᵢ, Hᵢ, Cᵢ, N = size(X)
-    Wₒ = 1 + div(Wᵢ - (dilation * (Wf - 1) + 1) + 2 * pad, stride)
-    Hₒ = 1 + div(Hᵢ - (dilation * (Hf - 1) + 1) + 2 * pad, stride)
+    Wₒ = 1 + div(Wᵢ - (dilation * (Wₖ - 1) + 1) + 2 * pad, stride)
+    Hₒ = 1 + div(Hᵢ - (dilation * (Hₖ - 1) + 1) + 2 * pad, stride)
 
     Out = zeros(T, cₒ, Wₒ, Hₒ, Cₒ, N)
     blocked_conv2d!(Out, X, W, pad, stride, dilation)
