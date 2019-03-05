@@ -1,4 +1,5 @@
 using BenchmarkTools
+using Test
 using NNlib
 using LinearAlgebra
 using Primes
@@ -8,7 +9,27 @@ using Flux
 
 BLAS.set_num_threads(4)
 
+@inline function insert_singleton_spatial_dimension(x::AbstractArray)
+    return reshape(x, size(x)[1:end-2]..., 1, size(x)[end-1:end]...)
+end
 
+@inline function remove_singleton_spatial_dimension(x::AbstractArray)
+    return reshape(x, size(x)[1:end-3]..., size(x)[end-1:end]...)
+end
+
+@inline function remove_singleton_spatial_dimension(x, reps::Int)
+    for r in 1:reps
+        x = remove_singleton_spatial_dimension(x)
+    end
+    return x
+end
+
+@inline function insert_singleton_spatial_dimension(x, reps::Int)
+    for r in 1:reps
+        x = insert_singleton_spatial_dimension(x)
+    end
+    return x
+end
 
 # unoptimized blocking
 function block(x, block_axis = 3, block_len = 8)
@@ -40,17 +61,17 @@ end
 # out depth - dₒ
 # in blocked channels - ii
 # out blocked channels (simd'd), jj
-function blocked_conv2d_inner_loop!(Out::Array{T,5},
-                                    X::Array{T,5},
-                                    W::Array{T,6},
-                                    ol::Int64,
-                                    ::Type{Vec{B,T}},
-                                    pad = 0,
-                                    stride = 1,
-                                    dilation = 1) where {B,T}
-    cₒ, cᵢ, Wₖ, Hₖ, Cᵢ, Cₒ = size(W)
-    cₒ, Wₒ, Hₒ, Cₒ, N = size(Out)
-    cᵢ, Wᵢ, Hᵢ, Cᵢ, N = size(X)
+function blocked_conv_inner_loop!(Out::Array{T,6},
+                                  X::Array{T,6},
+                                  W::Array{T,7},
+                                  ol::Int64,
+                                  ::Type{Vec{B,T}},
+                                  pad::NTuple{3,Int64},
+                                  stride::NTuple{3,Int64},
+                                  dilation::NTuple{3,Int64}) where {B,T}
+    cₒ, cᵢ, Dₖ, Wₖ, Hₖ, Cᵢ, Cₒ = size(W)
+    cₒ, Dₒ, Wₒ, Hₒ, Cₒ, N = size(Out)
+    cᵢ, Dᵢ, Wᵢ, Hᵢ, Cᵢ, N = size(X)
 
     # get fused loop indexes
     ool = ol - 1
@@ -67,79 +88,153 @@ function blocked_conv2d_inner_loop!(Out::Array{T,5},
     i += 1
     hₒ += 1
 
-    @inbounds for hₖ = 1:Hₖ, wₖ = 1:Wₖ, wₒ = 1:Wₒ
+    @inbounds for wₒ = 1:Wₒ, hₖ = 1:Hₖ, wₖ = 1:Wₖ, dₖ = 1:Dₖ, dₒ = 1:Dₒ
         # pre-calculate indexes for the inner loop
-        hᵢ = 1 + stride * (hₒ - 1) + dilation * (hₖ - 1) - pad
-        wᵢ = 1 + stride * (wₒ - 1) + dilation * (wₖ - 1) - pad
-        # Check for over-input TODO(mbrookhart): move to compile step
-        if (hᵢ < 1 || wᵢ < 1 || hᵢ > Hᵢ || wᵢ > Wᵢ)
+        hᵢ = 1 + stride[3] * (hₒ - 1) + dilation[3] * (hₖ - 1) - pad[3]
+        wᵢ = 1 + stride[2] * (wₒ - 1) + dilation[2] * (wₖ - 1) - pad[2]
+        dᵢ = 1 + stride[1] * (dₒ - 1) + dilation[1] * (dₖ - 1) - pad[1]
+        # Check for over-input TODO(mbrookhart): move to compile step?
+        if (hᵢ < 1 || wᵢ < 1 || dᵢ < 1 || hᵢ > Hᵢ || wᵢ > Wᵢ || dᵢ > Dᵢ)
             continue
         end
+        F_d = Dₖ - (dₖ - 1)
         F_w = Wₖ - (wₖ - 1)
         F_h = Hₖ - (hₖ - 1)
         @inbounds for ii = 1:B
-            tmpI = Vec{8, T}(X[ii, wᵢ, hᵢ, i, n])
-            tmpO = vload(Vec{B, T}, view(Out, :, wₒ, hₒ, j, n), 1)
-            tmpW = vload(Vec{B, T}, view(W, :, ii, F_w, F_h, i, j), 1)
+            tmpI = Vec{8, T}(X[ii, dᵢ, wᵢ, hᵢ, i, n])
+            tmpO = vload(Vec{B, T}, view(Out, :, dₒ, wₒ, hₒ, j, n), 1)
+            tmpW = vload(Vec{B, T}, view(W, :, ii, F_d, F_w, F_h, i, j), 1)
             tmpOut = fma(tmpI, tmpW, tmpO)
-            vstore(tmpOut, view(Out, :, wₒ, hₒ, j, n), 1)
+            vstore(tmpOut, view(Out, :, dₒ, wₒ, hₒ, j, n), 1)
         end
     end
 end
 
-function blocked_conv2d!(Out::Array{T,5}, X::Array{T,5}, W::Array{T,6}, pad = 0, stride = 1, dilation = 1) where T<:Number
+function blocked_conv!(Out::Array{T,6},
+                       X::Array{T,6},
+                       W::Array{T,7},
+                       pad::NTuple{3,Int64},
+                       stride::NTuple{3,Int64},
+                       dilation::NTuple{3,Int64}) where T<:Number
     @assert size(Out)[1] == size(W)[1]
     @assert size(X)[1] == size(W)[2]
     ## Fuse a few outer loops to make sure we have enough jobs for the threads
     ## Most important if it's a low batch size kernel
-    out_loop_size = size(Out)[5] * size(W)[5] * size(W)[6] * size(Out)[3]
+    out_loop_size = size(Out)[6] * size(W)[6] * size(W)[7] * size(Out)[4]
     @inbounds Threads.@threads for ol = 1:out_loop_size
-        blocked_conv2d_inner_loop!(Out, X, W, ol, Vec{size(X)[1],T}, pad, stride, dilation)
+        blocked_conv_inner_loop!(Out, X, W, ol, Vec{size(X)[1],T}, pad, stride, dilation)
     end
 end
 
-function blocked_conv2d(X::Array{T,5}, W::Array{T,6}; pad = 0, stride = 1, dilation = 1) where T<:Number
+@inline function calc_conv_dim(input_dim, kernel_dim, pad, stride, dilation)
+    1 + div(input_dim - (dilation * (kernel_dim - 1) + 1) + 2 * pad, stride)
+end
+
+function blocked_conv(X::Array{T,6}, W::Array{T,7};
+                      pad = 0, stride = 1, dilation = 1) where T<:Number
+    @assert size(X)[1] == size(W)[2]
+    @assert size(X)[5] == size(W)[6]
+    cₒ, cᵢ, Dₖ, Wₖ, Hₖ, Cᵢ, Cₒ = size(W)
+    cᵢ, Dᵢ, Wᵢ, Hᵢ, Cᵢ, N = size(X)
+    Hₒ = calc_conv_dim(Hᵢ, Hₖ, pad, stride, dilation)
+    Wₒ = calc_conv_dim(Wᵢ, Wₖ, pad, stride, dilation)
+    Dₒ = calc_conv_dim(Dᵢ, Dₖ, pad, stride, dilation)
+    Out = zeros(T, cₒ, Dₒ, Wₒ, Hₒ, Cₒ, N)
+    pad = (pad, pad, pad)
+    stride = (stride, stride, stride)
+    dilation = (dilation, dilation, dilation)
+    blocked_conv!(Out, X, W, pad, stride, dilation)
+    Out
+end
+
+function blocked_conv(X::Array{T,5}, W::Array{T,6};
+                      pad = 0, stride = 1, dilation = 1) where T<:Number
     @assert size(X)[1] == size(W)[2]
     @assert size(X)[4] == size(W)[5]
     cₒ, cᵢ, Wₖ, Hₖ, Cᵢ, Cₒ = size(W)
     cᵢ, Wᵢ, Hᵢ, Cᵢ, N = size(X)
-    Wₒ = 1 + div(Wᵢ - (dilation * (Wₖ - 1) + 1) + 2 * pad, stride)
-    Hₒ = 1 + div(Hᵢ - (dilation * (Hₖ - 1) + 1) + 2 * pad, stride)
+    Hₒ = calc_conv_dim(Hᵢ, Hₖ, pad, stride, dilation)
+    Wₒ = calc_conv_dim(Wᵢ, Wₖ, pad, stride, dilation)
 
-    Out = zeros(T, cₒ, Wₒ, Hₒ, Cₒ, N)
-    blocked_conv2d!(Out, X, W, pad, stride, dilation)
-    Out
+    Out = zeros(T, cₒ, Wₒ, Hₒ, 1, Cₒ, N)
+    X = insert_singleton_spatial_dimension(X)
+    W = insert_singleton_spatial_dimension(W)
+    pad = (pad, pad, 0)
+    stride = (stride, stride, 1)
+    dilation = (dilation, dilation, 1)
+    blocked_conv!(Out, X, W, pad, stride, dilation)
+    remove_singleton_spatial_dimension(Out)
 end
 
+function blocked_conv(X::Array{T,4}, W::Array{T,5};
+                      pad = 0, stride = 1, dilation = 1) where T<:Number
+    @assert size(X)[1] == size(W)[2]
+    @assert size(X)[3] == size(W)[4]
+    cₒ, cᵢ, Wₖ, Cᵢ, Cₒ = size(W)
+    cᵢ, Wᵢ, Cᵢ, N = size(X)
+    Wₒ = calc_conv_dim(Wᵢ, Wₖ, pad, stride, dilation)
+
+    Out = zeros(T, cₒ, Wₒ, 1, 1, Cₒ, N)
+    X = insert_singleton_spatial_dimension(X, 2)
+    W = insert_singleton_spatial_dimension(W, 2)
+    pad = (pad, 0, 0)
+    stride = (stride, 1, 1)
+    dilation = (dilation, 1, 1)
+    blocked_conv!(Out, X, W, pad, stride, dilation)
+    remove_singleton_spatial_dimension(Out, 2)
+end
+
+function test_blocked_conv(im_size,
+                           k_size,
+                           rank,
+                           pad,
+                           stride,
+                           dilation;
+                           benchmark = false)
+    X_shape = vcat([im_size for i in 1:rank], [32, 128])
+    W_shape = vcat([k_size for i in 1:rank], [32, 16])
+
+    X = rand(Float32, X_shape...)
+    W = rand(Float32, W_shape...)
+
+    bX = block(X, rank + 1)
+    bW = block(block(W, rank + 1), rank + 3)
+
+
+    if benchmark
+        println("Data Shape: $(size(X))")
+        println("Weight Shape: $(size(W))")
+        println("pad=$pad, stride=$stride, dilation=$dilation")
+        # print("block_data: ")
+        # @btime block($X, $(rank + 1))
+        # print("block_weights: ")
+        # @btime block(block($W, $(rank + 1)), $(rank + 3))
+
+
+
+        print("blocked_conv2d: ")
+        @btime Out1 = blocked_conv($bX, $bW, pad = $pad, stride = $stride, dilation = $dilation)
+        print("NNlib.conv: ")
+        @btime Out2 = NNlib.conv($gpu($X), $gpu($W), pad = $pad, stride = $stride, dilation = $dilation)
+    end
+
+    Out1 = blocked_conv(bX, bW, pad = pad, stride = stride, dilation = dilation)
+
+    Out2 = NNlib.conv(X, W, pad = pad, stride = stride, dilation = dilation)
+    @test isapprox(deblock(Out1, rank + 1), Out2)
+    println()
+end
+
+do_benchmarking = false
 
 for im_size = [32, 64, 128, 192]
     for k_size = [5]
         for pad = [3], stride = [2], dilation = [2]
-            X = rand(Float32, im_size, im_size, 32, 128)
-            W = rand(Float32, k_size, k_size, 32, 16)
-
-            println("Data Shape: $(size(X))")
-            println("Weight Shape: $(size(W))")
-            println("pad=$pad, stride=$stride, dilation=$dilation")
-
-            # print("block_data: ")
-            # @btime block($X)
-            # print("block_weights: ")
-            # @btime block(block($W,3),5)
-
-            bX = block(X)
-            bW = block(block(W,3),5)
-
-            print("blocked_conv2d: ")
-            @btime Out1 = blocked_conv2d($bX, $bW, pad = $pad, stride = $stride, dilation = $dilation)
-            print("NNlib.conv: ")
-            @btime Out2 = NNlib.conv($gpu($X), $gpu($W), pad = $pad, stride = $stride, dilation = $dilation)
-
-            Out1 = blocked_conv2d(bX, bW, pad = pad, stride = stride, dilation = dilation)
-
-            Out2 = NNlib.conv(X, W, pad = pad, stride = stride, dilation = dilation)
-            @assert isapprox(deblock(Out1), Out2)
-            println()
+            test_blocked_conv(im_size, k_size, 1, pad, stride, dilation, benchmark = do_benchmarking)
+            test_blocked_conv(im_size, k_size, 2, pad, stride, dilation, benchmark = do_benchmarking)
+            if im_size <= 32
+                test_blocked_conv(im_size, k_size, 3, pad, stride, dilation, benchmark = do_benchmarking)
+            end
         end
     end
 end
