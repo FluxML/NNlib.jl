@@ -27,7 +27,7 @@ gemm_datatype_mappings = (
 )
 for (gemm, elt) in gemm_datatype_mappings
     @eval begin
-        @inline @timeit_debug to function gemm!(transA::Val, transB::Val,
+        @inline function gemm!(transA::Val, transB::Val,
                                M::Int, N::Int, K::Int,
                                alpha::$(elt), A::Ptr{$elt}, B::Ptr{$elt},
                                beta::$(elt), C::Ptr{$elt})

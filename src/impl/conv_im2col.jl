@@ -53,7 +53,7 @@ which should eliminate any need for large allocations within this method.
         col_ptr = pointer(col)
         w_ptr = pointer(w)
         y_ptr = pointer(y, (batch_idx - 1)*M*N + 1)
-        gemm!(Val(false), Val(false), M, N, K, alpha, col_ptr, w_ptr, beta, y_ptr)
+        @timeit_debug to "gemm!" gemm!(Val(false), Val(false), M, N, K, alpha, col_ptr, w_ptr, beta, y_ptr)
     end
     return y
 end
@@ -99,7 +99,7 @@ See the documentation for `conv_im2col!()` for explanation of optional parameter
         col_ptr = pointer(col)
         dy_ptr = pointer(dy,(batch_idx - 1)*K*N + 1)
         dw_ptr = pointer(dw)
-        gemm!(Val(true), Val(false), M, N, K, alpha, col_ptr, dy_ptr, beta, dw_ptr)
+        @timeit_debug to "gemm!" gemm!(Val(true), Val(false), M, N, K, alpha, col_ptr, dy_ptr, beta, dw_ptr)
 
         # Because we accumulate over batches in this loop, we must set `beta` equal
         # to `1.0` from this point on.
@@ -144,7 +144,7 @@ See the documentation for `conv_im2col!()` for explanation of other parameters.
         dy_ptr = pointer(dy, (batch_idx - 1)*M*K + 1)
         w_ptr = pointer(w)
         col_ptr = pointer(col)
-        gemm!(Val(false), Val(true), M, N, K, alpha, dy_ptr, w_ptr, T(0), col_ptr)
+        @timeit_debug to "gemm!" gemm!(Val(false), Val(true), M, N, K, alpha, dy_ptr, w_ptr, T(0), col_ptr)
         @timeit_debug to "col2im!" col2im!(view(dx, :, :, :, :, batch_idx), col, cdims)
     end
     return dx
