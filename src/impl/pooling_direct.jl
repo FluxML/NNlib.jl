@@ -3,7 +3,7 @@ using Statistics
 # Pooling is so similar, we abstract over meanpooling and maxpooling, simply replacing
 # the inner loop operation and a few initialization parameters.
 for name in (:max, :mean)
-    @eval @timeit_debug to function $((Symbol("$(name)pool_direct!")))(
+    @eval function $((Symbol("$(name)pool_direct!")))(
                     y::AbstractArray{T,5}, x::AbstractArray{T,5},
                     pdims::PoolDims; alpha::T = T(1), beta::T = T(0)) where {T}
         check_dims(size(x), size(y), pdims)
@@ -121,7 +121,7 @@ for name in (:max, :mean)
 
     # Same story for gradients, and although this is very similar to the forward pass,
     # it's unfortunately different enough that I think we need a separate function.  :(
-    @eval @timeit_debug to function $((Symbol("∇$(name)pool_direct!")))(
+    @eval function $((Symbol("∇$(name)pool_direct!")))(
                     dx::AbstractArray{T,5}, dy::AbstractArray{T,5},
                     y::AbstractArray{T,5}, x::AbstractArray{T,5},
                     pdims::PoolDims; alpha::T = T(1), beta::T = T(0)) where {T}
