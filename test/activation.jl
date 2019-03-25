@@ -82,6 +82,17 @@ end
     end
   end
 
+  @testset "Array input" begin
+    x = rand(5)
+
+    for a in ACTIVATION_FUNCTIONS
+      if a == leakyrelu || a == elu
+        @test_throws ErrorException a(x, 1.0)
+      else
+        @test_throws ErrorException a(x)
+      end
+    end
+  end
 
   xs = rand(5,5)
 

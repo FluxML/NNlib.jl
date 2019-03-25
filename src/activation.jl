@@ -1,15 +1,27 @@
+macro onlyreal(ex)
+  @capture(ex, (f_(x, a__) = body_) | (function f_(x, a__) body_ end)) ||
+    error("expected a function with initial argument `x`")
+
+  errmsg = "Use explicit invocations such as `$(f).(x)` to apply activation functions to tensors!"
+
+  quote
+    Base.@__doc__ $(f)(x::Real, $(a...)) = $body
+    $(f)(x::AbstractArray, $(a...)) = error($errmsg)
+  end |> esc
+end
+
 """
     σ(x) = 1 / (1 + exp(-x))
 
 Classic [sigmoid](https://en.wikipedia.org/wiki/Sigmoid_function) activation
 function.
 """
-σ(x) = one(x) / (one(x) + exp(-x))
+@onlyreal σ(x) = one(x) / (one(x) + exp(-x))
 
 const sigmoid = σ
 
 # ForwardDiff numerical stability hack
-σ_stable(x) = ifelse(x < -80, zero(x), one(x) / (one(x) + exp(-x)))
+@onlyreal σ_stable(x) = ifelse(x < -80, zero(x), one(x) / (one(x) + exp(-x)))
 
 σ(x::Float32) = σ_stable(x)
 
@@ -30,7 +42,7 @@ Return `log(σ(x))` which is computed in a numerically stable way.
       -10.0
        -0.0
 """
-function logσ(x)
+@onlyreal function logσ(x)
   max_v = max(zero(x), -x)
   z = exp(-max_v) + exp(-x-max_v)
   -(max_v + log(z))
@@ -44,7 +56,7 @@ const logsigmoid = logσ
 [Rectified Linear Unit](https://en.wikipedia.org/wiki/Rectifier_(neural_networks))
 activation function.
 """
-relu(x) = max(zero(x), x)
+@onlyreal relu(x) = max(zero(x), x)
 
 
 """
@@ -54,7 +66,7 @@ Leaky [Rectified Linear Unit](https://en.wikipedia.org/wiki/Rectifier_(neural_ne
 activation function.
 You can also specify the coefficient explicitly, e.g. `leakyrelu(x, 0.01)`.
 """
-leakyrelu(x, a = oftype(x/1, 0.01)) = max(a*x, x/1)
+@onlyreal leakyrelu(x, a = oftype(x/1, 0.01)) = max(a*x, x/1)
 
 """
     elu(x, α = 1) =
@@ -64,7 +76,7 @@ Exponential Linear Unit activation function.
 See [Fast and Accurate Deep Network Learning by Exponential Linear Units](https://arxiv.org/abs/1511.07289).
 You can also specify the coefficient explicitly, e.g. `elu(x, 1)`.
 """
-elu(x, α = one(x)) = ifelse(x ≥ 0, x/1, α * (exp(x) - one(x)))
+@onlyreal elu(x, α = one(x)) = ifelse(x ≥ 0, x/1, α * (exp(x) - one(x)))
 
 """
     gelu(x) = 0.5x*(1 + tanh(√(2/π)*(x + 0.044715x^3)))
@@ -72,7 +84,7 @@ elu(x, α = one(x)) = ifelse(x ≥ 0, x/1, α * (exp(x) - one(x)))
 [Gaussian Error Linear Unit](https://arxiv.org/pdf/1606.08415.pdf)
 activation function.
 """
-function gelu(x)
+@onlyreal function gelu(x)
     λ = oftype(x/1, √(2/π))
     α = oftype(x/1, 0.044715)
     h = oftype(x/1, 0.5)
@@ -86,7 +98,7 @@ end
 Self-gated actvation function.
 See [Swish: a Self-Gated Activation Function](https://arxiv.org/pdf/1710.05941.pdf).
 """
-swish(x) = x * σ(x)
+@onlyreal swish(x) = x * σ(x)
 
 """
     selu(x) = λ * (x ≥ 0 ? x : α * (exp(x) - 1))
@@ -97,7 +109,7 @@ swish(x) = x * σ(x)
 Scaled exponential linear units.
 See [Self-Normalizing Neural Networks](https://arxiv.org/pdf/1706.02515.pdf).
 """
-function selu(x)
+@onlyreal function selu(x)
   λ = oftype(x/1, 1.0507009873554804934193349852946)
   α = oftype(x/1, 1.6732632423543772848170429916717)
   λ * ifelse(x > 0, x/1, α * (exp(x) - 1))
@@ -108,7 +120,7 @@ end
 
 See [Quadratic Polynomials Learn Better Image Features](http://www.iro.umontreal.ca/~lisa/publications2/index.php/attachments/single/205).
 """
-softsign(x) = x / (one(x) + abs(x))
+@onlyreal softsign(x) = x / (one(x) + abs(x))
 
 
 """
@@ -116,4 +128,4 @@ softsign(x) = x / (one(x) + abs(x))
 
 See [Deep Sparse Rectifier Neural Networks](http://proceedings.mlr.press/v15/glorot11a/glorot11a.pdf).
 """
-softplus(x) = log1p(exp(x))
+@onlyreal softplus(x) = log1p(exp(x))
