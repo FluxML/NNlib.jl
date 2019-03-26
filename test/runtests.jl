@@ -4,6 +4,7 @@ using NNlib, Test
 
 include("activation.jl")
 include("conv.jl")
+include("batchedmul.jl")
 
 xs = [-100_000, -100_000.]
 @test softmax(xs) ≈ [0.5, 0.5]
