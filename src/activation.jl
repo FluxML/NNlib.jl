@@ -116,7 +116,7 @@ softsign(x::Real) = x / (one(x) + abs(x))
 
 See [Deep Sparse Rectifier Neural Networks](http://proceedings.mlr.press/v15/glorot11a/glorot11a.pdf).
 """
-softplus(x::Real) = log1p(exp(x))
+softplus(x::Real) = ifelse(x > 0, x + log1p(exp(-x)), log1p(exp(x)))
 
 # Provide an informative error message if activation functions are called with an array
 for f in (:σ, :σ_stable, :logσ, :relu, :leakyrelu, :elu, :gelu, :swish, :selu, :softsign, :softplus)
