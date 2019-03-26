@@ -18,7 +18,7 @@ img_size(c::ConvDims{I,K,C,S,P,D,F}) where {I, K, C, S, P, D, F} = I
 # Calculate the output dimensions of this convolution
 function output_size(c::ConvDims{I,K,C,S,P,D,F}) where {I, K, C, S, P, D, F}
     O_w = div(I[1] + P[1] + P[2] - (K[1] - 1) * D[1] - 1, S[1]) + 1
-    O_h = div(I[2] + P[3] + P[4] - (K[1] - 1) * D[1] - 1, S[1]) + 1
+    O_h = div(I[2] + P[3] + P[4] - (K[2] - 1) * D[2] - 1, S[2]) + 1
     return (O_w, O_h)
 end
 kernel_size(c::ConvDims{I,K,C,S,P,D,F}) where {I, K, C, S, P, D, F} = K
