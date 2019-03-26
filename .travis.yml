@@ -5,11 +5,18 @@ os:
   - osx
 julia:
   - 0.7
+  - 1.0
+  - 1.1
+  - nightly
+matrix:
+  allow_failures:
+    - julia: nightly
 notifications:
   email: false
 git:
   depth: 99999999
-
-# Submit to Codecov  
+# Submit to Codecov
 after_success:
-   - julia -e 'using Pkg; Pkg.add("Coverage"); using Coverage; Codecov.submit(process_folder())'
+   - if [[ $TRAVIS_JULIA_VERSION = 1.1 ]] && [[ $TRAVIS_OS_NAME = linux ]]; then
+       julia -e 'using Pkg; Pkg.add("Coverage"); using Coverage; Codecov.submit(process_folder())';
+     fi
