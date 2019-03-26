@@ -2,8 +2,6 @@ module NNlib
 
 using Requires, Libdl
 
-using MacroTools: @capture
-
 export σ, sigmoid, relu, leakyrelu, elu, gelu, swish, selu, softplus, softsign, logσ, logsigmoid,
   softmax, logsoftmax, maxpool, meanpool
 
