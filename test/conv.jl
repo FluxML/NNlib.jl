@@ -3,6 +3,19 @@ using NNlib: conv, crosscor, ∇conv_filter, ∇conv_data, ∇maxpool, maxpool, 
 @testset "conv2d" begin
     x = reshape(Float64[1:20;], 5, 4, 1, 1)
     w = reshape(Float64[1:4;], 2, 2, 1, 1)
+    w1 = reshape(Float64[1:6;], 2, 3, 1, 1)
+    w2 = reshape(Float64[1:6;], 3, 2, 1, 1)
+
+    @test dropdims(conv(x, w1), dims = (3,4)) == [
+        95.0 200.0;
+        116.0 221.0;
+        137.0 242.0;
+        158.0 263.0]
+
+    @test dropdims(conv(x, w2), dims = (3,4)) == [
+        68.0 173.0 278.0;
+        89.0 194.0 299.0;
+        110.0 215.0 320.0]
 
     @test dropdims(conv(x, w), dims = (3,4)) == [
         29 79 129;
