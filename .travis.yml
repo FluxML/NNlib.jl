@@ -10,7 +10,8 @@ notifications:
 git:
   depth: 99999999
 env:
-  - NNLIB_TEST_FUZZING=true
+  # Disable test fuzzing for the moment, as we're a little too slow for Travis
+  - NNLIB_TEST_FUZZING=false
 
 # Submit to Codecov  
 after_success:
