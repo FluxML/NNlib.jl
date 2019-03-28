@@ -1,16 +1,27 @@
 module NNlib
+using Requires, TimerOutputs
 
-using Requires, Libdl
-
-export σ, sigmoid, relu, leakyrelu, elu, gelu, swish, selu, softplus, softsign, logσ, logsigmoid,
-  softmax, logsoftmax, maxpool, meanpool
-
-include("numeric.jl")
+# Include APIs
+include("dim_helpers.jl")
 include("activation.jl")
 include("softmax.jl")
-include("logsoftmax.jl")
-include("linalg.jl")
+include("gemm.jl")
 include("conv.jl")
-include("cubroadcast.jl")
+include("pooling.jl")
 
-end # module
+## Include implementations
+include("impl/padding_edges.jl")
+
+# Direct implementations of convolutional and depthwise-convolutional algorithms
+include("impl/conv_direct.jl")
+include("impl/depthwiseconv_direct.jl")
+# im2col implementations of convolutional and depthwise-convolutional algorithms
+include("impl/conv_im2col.jl")
+include("impl/depthwiseconv_im2col.jl")
+
+# Direct implementations of pooling
+include("impl/pooling_direct.jl")
+
+to = TimerOutput()
+
+end # module NNlib
