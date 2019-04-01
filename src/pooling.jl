@@ -11,10 +11,10 @@ export maxpool, maxpool!, meanpool, meanpool!, ∇maxpool, ∇maxpool!, ∇meanp
 #     - meanpool(x, pdims)
 #     - meanpool!(y, x, pdims)
 #   - Pooling input backprop
-#     - ∇maxpool(dy, pdims)
-#     - ∇maxpool!(dx, dy, pdims)
-#     - ∇meanpool(dy, pdims)
-#     - ∇meanpool!(dx, dy, pdims)
+#     - ∇maxpool(dy, y, x, pdims)
+#     - ∇maxpool!(dx, dy, y, x, pdims)
+#     - ∇meanpool(dy, y, x, pdims)
+#     - ∇meanpool!(dx, dy, y, x pdims)
 #
 #   All methods require a `PoolDims` object to define the dimensions and optional
 #   elements of the convolution (stride, dilation, etc...), which is easily constructable
