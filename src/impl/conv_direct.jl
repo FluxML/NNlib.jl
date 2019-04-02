@@ -68,9 +68,9 @@ conv_direct!
     # explicit formulation of convolution.  Oh hoisting gods, hear my plea.
     @inbounds for batch in 1:size(x)[end],
         c_out in 1:out_c,
+        d_idx in 1:out_depth,
         h_idx in 1:out_height,
-        w_idx in 1:out_width,
-        d_idx in 1:out_depth
+        w_idx in 1:out_width
 
         # Starting points of the window of x we're going to grab
         x_w = project(w_idx, stride_w, pad_w_lo)
