@@ -110,7 +110,8 @@ for backend in (Symbol(), :_direct, :_im2col)
             @timeit_debug to function $(Symbol("$(name)$(backend)"))(
                             x::AbstractArray{xT,N},
                             pdims::PoolDims; kwargs...) where {xT, N}
-                y = zeros(xT,  output_size(pdims)..., channels_out(pdims), size(x, N))
+                y = similar(x, output_size(pdims)..., channels_out(pdims), size(x, N))
+                fill!(y, xT(0))
                 return $(Symbol("$(name)$(backend)!"))(y, x, pdims; kwargs...)
             end
             
@@ -119,7 +120,8 @@ for backend in (Symbol(), :_direct, :_im2col)
                             dy::AbstractArray{T,N}, y::AbstractArray{T,N},
                             x::AbstractArray{T,N}, pdims::PoolDims;
                             kwargs...) where {T, N}
-                dx = zeros(T, input_size(pdims)..., channels_in(pdims), size(dy, N))
+                dx = similar(x, input_size(pdims)..., channels_in(pdims), size(dy, N))
+                fill!(dx, T(0))
                 return $(Symbol("∇$(name)$(backend)!"))(dx, dy, y, x, pdims; kwargs...)
             end
         end
