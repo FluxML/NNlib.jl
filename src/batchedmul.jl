@@ -1,36 +1,53 @@
 # batch-wise matrix multiplication
 # wrapper for batched_gemm!
 
-function batchedmul(a::AbstractArray{T, 3}, b::AbstractArray{T, 3};
-                    transA::Bool = false, transB::Bool = false) where T
-    (bs = size(a, 3)) == size(b, 3) || error("batch size mismatch")
-    res = similar(a, size(a, transA ? 2 : 1), size(b, transB ? 1 : 2), bs)
-    batched_mul!(res, a, b; transA=transA, transB=transB)
-    return res
+include("./batchedadjtrans.jl")
+
+function batched_mul(A::AbstractArray{T, 3}, B::AbstractArray{T, 3}) where T
+    size(A, 3) == size(B, 3) || throw(DimensionMismatch("batch size mismatch"))
+    batched_mul!(similar(A, (size(A, 1), size(B, 2), size(A, 3))), A, B)
 end
 
-function batched_mul!(C::AbstractArray{T, 3}, A::AbstractArray{T, 3}, B::AbstractArray{T, 3};
-                      transA::Bool = false, transB::Bool = false) where T
-    At = transA ? 'T' : 'N'
-    Bt = transB ? 'T' : 'N'
-    batched_gemm!(At, Bt, one(T), A, B, zero(T), C)
-    C
-end
+"""
+    batched_mul!(C, A, B) -> C
+batched `mul!`.
+"""
+function batched_mul! end
 
-#gradient function for batchedmul
-function ∇batchedmul(Δ::AbstractArray{T, 3}, a::AbstractArray{T, 3}, b::AbstractArray{T, 3};
-                     transA::Bool = false, transB::Bool = false) where T
-    if transA
-        if transB
-            (batchedmul(b, Δ; transA=true, transB=true), batchedmul(Δ, a; transA=true, transB=true))
-        else
-            (batchedmul(b, Δ; transB=true), batchedmul(a, Δ))
+_unbatch(A) = A
+_unbatch(A::BatchedAdjOrTrans) = A.parent
+
+# bmm
+const _BATCHED_MATRIX_LIST = [
+        (:(AbstractArray{T, 3}), 'N'),
+        (:(BatchedTranspose{T, <:AbstractArray{T, 3}}), 'T'),
+        (:(BatchedAdjoint{T, <:AbstractArray{T, 3}}), 'C')
+]
+
+for (TA, transA) in _BATCHED_MATRIX_LIST, (TB, transB) in _BATCHED_MATRIX_LIST
+    @eval begin
+        function batched_mul!(C::AbstractArray{T, 3}, A::$TA, B::$TB) where T
+            batched_gemm!($transA, $transB, one(T), _unbatch(A), _unbatch(B), zero(T), C)
+            C
         end
-    else
-        if transB
-            (batchedmul(Δ, b), batchedmul(Δ, a; transA=true))
-        else
-            (batchedmul(Δ, b; transB=true), batchedmul(a, Δ; transA=true))
-        end
+
+
     end
+end
+
+function ∇batched_mul(Δ::AbstractArray{T, 3}, A::AbstractArray{T, 3}, B::AbstractArray{T, 3}) where T
+    (batched_mul(Δ, batched_transpose(B)), batched_mul(batched_transpose(A), Δ))
+end
+
+
+function ∇batched_mul(Δ::AbstractArray{T, 3}, A::BatchedTranspose{T, <: AbstractArray{T, 3}}, B::AbstractArray{T, 3}) where T
+    (batched_mul(Δ, batched_transpose(B)), batched_mul(A, Δ))
+end
+
+function ∇batched_mul(Δ::AbstractArray{T, 3}, A::AbstractArray{T, 3}, B::BatchedTranspose{T, <: AbstractArray{T, 3}}) where T
+    (batched_mul(Δ, B), batched_mul(batched_transpose(A), Δ))
+end
+
+function ∇batched_mul(Δ::AbstractArray{T, 3}, A::BatchedTranspose{T, <: AbstractArray{T, 3}}, B::BatchedTranspose{T, <: AbstractArray{T, 3}}) where T
+    (batched_mul(batched_transpose(Δ), batched_transpose(B)), batched_mul(batched_transpose(A), batched_transpose(Δ)))
 end

@@ -15,8 +15,8 @@ end
     B = randn(5,7,3)
     C = randn(7,6,3)
 
-    @test batchedmul(A, B) == bmm_test(A, B)
-    @test batchedmul(A, B; transA = true, transB = true) == bmm_test(A, B; transA = true, transB = true)
-    @test batchedmul(A, C; transA = true) == bmm_test(A, C; transA = true)
-    @test batchedmul(A, A; transB = true) == bmm_test(A, A; transB = true)
+    @test batched_mul(A, B) == bmm_test(A, B)
+    @test batched_mul(batched_transpose(A), batched_transpose(B)) == bmm_test(A, B; transA = true, transB = true)
+    @test batched_mul(batched_transpose(A), C) == bmm_test(A, C; transA = true)
+    @test batched_mul(A, batched_transpose(A)) == bmm_test(A, A; transB = true)
 end

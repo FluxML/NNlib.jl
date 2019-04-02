@@ -3,7 +3,7 @@ module NNlib
 using Requires, Libdl
 
 export σ, sigmoid, relu, leakyrelu, elu, gelu, swish, selu, softplus, softsign, logσ, logsigmoid,
-  softmax, logsoftmax, maxpool, meanpool, batchedmul
+  softmax, logsoftmax, maxpool, meanpool, batched_mul, batched_transpose
 
 include("numeric.jl")
 include("activation.jl")
