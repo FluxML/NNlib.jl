@@ -26,17 +26,27 @@ for (gemm, elty) in ((:dgemm_,:Float64), (:sgemm_,:Float32))
                   transA, transB, M, N, K,
                   alpha, A, lda, B, ldb, beta, C, ldc)
         end
+    end
+end
 
-        ##  borrow BatchedRoutines.jl
-        # batched gemm for 3d-array
-        # C[:,:,i] := alpha*op(A[:,:,i])*op(B[:,:,i]) + beta*C[:,:,i], where:
-        # i is the specific batch number,
-        # op(X) is one of op(X) = X, or op(X) = XT, or op(X) = XH,
-        # alpha and beta are scalars,
-        # A, B and C are 3d Array:
-        # op(A) is an m-by-k-by-b 3d Array,
-        # op(B) is a k-by-n-by-b 3d Array,
-        # C is an m-by-n-by-b 3d Array.
+
+##  borrow BatchedRoutines.jl
+# batched gemm for 3d-array
+# C[:,:,i] := alpha*op(A[:,:,i])*op(B[:,:,i]) + beta*C[:,:,i], where:
+# i is the specific batch number,
+# op(X) is one of op(X) = X, or op(X) = XT, or op(X) = XH,
+# alpha and beta are scalars,
+# A, B and C are 3d Array:
+# op(A) is an m-by-k-by-b 3d Array,
+# op(B) is a k-by-n-by-b 3d Array,
+# C is an m-by-n-by-b 3d Array.
+
+for (gemm, elty) in
+        ((:dgemm_,:Float64),
+         (:sgemm_,:Float32),
+         (:zgemm_,:ComplexF64),
+         (:cgemm_,:ComplexF32))
+    @eval begin
         function batched_gemm!(transA::AbstractChar,
                                transB::AbstractChar,
                                alpha::($elty),
