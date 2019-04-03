@@ -41,4 +41,7 @@ end
     @test batched_mul(batched_adjoint(cA), batched_adjoint(cB)) == bmm_adjtest(cA, cB; adjA = true, adjB = true)
     @test batched_mul(batched_adjoint(cA), cC) == bmm_adjtest(cA, cC; adjA = true)
     @test batched_mul(cA, batched_adjoint(cA)) == bmm_adjtest(cA, cA; adjB = true)
+
+    @test batched_transpose(batched_transpose(A)) == A
+    @test batched_adjoint(batched_adjoint(cA)) == cA
 end

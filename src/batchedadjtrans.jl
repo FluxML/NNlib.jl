@@ -15,7 +15,7 @@ end
 Lazy batched transpose.
 """
 batched_transpose(A::AbstractArray{T}) where T = BatchedTranspose(A)
-
+batched_transpose(A::BatchedTranspose) = A.parent
 
 """
     BatchedAdjoint{T, N, S} <: AbstractBatchedMatrix{T, N}
@@ -31,7 +31,7 @@ end
 Lazy batched adjoint.
 """
 batched_adjoint(A::AbstractArray{T, 3}) where T = BatchedAdjoint(A)
-
+batched_adjoint(A::BatchedAdjoint) = A.parent
 
 BatchedAdjoint(A) = BatchedAdjoint{Base.promote_op(adjoint,eltype(A)),typeof(A)}(A)
 BatchedTranspose(A) = BatchedTranspose{Base.promote_op(transpose,eltype(A)),typeof(A)}(A)
