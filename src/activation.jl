@@ -23,19 +23,15 @@ end
 
 Return `log(σ(x))` which is computed in a numerically stable way.
 
-    julia> logσ(0.)
+    julia> logσ(0)
     -0.6931471805599453
-    julia> logσ.([-100, -10, 100.])
+    julia> logσ.([-100, -10, 100])
     3-element Array{Float64,1}:
-     -100.0
-      -10.0
-       -0.0
+     -100.0                  
+      -10.000045398899218    
+       -3.720075976020836e-44
 """
-function logσ(x)
-    max_v = max(zero(x), -x)
-    z = exp(-max_v) + exp(-x-max_v)
-    return -(max_v + log(z))
-end
+logσ(x) = -softplus(-x)
 const logsigmoid = logσ
 
 
