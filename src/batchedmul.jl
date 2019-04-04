@@ -34,32 +34,3 @@ for (TA, transA) in _BATCHED_MATRIX_LIST, (TB, transB) in _BATCHED_MATRIX_LIST
 
     end
 end
-
-function ∇batched_mul(Δ::AbstractArray{T, 3}, A::AbstractArray{T, 3}, B::AbstractArray{T, 3}) where T
-    (batched_mul(Δ, batched_transpose(B)), batched_mul(batched_transpose(A), Δ))
-end
-
-function ∇batched_mul(Δ::AbstractArray{T, 3}, A::BatchedTranspose{T, <: AbstractArray{T, 3}}, B::AbstractArray{T, 3}) where T
-    (batched_mul(B, batched_transpose(Δ)), batched_mul(batched_transpose(A), Δ))
-end
-
-function ∇batched_mul(Δ::AbstractArray{T, 3}, A::AbstractArray{T, 3}, B::BatchedTranspose{T, <: AbstractArray{T, 3}}) where T
-    (batched_mul(Δ, batched_transpose(B)), batched_mul(batched_transpose(Δ), A))
-end
-
-function ∇batched_mul(Δ::AbstractArray{T, 3}, A::BatchedTranspose{T, <: AbstractArray{T, 3}}, B::BatchedTranspose{T, <: AbstractArray{T, 3}}) where T
-    (batched_mul(batched_transpose(B), batched_transpose(Δ)), batched_mul(batched_transpose(Δ), batched_transpose(A)))
-end
-
-function ∇batched_mul(Δ::AbstractArray{T, 3}, A::BatchedAdjoint{T, <: AbstractArray{T, 3}}, B::AbstractArray{T, 3}) where T
-    (batched_mul(B, batched_adjoint(Δ)), batched_mul(batched_adjoint(A), Δ))
-end
-
-function ∇batched_mul(Δ::AbstractArray{T, 3}, A::AbstractArray{T, 3}, B::BatchedAdjoint{T, <: AbstractArray{T, 3}}) where T
-    (batched_mul(Δ, batched_adjoint(B)), batched_mul(batched_adjoint(Δ), A))
-end
-
-function ∇batched_mul(Δ::AbstractArray{T, 3}, A::BatchedAdjoint{T, <: AbstractArray{T, 3}}, B::BatchedAdjoint{T, <: AbstractArray{T, 3}}) where T
-    (batched_mul(batched_adjoint(B), batched_adjoint(Δ)), batched_mul(batched_adjoint(Δ), batched_adjoint(A)))
-end
-
