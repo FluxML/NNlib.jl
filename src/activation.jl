@@ -1,5 +1,5 @@
 export σ, sigmoid, relu, leakyrelu, elu, gelu, swish, selu, softplus, softsign, logσ,
-       logsigmoid
+       logsigmoid, logcosh
 
 """
     σ(x) = 1 / (1 + exp(-x))
