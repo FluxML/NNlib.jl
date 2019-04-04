@@ -117,3 +117,11 @@ softsign(x) = x / (one(x) + abs(x))
 See [Deep Sparse Rectifier Neural Networks](http://proceedings.mlr.press/v15/glorot11a/glorot11a.pdf).
 """
 softplus(x) = ifelse(x > 0, x + log1p(exp(-x)), log1p(exp(x)))
+
+
+"""
+    logcosh(x)
+
+Return `log(cosh(x))` which is computed in a numerically stable way.
+"""
+logcosh(x::T) where T = x + softplus(-2x) - log(convert(T, 2))

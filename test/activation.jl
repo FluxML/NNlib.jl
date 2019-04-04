@@ -1,6 +1,6 @@
 using NNlib, Test
 
-ACTIVATION_FUNCTIONS = [σ, relu, leakyrelu, elu, gelu, swish, selu, softplus, softsign];
+ACTIVATION_FUNCTIONS = [σ, relu, leakyrelu, elu, gelu, swish, selu, softplus, softsign, logcosh];
 
 function test_value_float_precision_preserving(a)
     @testset "$(a): " begin
@@ -36,6 +36,7 @@ end
     @test softplus(-1e8) ≈ 0.0
     @test softsign(0.0) == 0.0
     @test selu(0.0) == 0.0
+    @test logcosh(0.0) == log(cosh(0.0))
 
     @test σ(1.0) == 1.0 / (1.0 + exp(-1.0))
     @test relu(1.0) == 1.0
@@ -46,6 +47,7 @@ end
     @test softplus(1.0) ≈ log(exp(1.0) + 1.0)
     @test softsign(1.0) == 0.5
     @test selu(1.0) == 1.0507009873554804934193349852946
+    @test logcosh(1.0) ≈ log(cosh(1.0))
 
     @test σ(-1.0) == 1.0 / (1.0 + exp(1.0))
     @test relu(-1.0) == 0.0
@@ -56,6 +58,7 @@ end
     @test softplus(-1.0) ≈ log(exp(-1.0) + 1.0)
     @test softsign(-1.0) == -0.5
     @test selu(-1.0) == 1.0507009873554804934193349852946 * 1.6732632423543772848170429916717 * (exp(-1.0) - 1.0)
+    @test log(cosh(-1.0)) ≈ log(cosh(-1.0))
 
     @testset "Float inference" begin
         test_value_float_precision_preserving.(ACTIVATION_FUNCTIONS)
@@ -125,4 +128,6 @@ end
             @eval @test logsigmoid.($T[-100_000, 100_000.]) ≈ $T[-100_000, 0.]
         end
     end
+
+    @test logcosh(1_000.0) + log(2) == 1_000.0
 end
