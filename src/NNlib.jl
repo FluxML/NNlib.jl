@@ -26,6 +26,8 @@ to = TimerOutput()
 
 if Sys.islinux()
     include("nnpack/NNPACK.jl")
+else
+    is_nnpack_available() = false
 end
 
 end # module NNlib

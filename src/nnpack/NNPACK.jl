@@ -11,6 +11,16 @@ include(depsjl_path)
 const nnlib_interface_path = joinpath(dirname(@__FILE__), "interface.jl")
 const shared_threadpool = Ref(C_NULL)
 
+function is_nnpack_available()
+    check_deps()
+    status = nnp_initialize()
+    if status == nnp_status_unsupported_hardware
+        return false
+    else
+        return true
+    end
+end
+
 @init begin
     check_deps()
     status = nnp_initialize()
