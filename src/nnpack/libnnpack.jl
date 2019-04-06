@@ -4,7 +4,7 @@ function nnp_initialize()
 end
 
 function nnp_deinitialize()
-    @check ccall((:nnp_deinitialize, libnnpack), nnp_status, (),)
+    @nnpack_check ccall((:nnp_deinitialize, libnnpack), nnp_status, (),)
 end
 
 function pthreadpool_create(n = 0)
@@ -12,7 +12,7 @@ function pthreadpool_create(n = 0)
 end
 
 function nnp_relu_output(batch_size, channels, input, output, negative_slope, threadpool)
-    @check ccall((:nnp_relu_output, libnnpack), nnp_status, (Csize_t, Csize_t, Ptr{Cfloat}, Ptr{Cfloat}, Cfloat, pthreadpool_t), batch_size, channels, input, output, negative_slope, threadpool)
+    @nnpack_check ccall((:nnp_relu_output, libnnpack), nnp_status, (Csize_t, Csize_t, Ptr{Cfloat}, Ptr{Cfloat}, Cfloat, pthreadpool_t), batch_size, channels, input, output, negative_slope, threadpool)
 end
 
 function nnp_relu_output(x::Array{Float32,N}, y::Array{Float32,N}; negative_slope::AbstractFloat = 0.0, threadpool = shared_threadpool[]) where {N}
@@ -22,7 +22,7 @@ function nnp_relu_output(x::Array{Float32,N}, y::Array{Float32,N}; negative_slop
 end
 
 function nnp_relu_input_gradient(batch_size, channels, grad_output, input, grad_input, negative_slope, threadpool)
-    @check ccall((:nnp_relu_input_gradient, libnnpack), nnp_status, (Csize_t, Csize_t, Ptr{Cfloat}, Ptr{Cfloat}, Ptr{Cfloat}, Cfloat, pthreadpool_t), batch_size, channels, grad_output, input, grad_input, negative_slope, threadpool)
+    @nnpack_check ccall((:nnp_relu_input_gradient, libnnpack), nnp_status, (Csize_t, Csize_t, Ptr{Cfloat}, Ptr{Cfloat}, Ptr{Cfloat}, Cfloat, pthreadpool_t), batch_size, channels, grad_output, input, grad_input, negative_slope, threadpool)
 end
 
 function nnp_relu_input_gradient(x::Array{Float32,N}, dy::Array{Float32,N}, dx::Array{Float32,N}; negative_slope::AbstractFloat = 0.0, threadpool = shared_threadpool[]) where {N}
@@ -32,7 +32,7 @@ function nnp_relu_input_gradient(x::Array{Float32,N}, dy::Array{Float32,N}, dx::
 end
 
 function nnp_softmax_output(batch_size, channels, input, output, threadpool)
-    @check ccall((:nnp_softmax_output, libnnpack), nnp_status, (Csize_t, Csize_t, Ptr{Cfloat}, Ptr{Cfloat}, pthreadpool_t), batch_size, channels, input, output, threadpool)
+    @nnpack_check ccall((:nnp_softmax_output, libnnpack), nnp_status, (Csize_t, Csize_t, Ptr{Cfloat}, Ptr{Cfloat}, pthreadpool_t), batch_size, channels, input, output, threadpool)
 end
 
 function nnp_softmax_output(x::VecOrMat{Float32}, y::VecOrMat{Float32}; threadpool = shared_threadpool[])
@@ -44,7 +44,7 @@ end
 #NOTE: This most likely due to nnpack being row major. Investigate this.
 
 function nnp_fully_connected_output(batch_size, input_channels, output_channels, input, kernel, output, threadpool, profile)
-    @check ccall((:nnp_fully_connected_output, libnnpack), nnp_status, (Csize_t, Csize_t, Csize_t, Ptr{Cfloat}, Ptr{Cfloat}, Ptr{Cfloat}, pthreadpool_t, Ptr{Cvoid}), batch_size, input_channels, output_channels, input, kernel, output, threadpool, C_NULL)
+    @nnpack_check ccall((:nnp_fully_connected_output, libnnpack), nnp_status, (Csize_t, Csize_t, Csize_t, Ptr{Cfloat}, Ptr{Cfloat}, Ptr{Cfloat}, pthreadpool_t, Ptr{Cvoid}), batch_size, input_channels, output_channels, input, kernel, output, threadpool, C_NULL)
 end
 
 function nnp_fully_connected_output(x::Array{Float32,2}, w::Array{Float32,2}, y::Array{Float32,2}; profile = nothing, threadpool = shared_threadpool[])
@@ -54,7 +54,7 @@ function nnp_fully_connected_output(x::Array{Float32,2}, w::Array{Float32,2}, y:
 end
 
 function nnp_fully_connected_inference_f16f32(input_channels, output_channels, input, kernel, output, threadpool)
-    @check ccall((:nnp_fully_connected_inference_f16f32, libnnpack), nnp_status, (Csize_t, Csize_t, Ptr{Cfloat}, Ptr{Cvoid}, Ptr{Cfloat}, pthreadpool_t), input_channels, output_channels, input, kernel, output, threadpool)
+    @nnpack_check ccall((:nnp_fully_connected_inference_f16f32, libnnpack), nnp_status, (Csize_t, Csize_t, Ptr{Cfloat}, Ptr{Cvoid}, Ptr{Cfloat}, pthreadpool_t), input_channels, output_channels, input, kernel, output, threadpool)
 end
 
 nnp_fully_connected_inference_f16f32(x::Array{Float32, 1}, w::Array{Float16,2}, y::Array{Float32, 1}; threadpool = shared_threadpool[]) =
@@ -66,7 +66,7 @@ function nnp_fully_connected_inference_f16f32(x::Array{Float32, 2}, w::Array{Flo
 end
 
 function nnp_fully_connected_inference(input_channels, output_channels, input, kernel, output, threadpool)
-    @check ccall((:nnp_fully_connected_inference, libnnpack), nnp_status, (Csize_t, Csize_t, Ptr{Cfloat}, Ptr{Cfloat}, Ptr{Cfloat}, pthreadpool_t), input_channels, output_channels, input, kernel, output, threadpool)
+    @nnpack_check ccall((:nnp_fully_connected_inference, libnnpack), nnp_status, (Csize_t, Csize_t, Ptr{Cfloat}, Ptr{Cfloat}, Ptr{Cfloat}, pthreadpool_t), input_channels, output_channels, input, kernel, output, threadpool)
 end
 
 nnp_fully_connected_inference(x::Array{Float32, 1}, w::Array{Float32,2}; threadpool = shared_threadpool[]) =
@@ -78,7 +78,7 @@ function nnp_fully_connected_inference(x::Array{Float32, 2}, w::Array{Float32, 2
 end
 
 function nnp_max_pooling_output(batch_size, channels, input_size, input_padding, pooling_size, pooling_stride, input, output, threadpool)
-    @check ccall((:nnp_max_pooling_output, libnnpack), nnp_status, (Csize_t, Csize_t, nnp_size, nnp_padding, nnp_size, nnp_size, Ptr{Cfloat}, Ptr{Cfloat}, pthreadpool_t), batch_size, channels, input_size, input_padding, pooling_size, pooling_stride, input, output, threadpool)
+    @nnpack_check ccall((:nnp_max_pooling_output, libnnpack), nnp_status, (Csize_t, Csize_t, nnp_size, nnp_padding, nnp_size, nnp_size, Ptr{Cfloat}, Ptr{Cfloat}, pthreadpool_t), batch_size, channels, input_size, input_padding, pooling_size, pooling_stride, input, output, threadpool)
 end
 
 function nnp_max_pooling_output(y::Array{Float32,4}, x::Array{Float32,4}, kernel::Tuple; padding = 0, stride = 1, threadpool = shared_threadpool[])
@@ -93,7 +93,7 @@ end
 #TODO: Add wrapper for convolution inference
 
 function nnp_convolution_input_gradient(algorithm, batch_size, input_channels, output_channels, input_size, input_padding, kernel_size, grad_output, kernel, grad_input, workspace_buffer, workspace_size, activation, activation_parameters, threadpool, profile)
-    @check ccall((:nnp_convolution_input_gradient, libnnpack), nnp_status, (nnp_convolution_algorithm, Csize_t, Csize_t, Csize_t, nnp_size, nnp_padding, nnp_size, Ptr{Cfloat}, Ptr{Cfloat}, Ptr{Cfloat}, Ptr{Cvoid}, Csize_t, nnp_activation, Ptr{Cvoid}, pthreadpool_t, Ptr{Cvoid}), algorithm, batch_size, input_channels, output_channels, input_size, input_padding, kernel_size, grad_output, kernel, grad_input, workspace_buffer, workspace_size, activation, activation_parameters, threadpool, C_NULL)
+    @nnpack_check ccall((:nnp_convolution_input_gradient, libnnpack), nnp_status, (nnp_convolution_algorithm, Csize_t, Csize_t, Csize_t, nnp_size, nnp_padding, nnp_size, Ptr{Cfloat}, Ptr{Cfloat}, Ptr{Cfloat}, Ptr{Cvoid}, Csize_t, nnp_activation, Ptr{Cvoid}, pthreadpool_t, Ptr{Cvoid}), algorithm, batch_size, input_channels, output_channels, input_size, input_padding, kernel_size, grad_output, kernel, grad_input, workspace_buffer, workspace_size, activation, activation_parameters, threadpool, C_NULL)
 end
 
 function nnp_convolution_input_gradient(dx::Array{Float32,4}, dy::Array{Float32,4}, w::Array{Float32,4}; algo::nnp_convolution_algorithm = UInt32(0), workspace_buffer = nothing, workspace_size = 0, padding = 0, stride = 1, threadpool = shared_threadpool[], profile = nothing)
@@ -107,7 +107,7 @@ function nnp_convolution_input_gradient(dx::Array{Float32,4}, dy::Array{Float32,
 end
 
 function nnp_convolution_kernel_gradient(algorithm, batch_size, input_channels, output_channels, input_size, input_padding, kernel_size, input, grad_output, grad_kernel, workspace_buffer, workspace_size, activation, activation_parameters, threadpool, profile)
-    @check ccall((:nnp_convolution_kernel_gradient, libnnpack), nnp_status, (nnp_convolution_algorithm, Csize_t, Csize_t, Csize_t, nnp_size, nnp_padding, nnp_size, Ptr{Cfloat}, Ptr{Cfloat}, Ptr{Cfloat}, Ptr{Cvoid}, Csize_t, nnp_activation, Ptr{Cvoid}, pthreadpool_t, Ptr{Cvoid}), algorithm, batch_size, input_channels, output_channels, input_size, input_padding, kernel_size, input, grad_output, grad_kernel, workspace_buffer, workspace_size, activation, activation_parameters, threadpool, C_NULL)
+    @nnpack_check ccall((:nnp_convolution_kernel_gradient, libnnpack), nnp_status, (nnp_convolution_algorithm, Csize_t, Csize_t, Csize_t, nnp_size, nnp_padding, nnp_size, Ptr{Cfloat}, Ptr{Cfloat}, Ptr{Cfloat}, Ptr{Cvoid}, Csize_t, nnp_activation, Ptr{Cvoid}, pthreadpool_t, Ptr{Cvoid}), algorithm, batch_size, input_channels, output_channels, input_size, input_padding, kernel_size, input, grad_output, grad_kernel, workspace_buffer, workspace_size, activation, activation_parameters, threadpool, C_NULL)
 end
 
 function nnp_convolution_kernel_gradient(dw::Array{Float32,4}, x::Array{Float32,4}, dy::Array{Float32,4}; algo::nnp_convolution_algorithm = UInt32(0), workspace_buffer = nothing, workspace_size = 0, padding = 0, stride = 1, threadpool = shared_threadpool[], profile = nothing)
@@ -121,7 +121,7 @@ function nnp_convolution_kernel_gradient(dw::Array{Float32,4}, x::Array{Float32,
 end
 
 function nnp_convolution_output(algorithm, batch_size, input_channels, output_channels, input_size, input_padding, kernel_size, input, kernel, bias, output, workspace_buffer, workspace_size, activation, activation_parameters, threadpool, profile)
-    @check ccall((:nnp_convolution_output, libnnpack), nnp_status, (nnp_convolution_algorithm, Csize_t, Csize_t, Csize_t, nnp_size, nnp_padding, nnp_size, Ptr{Cfloat}, Ptr{Cfloat}, Ptr{Cfloat}, Ptr{Cfloat}, Ptr{Cvoid}, Csize_t, nnp_activation, Ptr{Cvoid}, pthreadpool_t, Ptr{Cvoid}), algorithm, batch_size, input_channels, output_channels, input_size, input_padding, kernel_size, input, kernel, bias, output, workspace_buffer, workspace_size, activation, activation_parameters, threadpool, C_NULL)
+    @nnpack_check ccall((:nnp_convolution_output, libnnpack), nnp_status, (nnp_convolution_algorithm, Csize_t, Csize_t, Csize_t, nnp_size, nnp_padding, nnp_size, Ptr{Cfloat}, Ptr{Cfloat}, Ptr{Cfloat}, Ptr{Cfloat}, Ptr{Cvoid}, Csize_t, nnp_activation, Ptr{Cvoid}, pthreadpool_t, Ptr{Cvoid}), algorithm, batch_size, input_channels, output_channels, input_size, input_padding, kernel_size, input, kernel, bias, output, workspace_buffer, workspace_size, activation, activation_parameters, threadpool, C_NULL)
 end
 
 function nnp_convolution_output(y::Array{Float32,4}, x::Array{Float32,4}, w::Array{Float32,4}, b::Array{Float32,1}; algo::nnp_convolution_algorithm = UInt32(0), workspace_buffer = nothing, workspace_size = 0, padding = 0, stride = 1, threadpool = shared_threadpool[], profile = nothing)

@@ -71,7 +71,7 @@ function NNPACKError(status::nnp_status)
     NNPACKError(status, msg)
 end
 
-macro check(nnp_func)
+macro nnpack_check(nnp_func)
     quote
         local err::nnp_status
         err = $(esc(nnp_func))

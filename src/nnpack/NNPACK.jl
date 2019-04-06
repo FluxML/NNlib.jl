@@ -25,14 +25,14 @@ end
     check_deps()
     status = nnp_initialize()
     if status == nnp_status_unsupported_hardware
-        @warn "HARDWARE is unsupported by NNPACK so falling back to default NNlib"
+        @warn "Hardware is unsupported by NNPACK so falling back to default NNlib"
     else
         include(nnlib_interface_path)
     end
     try
         global NNPACK_CPU_THREADS = parse(UInt64, ENV["NNPACK_CPU_THREADS"])
     catch
-        global NNPACK_CPU_THREADS = 4
+        global NNPACK_CPU_THREADS = Sys.CPU_THREADS
     end
-    shared_threadpool = pthreadpool_create(NNPACK_CPU_THREADS)
+    shared_threadpool[] = pthreadpool_create(NNPACK_CPU_THREADS)
 end
