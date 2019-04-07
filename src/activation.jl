@@ -121,5 +121,5 @@ softplus(x::Real) = ifelse(x > 0, x + log1p(exp(-x)), log1p(exp(x)))
 # Provide an informative error message if activation functions are called with an array
 for f in (:σ, :σ_stable, :logσ, :relu, :leakyrelu, :elu, :gelu, :swish, :selu, :softsign, :softplus)
   @eval $(f)(x::AbstractArray, args...) =
-    error("Use explicit invocations such as `", $(string(f)), ".(x)` to apply activation functions to tensors!")
+    error("Use broadcasting (`", $(string(f)), ".(x)`) to apply activation functions to arrays.")
 end
