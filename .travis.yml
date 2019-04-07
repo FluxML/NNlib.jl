@@ -4,7 +4,6 @@ os:
   - linux
   - osx
 julia:
-  - 0.7
   - 1.0
   - 1.1
   - nightly
@@ -15,6 +14,10 @@ notifications:
   email: false
 git:
   depth: 99999999
+env:
+  # Disable test fuzzing for the moment, as we're a little too slow for Travis
+  - NNLIB_TEST_FUZZING=false
+
 # Submit to Codecov
 after_success:
    - if [[ $TRAVIS_JULIA_VERSION = 1.1 ]] && [[ $TRAVIS_OS_NAME = linux ]]; then
