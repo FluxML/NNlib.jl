@@ -7,11 +7,11 @@ export σ, sigmoid, relu, leakyrelu, elu, gelu, swish, selu, softplus, softsign,
 Classic [sigmoid](https://en.wikipedia.org/wiki/Sigmoid_function) activation
 function.
 """
-σ(x) = one(x) / (one(x) + exp(-x))
+σ(x::Real) = one(x) / (one(x) + exp(-x))
 const sigmoid = σ
 
 # ForwardDiff numerical stability hack
-σ_stable(x) = ifelse(x < -80, zero(x), one(x) / (one(x) + exp(-x)))
+σ_stable(x::Real) = ifelse(x < -80, zero(x), one(x) / (one(x) + exp(-x)))
 σ(x::Float32) = σ_stable(x)
 @init @require ForwardDiff="f6369f11-7733-5829-9624-2563aa707210" begin
   σ(x::ForwardDiff.Dual{T,Float32}) where T = σ_stable(x)
@@ -27,11 +27,11 @@ Return `log(σ(x))` which is computed in a numerically stable way.
     -0.6931471805599453
     julia> logσ.([-100, -10, 100])
     3-element Array{Float64,1}:
-     -100.0                  
-      -10.000045398899218    
+     -100.0
+      -10.000045398899218
        -3.720075976020836e-44
 """
-logσ(x) = -softplus(-x)
+logσ(x::Real) = -softplus(-x)
 const logsigmoid = logσ
 
 
@@ -41,7 +41,7 @@ const logsigmoid = logσ
 [Rectified Linear Unit](https://en.wikipedia.org/wiki/Rectifier_(neural_networks))
 activation function.
 """
-relu(x) = max(zero(x), x)
+relu(x::Real) = max(zero(x), x)
 
 
 """
@@ -51,7 +51,7 @@ Leaky [Rectified Linear Unit](https://en.wikipedia.org/wiki/Rectifier_(neural_ne
 activation function.
 You can also specify the coefficient explicitly, e.g. `leakyrelu(x, 0.01)`.
 """
-leakyrelu(x, a = oftype(x/1, 0.01)) = max(a*x, x/1)
+leakyrelu(x::Real, a = oftype(x/1, 0.01)) = max(a*x, x/1)
 
 
 """
@@ -71,7 +71,7 @@ elu(x, α = one(x)) = ifelse(x ≥ 0, x/1, α * (exp(x) - one(x)))
 [Gaussian Error Linear Unit](https://arxiv.org/pdf/1606.08415.pdf)
 activation function.
 """
-function gelu(x)
+function gelu(x::Real)
     λ = oftype(x/1, √(2/π))
     α = oftype(x/1, 0.044715)
     h = oftype(x/1, 0.5)
@@ -85,7 +85,7 @@ end
 Self-gated actvation function.
 See [Swish: a Self-Gated Activation Function](https://arxiv.org/pdf/1710.05941.pdf).
 """
-swish(x) = x * σ(x)
+swish(x::Real) = x * σ(x)
 
 """
     selu(x) = λ * (x ≥ 0 ? x : α * (exp(x) - 1))
@@ -96,7 +96,7 @@ swish(x) = x * σ(x)
 Scaled exponential linear units.
 See [Self-Normalizing Neural Networks](https://arxiv.org/pdf/1706.02515.pdf).
 """
-function selu(x)
+function selu(x::Real)
   λ = oftype(x/1, 1.0507009873554804934193349852946)
   α = oftype(x/1, 1.6732632423543772848170429916717)
   λ * ifelse(x > 0, x/1, α * (exp(x) - 1))
@@ -108,7 +108,7 @@ end
 
 See [Quadratic Polynomials Learn Better Image Features](http://www.iro.umontreal.ca/~lisa/publications2/index.php/attachments/single/205).
 """
-softsign(x) = x / (one(x) + abs(x))
+softsign(x::Real) = x / (one(x) + abs(x))
 
 
 """
@@ -116,4 +116,10 @@ softsign(x) = x / (one(x) + abs(x))
 
 See [Deep Sparse Rectifier Neural Networks](http://proceedings.mlr.press/v15/glorot11a/glorot11a.pdf).
 """
-softplus(x) = ifelse(x > 0, x + log1p(exp(-x)), log1p(exp(x)))
+softplus(x::Real) = ifelse(x > 0, x + log1p(exp(-x)), log1p(exp(x)))
+
+# Provide an informative error message if activation functions are called with an array
+for f in (:σ, :σ_stable, :logσ, :relu, :leakyrelu, :elu, :gelu, :swish, :selu, :softsign, :softplus)
+  @eval $(f)(x::AbstractArray, args...) =
+    error("Use broadcasting (`", $(string(f)), ".(x)`) to apply activation functions to arrays.")
+end
