@@ -1,6 +1,8 @@
 module NNlib
 using Requires, TimerOutputs
 
+const to = TimerOutput()
+
 # Include APIs
 include("dim_helpers.jl")
 include("activation.jl")
@@ -21,7 +23,5 @@ include("impl/depthwiseconv_im2col.jl")
 
 # Direct implementations of pooling
 include("impl/pooling_direct.jl")
-
-to = TimerOutput()
 
 end # module NNlib

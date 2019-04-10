@@ -64,6 +64,13 @@ end
         test_value_float_precision_preserving.(ACTIVATION_FUNCTIONS)
     end
 
+    @testset "Array input" begin
+        x = rand(5)
+        for a in ACTIVATION_FUNCTIONS
+            @test_throws ErrorException a(x)
+        end
+    end
+
     @testset "Test Integer64 and Integer32 inputs will force Float64 outputs" begin
         test_value_int_input_forces_float64.(filter(x -> x != relu, ACTIVATION_FUNCTIONS))
 
