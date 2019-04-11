@@ -24,8 +24,6 @@ include("impl/depthwiseconv_im2col.jl")
 # Direct implementations of pooling
 include("impl/pooling_direct.jl")
 
-to = TimerOutput()
-
 if Sys.islinux()
     include("nnpack/NNPACK.jl")
 else

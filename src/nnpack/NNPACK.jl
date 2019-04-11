@@ -50,7 +50,10 @@ end
     try
         global NNPACK_CPU_THREADS = parse(UInt64, ENV["NNPACK_CPU_THREADS"])
     catch
-        global NNPACK_CPU_THREADS = Sys.CPU_THREADS
+        # Sys.CPU_THREADS should be a better default if we are tuning the benchmark suite on
+        # a particular machine. However, we fix the runtime threadpool here to have a max of
+        # 4 threads so anything above will be ignored anyways
+        global NNPACK_CPU_THREADS = UInt64(4)
     end
     allocate_threadpool()
 end
