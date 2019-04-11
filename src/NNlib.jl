@@ -1,6 +1,8 @@
 module NNlib
 using Requires, TimerOutputs
 
+const to = TimerOutput()
+
 # Include APIs
 include("dim_helpers.jl")
 include("activation.jl")
