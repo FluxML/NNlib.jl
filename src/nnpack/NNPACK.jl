@@ -1,6 +1,8 @@
 include("libnnpack_types.jl")
 include("error.jl")
 include("libnnpack.jl")
+include("performance.jl")
+include("interface.jl")
 
 const depsjl_path = joinpath(dirname(@__FILE__), "..", "..", "deps", "deps.jl")
 if !isfile(depsjl_path)
@@ -8,9 +10,13 @@ if !isfile(depsjl_path)
 end
 include(depsjl_path)
 
-const nnlib_interface_path = joinpath(dirname(@__FILE__), "interface.jl")
-const shared_threadpool = Ref(C_NULL)
+const shared_threadpool_dict = Dict{UInt64, Base.RefValue}()
 
+"""
+    is_nnpack_available()
+
+Checks if the current hardware is supported by NNPACK.
+"""
 function is_nnpack_available()
     check_deps()
     status = nnp_initialize()
@@ -21,18 +27,30 @@ function is_nnpack_available()
     end
 end
 
+"""
+    allocate_threadpool()
+
+Allocates several threadpool based on the upper limit on the number of threads for the machine.
+Allows NNPACK to intelligently choose which threadpool to use for getting the best
+performance.
+"""
+function allocate_threadpool()
+    for i in 1:Int(floor(log2(NNPACK_CPU_THREADS)))
+        threads = UInt64(2^i)
+        push!(shared_threadpool_dict, threads => Ref(pthreadpool_create(threads)))
+    end
+end
+
 @init begin
     check_deps()
     status = nnp_initialize()
     if status == nnp_status_unsupported_hardware
         @warn "Hardware is unsupported by NNPACK so falling back to default NNlib"
-    else
-        include(nnlib_interface_path)
     end
     try
         global NNPACK_CPU_THREADS = parse(UInt64, ENV["NNPACK_CPU_THREADS"])
     catch
         global NNPACK_CPU_THREADS = Sys.CPU_THREADS
     end
-    shared_threadpool[] = pthreadpool_create(NNPACK_CPU_THREADS)
+    allocate_threadpool()
 end
