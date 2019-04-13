@@ -151,3 +151,15 @@ for backend in (Symbol(), :_direct, :_im2col)
         end
     end
 end
+
+
+# Use NNPACK if it is available and the operation is supported
+if is_nnpack_available()
+    function conv(x::Array{xT, 4}, w::Array{wT, 4},
+                  cdims::DenseConvDims{2, K, C_in, C_out, S, P, (1, 1), F};
+                  kwargs...) where {xT, wT, K, C_in, C_out, S, P, F}
+        func = check_supported_operation(x, cdims) ? conv_nnpack : 
+               xT == wT ? conv_im2col : conv_direct
+        return func(x, w, cdims; kwargs...)
+    end
+end

@@ -3,8 +3,17 @@ using Requires, TimerOutputs
 
 const to = TimerOutput()
 
+
 # Include APIs
 include("dim_helpers.jl")
+
+# NNPACK support
+if Sys.islinux()
+    include("nnpack/NNPACK.jl")
+else
+    is_nnpack_available() = false
+end
+
 include("activation.jl")
 include("softmax.jl")
 include("gemm.jl")
@@ -23,11 +32,5 @@ include("impl/depthwiseconv_im2col.jl")
 
 # Direct implementations of pooling
 include("impl/pooling_direct.jl")
-
-if Sys.islinux()
-    include("nnpack/NNPACK.jl")
-else
-    is_nnpack_available() = false
-end
 
 end # module NNlib
