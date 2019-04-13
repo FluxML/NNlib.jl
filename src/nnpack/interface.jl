@@ -52,18 +52,6 @@ end
 
 
 """
-    check_supported_operation(x::Array, cdims::DenseConvDims)
-
-Returns `true` if nnpack supports the convolution operation for the given input.
-"""
-function check_supported_operation(x::Array{T, 4}, cdims::DenseConvDims{2, K, C_in,
-                                   C_out, S, P, (1, 1), F}) where {T, K, C_in, C_out, S, P, F}
-    val = size(x)[1:2] .+ (P[1] + P[2], P[3] + P[4]) .- K
-    return val .% S == (0, 0) ? true : false
-end
-
-
-"""
     check_supported_operation(x::Array, pdims::PoolDims)
 
 Returns `true` if nnpack supports the pooling operation for the given input.
