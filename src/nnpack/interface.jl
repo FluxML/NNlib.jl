@@ -20,19 +20,19 @@ end
 
 
 function conv_nnpack(x::Array{T1, 4}, w::Array{T2, 4}, cdims::ConvDims; kwargs...) where {T1, T2}
-    y = similar(x, output_size(cdims), channels_out(cdims), size(x, 4))
+    y = similar(x, output_size(cdims)..., channels_out(cdims), size(x, 4))
     return conv_nnpack!(y, x, w, cdims; kwargs...)
 end
 
 
 function ∇conv_data(dy::Array{T1, 4}, w::Array{T2, 4}, cdims::ConvDims; kwargs...) where {T1, T2}
-    dx = similar(dy, input_size(cdims), channels_in(cdims), size(dy, 4))
+    dx = similar(dy, input_size(cdims)..., channels_in(cdims), size(dy, 4))
     return ∇conv_data!(dx, dy, w, cdims; kwargs...)
 end
 
 
 function ∇conv_filter(x::Array{T1, 4}, dy::Array{T2, 4}, cdims::ConvDims; kwargs...) where {T1, T2}
-    dw = similar(x, kernel_size(cdims), channels_in(cdims), channels_out(cdims))
+    dw = similar(x, kernel_size(cdims)..., channels_in(cdims), channels_out(cdims))
     return ∇conv_filter!(dw, x, dy, cdims; kwargs...)
 end
 
