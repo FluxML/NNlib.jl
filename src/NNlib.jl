@@ -10,6 +10,7 @@ include("softmax.jl")
 include("gemm.jl")
 include("conv.jl")
 include("pooling.jl")
+include("conv_op.jl")
 
 ## Include implementations
 include("impl/padding_edges.jl")
