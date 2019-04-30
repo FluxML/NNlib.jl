@@ -35,7 +35,8 @@ Allows NNPACK to intelligently choose which threadpool to use for getting the be
 performance.
 """
 function allocate_threadpool()
-    for i in 1:Int(floor(log2(NNPACK_CPU_THREADS)))
+    global NNPACK_CPU_THREADS = NNPACK_CPU_THREADS > 8 ? UInt64(8) : floor(log2(NNPACK_CPU_THREADS))
+    for i in 1:Int(NNPACK_CPU_THREADS)
         threads = UInt64(2^i)
         push!(shared_threadpool_dict, threads => Ref(pthreadpool_create(threads)))
     end

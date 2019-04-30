@@ -278,27 +278,27 @@ conv_answer_dict = Dict(
                 @testset "$(conv)" begin
                     # First, your basic convolution with no parameters
                     cdims = DenseConvDims(x, w)
-                    @test ddims(conv(x, w, cdims)) == y_plain
+                    @test isapprox(ddims(conv(x, w, cdims)), y_plain, rtol = 1.0e-7)
 
                     # Next, test convolution on views and alternate datatypes:
-                    @test ddims(conv(view(x, repeat([:], ndims(x))...), w, cdims)) == y_plain
-                    @test ddims(conv(Float32.(x), Float32.(w), cdims)) == Float32.(y_plain)
+                    @test isapprox(ddims(conv(view(x, repeat([:], ndims(x))...), w, cdims)), y_plain, rtol = 1.0e-7)
+                    @test isapprox(ddims(conv(Float32.(x), Float32.(w), cdims)), Float32.(y_plain), rtol = 1.0e-7)
 
                     # Next, introduce stride:
                     cdims = DenseConvDims(x, w; stride=2)
-                    @test ddims(conv(x, w, cdims)) == y_stride
+                    @test isapprox(ddims(conv(x, w, cdims)), y_stride, rtol = 1.0e-7)
 
                     # Next, introduce dilation:
                     cdims = DenseConvDims(x, w; dilation=2)
-                    @test ddims(conv(x, w, cdims)) == y_dil
+                    @test isapprox(ddims(conv(x, w, cdims)), y_dil, rtol = 1.0e-7)
 
                     # Next, introduce padding:
                     cdims = DenseConvDims(x, w; padding=1)
-                    @test ddims(conv(x, w, cdims)) == y_pad
+                    @test isapprox(ddims(conv(x, w, cdims)), y_pad, rtol = 1.0e-7)
 
                     # Next, test crosscor/conv with a flipped kernel
                     cdims = DenseConvDims(x, w; flipkernel=true)
-                    @test ddims(conv(x, w, cdims)) == y_flip
+                    @test isapprox(ddims(conv(x, w, cdims)), y_flip, rtol = 1.0e-7)
                 end
             end
 
@@ -312,39 +312,39 @@ conv_answer_dict = Dict(
                     # First, your basic convolution with no parameters
                     cdims = DenseConvDims(x, w)
                     dy = NNlib.conv(x, w, cdims)
-                    @test ddims(∇conv_filter(x, dy, cdims)) == dw
-                    @test ddims(∇conv_data(dy, w,  cdims)) == dx
+                    @test isapprox(ddims(∇conv_filter(x, dy, cdims)), dw, rtol = 1.0e-7)
+                    @test isapprox(ddims(∇conv_data(dy, w,  cdims)), dx, rtol = 1.0e-7)
 
                     # Next, test convolution on views and alternate datatypes:
-                    @test ddims(∇conv_filter(x, view(dy, repeat([:], ndims(dy))...), cdims)) == dw
-                    @test ddims(∇conv_data(view(dy, repeat([:], ndims(dy))...), w,   cdims)) == dx
+                    @test isapprox(ddims(∇conv_filter(x, view(dy, repeat([:], ndims(dy))...), cdims)), dw, rtol = 1.0e-7)
+                    @test isapprox(ddims(∇conv_data(view(dy, repeat([:], ndims(dy))...), w,   cdims)), dx, rtol = 1.0e-7)
 
-                    @test ddims(∇conv_filter(Float32.(x), Float32.(dy), cdims)) == dw
-                    @test ddims(∇conv_data(Float32.(dy),  Float32.(w),  cdims)) == dx
+                    @test isapprox(ddims(∇conv_filter(Float32.(x), Float32.(dy), cdims)), dw, rtol = 1.0e-7)
+                    @test isapprox(ddims(∇conv_data(Float32.(dy),  Float32.(w),  cdims)), dx, rtol = 1.0e-7)
 
                     # Next, introduce stride:
                     cdims = DenseConvDims(x, w; stride=2)
                     dy = NNlib.conv(x, w, cdims)
-                    @test ddims(∇conv_filter(x, dy, cdims)) == dw_stride
-                    @test ddims(∇conv_data(dy, w,  cdims)) == dx_stride
+                    @test isapprox(ddims(∇conv_filter(x, dy, cdims)), dw_stride, rtol = 1.0e-7)
+                    @test isapprox(ddims(∇conv_data(dy, w,  cdims)), dx_stride, rtol = 1.0e-7)
 
                     # Next, introduce dilation:
                     cdims = DenseConvDims(x, w; dilation=2)
                     dy = NNlib.conv(x, w, cdims)
-                    @test ddims(∇conv_filter(x, dy, cdims)) == dw_dil
-                    @test ddims(∇conv_data(dy, w,  cdims)) == dx_dil
+                    @test isapprox(ddims(∇conv_filter(x, dy, cdims)), dw_dil, rtol = 1.0e-7)
+                    @test isapprox(ddims(∇conv_data(dy, w,  cdims)), dx_dil, rtol = 1.0e-7)
 
                     # Next, introduce padding:
                     cdims = DenseConvDims(x, w; padding=1)
                     dy = NNlib.conv(x, w, cdims)
-                    @test ddims(∇conv_filter(x, dy, cdims)) == dw_pad
-                    @test ddims(∇conv_data(dy, w,  cdims)) == dx_pad
+                    @test isapprox(ddims(∇conv_filter(x, dy, cdims)), dw_pad, rtol = 1.0e-7)
+                    @test isapprox(ddims(∇conv_data(dy, w,  cdims)), dx_pad, rtol = 1.0e-7)
 
                     # Next, test crosscor/conv with a flipped kernel
                     cdims = DenseConvDims(x, w; flipkernel=true)
                     dy = NNlib.conv(x, w, cdims)
-                    @test ddims(∇conv_filter(x, dy, cdims)) == dw_flip
-                    @test ddims(∇conv_data(dy, w,  cdims)) == dx_flip
+                    @test isapprox(ddims(∇conv_filter(x, dy, cdims)), dw_flip, rtol = 1.0e-7)
+                    @test isapprox(ddims(∇conv_data(dy, w,  cdims)), dx_flip, rtol = 1.0e-7)
                 end
             end
         end
@@ -481,24 +481,24 @@ end
                     @test ddims(conv(x, w, cdims)) == y_plain
 
                     # Next, test convolution on views and alternate datatypes:
-                    @test ddims(conv(view(x, repeat([:], ndims(x))...), w, cdims)) == y_plain
-                    @test ddims(conv(Float32.(x), Float32.(w), cdims)) == Float32.(y_plain)
+                    @test isapprox(ddims(conv(view(x, repeat([:], ndims(x))...), w, cdims)), y_plain, rtol = 1.0e-7)
+                    @test isapprox(ddims(conv(Float32.(x), Float32.(w), cdims)), Float32.(y_plain), rtol = 1.0e-7)
 
                     # Next, introduce stride:
                     cdims = DepthwiseConvDims(x, w; stride=2)
-                    @test ddims(conv(x, w, cdims)) == y_stride
+                    @test isapprox(ddims(conv(x, w, cdims)), y_stride, rtol = 1.0e-7)
 
                     # Next, introduce dilation:
                     cdims = DepthwiseConvDims(x, w; dilation=2)
-                    @test ddims(conv(x, w, cdims)) == y_dil
+                    @test isapprox(ddims(conv(x, w, cdims)), y_dil, rtol = 1.0e-7)
 
                     # Next, introduce padding:
                     cdims = DepthwiseConvDims(x, w; padding=1)
-                    @test ddims(conv(x, w, cdims)) == y_pad
+                    @test isapprox(ddims(conv(x, w, cdims)), y_pad, rtol = 1.0e-7)
 
                     # Next, test crosscor/conv with a flipped kernel
                     cdims = DepthwiseConvDims(x, w; flipkernel=true)
-                    @test ddims(conv(x, w, cdims)) == y_flip
+                    @test isapprox(ddims(conv(x, w, cdims)), y_flip, rtol = 1.0e-7)
                 end
             end
 
