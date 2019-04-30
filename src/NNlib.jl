@@ -3,8 +3,17 @@ using Requires, TimerOutputs
 
 const to = TimerOutput()
 
+
 # Include APIs
 include("dim_helpers.jl")
+
+# NNPACK support
+if Sys.islinux() || Sys.isapple()
+    include("nnpack/NNPACK.jl")
+else
+    is_nnpack_available() = false
+end
+
 include("activation.jl")
 include("softmax.jl")
 include("gemm.jl")

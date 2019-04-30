@@ -28,12 +28,18 @@ for rank in (2,),
     dilation in (1,),
     padding in (0, 2)
 
-    for (conv!, ∇conv_data!, ∇conv_filter!, cT, backend) in (
+    benchmark_items = [
             (NNlib.conv_direct!, NNlib.∇conv_data_direct!, NNlib.∇conv_filter_direct!, DenseConvDims, "direct"),
             (NNlib.conv_im2col!, NNlib.∇conv_data_im2col!, NNlib.∇conv_filter_im2col!, DenseConvDims, "im2col"),
             (NNlib.depthwiseconv_direct!, NNlib.∇depthwiseconv_data_direct!, NNlib.∇depthwiseconv_filter_direct!, DepthwiseConvDims, "direct"),
             (NNlib.depthwiseconv_im2col!, NNlib.∇depthwiseconv_data_im2col!, NNlib.∇depthwiseconv_filter_im2col!, DepthwiseConvDims, "im2col"),
-        )
+    ]
+
+    if NNlib.is_nnpack_available()
+        push!(benchmark_items, (NNlib.conv_nnpack!, NNlib.∇conv_data_nnpack!, NNlib.∇conv_filter_nnpack!, DenseConvDims, "nnpack"))
+    end
+
+    for (conv!, ∇conv_data!, ∇conv_filter!, cT, backend) in benchmark_items
 
         x = zeros(Float32, repeat([N], rank)..., C_in, 1)
         if cT == DenseConvDims
@@ -92,6 +98,15 @@ for rank in (2,),
 
         add_result(t_fwd, "$(name)$(rank)d", "direct", pdims)
         add_result(t_data, "$(name)$(rank)d_data", "direct", pdims)
+
+        @show(pdims)
+        @save "results.jld2" results
+    end
+
+    if NNlib.is_nnpack_available()
+        t_fwd  = @benchmark NNlib.maxpool_nnpack!($y, $x, $pdims)
+
+        add_result(t_fwd, "maxpool2d", "nnpack", pdims)
 
         @show(pdims)
         @save "results.jld2" results
