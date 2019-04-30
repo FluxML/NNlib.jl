@@ -8,7 +8,7 @@ const to = TimerOutput()
 include("dim_helpers.jl")
 
 # NNPACK support
-if Sys.islinux()
+if Sys.islinux() || Sys.isapple()
     include("nnpack/NNPACK.jl")
 else
     is_nnpack_available() = false
