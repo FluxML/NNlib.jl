@@ -13,7 +13,7 @@ end
     threadpool = select_threadpool(cdims, size(y, 4))
 
     if flipkernel(cdims) == 0
-        w .= flipweight(w)
+        w = flipweight(w)
     end
 
     nnp_convolution_output(y, x, w, b, algo = algo, padding = padding(cdims),
@@ -26,7 +26,7 @@ end
     threadpool = select_threadpool(cdims, size(y, 4))
     
     if flipkernel(cdims) == 0
-        w .= flipweight(w)
+        w = flipweight(w)
     end
 
     nnp_convolution_input_gradient(dx, dy, w, algo = algo, padding = padding(cdims),
