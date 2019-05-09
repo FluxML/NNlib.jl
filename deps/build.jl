@@ -27,8 +27,8 @@ if dl_info === nothing && unsatisfied
     # If we don't have a compatible .tar.gz to download, complain.
     # Alternatively, you could attempt to install from a separate provider,
     # build from source or something even more ambitious here.
-    warn("Your platform (\"$(Sys.MACHINE)\", parsed as \"$(triplet(platform_key_abi()))\") is not supported by NNPACK!
-          You will only be able to use only the default NNlib backend.")
+    @warn "Your platform (\"$(Sys.MACHINE)\", parsed as \"$(triplet(platform_key_abi()))\") is not supported by NNPACK!
+          You will only be able to use only the default NNlib backend."
 end
 
 # If we have a download, and we are unsatisfied (or the version we're
