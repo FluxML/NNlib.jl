@@ -32,17 +32,16 @@ function test_blocked_conv(im_size,
         # @btime block(block($W, $(rank + 1)), $(rank + 3))
 
 
-
+        c = DenseConvDims(X, W; stride = stride, dilation = dilation, padding = pad)
         print("blocked_conv2d: ")
-        @btime Out1 = blocked_conv($bX, $bW, pad = $pad, stride = $stride, dilation = $dilation)
-        # print("NNlib.conv: ")
-        # @btime Out2 = NNlib.conv($X, $W, pad = $pad, stride = $stride, dilation = $dilation)
+        @btime Out1 = blocked_conv($bX, $bW, $c)
+        print("NNlib.conv: ")
+        @btime Out2 = conv($X, $W, $c)
     end
-
-    Out1 = blocked_conv(bX, bW, pad = pad, stride = stride, dilation = dilation)
-
-    # Out2 = NNlib.conv(X, W, pad = pad, stride = stride, dilation = dilation)
-    # @test isapprox(deblock(Out1, rank + 1), Out2)
+    c = DenseConvDims(X, W; stride = stride, dilation = dilation, padding = pad)
+    Out1 = blocked_conv(bX, bW, c)
+    Out2 = conv(X, W, c)
+    @test isapprox(deblock(Out1, rank + 1), Out2)
     println()
 end
 
