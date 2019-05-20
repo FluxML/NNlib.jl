@@ -29,7 +29,7 @@ include("impl/depthwiseconv_direct.jl")
 # im2col implementations of convolutional and depthwise-convolutional algorithms
 include("impl/conv_im2col.jl")
 include("impl/depthwiseconv_im2col.jl")
-
+include("impl/blocked_conv.jl")
 # Direct implementations of pooling
 include("impl/pooling_direct.jl")
 
