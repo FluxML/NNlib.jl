@@ -59,7 +59,7 @@ end
     logsoftmax(xs) = log.(exp.(xs) ./ sum(exp.(xs)))
 
 `logsoftmax(xs)` computes the log of `softmax(xs)`, but in a more numerically stable
-way than directly taking the log of the the softmax function, which is commonly used in
+way than directly taking the log of the softmax function, which is commonly used in
 computing cross entropy loss.
 """
 logsoftmax(xs) = logsoftmax!(similar(xs), xs)
