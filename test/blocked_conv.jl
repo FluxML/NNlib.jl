@@ -1,7 +1,7 @@
 using BenchmarkTools
 using Test
 using NNlib
-
+using LinearAlgebra
 
 BLAS.set_num_threads(4)
 
@@ -50,10 +50,10 @@ do_benchmarking = true
 for im_size = [32, 64, 128, 192]
     for k_size = [5]
         for pad = [3], stride = [2], dilation = [2]
-            # test_blocked_conv(im_size, k_size, 1, pad, stride, dilation, benchmark = do_benchmarking)
+            test_blocked_conv(im_size, k_size, 1, pad, stride, dilation, benchmark = do_benchmarking)
             test_blocked_conv(im_size, k_size, 2, pad, stride, dilation, benchmark = do_benchmarking)
             if im_size <= 32
-                # test_blocked_conv(im_size, k_size, 3, pad, stride, dilation, benchmark = do_benchmarking)
+                test_blocked_conv(im_size, k_size, 3, pad, stride, dilation, benchmark = do_benchmarking)
             end
         end
     end

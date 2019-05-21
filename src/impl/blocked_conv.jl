@@ -1,12 +1,6 @@
 export blocked_conv, block, deblock
 using SIMD
 
-BLAS.set_num_threads(4)
-
-# @inline function insert_singleton_spatial_dimension(x::AbstractArray)
-#     return reshape(x, size(x)[1:end-2]..., 1, size(x)[end-1:end]...)
-# end
-
 @inline function remove_singleton_spatial_dimension(x::AbstractArray)
     return reshape(x, size(x)[1:end-3]..., size(x)[end-1:end]...)
 end
@@ -17,13 +11,6 @@ end
     end
     return x
 end
-
-# @inline function insert_singleton_spatial_dimension(x, reps::Int)
-#     for r in 1:reps
-#         x = insert_singleton_spatial_dimension(x)
-#     end
-#     return x
-# end
 
 # unoptimized blocking
 function block(x, block_axis = 3, block_len = 8)
@@ -107,46 +94,55 @@ end
 function blocked_conv!(Out::Array{T,6},
                        X::Array{T,6},
                        W::Array{T,7},
-                       pad::NTuple{6,Int64},
-                       stride::NTuple{3,Int64},
-                       dilation::NTuple{3,Int64}) where T<:Number
+                       cdims::DenseConvDims) where T<:Number
     @assert size(Out)[1] == size(W)[1]
     @assert size(X)[1] == size(W)[2]
     ## Fuse a few outer loops to make sure we have enough jobs for the threads
     ## Most important if it's a low batch size kernel
     out_loop_size = size(Out)[6] * size(W)[6] * size(W)[7] * size(Out)[4]
     @inbounds Threads.@threads for ol = 1:out_loop_size
-        blocked_conv_inner_loop!(Out, X, W, ol, Vec{size(X)[1],T}, pad, stride, dilation)
+        blocked_conv_inner_loop!(Out, X, W, ol, Vec{size(X)[1],T},
+                                 padding(cdims), stride(cdims), dilation(cdims))
     end
 end
 
-@inline function calc_conv_dim(input_dim, kernel_dim, pad, stride, dilation)
-    1 + div(input_dim - (dilation * (kernel_dim - 1) + 1) + 2 * pad, stride)
-end
 
 function blocked_conv(X::Array{T,6}, W::Array{T,7}, cdims::DenseConvDims) where T<:Number
-    cdims = insert_singleton_spatial_dimension(cdims, 0)
-    X = insert_singleton_spatial_dimension(X, 0)
-    W = insert_singleton_spatial_dimension(W, 0)
-    Out = zeros(T, size(W,1), output_size(cdims)..., div(channels_out(cdims),size(W, 1)), size(X, 6))
-    blocked_conv!(Out, X, W, padding(cdims), stride(cdims), dilation(cdims))
-    remove_singleton_spatial_dimension(Out, 0)
+    Out = zeros(T, size(W,1), output_size(cdims)...,
+                   div(channels_out(cdims),size(W, 1)), size(X, 6))
+    blocked_conv!(Out, X, W, cdims)
+    Out
 end
 
-function blocked_conv(X::Array{T,5}, W::Array{T,6}, cdims::DenseConvDims) where T<:Number
-    cdims = insert_singleton_spatial_dimension(cdims, 1)
-    X = insert_singleton_spatial_dimension(X, 1)
-    W = insert_singleton_spatial_dimension(W, 1)
-    Out = zeros(T, size(W,1), output_size(cdims)..., div(channels_out(cdims),size(W, 1)), size(X, 6))
-    blocked_conv!(Out, X, W, padding(cdims), stride(cdims), dilation(cdims))
-    remove_singleton_spatial_dimension(Out, 1)
-end
+for N in (3, 4)
+    @eval begin
+        function $(Symbol("blocked_conv!"))(
+                        y::AbstractArray{yT,$(N+1)}, x::AbstractArray{xT,$(N+1)},
+                        w::AbstractArray{wT,$(N+2)}, cdims::ConvDims) where {yT, xT, wT}
+            $(Symbol("blocked_conv!"))(
+                insert_singleton_spatial_dimension(y, $(5 - N)),
+                insert_singleton_spatial_dimension(x, $(5 - N)),
+                insert_singleton_spatial_dimension(w, $(5 - N)),
+                insert_singleton_spatial_dimension(cdims, $(5 - N))
+            )
 
-function blocked_conv(X::Array{T,4}, W::Array{T,5}, cdims::DenseConvDims) where T<:Number
-    cdims = insert_singleton_spatial_dimension(cdims, 2)
-    X = insert_singleton_spatial_dimension(X, 2)
-    W = insert_singleton_spatial_dimension(W, 2)
-    Out = zeros(T, size(W,1), output_size(cdims)..., div(channels_out(cdims),size(W, 1)), size(X, 6))
-    blocked_conv!(Out, X, W, padding(cdims), stride(cdims), dilation(cdims))
-    remove_singleton_spatial_dimension(Out, 2)
+            # We explicitly return `y` here, because the backend call
+            # itself may return a reshaped view, which we don't want.
+            return y
+        end
+    end
+    @eval begin
+        function $(Symbol("blocked_conv"))(
+                        x::AbstractArray{xT,$(N+1)},
+                        w::AbstractArray{wT,$(N+2)}, cdims::ConvDims) where {yT, xT, wT}
+            remove_singleton_spatial_dimension(
+                $(Symbol("blocked_conv"))(
+                    insert_singleton_spatial_dimension(x, $(5 - N)),
+                    insert_singleton_spatial_dimension(w, $(5 - N)),
+                    insert_singleton_spatial_dimension(cdims, $(5 - N))
+                ),
+                $(5 - N)
+            )
+        end
+    end
 end
