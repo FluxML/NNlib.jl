@@ -37,15 +37,15 @@ function test_blocked_conv(im_size,
         @btime Out1 = blocked_conv($bX, $bW, $c)
         print("NNlib.conv: ")
         @btime Out2 = conv($X, $W, $c)
+        println()
     end
     c = DenseConvDims(X, W; stride = stride, dilation = dilation, padding = pad)
     Out1 = blocked_conv(bX, bW, c)
     Out2 = conv(X, W, c)
     @test isapprox(deblock(Out1, rank + 1), Out2)
-    println()
 end
 
-do_benchmarking = true
+do_benchmarking = false
 
 for im_size = [32, 64, 128, 192]
     for k_size = [5]
