@@ -2,6 +2,7 @@ module NNlib
 using Pkg
 using Requires
 using NNPACK_jll
+using StatsFuns: logistic, softplus
 
 # Include APIs
 include("dim_helpers.jl")

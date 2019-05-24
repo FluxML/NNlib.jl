@@ -108,7 +108,9 @@ end
     @testset "Array input" begin
         x = rand(5)
         for a in ACTIVATION_FUNCTIONS
-            @test_throws ErrorException a(x)
+            if a != σ && a != softplus
+                @test_throws ErrorException a(x)
+            end
         end
     end
 
