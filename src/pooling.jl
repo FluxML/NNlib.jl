@@ -141,14 +141,14 @@ expand(N, i::Tuple) = i
 expand(N, i::Integer) = ntuple(_ -> i, N)
 
 function maxpool(x, k::NTuple{N, Integer}; pad = 0, stride = k) where N
-    pad = expand(Val(2*N), pad)
+    pad = expand(Val(N), pad)
     stride = expand(Val(N), stride)
     pdims = PoolDims(x, k; padding = pad, stride = stride)
     return maxpool(x, pdims)
 end
 
 function meanpool(x, k::NTuple{N, Integer}; pad = 0, stride = k) where N
-    pad = expand(Val(2*N), pad)
+    pad = expand(Val(N), pad)
     stride = expand(Val(N), stride)
     pdims = PoolDims(x, k; padding = pad, stride = stride)
     return meanpool(x, pdims)
