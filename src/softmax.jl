@@ -81,5 +81,5 @@ function logsoftmax!(out::AbstractVecOrMat, xs::AbstractVecOrMat)
     end
     return out
 end
-∇logsoftmax(Δ, xs) = ∇softmax(Δ ./ max.(eps(eltype(xs)),softmax(xs)), xs)
+∇logsoftmax(Δ, xs) = Δ - sum(Δ, dims=1) .* softmax(xs)
 ∇logsoftmax!(Δ, xs) = ∇softmax!(Δ, Δ, xs)
