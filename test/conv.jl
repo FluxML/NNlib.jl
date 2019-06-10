@@ -12,7 +12,7 @@ using NNlib: input_size, kernel_size, channels_in, channels_out, channel_multipl
             elseif T == DepthwiseConvDims
                 w = randn(1,2,4,3)
             end
-            
+
             # First, getters:
             cdims = T(x, w)
             @test input_size(cdims) == size(x)[1:2]
@@ -39,7 +39,7 @@ using NNlib: input_size, kernel_size, channels_in, channels_out, channel_multipl
             @test padding(cdims) == (3,3,3,3)
             @test flipkernel(cdims) == true
             @test output_size(cdims) == (6,4)
-            
+
             # Next, tuple settings
             cdims = T(x, w; stride=(1, 2), dilation=(1, 2), padding=(0,1))
             @test stride(cdims) == (1,2)
@@ -215,7 +215,7 @@ conv_answer_dict = Dict(
         "dx_dil"    => reshape([
             4864, 5152, 9696, 4508, 4760, 6304, 6592, 12396, 5768, 6020, 3648,
             3864, 7120, 3220, 3400, 4728, 4944, 9100, 4120, 4300, 0, 0, 0, 0, 0, 0,
-            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2432, 2576, 4544, 1932, 2040, 
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2432, 2576, 4544, 1932, 2040,
             3152, 3296, 5804, 2472, 2580, 1216, 1288, 1968, 644, 680, 1576, 1648,
             2508, 824, 860.
         ], (5,4,3)),
@@ -273,7 +273,7 @@ conv_answer_dict = Dict(
 
             # A "drop channels and batch dimension" helper
             ddims(x) = dropdims(x, dims=(rank+1, rank+2))
-            
+
             for conv in (NNlib.conv, NNlib.conv_im2col, NNlib.conv_direct)
                 @testset "$(conv)" begin
                     # First, your basic convolution with no parameters
@@ -392,7 +392,7 @@ conv_answer_dict = Dict(
                     D_size in (1, 2, 4, (1,2), (3,2), (4,2,3))
 
                     # Skip tests that are impossible due to mismatched sizes
-                    try    
+                    try
                         DenseConvDims(x, w;
                             stride=S_size, padding=P_size, dilation=D_size,
                         )
@@ -473,7 +473,7 @@ end
 
             # A "drop channels and batch dimension" helper
             ddims(x) = dropdims(x, dims=(rank+1, rank+2))
-            
+
             for conv in (NNlib.depthwiseconv, NNlib.depthwiseconv_im2col, NNlib.depthwiseconv_direct)
                 @testset "$(conv)" begin
                     # First, your basic convolution with no parameters
@@ -592,7 +592,7 @@ end
                     D_size in (1, 2, 4, (1,2), (3,2), (4,2,3))
 
                     # Skip tests that are impossible due to mismatched sizes
-                    try    
+                    try
                         DepthwiseConvDims(x, w;
                             stride=S_size, padding=P_size, dilation=D_size,
                         )
@@ -638,4 +638,22 @@ end
         end
         println()
     end
+end
+
+@testset "conv_wrapper" begin
+    x = rand(10, 10, 3, 10)
+    w = rand(2, 2, 3, 16)
+    w1 = rand(3, 4, 3, 16)
+    @test size(conv(x, w)) == (9, 9, 16, 10)
+    @test size(conv(x, w; stride = (2, 2), pad = (2, 2))) == (7, 7, 16, 10)
+    @test size(conv(x, w1; stride = (1, 2), pad = (2, 3))) == (12, 7, 16, 10)
+end
+
+@testset "depthwiseconv_wrapper" begin
+    x = rand(10, 10, 3, 10)
+    w = rand(2, 2, 3, 3)
+    w1 = rand(3, 4, 3, 3)
+    @test size(depthwiseconv(x, w)) == (9, 9, 9, 10)
+    @test size(depthwiseconv(x, w; stride = (2, 2), pad = (2, 2))) == (7, 7, 9, 10)
+    @test size(depthwiseconv(x, w1; stride = (1, 2), pad = (2, 3))) == (12, 7, 9, 10)
 end
