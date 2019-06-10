@@ -1,4 +1,6 @@
-export conv, conv!, ∇conv_data, ∇conv_data!, ∇conv_filter, ∇conv_filter!
+export conv, conv!, ∇conv_data, ∇conv_data!, ∇conv_filter, ∇conv_filter!, depthwiseconv,
+        depthwiseconv!, ∇depthwiseconv_data, ∇depthwiseconv_data!, ∇depthwiseconv_filter,
+        ∇depthwiseconv_filter!
 
 ## Convolution API
 #
@@ -160,4 +162,20 @@ if is_nnpack_available()
                   kwargs...) where {xT, wT, K, C_in, C_out, S, P, F}
         return conv_nnpack(x, w, cdims; kwargs...)
     end
+end
+
+function conv(x, w::AbstractArray{T, N}; stride = 1, pad = 0, dilation = 1) where {T, N}
+    stride = expand(Val(N-2), stride)
+    pad = expand(Val(N-2), pad)
+    dilation = expand(Val(N-2), dilation)
+    cdims = DenseConvDims(x, w; stride = stride, padding = pad, dilation = dilation)
+    return conv(x, w, cdims)
+end
+
+function depthwiseconv(x, w::AbstractArray{T, N}; stride = 1, pad = 0, dilation = 1) where {T, N}
+    stride = expand(Val(N-2), stride)
+    pad = expand(Val(N-2), pad)
+    dilation = expand(Val(N-2), dilation)
+    cdims = DepthwiseConvDims(x, w; stride = stride, padding = pad, dilation = dilation)
+    return depthwiseconv(x, w, cdims)
 end
