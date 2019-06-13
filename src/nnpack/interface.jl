@@ -7,7 +7,7 @@ for (front_name, backend) in (
         :∇conv_filter  => :_nnpack,
     )
     @eval begin
-        @timeit_debug to function $(Symbol("$(front_name)$(backend)!"))(
+        function $(Symbol("$(front_name)$(backend)!"))(
                         out::Array{T1,4}, in1::Array{T2,4}, in2::Array{T3,4},
                         cdims::ConvDims; kwargs...) where {T1, T2, T3}
             @warn "Automatically converting input tensor to Float32. This will have performance implications" maxlog=1

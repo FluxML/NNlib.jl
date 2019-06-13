@@ -10,7 +10,7 @@ See `conv_im2col!()` for an explanation of optional parameters.
 """
 depthwiseconv_im2col!
 
-@timeit_debug to function depthwiseconv_im2col!(
+function depthwiseconv_im2col!(
                 y::AbstractArray{T,5}, x::AbstractArray{T,5},
                 w::AbstractArray{T,5}, cdims::DepthwiseConvDims;
                 col::AbstractArray{T,2} = similar(x, im2col_dims(cdims)),
@@ -28,9 +28,7 @@ depthwiseconv_im2col!
 
     dcdims = DenseConvDims(cdims)
     @inbounds for batch_idx in 1:size(x)[end]
-        # We invoke `@timeit_debug` on the outside of `im2col!()` because inference
-        # doesn't like us putting it on the inside.
-        @timeit_debug to "im2col!" im2col!(col, view(x, :, :, :, :, batch_idx), dcdims)
+        im2col!(col, view(x, :, :, :, :, batch_idx), dcdims)
 
         # We do a separate convolution for each channel in x, as we must
         for c_in in 1:channels_in(cdims)
@@ -54,7 +52,7 @@ See the documentation for `conv_im2col!()` for explanation of optional parameter
 """
 ∇depthwiseconv_filter_im2col!
 
-@timeit_debug to function ∇depthwiseconv_filter_im2col!(
+function ∇depthwiseconv_filter_im2col!(
                 dw::AbstractArray{T,5}, x::AbstractArray{T,5},
                 dy::AbstractArray{T,5}, cdims::DepthwiseConvDims;
                 col::AbstractArray{T,2} = similar(dw, im2col_dims(cdims)),
@@ -66,9 +64,7 @@ See the documentation for `conv_im2col!()` for explanation of optional parameter
     K = prod(output_size(cdims))
 
     @inbounds for batch_idx in 1:size(x)[end]
-        # We invoke `@timeit_debug` on the outside of `im2col!()` because inference
-        # doesn't like us putting it on the inside.
-        @timeit_debug to "im2col!" im2col!(col, view(x, :, :, :, :, batch_idx), cdims)
+        im2col!(col, view(x, :, :, :, :, batch_idx), cdims)
 
         # We do a separate convolution for each channel in x, as we must
         for c_in in 1:channels_in(cdims)
@@ -96,7 +92,7 @@ See the documentation for `conv_im2col!()` for explanation of optional parameter
 """
 ∇depthwiseconv_data_im2col!
 
-@timeit_debug to function ∇depthwiseconv_data_im2col!(
+function ∇depthwiseconv_data_im2col!(
                 dx::AbstractArray{T,5}, dy::AbstractArray{T,5},
                 w::AbstractArray{T,5}, cdims::DepthwiseConvDims;
                 col::AbstractArray{T,2} = similar(dx, im2col_dims(cdims)),
@@ -118,7 +114,7 @@ See the documentation for `conv_im2col!()` for explanation of optional parameter
                 gemm!(Val(false), Val(true), M, N, K, alpha, dy_ptr, w_ptr, T(0), col_ptr)
             end
         end
-        @timeit_debug to "col2im!" col2im!(view(dx, :, :, :, :, batch_idx), col, cdims)
+        col2im!(view(dx, :, :, :, :, batch_idx), col, cdims)
     end
     return dx
 end
