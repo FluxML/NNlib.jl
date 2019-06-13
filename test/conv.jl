@@ -647,6 +647,8 @@ end
     @test size(conv(x, w)) == (9, 9, 16, 10)
     @test size(conv(x, w; stride = (2, 2), pad = (2, 2))) == (7, 7, 16, 10)
     @test size(conv(x, w1; stride = (1, 2), pad = (2, 3))) == (12, 7, 16, 10)
+    @test size(conv(x, w; stride = (1, 2), pad = (2, 3), dilation = (2, 2))) == (12, 7, 16, 10)
+    @test size(conv(x, w; stride = (1, 2), pad = (2, 3), dilation = (2, 2), flipped = true)) == (12, 7, 16, 10)
 end
 
 @testset "depthwiseconv_wrapper" begin
@@ -656,4 +658,6 @@ end
     @test size(depthwiseconv(x, w)) == (9, 9, 9, 10)
     @test size(depthwiseconv(x, w; stride = (2, 2), pad = (2, 2))) == (7, 7, 9, 10)
     @test size(depthwiseconv(x, w1; stride = (1, 2), pad = (2, 3))) == (12, 7, 9, 10)
+    @test size(depthwiseconv(x, w1; stride = (1, 2), pad = (2, 3), dilation = (2, 2))) == (10, 5, 9, 10)
+    @test size(depthwiseconv(x, w1; stride = (1, 2), pad = (2, 3), dilation = (2, 2), flipped = true)) == (10, 5, 9, 10)
 end
