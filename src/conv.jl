@@ -164,18 +164,18 @@ if is_nnpack_available()
     end
 end
 
-function conv(x, w::AbstractArray{T, N}; stride = 1, pad = 0, dilation = 1) where {T, N}
+function conv(x, w::AbstractArray{T, N}; stride = 1, pad = 0, dilation = 1, flipped = false) where {T, N}
     stride = expand(Val(N-2), stride)
     pad = expand(Val(N-2), pad)
     dilation = expand(Val(N-2), dilation)
-    cdims = DenseConvDims(x, w; stride = stride, padding = pad, dilation = dilation)
+    cdims = DenseConvDims(x, w; stride = stride, padding = pad, dilation = dilation, flipkernel = flipped)
     return conv(x, w, cdims)
 end
 
-function depthwiseconv(x, w::AbstractArray{T, N}; stride = 1, pad = 0, dilation = 1) where {T, N}
+function depthwiseconv(x, w::AbstractArray{T, N}; stride = 1, pad = 0, dilation = 1, flipped = false) where {T, N}
     stride = expand(Val(N-2), stride)
     pad = expand(Val(N-2), pad)
     dilation = expand(Val(N-2), dilation)
-    cdims = DepthwiseConvDims(x, w; stride = stride, padding = pad, dilation = dilation)
+    cdims = DepthwiseConvDims(x, w; stride = stride, padding = pad, dilation = dilation, flipkernel = flipped)
     return depthwiseconv(x, w, cdims)
 end
