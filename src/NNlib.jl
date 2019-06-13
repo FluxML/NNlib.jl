@@ -1,5 +1,5 @@
 module NNlib
-using Requires, TimerOutputs
+using Requires
 
 # Include APIs
 include("dim_helpers.jl")
