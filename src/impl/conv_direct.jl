@@ -44,7 +44,7 @@ wrapper methods are available.
 """
 conv_direct!
 
-@timeit_debug to function conv_direct!(y::AbstractArray{yT,5}, x::AbstractArray{xT,5},
+function conv_direct!(y::AbstractArray{yT,5}, x::AbstractArray{xT,5},
                       w::AbstractArray{wT,5}, cdims::DenseConvDims;
                       alpha::yT = yT(1), beta = false) where {yT, xT, wT}
     check_dims(size(x), size(w), size(y), cdims)
@@ -114,7 +114,7 @@ Calculate the gradient imposed upon `x` in the convolution `y = x * w`.
 """
 ∇conv_data_direct!
 
-@timeit_debug to function ∇conv_data_direct!(dx::AbstractArray{xT,5}, dy::AbstractArray{yT,5},
+function ∇conv_data_direct!(dx::AbstractArray{xT,5}, dy::AbstractArray{yT,5},
                             w::AbstractArray{wT,5}, cdims::DenseConvDims;
                             alpha::xT=xT(1), beta=false) where {xT, yT, wT}
     w = transpose_swapbatch(w[end:-1:1, end:-1:1, end:-1:1, :, :])
@@ -133,7 +133,7 @@ Calculate the gradient imposed upon `w` in the convolution `y = x * w`.
 """
 ∇conv_filter_direct!
 
-@timeit_debug to function ∇conv_filter_direct!(dw::AbstractArray{wT,5}, x::AbstractArray{xT,5},
+function ∇conv_filter_direct!(dw::AbstractArray{wT,5}, x::AbstractArray{xT,5},
                               dy::AbstractArray{yT,5}, cdims::DenseConvDims;
                               alpha::wT=wT(1), beta=false) where {xT, yT, wT}
     x = transpose_swapbatch(x[end:-1:1, end:-1:1, end:-1:1, :, :])

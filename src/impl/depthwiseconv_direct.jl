@@ -18,7 +18,7 @@ channels in `x` is the last, not the second-to-last, as in a normal dense convol
 
 See the docstring for `conv_direct!()` for more on the optional parameters.
 """
-@timeit_debug to function depthwiseconv_direct!(
+function depthwiseconv_direct!(
                 y::AbstractArray{yT,5}, x::AbstractArray{xT,5},
                 w::AbstractArray{wT,5}, cdims::DepthwiseConvDims;
                 alpha::yT = yT(1), beta::yT = yT(0)) where {yT, xT, wT}
@@ -95,7 +95,7 @@ for each batch and channel independently.
 """
 ∇depthwiseconv_data_direct!
 
-@timeit_debug to function ∇depthwiseconv_data_direct!(
+function ∇depthwiseconv_data_direct!(
                 dx::AbstractArray{xT,5}, dy::AbstractArray{yT,5},
                 w::AbstractArray{wT,5}, cdims::DepthwiseConvDims;
                 alpha::xT=xT(1), beta::xT=xT(0)) where {xT, yT, wT}
@@ -128,7 +128,7 @@ Calculate the gradient imposed upon `w` in the depthwise convolution `y = x * w`
 """
 ∇depthwiseconv_filter_direct!
 
-@timeit_debug to function ∇depthwiseconv_filter_direct!(
+function ∇depthwiseconv_filter_direct!(
                 dw::AbstractArray{wT,5}, x::AbstractArray{xT,5},
                 dy::AbstractArray{yT,5}, cdims::DepthwiseConvDims;
                 alpha::wT=wT(1),beta::wT=wT(0)) where {xT, yT, wT}

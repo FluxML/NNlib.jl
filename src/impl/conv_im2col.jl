@@ -22,7 +22,7 @@ by setting `alpha` to a nonunitary value, various gain factors can be applied.
 Note for the particularly performance-minded, you can provide a pre-allocated `col`,
 which should eliminate any need for large allocations within this method.
 """
-@timeit_debug to function conv_im2col!(
+function conv_im2col!(
                 y::AbstractArray{T,5}, x::AbstractArray{T,5},
                 w::AbstractArray{T,5}, cdims::DenseConvDims;
                 col::AbstractArray{T,2}=similar(x, im2col_dims(cdims)),
@@ -49,12 +49,12 @@ which should eliminate any need for large allocations within this method.
     @inbounds for batch_idx in 1:size(x,5)
         # We invoke `@timeit_debug` on the outside of `im2col!()` because inference
         # doesn't like us putting it on the inside.
-        @timeit_debug to "im2col!" im2col!(col, view(x, :, :, :, :, batch_idx), cdims)
+        im2col!(col, view(x, :, :, :, :, batch_idx), cdims)
         GC.@preserve col, w, y, begin
             col_ptr = pointer(col)
             w_ptr = pointer(w)
             y_ptr = pointer(y, (batch_idx - 1)*M*N + 1)
-            @timeit_debug to "gemm!" gemm!(Val(false), Val(false), M, N, K, alpha, col_ptr, w_ptr, beta, y_ptr)
+            gemm!(Val(false), Val(false), M, N, K, alpha, col_ptr, w_ptr, beta, y_ptr)
         end
     end
     return y
@@ -66,7 +66,7 @@ end
 Conv backward pass onto the weights using im2col and GEMM; stores the result in `dw`.
 See the documentation for `conv_im2col!()` for explanation of optional parameters.
 """
-@timeit_debug to function ∇conv_filter_im2col!(
+function ∇conv_filter_im2col!(
                 dw::AbstractArray{T,5}, x::AbstractArray{T,5},
                 dy::AbstractArray{T,5}, cdims::DenseConvDims;
                 col::AbstractArray{T,2} = similar(dw, im2col_dims(cdims)),
@@ -95,14 +95,12 @@ See the documentation for `conv_im2col!()` for explanation of optional parameter
     K = prod(output_size(cdims))
     
     @inbounds for batch_idx in 1:size(x,5)
-        # We invoke `@timeit_debug` on the outside of `im2col!()` because inference
-        # doesn't like us putting it on the inside.
-        @timeit_debug to "im2col!" im2col!(col, view(x, :, :, :, :, batch_idx), cdims)
+        im2col!(col, view(x, :, :, :, :, batch_idx), cdims)
         GC.@preserve col, dw, dy, begin
             col_ptr = pointer(col)
             dy_ptr = pointer(dy,(batch_idx - 1)*K*N + 1)
             dw_ptr = pointer(dw)
-            @timeit_debug to "gemm!" gemm!(Val(true), Val(false), M, N, K, alpha, col_ptr, dy_ptr, beta, dw_ptr)
+            gemm!(Val(true), Val(false), M, N, K, alpha, col_ptr, dy_ptr, beta, dw_ptr)
         end
 
         # Because we accumulate over batches in this loop, we must set `beta` equal
@@ -118,7 +116,7 @@ end
 Conv2d backward pass onto the input using im2col and GEMM; stores the result in `dx`.
 See the documentation for `conv_im2col!()` for explanation of other parameters.
 """
-@timeit_debug to function ∇conv_data_im2col!(
+function ∇conv_data_im2col!(
                 dx::AbstractArray{T,5}, dy::AbstractArray{T,5},
                 w::AbstractArray{T,5}, cdims::DenseConvDims;
                 col::AbstractArray{T,2} = similar(dx, im2col_dims(cdims)),
@@ -149,9 +147,9 @@ See the documentation for `conv_im2col!()` for explanation of other parameters.
             dy_ptr = pointer(dy, (batch_idx - 1)*M*K + 1)
             w_ptr = pointer(w)
             col_ptr = pointer(col)
-            @timeit_debug to "gemm!" gemm!(Val(false), Val(true), M, N, K, alpha, dy_ptr, w_ptr, T(0), col_ptr)
+            gemm!(Val(false), Val(true), M, N, K, alpha, dy_ptr, w_ptr, T(0), col_ptr)
         end
-        @timeit_debug to "col2im!" col2im!(view(dx, :, :, :, :, batch_idx), col, cdims)
+        col2im!(view(dx, :, :, :, :, batch_idx), col, cdims)
     end
     return dx
 end
@@ -207,77 +205,74 @@ function im2col!(col::AbstractArray{T,2}, x::AbstractArray{T,4},
     # We begin by copying the central region of the image which requires no padding at all.
     # Eliminating the branches of the fully generalized version below gives us a nice
     # speedup on the majority of the data.
-    @timeit_debug to "im2col!() - central region" begin
-        @inbounds for c in 1:C_in
-            # Unpack "central region"
-            w_region, h_region, d_region = central_region
+    @inbounds for c in 1:C_in
+        # Unpack "central region"
+        w_region, h_region, d_region = central_region
 
-            for kd in 1:kernel_d,
-                kh in 1:kernel_h,
-                kw in 1:kernel_w,
-                d in d_region,
-                h in h_region,
-                w in w_region
+        for kd in 1:kernel_d,
+            kh in 1:kernel_h,
+            kw in 1:kernel_w,
+            d in d_region,
+            h in h_region,
+            w in w_region
+ 
+            input_kd = project(d, stride_d, pad_d_lo) + (kd - 1)*dil_d
+            input_kh = project(h, stride_h, pad_h_lo) + (kh - 1)*dil_h
+            input_kw = project(w, stride_w, pad_w_lo) + (kw - 1)*dil_w
+            kidxs = kernel_index(kw, kh, kd, cdims)
 
-                input_kd = project(d, stride_d, pad_d_lo) + (kd - 1)*dil_d
-                input_kh = project(h, stride_h, pad_h_lo) + (kh - 1)*dil_h
-                input_kw = project(w, stride_w, pad_w_lo) + (kw - 1)*dil_w
-                kidxs = kernel_index(kw, kh, kd, cdims)
-
-                xval::T = x[input_kw, input_kh, input_kd, c]
-                col_reshaped[w, h, d, kidxs..., c] = xval
-            end
+            xval::T = x[input_kw, input_kh, input_kd, c]
+            col_reshaped[w, h, d, kidxs..., c] = xval
         end
     end
     
+    
     # For each "padded region", we run the fully general version
-    @timeit_debug to "im2col!() - padded region" begin
-        @inbounds for (w_region, h_region, d_region) in padded_regions
-            for c in 1:C_in,
-                d in d_region,
-                h in h_region,
-                w in w_region,
-                kd in 1:kernel_d,
-                kh in 1:kernel_h,
-                kw in 1:kernel_w
+    @inbounds for (w_region, h_region, d_region) in padded_regions
+        for c in 1:C_in,
+            d in d_region,
+            h in h_region,
+            w in w_region,
+            kd in 1:kernel_d,
+            kh in 1:kernel_h,
+            kw in 1:kernel_w
 
-                input_kd = project(d, stride_d, pad_d_lo) + (kd - 1)*dil_d
-                input_kh = project(h, stride_h, pad_h_lo) + (kh - 1)*dil_h
-                input_kw = project(w, stride_w, pad_w_lo) + (kw - 1)*dil_w
+            input_kd = project(d, stride_d, pad_d_lo) + (kd - 1)*dil_d
+            input_kh = project(h, stride_h, pad_h_lo) + (kh - 1)*dil_h
+            input_kw = project(w, stride_w, pad_w_lo) + (kw - 1)*dil_w
 
-                kidxs = kernel_index(kw, kh, kd, cdims)
+            kidxs = kernel_index(kw, kh, kd, cdims)
 
-                # If this d is off the edge, then deal with the entire plane
-                # in one fell swoop, like a ravenous flock of crows.  CAW CAW.
-                if input_kd <= 0 || input_kd > depth
-                    for kh in 1:kernel_h,
-                        kw in 1:kernel_w
-                        col_reshaped[w, h, d, kidxs..., c] = T(0)
-                    end
-                    continue
-                end
-
-                # Same for `h`, but in this case it's only a line, not a plane.
-                # This results in slightly less caw'ing.
-                if input_kh <= 0 || input_kh > height
-                    for kw in 1:kernel_w
-                        col_reshaped[w, h, d, kidxs..., c] = T(0)
-                    end
-                    continue
-                end
-
-                # If this `w` is off the edge it and only it gets cleared out
-                if input_kw <= 0 || input_kw > width
+            # If this d is off the edge, then deal with the entire plane
+            # in one fell swoop, like a ravenous flock of crows.  CAW CAW.
+            if input_kd <= 0 || input_kd > depth
+                for kh in 1:kernel_h,
+                    kw in 1:kernel_w
                     col_reshaped[w, h, d, kidxs..., c] = T(0)
-                    continue
                 end
-
-                # Copy the data over
-                xval::T = x[input_kw, input_kh, input_kd, c]
-                col_reshaped[w, h, d, kidxs..., c] = xval
+                continue
             end
+
+            # Same for `h`, but in this case it's only a line, not a plane.
+            # This results in slightly less caw'ing.
+            if input_kh <= 0 || input_kh > height
+                for kw in 1:kernel_w
+                    col_reshaped[w, h, d, kidxs..., c] = T(0)
+                end
+                continue
+            end
+
+            # If this `w` is off the edge it and only it gets cleared out
+            if input_kw <= 0 || input_kw > width
+                col_reshaped[w, h, d, kidxs..., c] = T(0)
+                continue
+            end
+
+            # Copy the data over
+            xval::T = x[input_kw, input_kh, input_kd, c]
+            col_reshaped[w, h, d, kidxs..., c] = xval
         end
-    end
+    end    
 end
 
 
