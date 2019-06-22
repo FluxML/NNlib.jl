@@ -17,9 +17,9 @@ independent.
       0.244728
       0.665241
 """
-softmax(xs) = softmax!(similar(xs), xs)
+softmax(xs; dims=2) = softmax!(similar(xs), xs, dims)
 
-function softmax!(out::AbstractVecOrMat{T}, xs::AbstractVecOrMat{T}) where {T}
+function softmax!(out::AbstractVecOrMat{T}, xs::AbstractVecOrMat{T}, dims) where {T}
     # First, store column-wise maximum in the last element of `out`
     maxdims = ntuple(d -> (d in dims) ? (1:1) : (:), ndims(xs))
     out[maxdims...] = maximum!(out[maxdims...], xs)
