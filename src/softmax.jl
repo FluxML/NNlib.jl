@@ -20,29 +20,15 @@ independent.
 softmax(xs) = softmax!(similar(xs), xs)
 
 function softmax!(out::AbstractVecOrMat{T}, xs::AbstractVecOrMat{T}) where {T}
-    @inbounds for j = 1:size(xs, 2)
-        # First, store column-wise maximum in the last element of `out`
-        out[end, j] = xs[end, j]
-        @inbounds for i = 1:(size(xs, 1) - 1)
-            out[end, j] = max(out[end, j], xs[i, j])
-        end
+    # First, store column-wise maximum in the last element of `out`
+    maxdims = ntuple(d -> (d in dims) ? (1:1) : (:), ndims(xs))
+    out[maxdims...] = maximum!(out[maxdims...], xs)
 
-        # Subtract the column-wise maximums to normalize, take exp()
-        # out .= exp(xs .- out[end, :])
-        @inbounds for i = 1:size(out, 1)
-            out[i, j] = exp(xs[i, j] - out[end, j])
-        end
+    # Subtract the column-wise maximums to normalize, take exp()
+    out .= exp.(xs.-out[maxdims...])
 
-        # Normalize by sum of the entire thing
-        # out ./= sum(out, 1)
-        s = T(0)
-        @inbounds for i = 1:size(out, 1)
-            s += out[i, j]
-        end
-        @inbounds for i = 1:size(out, 1)
-            out[i, j] /= s
-        end
-    end
+    # Normalize by sum of the entire thing
+    out ./= sum(out, dims=dims)
     return out
 end
 
