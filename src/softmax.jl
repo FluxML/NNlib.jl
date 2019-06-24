@@ -20,7 +20,7 @@ independent.
 softmax(xs; dims=1) = softmax!(similar(xs), xs, dims)
 
 function softmax!(out::AbstractArray{T}, xs::AbstractArray{T}, dims) where {T}
-    max = maximum(xs, dims)
+    max = maximum(xs, dims=dims)
     out .= exp.(xs.-max)
     out ./= sum(out, dims=dims)
     return out
