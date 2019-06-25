@@ -17,23 +17,11 @@ independent.
       0.244728
       0.665241
 """
-softmax(xs; dims=1) = softmax!(similar(xs), xs, dims)
-
-function softmax!(out::AbstractArray{T}, xs::AbstractArray{T}, dims) where {T}
+function softmax(xs::AbstractArray{T}; dims=1) where {T}
     max = maximum(xs, dims=dims)
-    out .= exp.(xs.-max)
-    out ./= sum(out, dims=dims)
-    return out
+    out = exp.(xs .- max)
+    out = out ./ sum(out, dims=dims)
 end
-
-function ∇softmax!(out::AbstractVecOrMat, Δ::AbstractVecOrMat, xs::AbstractVecOrMat)
-    sf = softmax(xs)
-    out .= sf .* (Δ .- sum(Δ .*sf, dims = 1))
-end
-
-∇softmax(Δ, xs) = ∇softmax!(similar(Δ), Δ, xs)
-∇softmax!(Δ, xs) = ∇softmax!(Δ, Δ, xs)
-
 
 """
     logsoftmax(xs) = log.(exp.(xs) ./ sum(exp.(xs)))
