@@ -53,8 +53,10 @@ function ∇softmax!(out::AbstractVecOrMat, Δ::AbstractVecOrMat, xs::AbstractVe
     sf = softmax(xs)
     out .= sf .* (Δ .- sum(Δ .*sf, dims = 1))
 end
-
-∇softmax(Δ, xs) = ∇softmax!(similar(Δ), Δ, xs)
+function ∇softmax(Δ, xs; dims=1) 
+    sf = softmax(xs, dims=dims)
+    out = sf .* (Δ .- sum(Δ .* sf, dims=dims))
+end
 ∇softmax!(Δ, xs) = ∇softmax!(Δ, Δ, xs)
 
 
