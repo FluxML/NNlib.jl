@@ -640,8 +640,8 @@ end
     end
 
     @testset "pixel_shuffle" begin
-        x = ones(2,4,18,5)
-
-        @test size(pixel_shuffle(x,3)) == (6,12,2,5)
+        x = ones(2,2,18,5)
+        
+        @test size(pixel_shuffle(x,3)) == (6,6,2,5)
     end
 end

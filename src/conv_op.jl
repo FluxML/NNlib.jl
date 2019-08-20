@@ -16,8 +16,10 @@ Reference : https://arxiv.org/pdf/1609.05158.pdf
 function split_channels(x::AbstractArray,val::Int) # Split chaannels into `val` partitions
     indices = collect(1:size(x)[end-1])
     channels_par = partition(indices,div(size(x)[end-1],val))
+
     out = []
     for c in channels_par
+       c = [c_ for c_ in c]
        push!(out,x[:,:,c,:])
     end
     return out
@@ -26,23 +28,22 @@ end
 """
 phaseShift cyclically reshapes and permutes the channels
 """
-function phaseShift(x,scale,shape_1,shape_2)
-    x_ = reshape(x,shape_1...)
-    x_ = permutedims(x_,[1,2,4,3,5])
-    return reshape(x_,shape_2...)
+function phase_shift(x,r)
+    W,H,C,N = size(x)
+    x = reshape(x,W,H,r,r,N)
+    x = [x[i,:,:,:,:] for i in 1:W]
+    x = cat([t for t in x]...,dims=2)
+    x = [x[i,:,:,:] for i in 1:size(x)[1]]
+    x = cat([t for t in x]...,dims=2)
+    x
 end
 
-function pixel_shuffle(x,r)
+function pixel_shuffle(x,r=3)
 	ndims(x) == 4 || error("PixelShuffle defined only for arrays of dimension 4")
 	(size(x)[end-1])%(r*r) == 0 || error("Number of channels($(size(x)[end-1])) must be divisible by $(r*r)")
-    scale = r
-    W,H,C,N = size(x)
     
-    C_out = div(C,scale*scale)
-    shape_1 = (W,H,scale,scale,N)
-    shape_2 = (W*scale,H*scale,1,N)
-    
-    C_split = split_channels(x,C_out)
-    output = [phaseShift(x_c,scale,shape_1,shape_2) for x_c in C_split]
-    return cat(output...,dims=3)
+    C_out = div(size(x)[end-1],r*r)
+    sch = split_channels(x,C_out)
+    out = cat([phase_shift(c,r) for c in split_channels(x,C_out)]...,dims=3)
+    reshape(out,size(out)[1],size(out)[2],C_out,div(size(out)[end],C_out))
 end
