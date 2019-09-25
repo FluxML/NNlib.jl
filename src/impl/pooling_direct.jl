@@ -200,7 +200,7 @@ for name in (:max, :mean)
                 w in w_region
 
                 # Grab the incoming gradient at this index for future use
-                y_idx = dy[w, h, d, c, batch_idx]
+                y_idx = y[w, h, d, c, batch_idx]
                 dy_idx = dy[w, h, d, c, batch_idx]
                 maxpool_already_chose = false
 

@@ -303,3 +303,14 @@ x = rand(10, 10, 3, 10)
 @test size(maxpool(x, (2, 2); pad = (2, 2), stride = (2, 2))) == (7, 7, 3, 10)
 @test size(meanpool(x, (2, 2))) == (5, 5, 3, 10)
 @test size(meanpool(x, (2, 2); pad = (2, 2), stride = (2, 2))) == (7, 7, 3, 10)
+
+# Add another test for 2d maxpool that uses an odd-length size:
+@testset "Issue #133" begin
+    x = reshape([(1.:9.)...], 3, 3, 1, 1)
+    pdims = PoolDims(size(x), (2,2), padding = (1,1), stride = (2,2))
+    y = maxpool(x, pdims)
+
+    dy = y .* 0 .+ 1
+    dx = ∇maxpool(dy, y, x, pdims)
+    @test dx[:,:,1,1] == [1.0 0.0 1.0; 0.0 0.0 0.0; 1.0 0.0 1.0]
+end
