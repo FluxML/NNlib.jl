@@ -8,19 +8,21 @@ export softmax, softmax!, ∇softmax, ∇softmax!,
 log-probabilities (any real vector) and returns a probability distribution that
 sums to 1.
 
-If given a matrix it will treat it as a batch of vectors, with each column
-independent.
+If given a matrix it will by default (`dims=1`) treat it as a batch of vectors,
+with each column independent. Keyword `dims=2` will instead treat rows independently, etc.
 
-    julia> softmax([1,2,3.])
-    3-element Array{Float64,1}:
-      0.0900306
-      0.244728
-      0.665241
+```
+julia> softmax([1,2,3.])
+3-element Array{Float64,1}:
+  0.0900306
+  0.244728
+  0.665241
+```
 """
-function softmax(xs::AbstractArray{T}; dims=1) where {T}
-    temp = maximum(xs, dims=dims)
-    out = exp.(xs .- temp)
-    out .= out ./ sum!(temp, out)
+function softmax(xs::AbstractArray; dims=1)
+    max_ = maximum(xs, dims=dims)
+    out = exp.(xs .- max_)
+    out .= out ./ sum!(max_, out)
 end
 
 function softmax!(out::AbstractVecOrMat{T}, xs::AbstractVecOrMat{T}) where {T}
@@ -64,8 +66,8 @@ end
 """
     logsoftmax(xs) = log.(exp.(xs) ./ sum(exp.(xs)))
 
-`logsoftmax(xs)` computes the log of `softmax(xs)`, but in a more numerically stable
-way than directly taking the log of the softmax function, which is commonly used in
+Computes the log of softmax in a more numerically stable
+way than directly taking `log.(softmax(xs))`. Commonly used in
 computing cross entropy loss.
 """
 function logsoftmax(xs::AbstractArray; dims=1)
@@ -93,5 +95,6 @@ function logsoftmax!(out::AbstractVecOrMat, xs::AbstractVecOrMat)
     end
     return out
 end
+
 ∇logsoftmax(Δ, xs; dims=1) = Δ .- sum(Δ, dims=dims) .* softmax(xs)
 ∇logsoftmax!(Δ, xs) = ∇softmax!(Δ, Δ, xs)
