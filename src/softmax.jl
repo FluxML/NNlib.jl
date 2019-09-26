@@ -68,7 +68,7 @@ end
 way than directly taking the log of the softmax function, which is commonly used in
 computing cross entropy loss.
 """
-function logsoftmax(xs::AbstractArray{T}; dims=1) where {T}
+function logsoftmax(xs::AbstractArray; dims=1)
     max_ = maximum(xs, dims=dims)
     out = exp.(xs .- max_)
     log_ = log.(sum(out, dims=dims))
