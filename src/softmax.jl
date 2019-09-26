@@ -18,8 +18,9 @@ independent.
       0.665241
 """
 function softmax(xs::AbstractArray{T}; dims=1) where {T}
-    max = maximum(xs, dims=dims)
-    out = exp.(xs .- max) ./ sum(exp.(xs .- max), dims=dims)
+    temp = maximum(xs, dims=dims)
+    out = exp.(xs .- temp)
+    out .= out ./ sum!(temp, out)
 end
 
 function softmax!(out::AbstractVecOrMat{T}, xs::AbstractVecOrMat{T}) where {T}
@@ -51,9 +52,9 @@ end
 
 function ∇softmax!(out::AbstractVecOrMat, Δ::AbstractVecOrMat, xs::AbstractVecOrMat)
     sf = softmax(xs)
-    out .= sf .* (Δ .- sum(Δ .*sf, dims = 1))
+    out .= sf .* (Δ .- sum(Δ .* sf, dims = 1))
 end
-function ∇softmax(Δ, xs; dims=1) 
+function ∇softmax(Δ, xs; dims=1)
     sf = softmax(xs, dims=dims)
     out = sf .* (Δ .- sum(Δ .* sf, dims=dims))
 end
@@ -67,7 +68,13 @@ end
 way than directly taking the log of the softmax function, which is commonly used in
 computing cross entropy loss.
 """
-logsoftmax(xs) = logsoftmax!(similar(xs), xs)
+function logsoftmax(xs::AbstractArray{T}; dims=1) where {T}
+    max_ = maximum(xs, dims=dims)
+    out = exp.(xs .- max_)
+    log_ = log.(sum(out, dims=dims))
+    out .= (xs .- max_) .- log_
+end
+
 function logsoftmax!(out::AbstractVecOrMat, xs::AbstractVecOrMat)
     for j = 1:size(xs, 2)
         @inbounds begin
@@ -86,5 +93,5 @@ function logsoftmax!(out::AbstractVecOrMat, xs::AbstractVecOrMat)
     end
     return out
 end
-∇logsoftmax(Δ, xs) = Δ - sum(Δ, dims=1) .* softmax(xs)
+∇logsoftmax(Δ, xs; dims=1) = Δ .- sum(Δ, dims=dims) .* softmax(xs)
 ∇logsoftmax!(Δ, xs) = ∇softmax!(Δ, Δ, xs)
