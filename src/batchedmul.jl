@@ -1,5 +1,7 @@
 # batch-wise matrix multiplication
 # wrapper for batched_gemm!
+export batched_mul, batched_transpose, batched_adjoint
+
 
 include("./batchedadjtrans.jl")
 
