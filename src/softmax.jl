@@ -21,8 +21,8 @@ julia> softmax([1,2,3.])
 """
 function softmax(xs::AbstractArray; dims=1)
     max_ = maximum(xs, dims=dims)
-    out = exp.(xs .- max_)
-    out .= out ./ sum!(max_, out)
+    exp_ = exp.(xs .- max_)
+    exp_ ./ sum(exp_, dims=dims)
 end
 
 function softmax!(out::AbstractVecOrMat{T}, xs::AbstractVecOrMat{T}) where {T}
@@ -58,7 +58,7 @@ function ∇softmax!(out::AbstractVecOrMat, Δ::AbstractVecOrMat, xs::AbstractVe
 end
 function ∇softmax(Δ, xs; dims=1)
     sf = softmax(xs, dims=dims)
-    out = sf .* (Δ .- sum(Δ .* sf, dims=dims))
+    sf .* (Δ .- sum(Δ .* sf, dims=dims))
 end
 ∇softmax!(Δ, xs) = ∇softmax!(Δ, Δ, xs)
 
@@ -72,9 +72,9 @@ computing cross entropy loss.
 """
 function logsoftmax(xs::AbstractArray; dims=1)
     max_ = maximum(xs, dims=dims)
-    out = exp.(xs .- max_)
-    log_ = log.(sum(out, dims=dims))
-    out .= (xs .- max_) .- log_
+    exp_ = exp.(xs .- max_)
+    log_ = log.(sum(exp_, dims=dims))
+    (xs .- max_) .- log_
 end
 
 function logsoftmax!(out::AbstractVecOrMat, xs::AbstractVecOrMat)
