@@ -82,7 +82,7 @@ end
 """
     swish(x) = x * σ(x)
 
-Self-gated actvation function.
+Self-gated activation function.
 See [Swish: a Self-Gated Activation Function](https://arxiv.org/pdf/1710.05941.pdf).
 """
 swish(x::Real) = x * σ(x)
