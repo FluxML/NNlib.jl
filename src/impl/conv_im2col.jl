@@ -46,7 +46,7 @@ function conv_im2col!(
     N = channels_out(cdims)
     K = prod(kernel_size(cdims))*channels_in(cdims)
     
-    @inbounds for batch_idx in 1:size(x,5)
+    @threads for batch_idx in 1:size(x,5)
         # We invoke `@timeit_debug` on the outside of `im2col!()` because inference
         # doesn't like us putting it on the inside.
         im2col!(col, view(x, :, :, :, :, batch_idx), cdims)
@@ -94,7 +94,7 @@ function ∇conv_filter_im2col!(
     N = channels_out(cdims)
     K = prod(output_size(cdims))
     
-    @inbounds for batch_idx in 1:size(x,5)
+    @threads for batch_idx in 1:size(x,5)
         im2col!(col, view(x, :, :, :, :, batch_idx), cdims)
         GC.@preserve col, dw, dy, begin
             col_ptr = pointer(col)
@@ -142,7 +142,7 @@ function ∇conv_data_im2col!(
     N = prod(kernel_size(cdims))*channels_in(cdims)
     K = channels_out(cdims)
 
-    @inbounds for batch_idx in 1:size(dx, 5)
+    @threads for batch_idx in 1:size(dx, 5)
         GC.@preserve col, w, dy, begin
             dy_ptr = pointer(dy, (batch_idx - 1)*M*K + 1)
             w_ptr = pointer(w)

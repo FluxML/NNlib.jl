@@ -300,9 +300,9 @@ end
 
 x = rand(10, 10, 3, 10)
 @test size(maxpool(x, (2, 2))) == (5, 5, 3, 10)
-@test size(maxpool(x, (2, 2); pad = (2, 2), stride = (2, 2))) == (7, 7, 3, 10)
+@test size(maxpool(x, (2, 2); pad = (1, 1), stride = (2, 2))) == (6, 6, 3, 10)
 @test size(meanpool(x, (2, 2))) == (5, 5, 3, 10)
-@test size(meanpool(x, (2, 2); pad = (2, 2), stride = (2, 2))) == (7, 7, 3, 10)
+@test size(meanpool(x, (2, 2); pad = (1, 1), stride = (2, 2))) == (6, 6, 3, 10)
 
 # Add another test for 2d maxpool that uses an odd-length size:
 @testset "Issue #133" begin
