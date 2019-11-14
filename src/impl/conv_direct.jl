@@ -45,68 +45,6 @@ wrapper methods are available.
 """
 conv_direct!
 
-function conv_direct_old!(y::AbstractArray{yT,5}, x::AbstractArray{xT,5},
-                      w::AbstractArray{wT,5}, cdims::DenseConvDims;
-                      alpha::yT = yT(1), beta = false) where {yT, xT, wT}
-    check_dims(size(x), size(w), size(y), cdims)
-
-    width, height, depth = input_size(cdims)
-    kernel_w, kernel_h, kernel_d = kernel_size(cdims)
-    out_c = channels_out(cdims)
-    pad_w_lo, pad_w_hi, pad_h_lo, pad_h_hi, pad_d_lo, pad_d_hi = padding(cdims)
-    dil_w, dil_h, dil_d = dilation(cdims)
-    stride_w, stride_h, stride_d = stride(cdims)
-    out_width, out_height, out_depth = output_size(cdims)
-    
-    # If we're doing crosscorr instead of conv, then don't bother to flip `w`
-    if !flipkernel(cdims)
-        w = w[end:-1:1, end:-1:1, end:-1:1, :, :]
-    end
-
-    # A helper function to project from output (w, h) to input (input_w, input_h)
-    @inline project(idx, stride, pad) = (idx - 1)*stride - pad + 1
-    
-    # explicit formulation of convolution.  Oh hoisting gods, hear my plea.
-    @inbounds for batch in 1:size(x)[end],
-        c_out in 1:out_c,
-        d_idx in 1:out_depth,
-        h_idx in 1:out_height,
-        w_idx in 1:out_width
-
-        # Starting points of the window of x we're going to grab
-        x_w = project(w_idx, stride_w, pad_w_lo)
-        x_h = project(h_idx, stride_h, pad_h_lo)
-        x_d = project(d_idx, stride_d, pad_d_lo)
-        
-        # Grow that starting point into ranges
-        x_widxs = x_w .+ (0:dil_w:(dil_w*kernel_w-1))
-        x_hidxs = x_h .+ (0:dil_h:(dil_h*kernel_h-1))
-        x_didxs = x_d .+ (0:dil_d:(dil_d*kernel_d-1))
-        w_widxs = 1:kernel_w
-        w_hidxs = 1:kernel_h
-        w_didxs = 1:kernel_d
-        
-        # Clamp the ranges to simulate padding
-        x_widxs, w_widxs = clamp_lo(x_widxs, w_widxs)
-        x_widxs, w_widxs = clamp_hi(x_widxs, w_widxs, width)
-        x_hidxs, w_hidxs = clamp_lo(x_hidxs, w_hidxs)
-        x_hidxs, w_hidxs = clamp_hi(x_hidxs, w_hidxs, height)
-        x_didxs, w_didxs = clamp_lo(x_didxs, w_didxs)
-        x_didxs, w_didxs = clamp_hi(x_didxs, w_didxs, depth)
-
-        # Grab our slices
-        x_slice = view(x, x_widxs, x_hidxs, x_didxs, :, batch)
-        w_slice = view(w, w_widxs, w_hidxs, w_didxs, :, c_out)
-        
-        # Do the dotproduct dance, then weight by alpha/beta and git 'er done
-        dotprod = sum(x_slice .* w_slice)
-        y[w_idx, h_idx, d_idx, c_out, batch] = alpha*convert(yT, dotprod) +
-                                               beta*y[w_idx, h_idx, d_idx, c_out, batch]
-    end
-
-    return y
-end
-
 function conv_direct!(y::AbstractArray{yT,5}, x::AbstractArray{xT,5},
                       w::AbstractArray{wT,5}, cdims::DenseConvDims;
                       alpha::yT = yT(1), beta = false) where {yT, xT, wT}
