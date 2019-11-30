@@ -1,4 +1,5 @@
 ## This file contains direct Julia implementations of 2d and 3d convolutions
+using Base.Threads
 
 # Helper functions for restricting x/w overreach
 function clamp_lo(x, w)
@@ -57,50 +58,87 @@ function conv_direct!(y::AbstractArray{yT,5}, x::AbstractArray{xT,5},
     stride_w, stride_h, stride_d = stride(cdims)
     out_width, out_height, out_depth = output_size(cdims)
     
-    # If we're doing crosscorr instead of conv, then don't bother to flip `w`
-    if !flipkernel(cdims)
-        w = w[end:-1:1, end:-1:1, end:-1:1, :, :]
+    # Create a method that, at compile-time, determines how we're going to index into `w`
+    kproj(k, M, cdims::ConvDims{N,S,P,D,true}) where {N, S, P, D} = k
+    kproj(k, M, cdims::ConvDims{N,S,P,D,false}) where {N, S, P, D} = M - k + 1
+    
+    # A helper function to project from output (w, h) to input (input_w, input_h)
+    project(idx, stride, pad) = (idx - 1)*stride - pad + 1
+    
+    # Use `calc_padding_regions` to determine where we do or don't need to worry about padding
+    padded_regions, central_region = calc_padding_regions(cdims)
+
+    # Start with the central region
+    w_region, h_region, d_region = central_region
+    @inbounds for batch in 1:size(x, 5),
+        c_out in 1:out_c,
+        d_idx in d_region,
+        h_idx in h_region,
+        w_idx in w_region
+
+        # Since we're in the central region, we don't need to worry about clamping
+        dotprod = yT(0)
+        for c_in in 1:channels_in(cdims),
+            kd in 1:kernel_d,
+            kh in 1:kernel_h,
+            kw in 1:kernel_w
+
+            # Hoist me, you coward.
+            x_d = project(d_idx, stride_d, pad_d_lo) + (kd - 1)*dil_d
+            x_h = project(h_idx, stride_h, pad_h_lo) + (kh - 1)*dil_h
+            x_w = project(w_idx, stride_w, pad_w_lo) + (kw - 1)*dil_w
+
+            x_val = x[x_w, x_h, x_d, c_in, batch]
+            w_val = w[kproj(kw, kernel_w, cdims),
+                    kproj(kh, kernel_h, cdims),
+                    kproj(kd, kernel_d, cdims),
+                    c_in, c_out]
+            dotprod = muladd(x_val, w_val, dotprod)
+        end
+        y[w_idx, h_idx, d_idx, c_out, batch] = alpha*dotprod + beta*y[w_idx, h_idx, d_idx, c_out, batch]
     end
 
-    # A helper function to project from output (w, h) to input (input_w, input_h)
-    @inline project(idx, stride, pad) = (idx - 1)*stride - pad + 1
-    
-    # explicit formulation of convolution.  Oh hoisting gods, hear my plea.
-    @inbounds for batch in 1:size(x)[end],
+    # Next, do potentially-padded regions:
+    @inbounds for (w_region, h_region, d_region) in padded_regions,
+        batch in 1:size(x, 5),
         c_out in 1:out_c,
-        d_idx in 1:out_depth,
-        h_idx in 1:out_height,
-        w_idx in 1:out_width
+        d_idx in d_region,
+        h_idx in h_region,
+        w_idx in w_region
 
-        # Starting points of the window of x we're going to grab
-        x_w = project(w_idx, stride_w, pad_w_lo)
-        x_h = project(h_idx, stride_h, pad_h_lo)
-        x_d = project(d_idx, stride_d, pad_d_lo)
-        
-        # Grow that starting point into ranges
-        x_widxs = x_w .+ (0:dil_w:(dil_w*kernel_w-1))
-        x_hidxs = x_h .+ (0:dil_h:(dil_h*kernel_h-1))
-        x_didxs = x_d .+ (0:dil_d:(dil_d*kernel_d-1))
-        w_widxs = 1:kernel_w
-        w_hidxs = 1:kernel_h
-        w_didxs = 1:kernel_d
-        
-        # Clamp the ranges to simulate padding
-        x_widxs, w_widxs = clamp_lo(x_widxs, w_widxs)
-        x_widxs, w_widxs = clamp_hi(x_widxs, w_widxs, width)
-        x_hidxs, w_hidxs = clamp_lo(x_hidxs, w_hidxs)
-        x_hidxs, w_hidxs = clamp_hi(x_hidxs, w_hidxs, height)
-        x_didxs, w_didxs = clamp_lo(x_didxs, w_didxs)
-        x_didxs, w_didxs = clamp_hi(x_didxs, w_didxs, depth)
+        # Probe for out-of-bounds accesses on `x` and `continue` if we hit one
+        dotprod = yT(0)
+        for c_in in 1:channels_in(cdims),
+            kd in 1:kernel_d
 
-        # Grab our slices
-        x_slice = view(x, x_widxs, x_hidxs, x_didxs, :, batch)
-        w_slice = view(w, w_widxs, w_hidxs, w_didxs, :, c_out)
-        
-        # Do the dotproduct dance, then weight by alpha/beta and git 'er done
-        dotprod = sum(x_slice .* w_slice)
-        y[w_idx, h_idx, d_idx, c_out, batch] = alpha*convert(yT, dotprod) +
-                                               beta*y[w_idx, h_idx, d_idx, c_out, batch]
+            x_d = project(d_idx, stride_d, pad_d_lo) + (kd - 1)*dil_d
+            if x_d <= 0 || x_d > depth
+                continue
+            end
+
+            for kh in 1:kernel_h
+                x_h = project(h_idx, stride_h, pad_h_lo) + (kh - 1)*dil_h
+                if x_h <= 0 || x_h > height
+                    continue
+                end
+
+                for kw in 1:kernel_w
+                    x_w = project(w_idx, stride_w, pad_w_lo) + (kw - 1)*dil_w
+                    if x_w <= 0 || x_w > width
+                        continue
+                    end
+
+                    x_val = x[x_w, x_h, x_d, c_in, batch]
+                    w_val = w[kproj(kw, kernel_w, cdims),
+                            kproj(kh, kernel_h, cdims),
+                            kproj(kd, kernel_d, cdims),
+                            c_in, c_out]
+                    dotprod = muladd(x_val, w_val, dotprod)
+                end
+            end
+        end
+
+        y[w_idx, h_idx, d_idx, c_out, batch] = alpha*dotprod + beta*y[w_idx, h_idx, d_idx, c_out, batch]
     end
 
     return y

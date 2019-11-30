@@ -62,11 +62,15 @@ spatial dimension at the end of the spatial dimensions.  This does so for a Conv
     )
 end
 
-@inline function insert_singleton_spatial_dimension(x::AbstractArray)
-    return reshape(x, size(x)[1:end-2]..., 1, size(x)[end-1:end]...)
+# We specialize common cases
+@inline function insert_singleton_spatial_dimension(x::AbstractArray{T,3}) where {T}
+    return reshape(x, size(x,1), 1, size(x,2), size(x,3))
+end
+@inline function insert_singleton_spatial_dimension(x::AbstractArray{T,4}) where {T}
+    return reshape(x, size(x,1), size(x,2), 1, size(x,3), size(x,4))
 end
 
-# Helper to do this multiple times
+# Helper to do this as many times as needed
 @inline function insert_singleton_spatial_dimension(x, reps::Int)
     for r in 1:reps
         x = insert_singleton_spatial_dimension(x)

@@ -26,10 +26,10 @@ function calc_padding_regions(dims)
     # spillage is slightly more complicated; we first figure out how many elements of
     # high padding are wasted (e.g. through strides not fitting to the end perfectly)
     # subtract that from the high padding, then do the same:
-    calc_lo_spill(O, S, P) = min(ceil(Int, P/S), O)
+    calc_lo_spill(O, S, P) = max(min(ceil(Int, P/S), O),0)
     @inline function calc_hi_spill(O, S, Pl, Ph, K, D, I)
         wasted_Ph = (I + Pl + Ph - (K - 1)*D - 1)%S
-        return min(ceil(Int, (Ph - wasted_Ph)/S), O)
+        return max(min(ceil(Int, (Ph - wasted_Ph)/S), O), 0)
     end
 
     spill_w_lo = calc_lo_spill(out_width, stride_w, pad_w_lo)
