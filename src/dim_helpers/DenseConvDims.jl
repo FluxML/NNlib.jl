@@ -5,30 +5,31 @@ export DenseConvDims
 
 Concrete subclass of `ConvDims` for a normal, dense, conv2d/conv3d.
 """
-struct DenseConvDims{N,K,C_in,C_out,S,P,D,F} <: ConvDims{N,S,P,D,F}
+struct DenseConvDims{N,K,C_in,C_out,S,P,D,F,G} <: ConvDims{N,S,P,D,F}
     I::NTuple{N,Int}
 end
 
 # Getters for the fields
 input_size(c::DenseConvDims) = c.I
-kernel_size(c::DenseConvDims{N,K,C_in,C_out,S,P,D,F}) where {N,K,C_in,C_out,S,P,D,F} = K
-channels_in(c::DenseConvDims{N,K,C_in,C_out,S,P,D,F}) where {N,K,C_in,C_out,S,P,D,F} = C_in
-channels_out(c::DenseConvDims{N,K,C_in,C_out,S,P,D,F}) where {N,K,C_in,C_out,S,P,D,F} = C_out
+kernel_size(c::DenseConvDims{N,K,C_in,C_out,S,P,D,F,G}) where {N,K,C_in,C_out,S,P,D,F,G} = K
+channels_in(c::DenseConvDims{N,K,C_in,C_out,S,P,D,F,G}) where {N,K,C_in,C_out,S,P,D,F,G} = C_in
+channels_out(c::DenseConvDims{N,K,C_in,C_out,S,P,D,F,G}) where {N,K,C_in,C_out,S,P,D,F,G} = C_out
+group_count(c::DenseConvDims{N,K,C_in,C_out,S,P,D,F,G}) where {N,K,C_in,C_out,S,P,D,F,G} = G
 
 # Convenience wrapper to create DenseConvDims objects
 function DenseConvDims(x_size::NTuple{M}, w_size::NTuple{M};
-                       stride=1, padding=0, dilation=1, flipkernel::Bool=false) where M
+                       stride=1, padding=0, dilation=1, flipkernel::Bool=false, groupcount=1) where M
     # Do common parameter validation
     stride, padding, dilation = check_spdf(x_size, w_size, stride, padding, dilation)
 
     # Ensure channels are equal
-    if x_size[end-1] != w_size[end-1]
+    if x_size[end-1] != w_size[end-1]*groupcount
         xs = x_size[end-1]
-        ws = w_size[end-1]
+        ws = w_size[end-1]*groupcount
         throw(DimensionMismatch("Input channels must match! ($xs vs. $ws)"))
     end
-    
-    # The type parameters are what 
+
+    # The type parameters are what
     return DenseConvDims{
         M - 2,
         w_size[1:end-2],
@@ -37,7 +38,8 @@ function DenseConvDims(x_size::NTuple{M}, w_size::NTuple{M};
         stride,
         padding,
         dilation,
-        flipkernel
+        flipkernel,
+        groupcount
     }(
         # Input spatial size
         x_size[1:end-2],
@@ -56,15 +58,15 @@ end
 # from the original progenitor object that it inherits shapes from.
 function DenseConvDims(c::ConvDims; N=spatial_dims(c), I=input_size(c), K=kernel_size(c),
                        C_in=channels_in(c), C_out=channels_out(c), S=stride(c),
-                       P=padding(c), D=dilation(c), F=flipkernel(c))
-    return DenseConvDims{N, K, C_in, C_out, S, P, D, F}(I)
+                       P=padding(c), D=dilation(c), F=flipkernel(c), G=group_count(c))
+    return DenseConvDims{N, K, C_in, C_out, S, P, D, F, G}(I)
 end
 
 function check_dims(x::NTuple{M}, w::NTuple{M}, y::NTuple{M}, cdims::DenseConvDims) where {M}
     # First, check that channel counts are all correct:
     @assert x[M-1] == channels_in(cdims) DimensionMismatch("Data input channel count ($(x[M-1]) vs. $(channels_in(cdims)))")
     @assert y[M-1] == channels_out(cdims) DimensionMismatch("Data output channel count ($(y[M-1]) vs. $(channels_out(cdims)))")
-    @assert w[M-1] == channels_in(cdims) DimensionMismatch("Kernel input channel count ($(w[M-1]) vs. $(channels_in(cdims)))")
+    @assert w[M-1] == channels_in(cdims)/group_count(cdims) DimensionMismatch("Kernel input channel count ($(w[M-1]) vs. $(channels_in(cdims)/group_count(cdims)))")
     @assert w[M] == channels_out(cdims) DimensionMismatch("Kernel output channel count ($(w[M]) vs. $(channels_out(cdims)))")
     
     # Next, check that the spatial dimensions match up

@@ -16,9 +16,7 @@ abstract type ConvDims{N, S, P, D, F} end
 
 # Hack to get rid of type parameters
 function basetype(::Type{C}) where {C <: ConvDims}
-    if C <: DepthwiseConvDims
-        return DepthwiseConvDims
-    elseif C <: DenseConvDims
+    if C <: DenseConvDims
         return DenseConvDims
     elseif C <: PoolDims
         return PoolDims

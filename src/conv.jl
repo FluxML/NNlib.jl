@@ -1,6 +1,4 @@
-export conv, conv!, ∇conv_data, ∇conv_data!, ∇conv_filter, ∇conv_filter!, depthwiseconv,
-        depthwiseconv!, ∇depthwiseconv_data, ∇depthwiseconv_data!, ∇depthwiseconv_filter,
-        ∇depthwiseconv_filter!
+export conv, conv!, ∇conv_data, ∇conv_data!, ∇conv_filter, ∇conv_filter!
 
 ## Convolution API
 #
@@ -36,9 +34,6 @@ for (front_name, backend) in (
         :conv                   => :im2col,
         :∇conv_data             => :im2col,
         :∇conv_filter           => :im2col,
-        :depthwiseconv          => :im2col,
-        :∇depthwiseconv_data    => :im2col,
-        :∇depthwiseconv_filter  => :im2col,
     )
 
     # These are the GEMM types we will accelerate with `im2col`
@@ -58,8 +53,7 @@ end
 # Our strategy for 1d and 2d convolution is to reshape to 3d convolutions, which
 # makes things MUCH EASIER for us on the backend side, and is in general pretty fast,
 # since we can specialize on sizes.
-for front_name in (:conv, :∇conv_data, :∇conv_filter,
-                   :depthwiseconv, :∇depthwiseconv_data, :∇depthwiseconv_filter)
+for front_name in (:conv, :∇conv_data, :∇conv_filter)
     for backend in (Symbol(), :_direct, :_im2col)
         for N in (3, 4)
             @eval begin
@@ -87,8 +81,7 @@ end
 # We always support a fallback, non-accelerated path, where we use the direct, but
 # slow, implementations.  These should not typically be used, hence the `@debug`,
 # but let's ggo ahead and define them first:
-for front_name in (:conv, :∇conv_data, :∇conv_filter,
-                   :depthwiseconv, :∇depthwiseconv_data, :∇depthwiseconv_filter)
+for front_name in (:conv, :∇conv_data, :∇conv_filter)
     @eval begin
         function $(Symbol("$(front_name)!"))(
                         y::AbstractArray{yT,N}, in1::AbstractArray{T1,N},
@@ -106,7 +99,7 @@ end
 # allocation.  :P
 for backend in (Symbol(), :_direct, :_im2col)
     # First make auto-allocating versions of the conv()-like calls:
-    for name in (:conv, :depthwiseconv)
+    for name in (:conv,)
         @eval begin
             function $(Symbol("$(name)$(backend)"))(
                             x::AbstractArray{xT,N}, w::AbstractArray{wT,N},
@@ -118,7 +111,7 @@ for backend in (Symbol(), :_direct, :_im2col)
         end
     end
 
-    for name in (:∇conv_data, :∇depthwiseconv_data)
+    for name in (:∇conv_data,)
         @eval begin
             function $(Symbol("$(name)$(backend)"))(
                             dy::AbstractArray{yT,N}, w::AbstractArray{wT,N},
@@ -130,26 +123,15 @@ for backend in (Symbol(), :_direct, :_im2col)
         end
     end
 
-    # We do the conv/depthwiseconv filter backprops separately, as the shape calculation
-    # for `w` is slightly different for depthwise than for normal dense convolution.
+    # This filter back prop covers dense/depthwise/groupwise conv filter backprops, as groupcount alone 
+    # is a deciding factor from cudnn's perspective. For backends im2col and direct needs to be handled.
     @eval begin
         function $(Symbol("∇conv_filter$(backend)"))(
                         x::AbstractArray{xT,N}, dy::AbstractArray{yT,N},
                         cdims::ConvDims; kwargs...) where {xT, yT, N}
-            dw = similar(dy, kernel_size(cdims)..., channels_in(cdims),
+            dw = similar(dy, kernel_size(cdims)..., div(channels_in(cdims),group_count(cdims)),
                                                     channels_out(cdims))
             return $(Symbol("∇conv_filter$(backend)!"))(dw, x, dy, cdims; kwargs...)
-        end
-    end
-
-    @eval begin
-        function $(Symbol("∇depthwiseconv_filter$(backend)"))(
-                        x::AbstractArray{xT,N}, dy::AbstractArray{yT,N},
-                        cdims::ConvDims; kwargs...) where {xT, yT, N}
-            dw = similar(dy, kernel_size(cdims)..., channel_multiplier(cdims),
-                                                    channels_in(cdims))
-            return $(Symbol("∇depthwiseconv_filter$(backend)!"))(dw, x, dy, cdims;
-                                                                 kwargs...)
         end
     end
 end
@@ -172,10 +154,10 @@ function conv(x, w::AbstractArray{T, N}; stride = 1, pad = 0, dilation = 1, flip
     return conv(x, w, cdims)
 end
 
-function depthwiseconv(x, w::AbstractArray{T, N}; stride = 1, pad = 0, dilation = 1, flipped = false) where {T, N}
+function depthwiseconv(x, w::AbstractArray{T, N}; stride = 1, pad = 0, dilation = 1, flipped = false, groupcount) where {T, N}
     stride = expand(Val(N-2), stride)
     pad = expand(Val(N-2), pad)
     dilation = expand(Val(N-2), dilation)
-    cdims = DepthwiseConvDims(x, w; stride = stride, padding = pad, dilation = dilation, flipkernel = flipped)
+    cdims = DenseConvDims(x, w; stride = stride, padding = pad, dilation = dilation, flipkernel = flipped, groupcount=groupcount)
     return depthwiseconv(x, w, cdims)
 end
