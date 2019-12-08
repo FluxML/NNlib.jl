@@ -46,7 +46,7 @@ wrapper methods are available.
 conv_direct!
 
 function conv_direct!(y::AbstractArray{yT,5}, x::AbstractArray{xT,5},
-                      w::AbstractArray{wT,5}, cdims::DenseConvDims;
+                      w::AbstractArray{wT,5}, cdims::ConvDims;
                       alpha::yT = yT(1), beta = false) where {yT, xT, wT}
     check_dims(size(x), size(w), size(y), cdims)
 
@@ -57,14 +57,14 @@ function conv_direct!(y::AbstractArray{yT,5}, x::AbstractArray{xT,5},
     dil_w, dil_h, dil_d = dilation(cdims)
     stride_w, stride_h, stride_d = stride(cdims)
     out_width, out_height, out_depth = output_size(cdims)
-    
+
     # Create a method that, at compile-time, determines how we're going to index into `w`
     kproj(k, M, cdims::ConvDims{N,S,P,D,true}) where {N, S, P, D} = k
     kproj(k, M, cdims::ConvDims{N,S,P,D,false}) where {N, S, P, D} = M - k + 1
-    
+
     # A helper function to project from output (w, h) to input (input_w, input_h)
     project(idx, stride, pad) = (idx - 1)*stride - pad + 1
-    
+
     # Use `calc_padding_regions` to determine where we do or don't need to worry about padding
     padded_regions, central_region = calc_padding_regions(cdims)
 
@@ -153,11 +153,11 @@ Calculate the gradient imposed upon `x` in the convolution `y = x * w`.
 ∇conv_data_direct!
 
 function ∇conv_data_direct!(dx::AbstractArray{xT,5}, dy::AbstractArray{yT,5},
-                            w::AbstractArray{wT,5}, cdims::DenseConvDims;
+                            w::AbstractArray{wT,5}, cdims::ConvDims;
                             alpha::xT=xT(1), beta=false) where {xT, yT, wT}
     w = transpose_swapbatch(w[end:-1:1, end:-1:1, end:-1:1, :, :])
     dy = predilate(dy, stride(cdims))
-    ctdims = DenseConvDims(dy, w; padding=transpose_pad(cdims),
+    ctdims = ConvDims(dy, w; padding=transpose_pad(cdims),
                                   dilation=dilation(cdims),
                                   flipkernel=flipkernel(cdims))
     dx = conv_direct!(dx, dy, w, ctdims; alpha=alpha, beta=beta)
@@ -172,11 +172,11 @@ Calculate the gradient imposed upon `w` in the convolution `y = x * w`.
 ∇conv_filter_direct!
 
 function ∇conv_filter_direct!(dw::AbstractArray{wT,5}, x::AbstractArray{xT,5},
-                              dy::AbstractArray{yT,5}, cdims::DenseConvDims;
+                              dy::AbstractArray{yT,5}, cdims::ConvDims;
                               alpha::wT=wT(1), beta=false) where {xT, yT, wT}
     x = transpose_swapbatch(x[end:-1:1, end:-1:1, end:-1:1, :, :])
     dy = transpose_swapbatch(predilate(dy, stride(cdims)))
-    ctdims = DenseConvDims(dy, x; padding=transpose_pad(cdims),
+    ctdims = ConvDims(dy, x; padding=transpose_pad(cdims),
                                     stride=dilation(cdims))
     conv_direct!(dw, dy, x, ctdims; alpha=alpha, beta=beta)
     if flipkernel(cdims)

@@ -3,13 +3,13 @@ using NNlib: input_size, kernel_size, channels_in, channels_out, channel_multipl
              stride, padding, dilation, flipkernel, output_size
 
 @testset "ConvDims" begin
-    for T in (DenseConvDims, DepthwiseConvDims)
+    for T in (ConvDims)
         @testset "$(T)" begin
             x = randn(5,4,3,2)
 
-            if T == DenseConvDims
+            if T == ConvDims
                 w = randn(1,2,3,4)
-            elseif T == DepthwiseConvDims
+            elseif T == ConvDims
                 w = randn(1,2,4,3)
             end
 
@@ -25,7 +25,7 @@ using NNlib: input_size, kernel_size, channels_in, channels_out, channel_multipl
             @test output_size(cdims) == (5,3)
 
             # Special-case channel output tests
-            if T == DenseConvDims
+            if T == ConvDims
                 @test channels_out(cdims) == size(w, 4)
             elseif T == DepthwiseConvDims
                 @test channel_multiplier(cdims) == size(w, 3)
@@ -63,7 +63,7 @@ using NNlib: input_size, kernel_size, channels_in, channels_out, channel_multipl
             # Dilation will cause us to reach beyond the end of input + padding here:
             @test_throws DimensionMismatch T(x, w; dilation=(1, 5))
             # Channel mismatch:
-            if T == DenseConvDims
+            if T == ConvDims
                 @test_throws DimensionMismatch T(x, w[:,:,1:1,:])
             elseif T == DepthwiseConvDims
                 @test_throws DimensionMismatch T(x, w[:,:,:,1:1])
@@ -277,7 +277,7 @@ conv_answer_dict = Dict(
             for conv in (NNlib.conv, NNlib.conv_im2col, NNlib.conv_direct)
                 @testset "$(conv)" begin
                     # First, your basic convolution with no parameters
-                    cdims = DenseConvDims(x, w)
+                    cdims = ConvDims(x, w)
                     @test isapprox(ddims(conv(x, w, cdims)), y_plain, rtol = 1.0e-7)
 
                     # Next, test convolution on views and alternate datatypes:
@@ -285,19 +285,19 @@ conv_answer_dict = Dict(
                     @test isapprox(ddims(conv(Float32.(x), Float32.(w), cdims)), Float32.(y_plain), rtol = 1.0e-7)
 
                     # Next, introduce stride:
-                    cdims = DenseConvDims(x, w; stride=2)
+                    cdims = ConvDims(x, w; stride=2)
                     @test isapprox(ddims(conv(x, w, cdims)), y_stride, rtol = 1.0e-7)
 
                     # Next, introduce dilation:
-                    cdims = DenseConvDims(x, w; dilation=2)
+                    cdims = ConvDims(x, w; dilation=2)
                     @test isapprox(ddims(conv(x, w, cdims)), y_dil, rtol = 1.0e-7)
 
                     # Next, introduce padding:
-                    cdims = DenseConvDims(x, w; padding=1)
+                    cdims = ConvDims(x, w; padding=1)
                     @test isapprox(ddims(conv(x, w, cdims)), y_pad, rtol = 1.0e-7)
 
                     # Next, test crosscor/conv with a flipped kernel
-                    cdims = DenseConvDims(x, w; flipkernel=true)
+                    cdims = ConvDims(x, w; flipkernel=true)
                     @test isapprox(ddims(conv(x, w, cdims)), y_flip, rtol = 1.0e-7)
                 end
             end
@@ -310,7 +310,7 @@ conv_answer_dict = Dict(
                 )
                 @testset "$(∇conv_filter)/$(∇conv_data)" begin
                     # First, your basic convolution with no parameters
-                    cdims = DenseConvDims(x, w)
+                    cdims = ConvDims(x, w)
                     dy = NNlib.conv(x, w, cdims)
                     @test isapprox(ddims(∇conv_filter(x, dy, cdims)), dw, rtol = 1.0e-7)
                     @test isapprox(ddims(∇conv_data(dy, w,  cdims)), dx, rtol = 1.0e-7)
@@ -323,25 +323,25 @@ conv_answer_dict = Dict(
                     @test isapprox(ddims(∇conv_data(Float32.(dy),  Float32.(w),  cdims)), dx, rtol = 1.0e-7)
 
                     # Next, introduce stride:
-                    cdims = DenseConvDims(x, w; stride=2)
+                    cdims = ConvDims(x, w; stride=2)
                     dy = NNlib.conv(x, w, cdims)
                     @test isapprox(ddims(∇conv_filter(x, dy, cdims)), dw_stride, rtol = 1.0e-7)
                     @test isapprox(ddims(∇conv_data(dy, w,  cdims)), dx_stride, rtol = 1.0e-7)
 
                     # Next, introduce dilation:
-                    cdims = DenseConvDims(x, w; dilation=2)
+                    cdims = ConvDims(x, w; dilation=2)
                     dy = NNlib.conv(x, w, cdims)
                     @test isapprox(ddims(∇conv_filter(x, dy, cdims)), dw_dil, rtol = 1.0e-7)
                     @test isapprox(ddims(∇conv_data(dy, w,  cdims)), dx_dil, rtol = 1.0e-7)
 
                     # Next, introduce padding:
-                    cdims = DenseConvDims(x, w; padding=1)
+                    cdims = ConvDims(x, w; padding=1)
                     dy = NNlib.conv(x, w, cdims)
                     @test isapprox(ddims(∇conv_filter(x, dy, cdims)), dw_pad, rtol = 1.0e-7)
                     @test isapprox(ddims(∇conv_data(dy, w,  cdims)), dx_pad, rtol = 1.0e-7)
 
                     # Next, test crosscor/conv with a flipped kernel
-                    cdims = DenseConvDims(x, w; flipkernel=true)
+                    cdims = ConvDims(x, w; flipkernel=true)
                     dy = NNlib.conv(x, w, cdims)
                     @test isapprox(ddims(∇conv_filter(x, dy, cdims)), dw_flip, rtol = 1.0e-7)
                     @test isapprox(ddims(∇conv_data(dy, w,  cdims)), dx_flip, rtol = 1.0e-7)
@@ -393,7 +393,7 @@ conv_answer_dict = Dict(
 
                     # Skip tests that are impossible due to mismatched sizes
                     try
-                        DenseConvDims(x, w;
+                        ConvDims(x, w;
                             stride=S_size, padding=P_size, dilation=D_size,
                         )
                     catch e
@@ -404,7 +404,7 @@ conv_answer_dict = Dict(
                     end
 
                     # Do the actual convolution, comparing convolution implementations
-                    cdims = DenseConvDims(x, w; stride=S_size, padding=P_size, dilation=D_size)
+                    cdims = ConvDims(x, w; stride=S_size, padding=P_size, dilation=D_size)
 
                     # We use mutating calls with explicitly different initial values, so as
                     # to be sure to catch when we're leaving pieces of the output untouched.
