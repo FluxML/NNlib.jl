@@ -17,7 +17,7 @@ export conv, conv!, ∇conv_data, ∇conv_data!, ∇conv_filter, ∇conv_filter!
 #
 #   All methods require a `ConvDims` object to define the dimensions and optional
 #   elements of the convolution (padding, stride, dilation, kernel-flipping, etc...),
-#   which is easily constructable through something like `DenseConvDims(x, w)`.  All
+#   which is easily constructable through something like `ConvDims(x, w)`.  All
 #   methods take in the `ConvDims` of the associated normal, forward-pass convolution,
 #   that is, the following is legal:
 #
@@ -123,7 +123,7 @@ for backend in (Symbol(), :_direct, :_im2col)
         end
     end
 
-    # This filter back prop covers dense/depthwise/groupwise conv filter backprops, as groupcount alone 
+    # This filter back prop covers dense/depthwise/groupwise conv filter backprops, as groupcount alone
     # is a deciding factor from cudnn's perspective. For backends im2col and direct needs to be handled.
     @eval begin
         function $(Symbol("∇conv_filter$(backend)"))(
@@ -140,7 +140,7 @@ end
 # Use NNPACK if it is available and the operation is supported
 if is_nnpack_available()
     function conv(x::Array{xT, 4}, w::Array{wT, 4},
-                  cdims::DenseConvDims{2, K, C_in, C_out, (1, 1), P, (1, 1), F};
+                  cdims::ConvDims{2, K, C_in, C_out, (1, 1), P, (1, 1), F};
                   kwargs...) where {xT, wT, K, C_in, C_out, S, P, F}
         return conv_nnpack(x, w, cdims; kwargs...)
     end
@@ -150,7 +150,7 @@ function conv(x, w::AbstractArray{T, N}; stride = 1, pad = 0, dilation = 1, flip
     stride = expand(Val(N-2), stride)
     pad = expand(Val(N-2), pad)
     dilation = expand(Val(N-2), dilation)
-    cdims = DenseConvDims(x, w; stride = stride, padding = pad, dilation = dilation, flipkernel = flipped)
+    cdims = ConvDims(x, w; stride = stride, padding = pad, dilation = dilation, flipkernel = flipped)
     return conv(x, w, cdims)
 end
 
@@ -158,6 +158,6 @@ function depthwiseconv(x, w::AbstractArray{T, N}; stride = 1, pad = 0, dilation 
     stride = expand(Val(N-2), stride)
     pad = expand(Val(N-2), pad)
     dilation = expand(Val(N-2), dilation)
-    cdims = DenseConvDims(x, w; stride = stride, padding = pad, dilation = dilation, flipkernel = flipped, groupcount=groupcount)
+    cdims = ConvDims(x, w; stride = stride, padding = pad, dilation = dilation, flipkernel = flipped, groupcount=groupcount)
     return depthwiseconv(x, w, cdims)
 end

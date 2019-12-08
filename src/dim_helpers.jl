@@ -1,7 +1,6 @@
 # Various helper functions to calculate dimensions for operations
+include("dim_helpers/AbstractDims.jl")
 include("dim_helpers/ConvDims.jl")
-include("dim_helpers/DenseConvDims.jl")
-include("dim_helpers/DepthwiseConvDims.jl")
 include("dim_helpers/PoolDims.jl")
 
 
@@ -45,7 +44,7 @@ function transpose_pad(cdims::ConvDims)
 end
 
 """
-    insert_singleton_spatial_dimension(cdims::DenseConvDims)
+    insert_singleton_spatial_dimension(cdims::ConvDims)
 
 When converting a 1d convolution to a 2d, or a 2d to a 3d, we need to insert a singleton
 spatial dimension at the end of the spatial dimensions.  This does so for a ConvDims.

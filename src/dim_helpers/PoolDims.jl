@@ -7,7 +7,7 @@ Dimensions for a "pooling" operation that can have an arbitrary input size, kern
 stride, dilation, and channel count.  Used to dispatch onto efficient implementations at
 compile-time.
 """
-struct PoolDims{N,K,S,P,D} <: ConvDims{N, S, P, D, false}
+struct PoolDims{N,K,S,P,D} <: AbstractDims{N, S, P, D, false}
     I::NTuple{N,Int}
     C_in::Int
 end
@@ -19,7 +19,7 @@ channels_in(c::PoolDims) = c.C_in
 channels_out(c::PoolDims) = c.C_in
 
 
-# Convenience wrapper to create DenseConvDims objects
+# Convenience wrapper to create ConvDims objects
 function PoolDims(x_size::NTuple{M}, k::Union{NTuple{L, Int}, Int};
                   stride=k, padding=0, dilation=1) where {M, L}
     # Expand `k` up to a tuple
@@ -53,7 +53,7 @@ end
 
 # Useful for constructing a new PoolDims that has only a few elements different
 # from the original progenitor object that it inherits shapes from.
-function PoolDims(c::ConvDims; N=spatial_dims(c), I=input_size(c), K=kernel_size(c),
+function PoolDims(c::AbstractDims; N=spatial_dims(c), I=input_size(c), K=kernel_size(c),
                        C_in=channels_in(c), S=stride(c), P=padding(c), D=dilation(c))
     return PoolDims{N, K, S, P, D}(I, C_in)
 end
@@ -62,7 +62,7 @@ function check_dims(x::NTuple{M}, y::NTuple{M}, pdims::PoolDims) where {M}
     # First, check that channel counts are all correct:
     @assert x[end-1] == channels_in(pdims) DimensionMismatch("Data input channel count ($(x[end-1]) vs. $(channels_in(pdims)))")
     @assert y[end-1] == channels_out(pdims) DimensionMismatch("Data output channel count ($(y[end-1]) vs. $(channels_out(pdims)))")
-    
+
     # Next, check that the spatial dimensions match up
     @assert x[1:end-2] == input_size(pdims) DimensionMismatch("Data input spatial size ($(x[1:end-2]) vs. $(input_size(pdims)))")
     @assert y[1:end-2] == output_size(pdims) DimensionMismatch("Data output spatial size ($(y[1:end-2]) vs. $(output_size(pdims)))")

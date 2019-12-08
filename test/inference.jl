@@ -9,6 +9,6 @@ using NNlib: conv_direct, conv_im2col
     NNlib.is_nnpack_available() && push!(impl, NNlib.conv_nnpack)
 
     for T in impl
-        @inferred T(x, w, DenseConvDims(x, w))
+        @inferred T(x, w, ConvDims(x, w))
     end
 end

@@ -29,20 +29,20 @@ for rank in (2,),
     padding in (0, 2)
 
     benchmark_items = [
-            (NNlib.conv_direct!, NNlib.∇conv_data_direct!, NNlib.∇conv_filter_direct!, DenseConvDims, "direct"),
-            (NNlib.conv_im2col!, NNlib.∇conv_data_im2col!, NNlib.∇conv_filter_im2col!, DenseConvDims, "im2col"),
+            (NNlib.conv_direct!, NNlib.∇conv_data_direct!, NNlib.∇conv_filter_direct!, ConvDims, "direct"),
+            (NNlib.conv_im2col!, NNlib.∇conv_data_im2col!, NNlib.∇conv_filter_im2col!, ConvDims, "im2col"),
             (NNlib.depthwiseconv_direct!, NNlib.∇depthwiseconv_data_direct!, NNlib.∇depthwiseconv_filter_direct!, DepthwiseConvDims, "direct"),
             (NNlib.depthwiseconv_im2col!, NNlib.∇depthwiseconv_data_im2col!, NNlib.∇depthwiseconv_filter_im2col!, DepthwiseConvDims, "im2col"),
     ]
 
     if NNlib.is_nnpack_available()
-        push!(benchmark_items, (NNlib.conv_nnpack!, NNlib.∇conv_data_nnpack!, NNlib.∇conv_filter_nnpack!, DenseConvDims, "nnpack"))
+        push!(benchmark_items, (NNlib.conv_nnpack!, NNlib.∇conv_data_nnpack!, NNlib.∇conv_filter_nnpack!, ConvDims, "nnpack"))
     end
 
     for (conv!, ∇conv_data!, ∇conv_filter!, cT, backend) in benchmark_items
 
         x = zeros(Float32, repeat([N], rank)..., C_in, 1)
-        if cT == DenseConvDims
+        if cT == ConvDims
             w = zeros(Float32, repeat([K], rank)..., C_in, C_out)
         else
             w = zeros(Float32, repeat([K], rank)..., C_out, C_in)
@@ -53,7 +53,7 @@ for rank in (2,),
             continue
         end
 
-        if cT == DenseConvDims
+        if cT == ConvDims
             y = zeros(Float32, NNlib.output_size(cdims)..., C_out, 1)
         else
             y = zeros(Float32, NNlib.output_size(cdims)..., C_out*C_in, 1)
