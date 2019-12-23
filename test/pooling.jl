@@ -1,4 +1,4 @@
-using NNlib, Test
+#using NNlib, Test
 
 maxpool_answer_dict = Dict(
     1 => Dict(
@@ -298,11 +298,13 @@ for rank in (1, 2, 3)
     end
 end
 
-x = rand(10, 10, 3, 10)
-@test size(maxpool(x, (2, 2))) == (5, 5, 3, 10)
-@test size(maxpool(x, (2, 2); pad = (1, 1), stride = (2, 2))) == (6, 6, 3, 10)
-@test size(meanpool(x, (2, 2))) == (5, 5, 3, 10)
-@test size(meanpool(x, (2, 2); pad = (1, 1), stride = (2, 2))) == (6, 6, 3, 10)
+@testset "Pooling - Check Sizes" begin
+  x = rand(10, 10, 3, 10)
+  @test size(maxpool(x, (2, 2))) == (5, 5, 3, 10)
+  @test size(maxpool(x, (2, 2); pad = (1, 1), stride = (2, 2))) == (6, 6, 3, 10)
+  @test size(meanpool(x, (2, 2))) == (5, 5, 3, 10)
+  @test size(meanpool(x, (2, 2); pad = (1, 1), stride = (2, 2))) == (6, 6, 3, 10)
+end
 
 # Add another test for 2d maxpool that uses an odd-length size:
 @testset "Issue #133" begin

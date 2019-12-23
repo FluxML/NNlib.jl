@@ -352,12 +352,11 @@ conv_answer_dict = Dict(
             end
         end
     end
+end
 
+if get(ENV,"NNLIB_TEST_FUZZING","false") == "true"
+    # @info("Skipping Convolutional fuzzing tests, set NNLIB_TEST_FUZZING=true to run them")
     @testset "fuzzing" begin
-        if get(ENV,"NNLIB_TEST_FUZZING","false") != "true"
-            @info("Skipping Convolutional fuzzing tests, set NNLIB_TEST_FUZZING=true to run them")
-            return
-        end
         @info("Starting Convolutional fuzzing tests; this can take a few minutes...")
         # Now that we're fairly certain things are working, let's fuzz things a little bit:
         for x_size in (
@@ -441,8 +440,9 @@ conv_answer_dict = Dict(
         end
         println()
     end
+else
+    @info "Skipping Convolutional fuzzing tests, set NNLIB_TEST_FUZZING=true to run them"
 end
-
 
 @testset "Depthwise Convolution" begin
     # Start with some easy-to-debug cases that we have worked through and _know_ work
@@ -552,12 +552,11 @@ end
             end
         end
     end
+end
 
+
+if get(ENV,"NNLIB_TEST_FUZZING","false") == "true"
     @testset "fuzzing" begin
-        if get(ENV,"NNLIB_TEST_FUZZING","false") != "true"
-            @info("Skipping Depthwise Convolutional fuzzing tests, set NNLIB_TEST_FUZZING=true to run them")
-            return
-        end
         @info("Starting Depthwise Convolutional fuzzing tests; this can take a few minutes...")
         # Now that we're fairly certain things are working, let's fuzz things a little bit:
         for x_size in (
@@ -641,7 +640,10 @@ end
         end
         println()
     end
+else
+    @info "Skipping Depthwise Convolutional fuzzing tests, set NNLIB_TEST_FUZZING=true to run them"
 end
+
 
 @testset "conv_wrapper" begin
     x = rand(10, 10, 3, 10)
