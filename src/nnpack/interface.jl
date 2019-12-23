@@ -52,11 +52,19 @@ end
 
 
 """
-    check_supported_operation(x::Array, pdims::PoolDims)
+    nnpack_supported_operation(cdims::ConvDims)
+    nnpack_supported_operation(pdims::PoolDims)
 
-Returns `true` if nnpack supports the pooling operation for the given input.
+Returns `true` if nnpack supports the convolution/pooling operation for the given parameters.
 """
-function check_supported_operation(x::Array{T, 4}, pdims::PoolDims{2, K, S, P, (1, 1)}) where {T, K, S, P}
-    val = size(x)[1:2] .+ (P[1] + P[2], P[3] + P[4]) .- K
+function nnpack_supported_operation(pdims::PoolDims{2, K, S, P, (1, 1)}) where {K, S, P}
+    val = input_size(pdims)[1:2] .+ (P[1] + P[2], P[3] + P[4]) .- K
     return val .% S == (0, 0) ? true : false
 end
+
+function nnpack_supported_operation(cdims::ConvDims{2, K, (1, 1), P, (1, 1)}) where {K, S, P}
+    return true
+end
+
+# Return false for everything else
+nnpack_supported_operation(dims) = false

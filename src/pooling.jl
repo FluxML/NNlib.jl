@@ -132,7 +132,7 @@ end
 # Use NNPACK if it is available and operation is supported
 if is_nnpack_available()
     function maxpool(x::Array{T, 4}, pdims::PoolDims{2, K, S, P, (1, 1)}; kwargs...) where {T, K, S, P}
-        func = check_supported_operation(x, pdims) ? maxpool_nnpack : maxpool_direct
+        func = nnpack_supported_operation(pdims) ? maxpool_nnpack : maxpool_direct
         return func(x, pdims; kwargs...)
     end
 end

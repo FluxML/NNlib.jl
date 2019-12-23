@@ -274,10 +274,13 @@ conv_answer_dict = Dict(
             # A "drop channels and batch dimension" helper
             ddims(x) = dropdims(x, dims=(rank+1, rank+2))
 
-            for conv in (NNlib.conv, NNlib.conv_im2col, NNlib.conv_direct)
+            for conv in (NNlib.conv, NNlib.conv_im2col, NNlib.conv_direct, NNlib.conv_nnpack)
+                if conv == NNlib.conv_nnpack && !NNlib.nnpack_supported_operation(DenseConvDims(x, w))
+                    continue
+                end
                 @testset "$(conv)" begin
-                    # First, your basic convolution with no parameters
                     cdims = DenseConvDims(x, w)
+                    # First, your basic convolution with no parameters
                     @test isapprox(ddims(conv(x, w, cdims)), y_plain, rtol = 1.0e-7)
 
                     # Next, test convolution on views and alternate datatypes:

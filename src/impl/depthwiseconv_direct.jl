@@ -20,7 +20,7 @@ See the docstring for `conv_direct!()` for more on the optional parameters.
 """
 function depthwiseconv_direct!(y::AbstractArray{yT,5}, x::AbstractArray{xT,5},
                       w::AbstractArray{wT,5}, cdims::DepthwiseConvDims;
-                      alpha::yT = yT(1), beta = false) where {yT, xT, wT}
+                      alpha::yT=yT(1), beta=false) where {yT, xT, wT}
     check_dims(size(x), size(w), size(y), cdims)
 
     width, height, depth = input_size(cdims)
@@ -135,7 +135,7 @@ for each batch and channel independently.
 function ∇depthwiseconv_data_direct!(
                 dx::AbstractArray{xT,5}, dy::AbstractArray{yT,5},
                 w::AbstractArray{wT,5}, cdims::DepthwiseConvDims;
-                alpha::xT=xT(1), beta::xT=xT(0)) where {xT, yT, wT}
+                alpha::xT=xT(1), beta=false) where {xT, yT, wT}
     # We do a separate convolution for each channel in x
     @inbounds for cidx in 1:channels_in(cdims)
         # For this batch and in-channel, we have a normal transposed convolution
@@ -168,7 +168,7 @@ Calculate the gradient imposed upon `w` in the depthwise convolution `y = x * w`
 function ∇depthwiseconv_filter_direct!(
                 dw::AbstractArray{wT,5}, x::AbstractArray{xT,5},
                 dy::AbstractArray{yT,5}, cdims::DepthwiseConvDims;
-                alpha::wT=wT(1),beta::wT=wT(0)) where {xT, yT, wT}
+                alpha::wT=wT(1),beta=false) where {xT, yT, wT}
     # We do a separate convolution for each channel in x
     @inbounds for cidx in 1:channels_in(cdims)
         # For this batch and in-channel, we have a normal transposed convolution

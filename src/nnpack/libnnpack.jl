@@ -127,7 +127,7 @@ end
 function nnp_convolution_output(y::Array{Float32,4}, x::Array{Float32,4}, w::Array{Float32,4}, b::Array{Float32,1}; algo::nnp_convolution_algorithm = UInt32(0), workspace_buffer = nothing, workspace_size = 0, padding = 0, stride = 1, threadpool = C_NULL, profile = nothing)
     input_size = nnp_size(Csize_t.((size(x,1), size(x,2)))...)
     kernel_size = nnp_size(Csize_t.((size(w,1),size(w,2)))...)
-    input_padding = nnp_padding(Csize_t(padding[2]), Csize_t(padding[1]), Csize_t(padding[2]), Csize_t(padding[1]))
+    input_padding = nnp_padding(Csize_t(padding[3]), Csize_t(padding[2]), Csize_t(padding[4]), Csize_t(padding[1]))
     profile = profile == nothing ? nnp_profile() : profile
     workspace_buffer = workspace_buffer === nothing ? C_NULL : workspace_buffer
     nnp_convolution_output(UInt32(algo), size(x,4), size(x,3), size(w,4), input_size, input_padding, kernel_size, x, w, b, y, workspace_buffer, workspace_size, UInt32(0), C_NULL, threadpool, profile)

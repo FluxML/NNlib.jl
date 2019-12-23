@@ -14,7 +14,7 @@ function depthwiseconv_im2col!(
                 y::AbstractArray{T,5}, x::AbstractArray{T,5},
                 w::AbstractArray{T,5}, cdims::DepthwiseConvDims;
                 col::AbstractArray{T,2} = similar(x, im2col_dims(cdims)),
-                alpha=T(1), beta=T(0)) where T
+                alpha::T=T(1), beta::T=T(0)) where T
     check_dims(size(x), size(w), size(y), cdims)
     
     # This functions exactly the same as conv_im2col!(), except that we shard the
@@ -56,7 +56,7 @@ function ∇depthwiseconv_filter_im2col!(
                 dw::AbstractArray{T,5}, x::AbstractArray{T,5},
                 dy::AbstractArray{T,5}, cdims::DepthwiseConvDims;
                 col::AbstractArray{T,2} = similar(dw, im2col_dims(cdims)),
-                alpha=T(1), beta=T(0)) where T
+                alpha::T=T(1), beta::T=T(0)) where T
     check_dims(size(x), size(dw), size(dy), cdims)
 
     M = prod(kernel_size(cdims))
@@ -96,7 +96,7 @@ function ∇depthwiseconv_data_im2col!(
                 dx::AbstractArray{T,5}, dy::AbstractArray{T,5},
                 w::AbstractArray{T,5}, cdims::DepthwiseConvDims;
                 col::AbstractArray{T,2} = similar(dx, im2col_dims(cdims)),
-                alpha=T(1), beta=T(0)) where T
+                alpha::T=T(1), beta::T=T(0)) where T
     check_dims(size(dx), size(w), size(dy), cdims)
 
     M = prod(output_size(cdims))
