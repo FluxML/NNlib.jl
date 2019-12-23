@@ -10,7 +10,4 @@ import NNlib: conv_direct, conv_im2col
     for T in impl
         @test T(x, w, DenseConvDims(x, w)) isa AbstractArray{K,4} where K
     end
-
-    h() = error("check tests")
-    @test h()
 end
