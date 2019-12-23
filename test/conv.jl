@@ -274,9 +274,13 @@ conv_answer_dict = Dict(
             # A "drop channels and batch dimension" helper
             ddims(x) = dropdims(x, dims=(rank+1, rank+2))
 
-            for conv in (NNlib.conv, NNlib.conv_im2col, NNlib.conv_direct, NNlib.conv_nnpack)
-                if conv == NNlib.conv_nnpack && !NNlib.nnpack_supported_operation(DenseConvDims(x, w))
-                    continue
+            convs = [NNlib.conv, NNlib.conv_im2col, NNlib.conv_direct,]
+            NNlib.is_nnpack_available() && push!(convs, NNlib.conv_nnpack)
+            for conv in convs
+                if NNlib.is_nnpack_available()
+                    if conv == NNlib.conv_nnpack && !NNlib.nnpack_supported_operation(DenseConvDims(x, w))
+                        continue
+                    end
                 end
                 @testset "$(conv)" begin
                     cdims = DenseConvDims(x, w)
