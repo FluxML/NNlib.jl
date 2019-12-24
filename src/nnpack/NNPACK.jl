@@ -8,7 +8,6 @@ const depsjl_path = joinpath(dirname(@__FILE__), "..", "..", "deps", "deps.jl")
 if !isfile(depsjl_path)
     error("NNPACK not installed properly, run Pkg.build(\"NNlib\"), restart Julia and try again")
 end
-include(depsjl_path)
 
 const shared_threadpool_dict = Dict{UInt64, Base.RefValue}()
 
@@ -18,7 +17,7 @@ const shared_threadpool_dict = Dict{UInt64, Base.RefValue}()
 Checks if the current hardware is supported by NNPACK.
 """
 function is_nnpack_available()
-    check_deps()
+    check_deps() isa Nothing || return false
     status = nnp_initialize()
     if status == nnp_status_unsupported_hardware
         return false
