@@ -33,10 +33,18 @@ end
 
 # If we have a download, and we are unsatisfied (or the version we're
 # trying to install is not itself installed) then load it up!
-if unsatisfied || !isinstalled(dl_info...; prefix=prefix)
-    # Download and install binaries
+# Download and install binaries
+use_nnpack = get(ENV, "NNLIB_USE_NNPACK", "false") == "true"
+os_support = Sys.islinux() || Sys.isapple()
+if use_nnpack && os_support
+  if unsatisfied || !isinstalled(dl_info...; prefix=prefix)
     install(dl_info...; prefix=prefix, force=true, verbose=verbose)
+  end
+  # Write out a deps.jl file that will contain mappings for our products
+  write_deps_file(joinpath(@__DIR__, "deps.jl"), products, verbose=verbose)
+else
+  open(joinpath(@__DIR__, "deps.jl"), "w") do io
+    write(io, "check_deps() = false")
+  end
 end
 
-# Write out a deps.jl file that will contain mappings for our products
-write_deps_file(joinpath(@__DIR__, "deps.jl"), products, verbose=verbose)
