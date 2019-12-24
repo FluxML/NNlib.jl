@@ -6,7 +6,8 @@ include("dim_helpers.jl")
 
 # NNPACK support
 if Sys.islinux() || Sys.isapple()
-    include("nnpack/NNPACK.jl")
+    # include("nnpack/NNPACK.jl")
+    is_nnpack_available() = false
 else
     is_nnpack_available() = false
 end
