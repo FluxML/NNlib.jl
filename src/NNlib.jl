@@ -5,7 +5,7 @@ using Requires
 include("dim_helpers.jl")
 
 # NNPACK support
-if get(ENV, "NNLIB_USE_NNPACK", "false")
+if get(ENV, "NNLIB_USE_NNPACK", "false") == "true"
   if Sys.islinux() || Sys.isapple()
       include("nnpack/NNPACK.jl")
   else
