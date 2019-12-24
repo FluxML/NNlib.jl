@@ -6,6 +6,8 @@ os:
 julia:
   - 1.0
   - 1.1
+  - 1.2
+  - 1
   - nightly
 matrix:
   allow_failures:
@@ -16,7 +18,9 @@ git:
   depth: 99999999
 env:
   # Disable test fuzzing for the moment, as we're a little too slow for Travis
-  - NNLIB_TEST_FUZZING=false
+  - GROUP=Core
+    - NNLIB_TEST_FUZZING=false
+  - GROUP=Downstream
 
 # Submit to Codecov
 after_success:
