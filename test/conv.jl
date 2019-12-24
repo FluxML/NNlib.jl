@@ -274,7 +274,11 @@ conv_answer_dict = Dict(
             # A "drop channels and batch dimension" helper
             ddims(x) = dropdims(x, dims=(rank+1, rank+2))
 
-            for conv in (NNlib.conv, NNlib.conv_im2col, NNlib.conv_direct, NNlib.conv_nnpack)
+            backends = [NNlib.conv, NNlib.conv_im2col, NNlib.conv_direct]
+            if NNlib.is_nnpack_available()
+                push!(backends, NNlib.conv_nnpack)
+            end
+            for conv in backends
                 if conv == NNlib.conv_nnpack && !NNlib.nnpack_supported_operation(DenseConvDims(x, w))
                     continue
                 end
@@ -352,13 +356,11 @@ conv_answer_dict = Dict(
             end
         end
     end
+end
 
-    @testset "fuzzing" begin
-        if get(ENV,"NNLIB_TEST_FUZZING","false") != "true"
-            @info("Skipping Convolutional fuzzing tests, set NNLIB_TEST_FUZZING=true to run them")
-            return
-        end
-        @info("Starting Convolutional fuzzing tests; this can take a few minutes...")
+if get(ENV,"NNLIB_TEST_FUZZING","false") == "true"
+    @info("Starting Convolutional fuzzing tests; this can take a few minutes...")
+    @testset "Dense Convolution fuzzing" begin
         # Now that we're fairly certain things are working, let's fuzz things a little bit:
         for x_size in (
                 # 1d tests
@@ -552,13 +554,11 @@ end
             end
         end
     end
-
+end
+        
+if get(ENV,"NNLIB_TEST_FUZZING","false") == "true"
+    @info("Starting Depthwise Convolutional fuzzing tests; this can take a few minutes...")
     @testset "fuzzing" begin
-        if get(ENV,"NNLIB_TEST_FUZZING","false") != "true"
-            @info("Skipping Depthwise Convolutional fuzzing tests, set NNLIB_TEST_FUZZING=true to run them")
-            return
-        end
-        @info("Starting Depthwise Convolutional fuzzing tests; this can take a few minutes...")
         # Now that we're fairly certain things are working, let's fuzz things a little bit:
         for x_size in (
                 # 1d tests
