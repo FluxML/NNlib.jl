@@ -5,11 +5,14 @@ using Requires
 include("dim_helpers.jl")
 
 # NNPACK support
-if Sys.islinux() || Sys.isapple()
-    # include("nnpack/NNPACK.jl")
-    is_nnpack_available() = false
+if get(ENV, "NNLIB_USE_NNPACK", "false")
+  if Sys.islinux() || Sys.isapple()
+      include("nnpack/NNPACK.jl")
+  else
+      is_nnpack_available() = false
+  end
 else
-    is_nnpack_available() = false
+  is_nnpack_available() = false
 end
 
 include("activation.jl")
