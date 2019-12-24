@@ -7,7 +7,7 @@ end
 
 function conv_nnpack!(y::A1, x::A1, w::A1, cdims::ConvDims;
                                        b::A2 = zeros(Float32, size(x, 3)),
-                                       algo = UInt32(0))::A1 where {A1<:Array{Float32, 4},
+                                       algo = UInt32(0)) where {A1<:Array{Float32, 4},
                                                                 A2<:Array{Float32, 1}}
     check_dims(size(x), size(w), size(y), cdims)
     threadpool = select_threadpool(cdims, size(y, 4))
@@ -21,7 +21,7 @@ function conv_nnpack!(y::A1, x::A1, w::A1, cdims::ConvDims;
 end
 
 function ∇conv_data_nnpack!(dx::A, dy::A, w::A, cdims::ConvDims;
-                                             algo = UInt32(0))::A where{A<:Array{Float32, 4}}
+                                             algo = UInt32(0)) where{A<:Array{Float32, 4}}
     check_dims(size(dx), size(w), size(dy), cdims)
     threadpool = select_threadpool(cdims, size(y, 4))
     
@@ -34,7 +34,7 @@ function ∇conv_data_nnpack!(dx::A, dy::A, w::A, cdims::ConvDims;
 end
 
 function ∇conv_filter_nnpack!(dw::A, x::A, dy::A, cdims::ConvDims;
-                                               algo = UInt32(0))::A where{A<:Array{Float32, 4}}
+                                               algo = UInt32(0)) where{A<:Array{Float32, 4}}
     check_dims(size(x), size(dw), size(dy), cdims)
     threadpool = select_threadpool(cdims, size(y, 4))
     
