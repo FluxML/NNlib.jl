@@ -19,7 +19,7 @@ for (front_name, backend) in (
 end
 
 
-function conv_nnpack(x::Array{T1, 4}, w::Array{T2, 4}, cdims::ConvDims; kwargs...) where {T1, T2}
+function conv_nnpack(x::Array{T1, 4}, w::Array{T2, 4}, cdims::ConvDims; kwargs...)::Array{Float32,4} where {T1, T2}
     y = similar(x, output_size(cdims)..., channels_out(cdims), size(x, 4))
     return conv_nnpack!(y, x, w, cdims; kwargs...)
 end
