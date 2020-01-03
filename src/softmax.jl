@@ -96,5 +96,5 @@ function logsoftmax!(out::AbstractVecOrMat, xs::AbstractVecOrMat)
     return out
 end
 
-∇logsoftmax(Δ, xs; dims=1) = Δ .- sum(Δ, dims=dims) .* softmax(xs)
+∇logsoftmax(Δ, xs; dims=1) = Δ .- sum(Δ, dims=dims) .* softmax(xs, dims=dims)
 ∇logsoftmax!(Δ, xs) = ∇softmax!(Δ, Δ, xs)
