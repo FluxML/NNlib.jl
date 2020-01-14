@@ -40,8 +40,21 @@ flipkernel(c::ConvDims{N,S,P,D,F}) where {N, S, P, D, F} = F
 im2col calculates, for each output pixel, the "convolution" of N kernels where N is the
 number of output channels, by doing a matrix multiply.  The dimensions of that matrix
 are given by this function.
+
+Note that because im2col is multithreaded, we need to allocate a separate workspace of
+memory per-thread; hence the dimensions returned by this will depend on the number of
+threads Julia is currently running with.
 """
-im2col_dims(c::ConvDims) = (prod(output_size(c)), prod(kernel_size(c))*channels_in(c))
+function im2col_dims(c::ConvDims)
+    return (
+        # Output size
+        prod(output_size(c)),
+        # Size of single dotproduct within convolution
+        prod(kernel_size(c))*channels_in(c),
+        # One workspace per thread
+        Threads.nthreads(),
+    )
+end
 
 # Protect your skin, kids.  Also do common validation of stride, padding, etc...
 function check_spdf(x_size::NTuple{N}, w_size::NTuple{N}, stride, padding, dilation) where {N}

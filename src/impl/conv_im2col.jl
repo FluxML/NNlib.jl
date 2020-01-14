@@ -47,11 +47,12 @@ function conv_im2col!(
     K = prod(kernel_size(cdims))*channels_in(cdims)
     
     @threads for batch_idx in 1:size(x,5)
-        # We invoke `@timeit_debug` on the outside of `im2col!()` because inference
-        # doesn't like us putting it on the inside.
-        im2col!(col, view(x, :, :, :, :, batch_idx), cdims)
-        GC.@preserve col, w, y, begin
-            col_ptr = pointer(col)
+        # col_slice is a thread-local workspace
+        col_slice = view(col, :, :, threadid())
+
+        im2col!(col_slice, view(x, :, :, :, :, batch_idx), cdims)
+        GC.@preserve col_slice, w, y, begin
+            col_ptr = pointer(col_slice)
             w_ptr = pointer(w)
             y_ptr = pointer(y, (batch_idx - 1)*M*N + 1)
             gemm!(Val(false), Val(false), M, N, K, alpha, col_ptr, w_ptr, beta, y_ptr)
@@ -95,9 +96,12 @@ function ∇conv_filter_im2col!(
     K = prod(output_size(cdims))
     
     @threads for batch_idx in 1:size(x,5)
-        im2col!(col, view(x, :, :, :, :, batch_idx), cdims)
-        GC.@preserve col, dw, dy, begin
-            col_ptr = pointer(col)
+        # col_slice is a thread-local workspace
+        col_slice = view(col, :, :, threadid())
+
+        im2col!(col_slice, view(x, :, :, :, :, batch_idx), cdims)
+        GC.@preserve col_slice, dw, dy, begin
+            col_ptr = pointer(col_slice)
             dy_ptr = pointer(dy,(batch_idx - 1)*K*N + 1)
             dw_ptr = pointer(dw)
             gemm!(Val(true), Val(false), M, N, K, alpha, col_ptr, dy_ptr, beta, dw_ptr)
@@ -143,13 +147,16 @@ function ∇conv_data_im2col!(
     K = channels_out(cdims)
 
     @threads for batch_idx in 1:size(dx, 5)
-        GC.@preserve col, w, dy, begin
+        # col_slice is a thread-local workspace
+        col_slice = view(col, :, :, threadid())
+
+        GC.@preserve col_slice, w, dy, begin
             dy_ptr = pointer(dy, (batch_idx - 1)*M*K + 1)
             w_ptr = pointer(w)
-            col_ptr = pointer(col)
+            col_ptr = pointer(col_slice)
             gemm!(Val(false), Val(true), M, N, K, alpha, dy_ptr, w_ptr, T(0), col_ptr)
         end
-        col2im!(view(dx, :, :, :, :, batch_idx), col, cdims)
+        col2im!(view(dx, :, :, :, :, batch_idx), col_slice, cdims)
     end
     return dx
 end
