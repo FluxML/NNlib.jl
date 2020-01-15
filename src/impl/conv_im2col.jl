@@ -25,7 +25,7 @@ which should eliminate any need for large allocations within this method.
 function conv_im2col!(
                 y::AbstractArray{T,5}, x::AbstractArray{T,5},
                 w::AbstractArray{T,5}, cdims::DenseConvDims;
-                col::AbstractArray{T,2}=similar(x, im2col_dims(cdims)),
+                col::AbstractArray{T,3}=similar(x, im2col_dims(cdims)),
                 alpha::T=T(1), beta::T=T(0)) where {T}
     check_dims(size(x), size(w), size(y), cdims)
 
@@ -70,7 +70,7 @@ See the documentation for `conv_im2col!()` for explanation of optional parameter
 function ∇conv_filter_im2col!(
                 dw::AbstractArray{T,5}, x::AbstractArray{T,5},
                 dy::AbstractArray{T,5}, cdims::DenseConvDims;
-                col::AbstractArray{T,2} = similar(dw, im2col_dims(cdims)),
+                col::AbstractArray{T,3} = similar(dw, im2col_dims(cdims)),
                 alpha::T=T(1), beta::T=T(0)) where {T}
     check_dims(size(x), size(dw), size(dy), cdims)
 
@@ -123,7 +123,7 @@ See the documentation for `conv_im2col!()` for explanation of other parameters.
 function ∇conv_data_im2col!(
                 dx::AbstractArray{T,5}, dy::AbstractArray{T,5},
                 w::AbstractArray{T,5}, cdims::DenseConvDims;
-                col::AbstractArray{T,2} = similar(dx, im2col_dims(cdims)),
+                col::AbstractArray{T,3} = similar(dx, im2col_dims(cdims)),
                 alpha::T=T(1), beta::T=T(0)) where {T}
     check_dims(size(dx), size(w), size(dy), cdims)
 
