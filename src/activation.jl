@@ -51,7 +51,7 @@ Leaky [Rectified Linear Unit](https://en.wikipedia.org/wiki/Rectifier_(neural_ne
 activation function.
 You can also specify the coefficient explicitly, e.g. `leakyrelu(x, 0.01)`.
 """
-leakyrelu(x::Real, a = oftype(x/1, 0.01)) = max(a*x, x/1)
+leakyrelu(x::Real, a = oftype(x/1, 0.01)) = max(a*x, x/one(x))
 
 
 """
@@ -62,7 +62,7 @@ Exponential Linear Unit activation function.
 See [Fast and Accurate Deep Network Learning by Exponential Linear Units](https://arxiv.org/abs/1511.07289).
 You can also specify the coefficient explicitly, e.g. `elu(x, 1)`.
 """
-elu(x, α = one(x)) = ifelse(x ≥ 0, x/1, α * (exp(x) - one(x)))
+elu(x, α = one(x)) = ifelse(x ≥ 0, x/one(x), α * (exp(x) - one(x)))
 
 
 """
@@ -99,7 +99,7 @@ See [Self-Normalizing Neural Networks](https://arxiv.org/pdf/1706.02515.pdf).
 function selu(x::Real)
   λ = oftype(x/1, 1.0507009873554804934193349852946)
   α = oftype(x/1, 1.6732632423543772848170429916717)
-  λ * ifelse(x > 0, x/1, α * (exp(x) - 1))
+  λ * ifelse(x > 0, x/one(x), α * (exp(x) - one(x)))
 end
 
 
