@@ -37,6 +37,7 @@ end
     @test softsign(0.0) == 0.0
     @test selu(0.0) == 0.0
     @test logcosh(0.0) == log(cosh(0.0))
+    @test mish(0.0) == 0.0
 
     @test σ(1.0) == 1.0 / (1.0 + exp(-1.0))
     @test relu(1.0) == 1.0
@@ -48,6 +49,7 @@ end
     @test softsign(1.0) == 0.5
     @test selu(1.0) == 1.0507009873554804934193349852946
     @test logcosh(1.0) ≈ log(cosh(1.0))
+    @test mish(1.0) ≈ tanh(log(1.0 + exp(1.0)))
 
     @test σ(-1.0) == 1.0 / (1.0 + exp(1.0))
     @test relu(-1.0) == 0.0
@@ -59,6 +61,7 @@ end
     @test softsign(-1.0) == -0.5
     @test selu(-1.0) == 1.0507009873554804934193349852946 * 1.6732632423543772848170429916717 * (exp(-1.0) - 1.0)
     @test log(cosh(-1.0)) ≈ log(cosh(-1.0))
+    @test mish(-1.0) ≈ -tanh(log(1.0 + exp(-1.0)))
 
     @testset "Float inference" begin
         test_value_float_precision_preserving.(ACTIVATION_FUNCTIONS)
@@ -126,6 +129,12 @@ end
 
         @test elu(-4) ≈ (exp(-4) - 1)
     end
+
+    @testset "mish" begin
+        @test mish(-5) ≈ -0.033576237730161704
+        @test mish(9) == 9*tanh(log(1 + exp(9)))
+        xs = Float32[1 2 3; 1000 2000 3000]
+        @test typeof(mish.(xs)) == typeof(xs)
 
     @test leakyrelu( 0.4,0.3) ≈  0.4
     @test leakyrelu(-0.4,0.3) ≈ -0.12
