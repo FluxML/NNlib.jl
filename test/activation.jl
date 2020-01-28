@@ -135,6 +135,7 @@ end
         @test mish(9) == 9*tanh(log(1 + exp(9)))
         xs = Float32[1 2 3; 1000 2000 3000]
         @test typeof(mish.(xs)) == typeof(xs)
+    end
 
     @test leakyrelu( 0.4,0.3) ≈  0.4
     @test leakyrelu(-0.4,0.3) ≈ -0.12
