@@ -1,5 +1,5 @@
 export σ, sigmoid, relu, leakyrelu, elu, gelu, swish, selu, softplus, softsign, logσ,
-       logsigmoid, logcosh
+       logsigmoid, logcosh, mish
 
 """
     σ(x) = 1 / (1 + exp(-x))
@@ -131,3 +131,12 @@ for f in (:σ, :σ_stable, :logσ, :relu, :leakyrelu, :elu, :gelu, :swish, :selu
   @eval $(f)(x::AbstractArray, args...) =
     error("Use broadcasting (`", $(string(f)), ".(x)`) to apply activation functions to arrays.")
 end
+
+
+"""
+    mish(x) = x * tanh(softplus(x))
+
+Self Regularized Non-Monotonic Neural Activation Function
+See [Mish: A Self Regularized Non-Monotonic Neural Activation Function](https://arxiv.org/abs/1908.08681).
+"""
+mish(x::Real) = x * tanh(softplus(x))
