@@ -72,7 +72,8 @@ elu(x, α = one(x)) = ifelse(x ≥ 0, x/one(x), α * (exp(x) - one(x)))
 activation function.
 """
 function gelu(x::Real)
-    λ = oftype(x/1, √(2/π))
+    p = oftype(x/1, π)
+    λ = oftype(x/1, √(2/p))
     α = oftype(x/1, 0.044715)
     h = oftype(x/1, 0.5)
     h * x * (one(x) + tanh(λ * (x + α * x^3)))
