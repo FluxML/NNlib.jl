@@ -1,6 +1,6 @@
 using NNlib, Test
 
-ACTIVATION_FUNCTIONS = [σ, relu, leakyrelu, elu, gelu, swish, selu, softplus, softsign, logcosh];
+ACTIVATION_FUNCTIONS = [σ, relu, leakyrelu, elu, gelu, swish, selu, softplus, softsign, logcosh, mish];
 
 function test_value_float_precision_preserving(a)
     @testset "$(a): " begin
