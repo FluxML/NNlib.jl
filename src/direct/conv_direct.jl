@@ -1,5 +1,5 @@
 ## This file contains direct Julia implementations of 2d and 3d convolutions
-using Base.Threads
+export conv_direct!, ∇conv_data_direct!, ∇conv_filter_direct!
 
 # Helper functions for restricting x/w overreach
 function clamp_lo(x, w)
@@ -22,12 +22,12 @@ end
 
 Direct convolution implementation; used for debugging, tests, and mixing/matching of
 strange datatypes within a single convolution.  Uses naive nested for loop implementation
-and does not attempt to optimize performance.  Rather, this implementation is intended to
-be maximally understandable and debuggable, to aid in testing other, more performant
-implementations.  We also explicitly support mixing and matching of strange datatypes,
-so that if the user really wants to convolve an image of `UInt8`'s with a `Float16`
-kernel, storing the result in a `Float32` output, there is at least a function call
-for that madness.
+and does not attempt to optimize performance at the cost of readability.  Rather, this
+implementation is intended to be maximally understandable and debuggable, to aid in
+testing other, more performant implementations.  We also explicitly support mixing and
+matching of strange datatypes, so that if the user really wants to convolve an image of
+`UInt8`'s with a `Float16` kernel, storing the result in a `Float32` output, there is at
+least one callable function for that madness.
 
 The keyword arguments `alpha` and `beta` control accumulation behavior; this function
 calculates `y = alpha * x * w + beta * y`, therefore by setting `beta` to a nonzero
@@ -43,8 +43,6 @@ The basic implementation performs 3-dimensional convolution; 1-dimensional and 2
 dimensional casesa are supported by simply reshaping `y`, `x` and `w`, for which
 wrapper methods are available.
 """
-conv_direct!
-
 function conv_direct!(y::AbstractArray{yT,5}, x::AbstractArray{xT,5},
                       w::AbstractArray{wT,5}, cdims::DenseConvDims;
                       alpha::yT = yT(1), beta = false) where {yT, xT, wT}
@@ -150,8 +148,6 @@ end
 
 Calculate the gradient imposed upon `x` in the convolution `y = x * w`.
 """
-∇conv_data_direct!
-
 function ∇conv_data_direct!(dx::AbstractArray{xT,5}, dy::AbstractArray{yT,5},
                             w::AbstractArray{wT,5}, cdims::DenseConvDims;
                             alpha::xT=xT(1), beta=false) where {xT, yT, wT}
@@ -169,8 +165,6 @@ end
 
 Calculate the gradient imposed upon `w` in the convolution `y = x * w`.
 """
-∇conv_filter_direct!
-
 function ∇conv_filter_direct!(dw::AbstractArray{wT,5}, x::AbstractArray{xT,5},
                               dy::AbstractArray{yT,5}, cdims::DenseConvDims;
                               alpha::wT=wT(1), beta=false) where {xT, yT, wT}

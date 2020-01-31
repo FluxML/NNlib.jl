@@ -1,3 +1,6 @@
+## This file contains direct Julia implementations of pooling operations
+export meanpool_direct!, maxpool_direct!
+
 using Statistics
 
 # Pooling is so similar, we abstract over meanpooling and maxpooling, simply replacing

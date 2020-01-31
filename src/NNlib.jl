@@ -1,34 +1,38 @@
 module NNlib
-using Requires
 
-# Include APIs
-include("dim_helpers.jl")
+# Start with the simplest stuff in here; activation functions
+include("activation/activation.jl")
+include("activation/softmax.jl")
 
-# NNPACK support
-include(joinpath(@__DIR__, "..", "deps", "deps.jl"))
-if check_deps() == nothing
-  include("nnpack/NNPACK.jl")
+# Load dimensionality helpers for convolution dispatching
+include("dim_helpers/dim_helpers.jl")
+
+# Define our convolution/pooling interface backend holders
+include("interface.jl")
+
+# Begin with straightforward direct implementations
+include("direct/direct.jl")
+# Next, im2col implementations
+include("im2col/im2col.jl")
+
+# Next, NNPACK implementations
+using NNPACK_jll
+
+# Check to see if NNPACK_jll is loadable
+if isdefined(NNPACK_jll, :libnnpack)
+    include("nnpack/NNPACK.jl")
 else
-  is_nnpack_available() = false
+    # Otherwise, signal to the rest of the world that this is unavailable
+    """
+        is_nnpack_available()
+
+    Checks if the current platform/hardware is supported by NNPACK.
+    Your platform sadly, is not supported by NNPACK.
+    """
+    is_nnpack_available() = false
 end
 
-include("activation.jl")
-include("softmax.jl")
-include("gemm.jl")
-include("conv.jl")
-include("pooling.jl")
-
-## Include implementations
-include("impl/padding_edges.jl")
-
-# Direct implementations of convolutional and depthwise-convolutional algorithms
-include("impl/conv_direct.jl")
-include("impl/depthwiseconv_direct.jl")
-# im2col implementations of convolutional and depthwise-convolutional algorithms
-include("impl/conv_im2col.jl")
-include("impl/depthwiseconv_im2col.jl")
-
-# Direct implementations of pooling
-include("impl/pooling_direct.jl")
+# Finally, generate all the goodies for conv() and maxpool() and friends!
+include("interface_impl.jl")
 
 end # module NNlib

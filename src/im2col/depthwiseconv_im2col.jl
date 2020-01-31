@@ -1,5 +1,5 @@
 ## This file contains adapter code for doing depthwise convolutions with im2col.
-
+export depthwiseconv_im2col!, ∇depthwiseconv_data_im2col!, ∇depthwiseconv_filter_im2col!
 
 """
     depthwiseconv_im2col!(y, x, w, cdims, col=similar(x); alpha=1, beta=0)
@@ -8,8 +8,6 @@ Perform a depthwise convolution using im2col and GEMM, store the result in `y`.
 
 See `conv_im2col!()` for an explanation of optional parameters.
 """
-depthwiseconv_im2col!
-
 function depthwiseconv_im2col!(
                 y::AbstractArray{T,5}, x::AbstractArray{T,5},
                 w::AbstractArray{T,5}, cdims::DepthwiseConvDims;

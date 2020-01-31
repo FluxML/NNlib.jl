@@ -1,3 +1,5 @@
+using Requires
+
 export σ, sigmoid, relu, leakyrelu, elu, gelu, swish, selu, softplus, softsign, logσ,
        logsigmoid, logcosh, mish
 
