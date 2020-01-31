@@ -1,9 +1,9 @@
 # Various helper functions to calculate dimensions for operations
-include("dim_helpers/ConvDims.jl")
-include("dim_helpers/DenseConvDims.jl")
-include("dim_helpers/DepthwiseConvDims.jl")
-include("dim_helpers/PoolDims.jl")
-
+include("ConvDims.jl")
+include("DenseConvDims.jl")
+include("DepthwiseConvDims.jl")
+include("PoolDims.jl")
+include("PaddingEdges.jl")
 
 """
     transpose_swapbatch(x::AbstractArray)
@@ -130,11 +130,8 @@ end
 
 Reorders the weight tensor for supporting both convolution and cross-correlation operations.
 """
-
-# For any array with ndims <= 3 it makes no sense to flip the weights so simply return the
-# original array
-@inline flipweight(w::AbstractArray) = w
-
-@inline flipweight(w::AbstractArray{T, 4}) where {T} = w[end:-1:1, end:-1:1, :, :]
-
 @inline flipweight(w::AbstractArray{T, 5}) where {T} = w[end:-1:1, end:-1:1, end:-1:1, :, :]
+@inline flipweight(w::AbstractArray{T, 4}) where {T} = w[end:-1:1, end:-1:1, :, :]
+@inline flipweight(w::AbstractArray{T, 3}) where {T} = w[end:-1:1, :, :]
+# For ndims < 3 it makes no sense to flip the weights so simply return the original array
+@inline flipweight(w::AbstractArray) = w

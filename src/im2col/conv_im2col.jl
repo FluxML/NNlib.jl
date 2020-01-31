@@ -1,6 +1,8 @@
 ## This file contains im2col-backed implementations of convolution for 2d and 3d
 ## convolutions.  Expect to see a lot of indexing.
 
+export conv_im2col!, ∇conv_data_im2col!, ∇conv_filter_im2col!
+
 # Helper functions for flipkernel-induced dyslexia
 @inline function kernel_index(w, h, d, cdims::ConvDims{N, S, P, D, false}) where {N, S, P, D}
     kernel_w, kernel_h, kernel_d = kernel_size(cdims)
@@ -293,8 +295,6 @@ Note that this method has not been optimized in the same way as `im2col()` has, 
 it is slightly more complicated due to the more chaotic data access patterns, and I'm not
 desperate enough yet.
 """
-col2im!
-
 function col2im!(x::AbstractArray{T,4}, col::AbstractArray{T,2},
                                   cdims::ConvDims) where T
     if spatial_dims(cdims) != 3

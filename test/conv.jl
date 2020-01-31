@@ -274,14 +274,9 @@ conv_answer_dict = Dict(
             # A "drop channels and batch dimension" helper
             ddims(x) = dropdims(x, dims=(rank+1, rank+2))
 
+            # We don't directly test conv_nnpack() because it has so many holes in its support
             convs = [NNlib.conv, NNlib.conv_im2col, NNlib.conv_direct,]
-            NNlib.is_nnpack_available() && push!(convs, NNlib.conv_nnpack)
             for conv in convs
-                if NNlib.is_nnpack_available()
-                    if conv == NNlib.conv_nnpack && !NNlib.nnpack_supported_operation(DenseConvDims(x, w))
-                        continue
-                    end
-                end
                 @testset "$(conv)" begin
                     cdims = DenseConvDims(x, w)
                     # First, your basic convolution with no parameters

@@ -1,30 +1,13 @@
+module NNPACK
+using ..NNlib
+using ..NNlib: check_dims, input_size, output_size, kernel_size, padding, stride, flipkernel, flipweight
+using NNPACK_jll
+
 include("libnnpack_types.jl")
 include("error.jl")
 include("libnnpack.jl")
-include("performance.jl")
+include("multithreading.jl")
 include("interface.jl")
-
-const depsjl_path = joinpath(dirname(@__FILE__), "..", "..", "deps", "deps.jl")
-if !isfile(depsjl_path)
-    error("NNPACK not installed properly, run Pkg.build(\"NNlib\"), restart Julia and try again")
-end
-
-const shared_threadpool_dict = Dict{UInt64, Base.RefValue}()
-
-"""
-    is_nnpack_available()
-
-Checks if the current hardware is supported by NNPACK.
-"""
-function is_nnpack_available()
-    check_deps() isa Nothing || return false
-    status = nnp_initialize()
-    if status == nnp_status_unsupported_hardware
-        return false
-    else
-        return true
-    end
-end
 
 """
     allocate_threadpool()
@@ -41,12 +24,11 @@ function allocate_threadpool()
     end
 end
 
-@init begin
-    check_deps()
-    status = nnp_initialize()
-    if status == nnp_status_unsupported_hardware
-        @warn "Hardware is unsupported by NNPACK so falling back to default NNlib"
+function __init__()
+    if !is_nnpack_available()
+        @warn "Hardware unsupported by NNPACK, falling back to other NNlib backends"
     end
+
     try
         global NNPACK_CPU_THREADS = parse(UInt64, ENV["NNPACK_CPU_THREADS"])
     catch
@@ -57,3 +39,17 @@ end
     end
     allocate_threadpool()
 end
+
+# Here we register our convolution and pooling methods with the parent NNlib module.
+# We have implementations only for normal convolution and maxpooling:
+import ..conv_backends, ..pooling_backends
+push!(conv_backends[:conv], :nnpack)
+push!(conv_backends[:∇conv_data], :nnpack)
+push!(conv_backends[:∇conv_filter], :nnpack)
+
+push!(pooling_backends[:maxpool], :nnpack)
+end # module NNPACK
+
+using .NNPACK
+import .NNPACK: maxpool_nnpack!, nnpack_supported_operation,
+               conv_nnpack!, ∇conv_data_nnpack!, ∇conv_filter_nnpack!

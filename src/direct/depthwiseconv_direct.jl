@@ -1,4 +1,5 @@
 ## This file contains direct Julia implementations of depwthwise convolutions
+export depthwiseconv_direct!, ∇depthwiseconv_data_direct!, ∇depthwiseconv_filter_direct!
 
 """
     depthwiseconv_direct!(y, x, w, cdims; alpha=1, beta=0)
@@ -130,8 +131,6 @@ get applied to it.  The output of such a convolution is the gradient imposed upo
 particular channel of `x`, and so we simply walk through `x`, calculating the gradient
 for each batch and channel independently.
 """
-∇depthwiseconv_data_direct!
-
 function ∇depthwiseconv_data_direct!(
                 dx::AbstractArray{xT,5}, dy::AbstractArray{yT,5},
                 w::AbstractArray{wT,5}, cdims::DepthwiseConvDims;
