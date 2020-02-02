@@ -10,13 +10,13 @@ function.
 σ(x::Real) = one(x) / (one(x) + exp(-x))
 const sigmoid = σ
 
-# ForwardDiff numerical stability hack
-σ_stable(x::Real) = ifelse(x < -80, zero(x), one(x) / (one(x) + exp(-x)))
-σ(x::Float32) = σ_stable(x)
+# ForwardDiff numerical stability
 @init @require ForwardDiff="f6369f11-7733-5829-9624-2563aa707210" begin
-  σ(x::ForwardDiff.Dual{T,Float32}) where T = σ_stable(x)
+    function σ(x::ForwardDiff.Dual)
+        sx = σ(x.value)
+        return ForwardDiff.Dual(sx, sx*(one(sx)-sx)*x.partials)
+    end
 end
-
 
 """
     logσ(x)
