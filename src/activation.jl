@@ -141,4 +141,4 @@ mish(x::Real) = x * tanh(softplus(x))
 for f in (:σ, :σ_stable, :logσ, :relu, :leakyrelu, :elu, :gelu, :swish, :selu, :softsign, :softplus, :logcosh, :mish)
     @eval $(f)(x::AbstractArray, args...) =
       error("Use broadcasting (`", $(string(f)), ".(x)`) to apply activation functions to arrays.")
-  end
+end
