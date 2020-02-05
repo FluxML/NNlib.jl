@@ -1,4 +1,4 @@
-using NNlib, Test
+using NNlib, Test, ForwardDiff
 
 ACTIVATION_FUNCTIONS = [σ, relu, leakyrelu, elu, gelu, swish, selu, softplus, softsign, logcosh];
 
@@ -25,6 +25,9 @@ function test_value_int_input_forces_float64(a)
 end
 
 @testset "Activation Functions" begin
+    dual = σ(ForwardDiff.Dual(-708.0, 1.0))
+    @test -1e-8 < dual.value < 1e-8
+    @test all(map(x->-1e-8< x <1e-8, dual.partials.values))
     @test σ(0.0) == 0.5
     @test relu(0.0) == 0.0
     @test leakyrelu(0.0) == 0.0
