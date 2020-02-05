@@ -127,7 +127,7 @@ Return `log(cosh(x))` which is computed in a numerically stable way.
 logcosh(x::T) where T = x + softplus(-2x) - log(convert(T, 2))
 
 # Provide an informative error message if activation functions are called with an array
-for f in (:σ, :σ_stable, :logσ, :relu, :leakyrelu, :elu, :gelu, :swish, :selu, :softsign, :softplus, :logcosh)
+for f in (:σ, :logσ, :relu, :leakyrelu, :elu, :gelu, :swish, :selu, :softsign, :softplus, :logcosh)
   @eval $(f)(x::AbstractArray, args...) =
     error("Use broadcasting (`", $(string(f)), ".(x)`) to apply activation functions to arrays.")
 end
