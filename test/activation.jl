@@ -1,6 +1,6 @@
-using NNlib, Test
+using NNlib, Test, Zygote
 
-ACTIVATION_FUNCTIONS = [σ, relu, leakyrelu, elu, gelu, swish, selu, softplus, softsign, logcosh];
+ACTIVATION_FUNCTIONS = [σ, relu, leakyrelu, elu, gelu, swish, selu, softplus, softsign, logcosh, mish];
 
 function test_value_float_precision_preserving(a)
     @testset "$(a): " begin
@@ -19,6 +19,17 @@ function test_value_int_input_forces_float64(a)
             for val in [-10, -1, 0, 1, 10]
                 val = @inferred a(T(val))
                 @test typeof(val) == Float64
+            end
+        end
+    end
+end
+
+function test_gradient_float_precision_preserving(a)
+    @testset "$(a): " begin
+        for T in [Float32, Float64]
+            for val in [-10, -1, 0, 1, 10]
+                val = @inferred a'(T(val))
+                @test typeof(val) == T
             end
         end
     end
@@ -82,6 +93,10 @@ end
             @test typeof(relu(Int64(1))) == Int64
             @test typeof(relu(Int32(1))) == Int32
         end
+    end
+    
+    @testset "Float gradient inference" begin
+        test_gradient_float_precision_preserving.(ACTIVATION_FUNCTIONS)
     end
 
     @testset "softmax" begin
