@@ -131,7 +131,7 @@ Continuously Differentiable Exponential Linear Units
 See [Continuously Differentiable Exponential Linear Units](https://arxiv.org/pdf/1704.07483.pdf).
 """
 function celu(x::Real, α::Real = one(x))
-    return elu(x/α, α)
+    return ifelse(x ≥ 0, x / one(x), α * (exp(x/α) - one(x)))
 end 
 
 """
