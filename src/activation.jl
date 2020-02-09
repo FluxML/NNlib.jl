@@ -59,7 +59,7 @@ leakyrelu(x::Real, a = oftype(x / 1, 0.01)) = max(a * x, x / one(x))
 [Rectified Linear Unit](https://en.wikipedia.org/wiki/Rectifier_(neural_networks))
 activation function.
 """
-relu6(x::Real) = min(relu(x), oftype(x/1, 6.0))
+relu6(x::Real) = min(relu(x), one(x)*6)
 
 """
     rrelu(x) = max(ax, x)

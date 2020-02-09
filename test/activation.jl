@@ -101,7 +101,7 @@ end
     end
 
     @testset "Test Integer64 and Integer32 inputs will force Float64 outputs" begin
-        test_value_int_input_forces_float64.(filter(x -> x != relu && x != relu6, ACTIVATION_FUNCTIONS))
+        test_value_int_input_forces_float64.(filter(x -> (x != relu && x != relu6), ACTIVATION_FUNCTIONS))
 
         @testset "relu: " begin
             # relu doesn't have to force floating point outputs
