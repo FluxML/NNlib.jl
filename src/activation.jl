@@ -59,7 +59,7 @@ leakyrelu(x::Real, a = oftype(x / 1, 0.01)) = max(a * x, x / one(x))
 [Rectified Linear Unit](https://en.wikipedia.org/wiki/Rectifier_(neural_networks))
 activation function.
 """
-relu6(x::Real) = min(relu(x), 6)
+relu6(x::Real) = min(relu(x), oftype(x/1, 6.0))
 
 """
     rrelu(x) = max(ax, x)
@@ -178,9 +178,7 @@ tanhshrink(x::Real) = x - tanh(x)
 
 See [Softshrink Activation Function](https://www.gabormelli.com/RKB/Softshrink_Activation_Function)
 """
-function softshrink(x::Real, λ = oftype(x / 1, 0.5))
-    return ifelse(x >= λ, (x - λ) / one(x), ifelse(x <= -λ, (x + λ) / one(x), oftype(x / 1, 0.0)))
-end
+softshrink(x::Real, λ = oftype(x/1, 0.5)) = min(max(zero(x), x - λ), x + λ)
 
 # Provide an informative error message if activation functions are called with an array
 for f in (:σ, :σ_stable, :logσ, :relu, :leakyrelu, :relu6, :rrelu, :elu, :gelu, :swish, :selu, :celu, :softsign, :softplus, :logcosh, :mish, :tanhshrink, :softshrink)
