@@ -1,6 +1,6 @@
 using NNlib, Test, Zygote
 
-ACTIVATION_FUNCTIONS = [σ, relu, leakyrelu, elu, gelu, swish, selu, softplus, softsign, logcosh, mish];
+ACTIVATION_FUNCTIONS = [σ, relu, leakyrelu, relu6, rrelu, elu, gelu, celu, swish, selu, softplus, softsign, logcosh, mish, tanhshrink, softshrink];
 
 function test_value_float_precision_preserving(a)
     @testset "$(a): " begin
@@ -39,6 +39,8 @@ end
     @test σ(0.0) == 0.5
     @test relu(0.0) == 0.0
     @test leakyrelu(0.0) == 0.0
+    @test relu6(0.0) == 0.0
+    @test rrelu(0.0) == 0.0
     @test elu(0.0) == 0.0
     @test gelu(0.0) == 0.0
     @test swish(0.0) == 0.0
@@ -47,32 +49,45 @@ end
     @test softplus(-1e8) ≈ 0.0
     @test softsign(0.0) == 0.0
     @test selu(0.0) == 0.0
+    @test celu(0.0) == 0.0
     @test logcosh(0.0) == log(cosh(0.0))
     @test mish(0.0) == 0.0
+    @test tanhshrink(0.0) == 0.0
+    @test softshrink(0.0) == 0.0
 
     @test σ(1.0) == 1.0 / (1.0 + exp(-1.0))
     @test relu(1.0) == 1.0
     @test leakyrelu(1.0) == 1.0
+    @test relu6(1.0) == 1.0
+    @test rrelu(1.0) == 1.0
     @test elu(1.0) == 1.0
     @test gelu(1.0) == 0.8411919906082768
     @test swish(1.0) == 1.0 / (1.0 + exp(-1.0))
     @test softplus(1.0) ≈ log(exp(1.0) + 1.0)
     @test softsign(1.0) == 0.5
     @test selu(1.0) == 1.0507009873554804934193349852946
+    @test celu(1.0) == 1.0
     @test logcosh(1.0) ≈ log(cosh(1.0))
     @test mish(1.0) ≈ tanh(log(1.0 + exp(1.0)))
+    @test tanhshrink(1.0) ≈ 0.23840584404423515
+    @test softshrink(1.0) == 0.5
 
     @test σ(-1.0) == 1.0 / (1.0 + exp(1.0))
     @test relu(-1.0) == 0.0
     @test leakyrelu(-1.0) == -0.01
+    @test relu6(-1.0) == 0.0
+    @test -1/3.0 <= rrelu(-1.0) <= -1/8.0
     @test elu(-1.0) == exp(-1.0) - 1.0
     @test gelu(-1.0) == -0.15880800939172324
     @test swish(-1.0) == -1.0 / (1.0 + exp(1.0))
     @test softplus(-1.0) ≈ log(exp(-1.0) + 1.0)
     @test softsign(-1.0) == -0.5
     @test selu(-1.0) == 1.0507009873554804934193349852946 * 1.6732632423543772848170429916717 * (exp(-1.0) - 1.0)
+    @test celu(-1.0) == exp(-1.0) - 1
     @test log(cosh(-1.0)) ≈ log(cosh(-1.0))
     @test mish(-1.0) ≈ -tanh(log(1.0 + exp(-1.0)))
+    @test tanhshrink(-1.0) ≈ -0.23840584404423515
+    @test softshrink(-1.0) == -0.5
 
     @testset "Float inference" begin
         test_value_float_precision_preserving.(ACTIVATION_FUNCTIONS)
@@ -86,13 +101,20 @@ end
     end
 
     @testset "Test Integer64 and Integer32 inputs will force Float64 outputs" begin
-        test_value_int_input_forces_float64.(filter(x -> x != relu, ACTIVATION_FUNCTIONS))
+        test_value_int_input_forces_float64.(filter(x -> (x != relu && x != relu6), ACTIVATION_FUNCTIONS))
 
         @testset "relu: " begin
             # relu doesn't have to force floating point outputs
             @test typeof(relu(Int64(1))) == Int64
             @test typeof(relu(Int32(1))) == Int32
         end
+
+        @testset "relu6: " begin
+            # relu6 doesn't have to force floating point outputs
+            @test typeof(relu6(Int64(1))) == Int64
+            @test typeof(relu6(Int32(1))) == Int32
+        end
+
     end
     
     @testset "Float gradient inference" begin
@@ -154,6 +176,22 @@ end
 
     @test leakyrelu( 0.4,0.3) ≈  0.4
     @test leakyrelu(-0.4,0.3) ≈ -0.12
+
+    @test relu6(10.0) == 6.0
+    @test -0.2 <= rrelu(-0.4,0.25,0.5) <= -0.1 
+
+    @testset "celu" begin
+        @test celu(42) == 42
+        @test celu(42.) == 42.
+
+        @test celu(-4, 0.5) ≈ 0.5*(exp(-4.0/0.5) - 1)
+    end
+
+    @testset "softshrink" begin
+        @test softshrink(15., 5.) == 10.
+        @test softshrink(4., 5.) == 0.
+        @test softshrink(-15., 5.) == -10.
+    end
 
     @testset "logsigmoid" begin
         xs = randn(10,10)
