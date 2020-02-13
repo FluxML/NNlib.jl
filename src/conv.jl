@@ -94,8 +94,8 @@ for front_name in (:conv, :∇conv_data, :∇conv_filter,
                         y::AbstractArray{yT,N}, in1::AbstractArray{T1,N},
                         in2::AbstractArray{T2,N}, cdims::ConvDims;
                         kwargs...) where {yT, T1, T2, N}
-            @debug string("Slow fallback implementation invoked for ", $front_name, "!  ",
-                          "You probably don't want this; check your datatypes.")
+            @debug string("Slow fallback implementation invoked for ", $(string(front_name)), "!  ",
+                          "You probably don't want this; check your datatypes.") yT T1 T2
             $(Symbol("$(front_name)_direct!"))(y, in1, in2, cdims; kwargs...)
         end
     end

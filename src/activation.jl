@@ -1,5 +1,5 @@
-export σ, sigmoid, relu, leakyrelu, elu, gelu, swish, selu, softplus, softsign, logσ,
-       logsigmoid, logcosh, mish
+export σ, sigmoid, relu, leakyrelu, relu6, rrelu, elu, gelu, swish, selu, celu, softplus, softsign, logσ,
+       logsigmoid, logcosh, mish, tanhshrink, softshrink
 
 """
     σ(x) = 1 / (1 + exp(-x))
@@ -51,8 +51,29 @@ Leaky [Rectified Linear Unit](https://en.wikipedia.org/wiki/Rectifier_(neural_ne
 activation function.
 You can also specify the coefficient explicitly, e.g. `leakyrelu(x, 0.01)`.
 """
-leakyrelu(x::Real, a = oftype(x/1, 0.01)) = max(a*x, x/one(x))
+leakyrelu(x::Real, a = oftype(x / 1, 0.01)) = max(a * x, x / one(x))
 
+"""
+    relu6(x) = min(max(0, x),6)
+
+[Rectified Linear Unit](https://en.wikipedia.org/wiki/Rectifier_(neural_networks))
+activation function.
+"""
+relu6(x::Real) = min(relu(x), one(x)*oftype(x, 6))
+
+"""
+    rrelu(x) = max(ax, x)
+
+    a = randomly sampled from uniform distribution U(l,u)
+
+Randomized Leaky [Rectified Linear Unit](https://arxiv.org/pdf/1505.00853.pdf)
+activation function.
+You can also specify the bound explicitly, e.g. `rrelu(x, 0.0, 1.0)`.
+"""
+function rrelu(x::Real, l::Real = 1 / 8.0, u::Real = 1 / 3.0)
+    a = oftype(x /1, (u - l) * rand() + l)
+    return leakyrelu(x, a)
+end
 
 """
     elu(x, α = 1) =
@@ -62,7 +83,7 @@ Exponential Linear Unit activation function.
 See [Fast and Accurate Deep Network Learning by Exponential Linear Units](https://arxiv.org/abs/1511.07289).
 You can also specify the coefficient explicitly, e.g. `elu(x, 1)`.
 """
-elu(x, α = one(x)) = ifelse(x ≥ 0, x/one(x), α * (exp(x) - one(x)))
+elu(x, α = one(x)) = ifelse(x ≥ 0, x / one(x), α * (exp(x) - one(x)))
 
 
 """
@@ -72,9 +93,10 @@ elu(x, α = one(x)) = ifelse(x ≥ 0, x/one(x), α * (exp(x) - one(x)))
 activation function.
 """
 function gelu(x::Real)
-    λ = oftype(x/1, √(2/π))
-    α = oftype(x/1, 0.044715)
-    h = oftype(x/1, 0.5)
+    p = oftype(x / 1, π)
+    λ = oftype(x / 1, √(2 / p))
+    α = oftype(x / 1, 0.044715)
+    h = oftype(x / 1, 0.5)
     h * x * (one(x) + tanh(λ * (x + α * x^3)))
 end
 
@@ -97,11 +119,20 @@ Scaled exponential linear units.
 See [Self-Normalizing Neural Networks](https://arxiv.org/pdf/1706.02515.pdf).
 """
 function selu(x::Real)
-  λ = oftype(x/1, 1.0507009873554804934193349852946)
-  α = oftype(x/1, 1.6732632423543772848170429916717)
-  λ * ifelse(x > 0, x/one(x), α * (exp(x) - one(x)))
+  λ = oftype(x / 1, 1.0507009873554804934193349852946)
+  α = oftype(x / 1, 1.6732632423543772848170429916717)
+  λ * ifelse(x > 0, x / one(x), α * (exp(x) - one(x)))
 end
 
+"""
+    celu(x) = (x ≥ 0 ? x : α * (exp(x/α) - 1))
+
+Continuously Differentiable Exponential Linear Units
+See [Continuously Differentiable Exponential Linear Units](https://arxiv.org/pdf/1704.07483.pdf).
+"""
+function celu(x::Real, α::Real = one(x))
+    return ifelse(x ≥ 0, x / one(x), α * (exp(x/α) - one(x)))
+end 
 
 """
     softsign(x) = x / (1 + |x|)
@@ -132,7 +163,6 @@ for f in (:σ, :logσ, :relu, :leakyrelu, :elu, :gelu, :swish, :selu, :softsign,
     error("Use broadcasting (`", $(string(f)), ".(x)`) to apply activation functions to arrays.")
 end
 
-
 """
     mish(x) = x * tanh(softplus(x))
 
@@ -140,3 +170,23 @@ Self Regularized Non-Monotonic Neural Activation Function
 See [Mish: A Self Regularized Non-Monotonic Neural Activation Function](https://arxiv.org/abs/1908.08681).
 """
 mish(x::Real) = x * tanh(softplus(x))
+
+"""
+    tanhshrink(x) = x - tanh(x)
+
+See [Tanhshrink Activation Function](https://www.gabormelli.com/RKB/Tanhshrink_Activation_Function)
+"""
+tanhshrink(x::Real) = x - tanh(x)
+
+"""
+    softshrink = (x ≥ λ ? x-λ : (-λ ≥ x ? x+λ : 0))
+
+See [Softshrink Activation Function](https://www.gabormelli.com/RKB/Softshrink_Activation_Function)
+"""
+softshrink(x::Real, λ = oftype(x/1, 0.5)) = min(max(zero(x), x - λ), x + λ)
+
+# Provide an informative error message if activation functions are called with an array
+for f in (:σ, :σ_stable, :logσ, :relu, :leakyrelu, :relu6, :rrelu, :elu, :gelu, :swish, :selu, :celu, :softsign, :softplus, :logcosh, :mish, :tanhshrink, :softshrink)
+    @eval $(f)(x::AbstractArray, args...) =
+      error("Use broadcasting (`", $(string(f)), ".(x)`) to apply activation functions to arrays.")
+end
