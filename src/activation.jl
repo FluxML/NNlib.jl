@@ -63,7 +63,7 @@ See [Convolutional Deep Belief Networks on CIFAR-10](http://www.cs.utoronto.ca/%
 relu6(x::Real) = min(relu(x), oftype(x, 6))
 
 """
-    rrelu(x, l = 1/8, u = 1/3) = max(ax, x)
+    rrelu(x, l=1/8, u=1/3) = max(a*x, x)
 
     a = randomly sampled from uniform distribution U(l, u)
 
@@ -77,7 +77,7 @@ function rrelu(x::Real, l::Real = 1 / 8.0, u::Real = 1 / 3.0)
 end
 
 """
-    elu(x, α = 1) =
+    elu(x, α=1) =
       x > 0 ? x : α * (exp(x) - 1)
 
 Exponential Linear Unit activation function.
@@ -126,7 +126,7 @@ function selu(x::Real)
 end
 
 """
-    celu(x, α = 1) = 
+    celu(x, α=1) = 
         (x ≥ 0 ? x : α * (exp(x/α) - 1))
 
 Continuously Differentiable Exponential Linear Units
@@ -176,7 +176,7 @@ See [Tanhshrink Activation Function](https://www.gabormelli.com/RKB/Tanhshrink_A
 tanhshrink(x::Real) = x - tanh(x)
 
 """
-    softshrink(x, λ = 0.5) = 
+    softshrink(x, λ=0.5) = 
         (x ≥ λ ? x - λ : (-λ ≥ x ? x + λ : 0))
 
 See [Softshrink Activation Function](https://www.gabormelli.com/RKB/Softshrink_Activation_Function)
