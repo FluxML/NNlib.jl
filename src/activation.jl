@@ -45,7 +45,7 @@ relu(x::Real) = max(zero(x), x)
 
 
 """
-    leakyrelu(x, a = 0.01) = max(ax, x)
+    leakyrelu(x, a=0.01) = max(a*x, x)
 
 Leaky [Rectified Linear Unit](https://en.wikipedia.org/wiki/Rectifier_(neural_networks))
 activation function.
