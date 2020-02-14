@@ -59,7 +59,7 @@ leakyrelu(x::Real, a = oftype(x / 1, 0.01)) = max(a * x, x / one(x))
 [Rectified Linear Unit](https://en.wikipedia.org/wiki/Rectifier_(neural_networks))
 activation function.
 """
-relu6(x::Real) = min(relu(x), one(x)*oftype(x, 6))
+relu6(x::Real) = min(relu(x), oftype(x, 6))
 
 """
     rrelu(x) = max(ax, x)
@@ -71,7 +71,7 @@ activation function.
 You can also specify the bound explicitly, e.g. `rrelu(x, 0.0, 1.0)`.
 """
 function rrelu(x::Real, l::Real = 1 / 8.0, u::Real = 1 / 3.0)
-    a = oftype(x /1, (u - l) * rand() + l)
+    a = oftype(x / 1, (u - l) * rand() + l)
     return leakyrelu(x, a)
 end
 
@@ -83,7 +83,7 @@ Exponential Linear Unit activation function.
 See [Fast and Accurate Deep Network Learning by Exponential Linear Units](https://arxiv.org/abs/1511.07289).
 You can also specify the coefficient explicitly, e.g. `elu(x, 1)`.
 """
-elu(x, α = one(x)) = ifelse(x ≥ 0, x / one(x), α * (exp(x) - one(x)))
+elu(x::Real, α = one(x)) = ifelse(x ≥ 0, x / one(x), α * (exp(x) - one(x)))
 
 
 """
@@ -155,7 +155,7 @@ softplus(x::Real) = ifelse(x > 0, x + log1p(exp(-x)), log1p(exp(x)))
 
 Return `log(cosh(x))` which is computed in a numerically stable way.
 """
-logcosh(x::T) where T = x + softplus(-2x) - log(convert(T, 2))
+logcosh(x::Real) = x + softplus(-2x) - log(oftype(x, 2))
 
 
 """
