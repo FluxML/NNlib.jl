@@ -161,7 +161,7 @@ function ∇conv_data_direct!(dx::AbstractArray{xT,5}, dy::AbstractArray{yT,5},
                                   dilation=dilation(cdims),
                                   flipkernel=flipkernel(cdims))
     dx = conv_direct!(dx, dy, w, ctdims; alpha=alpha, beta=beta)
-    return transpose_swapbatch(dx)
+    return dx
 end
 
 """
