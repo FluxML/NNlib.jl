@@ -131,5 +131,5 @@ function Base.show(io::IO, cdims::C) where {C <: ConvDims}
     P = padding(cdims)
     D = dilation(cdims)
     F = flipkernel(cdims)
-    print(io, "$(basetype(C)): $I * $K -> $O, stride: $S pad: $P, dil: $D, flip: $F")
+    print(io, "$(basetype(C)): $I * $K -> $O, stride: $S, pad: $P, dil: $D, flip: $F")
 end

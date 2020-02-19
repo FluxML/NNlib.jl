@@ -45,7 +45,7 @@ relu(x::Real) = max(zero(x), x)
 
 
 """
-    leakyrelu(x) = max(0.01x, x)
+    leakyrelu(x, a=0.01) = max(a*x, x)
 
 Leaky [Rectified Linear Unit](https://en.wikipedia.org/wiki/Rectifier_(neural_networks))
 activation function.
@@ -54,40 +54,41 @@ You can also specify the coefficient explicitly, e.g. `leakyrelu(x, 0.01)`.
 leakyrelu(x::Real, a = oftype(x / 1, 0.01)) = max(a * x, x / one(x))
 
 """
-    relu6(x) = min(max(0, x),6)
+    relu6(x) = min(max(0, x), 6)
 
 [Rectified Linear Unit](https://en.wikipedia.org/wiki/Rectifier_(neural_networks))
-activation function.
+activation function capped at 6.
+See [Convolutional Deep Belief Networks on CIFAR-10](http://www.cs.utoronto.ca/%7Ekriz/conv-cifar10-aug2010.pdf)
 """
-relu6(x::Real) = min(relu(x), one(x)*oftype(x, 6))
+relu6(x::Real) = min(relu(x), oftype(x, 6))
 
 """
-    rrelu(x) = max(ax, x)
+    rrelu(x, l=1/8, u=1/3) = max(a*x, x)
 
-    a = randomly sampled from uniform distribution U(l,u)
+    a = randomly sampled from uniform distribution U(l, u)
 
 Randomized Leaky [Rectified Linear Unit](https://arxiv.org/pdf/1505.00853.pdf)
 activation function.
 You can also specify the bound explicitly, e.g. `rrelu(x, 0.0, 1.0)`.
 """
 function rrelu(x::Real, l::Real = 1 / 8.0, u::Real = 1 / 3.0)
-    a = oftype(x /1, (u - l) * rand() + l)
+    a = oftype(x / 1, (u - l) * rand() + l)
     return leakyrelu(x, a)
 end
 
 """
-    elu(x, α = 1) =
+    elu(x, α=1) =
       x > 0 ? x : α * (exp(x) - 1)
 
 Exponential Linear Unit activation function.
 See [Fast and Accurate Deep Network Learning by Exponential Linear Units](https://arxiv.org/abs/1511.07289).
 You can also specify the coefficient explicitly, e.g. `elu(x, 1)`.
 """
-elu(x, α = one(x)) = ifelse(x ≥ 0, x / one(x), α * (exp(x) - one(x)))
+elu(x::Real, α = one(x)) = ifelse(x ≥ 0, x / one(x), α * (exp(x) - one(x)))
 
 
 """
-    gelu(x) = 0.5x*(1 + tanh(√(2/π)*(x + 0.044715x^3)))
+    gelu(x) = 0.5x * (1 + tanh(√(2/π) * (x + 0.044715x^3)))
 
 [Gaussian Error Linear Unit](https://arxiv.org/pdf/1606.08415.pdf)
 activation function.
@@ -125,7 +126,8 @@ function selu(x::Real)
 end
 
 """
-    celu(x) = (x ≥ 0 ? x : α * (exp(x/α) - 1))
+    celu(x, α=1) = 
+        (x ≥ 0 ? x : α * (exp(x/α) - 1))
 
 Continuously Differentiable Exponential Linear Units
 See [Continuously Differentiable Exponential Linear Units](https://arxiv.org/pdf/1704.07483.pdf).
@@ -155,7 +157,7 @@ softplus(x::Real) = ifelse(x > 0, x + log1p(exp(-x)), log1p(exp(x)))
 
 Return `log(cosh(x))` which is computed in a numerically stable way.
 """
-logcosh(x::T) where T = x + softplus(-2x) - log(convert(T, 2))
+logcosh(x::Real) = x + softplus(-2x) - log(oftype(x, 2))
 
 
 """
@@ -174,7 +176,8 @@ See [Tanhshrink Activation Function](https://www.gabormelli.com/RKB/Tanhshrink_A
 tanhshrink(x::Real) = x - tanh(x)
 
 """
-    softshrink = (x ≥ λ ? x-λ : (-λ ≥ x ? x+λ : 0))
+    softshrink(x, λ=0.5) = 
+        (x ≥ λ ? x - λ : (-λ ≥ x ? x + λ : 0))
 
 See [Softshrink Activation Function](https://www.gabormelli.com/RKB/Softshrink_Activation_Function)
 """
