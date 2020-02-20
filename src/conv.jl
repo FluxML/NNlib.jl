@@ -164,18 +164,33 @@ if is_nnpack_available()
     end
 end
 
-function conv(x, w::AbstractArray{T, N}; stride = 1, pad = 0, dilation = 1, flipped = false) where {T, N}
+"""
+    conv(x, w; stride=1, pad=0, dilation=1, flipped=false)
+
+Apply convolution filter `w` to input `x`. `x` and `w` are 3d/4d/5d tensors in 1d/2d/3d convolutions
+respectively. 
+"""
+function conv(x, w::AbstractArray{T, N}; stride=1, pad=0, dilation=1, flipped=false) where {T, N}
     stride = expand(Val(N-2), stride)
     pad = expand(Val(N-2), pad)
     dilation = expand(Val(N-2), dilation)
-    cdims = DenseConvDims(x, w; stride = stride, padding = pad, dilation = dilation, flipkernel = flipped)
+    cdims = DenseConvDims(x, w; stride=stride, padding=pad, dilation=dilation, flipkernel=flipped)
     return conv(x, w, cdims)
 end
 
-function depthwiseconv(x, w::AbstractArray{T, N}; stride = 1, pad = 0, dilation = 1, flipped = false) where {T, N}
+
+
+
+"""
+    depthwiseconv(x, w; stride=1, pad=0, dilation=1, flipped=false)
+
+Depthwise convolution operation with filter `w` on input `x`. `x` and `w` are 3d/4d/5d tensors in 1d/2d/3d convolutions
+respectively. 
+"""
+function depthwiseconv(x, w::AbstractArray{T, N}; stride=1, pad=0, dilation=1, flipped=false) where {T, N}
     stride = expand(Val(N-2), stride)
     pad = expand(Val(N-2), pad)
     dilation = expand(Val(N-2), dilation)
-    cdims = DepthwiseConvDims(x, w; stride = stride, padding = pad, dilation = dilation, flipkernel = flipped)
+    cdims = DepthwiseConvDims(x, w; stride=stride, padding=pad, dilation=dilation, flipkernel=flipped)
     return depthwiseconv(x, w, cdims)
 end
