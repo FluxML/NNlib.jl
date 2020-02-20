@@ -2,7 +2,6 @@ export softmax, softmax!, ∇softmax, ∇softmax!,
        logsoftmax, logsoftmax!, ∇logsoftmax, ∇logsoftmax!
 
 """
-    
     softmax(x; dims=1)
     
 [Softmax](https://en.wikipedia.org/wiki/Softmax_function) turns input array `x` 
@@ -14,9 +13,10 @@ It is semantically equivalent to the following:
 with additional manipulations enhancing numerical stability.
 
 For a matrix input `x` it will by default (`dims=1`) treat it as a batch of vectors,
-with each column independent. Keyword `dims=2` will instead treat rows independently, etc.
-```juliarepl
-julia> softmax([1,2,3.])
+with each column independent. Keyword `dims=2` will instead treat rows independently, 
+etc...
+```julia-repl
+julia> softmax([1, 2, 3])
 3-element Array{Float64,1}:
   0.0900306
   0.244728

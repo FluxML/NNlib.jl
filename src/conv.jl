@@ -167,8 +167,8 @@ end
 """
     conv(x, w; stride=1, pad=0, dilation=1, flipped=false)
 
-Apply convolution filter `w` to input `x`. `x` and `w` are 3d/4d/5d tensors in 1d/2d/3d convolutions
-respectively. 
+Apply convolution filter `w` to input `x`. `x` and `w` are 3d/4d/5d tensors 
+in 1d/2d/3d convolutions respectively. 
 """
 function conv(x, w::AbstractArray{T, N}; stride=1, pad=0, dilation=1, flipped=false) where {T, N}
     stride = expand(Val(N-2), stride)
@@ -184,8 +184,8 @@ end
 """
     depthwiseconv(x, w; stride=1, pad=0, dilation=1, flipped=false)
 
-Depthwise convolution operation with filter `w` on input `x`. `x` and `w` are 3d/4d/5d tensors in 1d/2d/3d convolutions
-respectively. 
+Depthwise convolution operation with filter `w` on input `x`. `x` and `w` 
+are 3d/4d/5d tensors in 1d/2d/3d convolutions respectively. 
 """
 function depthwiseconv(x, w::AbstractArray{T, N}; stride=1, pad=0, dilation=1, flipped=false) where {T, N}
     stride = expand(Val(N-2), stride)
