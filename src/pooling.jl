@@ -140,16 +140,28 @@ end
 expand(N, i::Tuple) = i
 expand(N, i::Integer) = ntuple(_ -> i, N)
 
-function maxpool(x, k::NTuple{N, Integer}; pad = 0, stride = k) where N
+
+"""
+    maxpool(x, k::NTuple; pad=0, stride=k)
+
+Perform max pool operation with window size `k` on input tensor `x`.
+"""
+function maxpool(x, k::NTuple{N, Integer}; pad=0, stride=k) where N
     pad = expand(Val(N), pad)
     stride = expand(Val(N), stride)
-    pdims = PoolDims(x, k; padding = pad, stride = stride)
+    pdims = PoolDims(x, k; padding=pad, stride=stride)
     return maxpool(x, pdims)
 end
 
-function meanpool(x, k::NTuple{N, Integer}; pad = 0, stride = k) where N
+
+"""
+    meanpool(x, k::NTuple; pad=0, stride=k)
+
+Perform mean pool operation with window size `k` on input tensor `x`.
+"""
+function meanpool(x, k::NTuple{N, Integer}; pad=0, stride=k) where N
     pad = expand(Val(N), pad)
     stride = expand(Val(N), stride)
-    pdims = PoolDims(x, k; padding = pad, stride = stride)
+    pdims = PoolDims(x, k; padding=pad, stride=stride)
     return meanpool(x, pdims)
 end
