@@ -1,5 +1,5 @@
 export σ, sigmoid, relu, leakyrelu, relu6, rrelu, elu, gelu, swish, selu, celu, softplus, softsign, logσ,
-       logsigmoid, logcosh, mish, tanhshrink, softshrink
+       logsigmoid, logcosh, mish, tanhshrink, softshrink, thresholdrelu, trelu, lisht, hardσ, hardsigmoid
 
 """
     σ(x) = 1 / (1 + exp(-x))
@@ -17,6 +17,14 @@ const sigmoid = σ
   σ(x::ForwardDiff.Dual{T,Float32}) where T = σ_stable(x)
 end
 
+"""
+   hardσ(x) = x > 2.5 ? 1.0 : x < -2.5 ? 0 : 0.2 * x + 0.5
+Segment-wise linear approximation of sigmoid[HardSigmoid]()
+
+Note: It should not be use with Regression tasks.
+"""
+hardσ(x::Real) = oftype(x,x>2.5 ? 1.0 : x<-2.5 ? 0 : 0.2*x + 0.5)
+const hardsigmoid = hardσ
 
 """
     logσ(x)
@@ -110,6 +118,16 @@ See [Swish: a Self-Gated Activation Function](https://arxiv.org/pdf/1710.05941.p
 """
 swish(x::Real) = x * σ(x)
 
+
+"""
+    lisht(x) = x * tanh(x)
+
+Non-Parametric Linearly Scaled Hyperbolic Tangent Activation Function
+See [LiSHT](https://arxiv.org/abs/1901.05894)
+"""
+lisht(x::Real) = x * tanh(x)
+
+
 """
     selu(x) = λ * (x ≥ 0 ? x : α * (exp(x) - 1))
 
@@ -135,6 +153,15 @@ See [Continuously Differentiable Exponential Linear Units](https://arxiv.org/pdf
 function celu(x::Real, α::Real = one(x))
     return ifelse(x ≥ 0, x / one(x), α * (exp(x/α) - one(x)))
 end 
+
+"""
+    trelu(x, theta = 1.0) = x > theta ? x : 0 
+
+Threshold Gated Rectified Linear   
+See [ThresholdRelu](https://arxiv.org/pdf/1402.3337.pdf)
+"""
+trelu(x::Real,theta = one(x)) = x > theta ? x : zero(x) 
+const thresholdrelu = trelu
 
 """
     softsign(x) = x / (1 + |x|)
@@ -184,7 +211,7 @@ See [Softshrink Activation Function](https://www.gabormelli.com/RKB/Softshrink_A
 softshrink(x::Real, λ = oftype(x/1, 0.5)) = min(max(zero(x), x - λ), x + λ)
 
 # Provide an informative error message if activation functions are called with an array
-for f in (:σ, :σ_stable, :logσ, :relu, :leakyrelu, :relu6, :rrelu, :elu, :gelu, :swish, :selu, :celu, :softsign, :softplus, :logcosh, :mish, :tanhshrink, :softshrink)
+for f in (:σ, :σ_stable, :hardσ, :logσ, :relu, :leakyrelu, :relu6, :rrelu, :elu, :gelu, :swish, :lisht, :selu, :celu, :trelu, :softsign, :softplus, :logcosh, :mish, :tanhshrink, :softshrink)
     @eval $(f)(x::AbstractArray, args...) =
       error("Use broadcasting (`", $(string(f)), ".(x)`) to apply activation functions to arrays.")
 end
