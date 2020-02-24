@@ -23,7 +23,7 @@ end
 Segment-wise linear approximation of sigmoid
 Note: It should not be used with Regression tasks.
 """
-hardσ(x::Real) = oftype(x, max(0, min(1.0, 0.2 * x + 0.5)))
+hardσ(x::Real) = oftype(x/1, max(zero(x/1), min(one(x/1), oftype(x/1,0.2) * x + oftype(x/1,0.5))))
 const hardsigmoid = hardσ
 
 
@@ -43,12 +43,14 @@ Return `log(σ(x))` which is computed in a numerically stable way.
 logσ(x::Real) = -softplus(-x)
 const logsigmoid = logσ
 
+
 """
     hardtanh(x) = max(-1, min(1, x))
 
 Segment-wise linear approximation of tanh. Cheaper  and  more  computational  efficient version of tanh.
 """
-hardtanh(x::Real) = oftype(x,max(-1, min( 1, x)))
+hardtanh(x::Real) = oftype(x / 1,max(-1, min( 1, x)))
+
 
 """
     relu(x) = max(0, x)
@@ -168,7 +170,9 @@ end
 Threshold Gated Rectified Linear   
 See [ThresholdRelu](https://arxiv.org/pdf/1402.3337.pdf)
 """
-trelu(x::Real,theta = one(x)) = x > theta ? x : zero(x) 
+function trelu(x::Real,theta = one(x/1)) 
+    return ifelse(x> theta, x/ one(x), zero(x/1))
+end 
 const thresholdrelu = trelu
 
 
