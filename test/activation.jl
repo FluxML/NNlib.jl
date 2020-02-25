@@ -1,6 +1,6 @@
 using NNlib, Test, Zygote
 
-ACTIVATION_FUNCTIONS = [σ,hardσ, hardtanh, relu, leakyrelu, relu6, rrelu, elu, gelu, celu, swish, lisht, selu, trelu, softplus, softsign, logcosh, mish, tanhshrink, softshrink];
+ACTIVATION_FUNCTIONS = [σ, hardσ, hardtanh, relu, leakyrelu, relu6, rrelu, elu, gelu, celu, swish, lisht, selu, trelu, softplus, softsign, logcosh, mish, tanhshrink, softshrink];
 
 function test_value_float_precision_preserving(a)
     @testset "$(a): " begin
@@ -113,7 +113,7 @@ end
     end
 
     @testset "Test Integer64 and Integer32 inputs will force Float64 outputs" begin
-        test_value_int_input_forces_float64.(filter(x -> (x != relu && x != relu6), ACTIVATION_FUNCTIONS))
+        test_value_int_input_forces_float64.(filter(x -> (x != relu && x != relu6 && x != hardtanh && x != trelu), ACTIVATION_FUNCTIONS))
 
         @testset "relu: " begin
             # relu doesn't have to force floating point outputs
@@ -126,7 +126,18 @@ end
             @test typeof(relu6(Int64(1))) == Int64
             @test typeof(relu6(Int32(1))) == Int32
         end
-
+        
+        @testset "hardtanh: " begin
+            # relu6 doesn't have to force floating point outputs
+            @test typeof(hardtanh(Int64(1))) == Int64
+            @test typeof(hardtanh(Int32(1))) == Int32
+        end
+        
+        @testset "trelu: " begin
+            # relu6 doesn't have to force floating point outputs
+            @test typeof(trelu(Int64(1))) == Int64
+            @test typeof(trelu(Int32(1))) == Int32
+        end
     end
     
     @testset "Float gradient inference" begin
@@ -218,6 +229,7 @@ end
     @testset "hardsigmoid" begin
         @test hardsigmoid(0.3) == 0.56
         @test hardsigmoid(-0.3) == 0.44
+        @test hardsigmoid(0.1,0.5) == 0.55
         for T in [:Float32, :Float64]
             @eval @test hardsigmoid.($T[-100_000, 100_000.]) ≈ $T[0., 1.]
         end
