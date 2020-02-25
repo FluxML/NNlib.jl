@@ -18,12 +18,14 @@ const sigmoid = σ
 end
 
 """
-   hardσ(x) = max(0, min(1.0, 0.2 * x + 0.5))
+   hardσ(x, a=0.2) = max(0, min(1.0, a * x + 0.5))
 
 Segment-wise linear approximation of sigmoid
+See: [BinaryConnect: Training Deep Neural Networks withbinary weights during propagations](https://arxiv.org/pdf/1511.00363.pdf)
+
 Note: It should not be used with Regression tasks.
 """
-hardσ(x::Real) = oftype(x/1, max(zero(x/1), min(one(x/1), oftype(x/1,0.2) * x + oftype(x/1,0.5))))
+hardσ(x::Real, a=0.2) = oftype(x/1, max(zero(x/1), min(one(x/1), oftype(x/1,a) * x + oftype(x/1,0.5))))
 const hardsigmoid = hardσ
 
 
@@ -48,8 +50,9 @@ const logsigmoid = logσ
     hardtanh(x) = max(-1, min(1, x))
 
 Segment-wise linear approximation of tanh. Cheaper  and  more  computational  efficient version of tanh.
+See: (http://ronan.collobert.org/pub/matos/2004_phdthesis_lip6.pdf)
 """
-hardtanh(x::Real) = oftype(x / 1,max(-1, min( 1, x)))
+hardtanh(x::Real) = max(-one(x), min( one(x), x))
 
 
 """
@@ -170,8 +173,8 @@ end
 Threshold Gated Rectified Linear   
 See [ThresholdRelu](https://arxiv.org/pdf/1402.3337.pdf)
 """
-function trelu(x::Real,theta = one(x/1)) 
-    return ifelse(x> theta, x/ one(x), zero(x/1))
+function trelu(x::Real,theta = one(x)) 
+    return ifelse(x> theta, x/ one(x), zero(x))
 end 
 const thresholdrelu = trelu
 
