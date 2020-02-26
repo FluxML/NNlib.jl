@@ -160,9 +160,7 @@ end
 Continuously Differentiable Exponential Linear Units
 See [Continuously Differentiable Exponential Linear Units](https://arxiv.org/pdf/1704.07483.pdf).
 """
-function celu(x::Real, α::Real = one(x))
-    return ifelse(x ≥ 0, x / one(x), α * (exp(x/α) - one(x)))
-end 
+celu(x::Real, α::Real = one(x)) = ifelse(x ≥ 0, x / one(x), α * (exp(x/α) - one(x))) 
 
 
 """
@@ -171,9 +169,7 @@ end
 Threshold Gated Rectified Linear   
 See [ThresholdRelu](https://arxiv.org/pdf/1402.3337.pdf)
 """
-function trelu(x::Real,theta = one(x)) 
-    return ifelse(x> theta, x/ one(x), zero(x))
-end 
+trelu(x::Real,theta = one(x)) = ifelse(x> theta, x/ one(x), zero(x))
 const thresholdrelu = trelu
 
 
