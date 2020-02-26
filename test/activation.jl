@@ -128,13 +128,13 @@ end
         end
         
         @testset "hardtanh: " begin
-            # relu6 doesn't have to force floating point outputs
+            # hardtanh doesn't have to force floating point outputs
             @test typeof(hardtanh(Int64(1))) == Int64
             @test typeof(hardtanh(Int32(1))) == Int32
         end
         
         @testset "trelu: " begin
-            # relu6 doesn't have to force floating point outputs
+            # trelu doesn't have to force floating point outputs
             @test typeof(trelu(Int64(1))) == Int64
             @test typeof(trelu(Int32(1))) == Int32
         end
