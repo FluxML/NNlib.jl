@@ -169,7 +169,7 @@ celu(x::Real, α::Real = one(x)) = ifelse(x ≥ 0, x / one(x), α * (exp(x/α) -
 Threshold Gated Rectified Linear   
 See [ThresholdRelu](https://arxiv.org/pdf/1402.3337.pdf)
 """
-trelu(x::Real,theta = one(x)) = ifelse(x> theta, x/ one(x), zero(x))
+trelu(x::Real,theta = one(x)) = ifelse(x> theta, x, zero(x))
 const thresholdrelu = trelu
 
 
