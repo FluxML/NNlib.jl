@@ -22,8 +22,6 @@ end
 
 Segment-wise linear approximation of sigmoid
 See: [BinaryConnect: Training Deep Neural Networks withbinary weights during propagations](https://arxiv.org/pdf/1511.00363.pdf)
-
-Note: It should not be used with Regression tasks.
 """
 hardσ(x::Real, a=0.2) = oftype(x/1, max(zero(x/1), min(one(x/1), oftype(x/1,a) * x + oftype(x/1,0.5))))
 const hardsigmoid = hardσ
