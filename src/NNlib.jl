@@ -14,6 +14,7 @@ end
 
 include("activation.jl")
 include("softmax.jl")
+include("batched/batchedmul.jl")
 include("gemm.jl")
 include("conv.jl")
 include("pooling.jl")
