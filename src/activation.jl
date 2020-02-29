@@ -1,5 +1,5 @@
-export σ, sigmoid, relu, leakyrelu, relu6, rrelu, elu, gelu, swish, selu, celu, softplus, softsign, logσ,
-       logsigmoid, logcosh, mish, tanhshrink, softshrink
+export σ, sigmoid, hardσ, hardsigmoid, hardtanh, relu, leakyrelu, relu6, rrelu, elu, gelu, swish, selu, celu, softplus, softsign, logσ,
+       logsigmoid, logcosh, mish, tanhshrink, softshrink, thresholdrelu, trelu, lisht
 
 """
     σ(x) = 1 / (1 + exp(-x))
@@ -17,6 +17,15 @@ const sigmoid = σ
   σ(x::ForwardDiff.Dual{T,Float32}) where T = σ_stable(x)
 end
 
+"""
+   hardσ(x, a=0.2) = max(0, min(1.0, a * x + 0.5))
+
+Segment-wise linear approximation of sigmoid
+See: [BinaryConnect: Training Deep Neural Networks withbinary weights during propagations](https://arxiv.org/pdf/1511.00363.pdf)
+"""
+hardσ(x::Real, a=0.2) = oftype(x/1, max(zero(x/1), min(one(x/1), oftype(x/1,a) * x + oftype(x/1,0.5))))
+const hardsigmoid = hardσ
+
 
 """
     logσ(x)
@@ -33,6 +42,15 @@ Return `log(σ(x))` which is computed in a numerically stable way.
 """
 logσ(x::Real) = -softplus(-x)
 const logsigmoid = logσ
+
+
+"""
+    hardtanh(x) = max(-1, min(1, x))
+
+Segment-wise linear approximation of tanh. Cheaper  and  more  computational  efficient version of tanh.
+See: (http://ronan.collobert.org/pub/matos/2004_phdthesis_lip6.pdf)
+"""
+hardtanh(x::Real) = max(-one(x), min( one(x), x))
 
 
 """
@@ -110,6 +128,16 @@ See [Swish: a Self-Gated Activation Function](https://arxiv.org/pdf/1710.05941.p
 """
 swish(x::Real) = x * σ(x)
 
+
+"""
+    lisht(x) = x * tanh(x)
+
+Non-Parametric Linearly Scaled Hyperbolic Tangent Activation Function
+See [LiSHT](https://arxiv.org/abs/1901.05894)
+"""
+lisht(x::Real) = x * tanh(x)
+
+
 """
     selu(x) = λ * (x ≥ 0 ? x : α * (exp(x) - 1))
 
@@ -132,9 +160,18 @@ end
 Continuously Differentiable Exponential Linear Units
 See [Continuously Differentiable Exponential Linear Units](https://arxiv.org/pdf/1704.07483.pdf).
 """
-function celu(x::Real, α::Real = one(x))
-    return ifelse(x ≥ 0, x / one(x), α * (exp(x/α) - one(x)))
-end 
+celu(x::Real, α::Real = one(x)) = ifelse(x ≥ 0, x / one(x), α * (exp(x/α) - one(x))) 
+
+
+"""
+    trelu(x, theta = 1.0) = x > theta ? x : 0 
+
+Threshold Gated Rectified Linear   
+See [ThresholdRelu](https://arxiv.org/pdf/1402.3337.pdf)
+"""
+trelu(x::Real,theta = one(x)) = ifelse(x> theta, x, zero(x))
+const thresholdrelu = trelu
+
 
 """
     softsign(x) = x / (1 + |x|)
@@ -184,7 +221,7 @@ See [Softshrink Activation Function](https://www.gabormelli.com/RKB/Softshrink_A
 softshrink(x::Real, λ = oftype(x/1, 0.5)) = min(max(zero(x), x - λ), x + λ)
 
 # Provide an informative error message if activation functions are called with an array
-for f in (:σ, :σ_stable, :logσ, :relu, :leakyrelu, :relu6, :rrelu, :elu, :gelu, :swish, :selu, :celu, :softsign, :softplus, :logcosh, :mish, :tanhshrink, :softshrink)
+for f in (:σ, :σ_stable, :hardσ, :logσ, :hardtanh, :relu, :leakyrelu, :relu6, :rrelu, :elu, :gelu, :swish, :lisht, :selu, :celu, :trelu, :softsign, :softplus, :logcosh, :mish, :tanhshrink, :softshrink)
     @eval $(f)(x::AbstractArray, args...) =
       error("Use broadcasting (`", $(string(f)), ".(x)`) to apply activation functions to arrays.")
 end
