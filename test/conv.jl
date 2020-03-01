@@ -684,3 +684,13 @@ end
     @test size(NNlib.∇conv_data_direct!(x, y, w, cdims)) == x_size
     @test size(NNlib.∇conv_filter_direct!(w, x, y, cdims)) == w_size
 end
+
+@testset "conv FillArrays support" begin 
+    x = Ones(2,2,2,2)
+    w = Ones(2,2,2,2)
+    dy = Fill(8, (1,1,2,2))
+    cdims = DenseConvDims(x, w)
+    @test NNlib.conv(x, w) == fill(8, (1,1,2,2))
+    @test ∇conv_data(dy, w, cdims) == fill(16, (2,2,2,2))
+    @test ∇conv_filter(x, dy, cdims) == fill(16, (2,2,2,2))
+end

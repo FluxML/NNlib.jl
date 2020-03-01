@@ -1,5 +1,12 @@
 module NNlib
 using Requires
+import FillArrays
+
+# Temporary fix for https://github.com/FluxML/Flux.jl/issues/1055
+# remove this (and FillArrays dependency) once defined in FillArrays.jl
+Base.pointer(x::FillArrays.AbstractFill) = pointer(Array(x))
+Base.pointer(x::FillArrays.AbstractFill, i::Integer) = pointer(Array(x), i)
+
 
 # Include APIs
 include("dim_helpers.jl")

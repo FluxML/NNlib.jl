@@ -1,4 +1,5 @@
 using NNlib, Test
+using FillArrays: Ones, Fill
 
 include("activation.jl")
 include("conv.jl")
