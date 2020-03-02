@@ -23,14 +23,14 @@ function bmm_adjtest(a,b; adjA = false, adjB = false)
 end
 
 
-@testset "Batched Matrices: Float64 * $TB" for TB in [Float64, Float32]
+@testset "batched_mul: Float64 * $TB" for TB in [Float64, Float32]
 
     A = randn(7,5,3)
     B = randn(TB, 5,7,3)
     C = randn(7,6,3)
 
-    @test batched_mul(A, B) == bmm_test(A, B)
-    @test batched_mul(batched_transpose(A), batched_transpose(B)) == bmm_test(A, B; transA = true, transB = true)
+    @test batched_mul(A, B) ≈ bmm_test(A, B)
+    @test batched_mul(batched_transpose(A), batched_transpose(B)) ≈ bmm_test(A, B; transA = true, transB = true)
     @test batched_mul(batched_transpose(A), C) ≈ bmm_test(A, C; transA = true)
     @test batched_mul(A, batched_transpose(A)) ≈ bmm_test(A, A; transB = true)
 
@@ -39,7 +39,7 @@ end
     cB = randn(Complex{TB}, 5,7,3)
     cC = randn(Complex{Float64}, 7,6,3)
 
-    @test batched_mul(cA, cB) == bmm_adjtest(cA, cB)
+    @test batched_mul(cA, cB) ≈ bmm_adjtest(cA, cB)
     @test batched_mul(batched_adjoint(cA), batched_adjoint(cB)) ≈ bmm_adjtest(cA, cB; adjA = true, adjB = true)
     @test batched_mul(batched_adjoint(cA), cC) ≈ bmm_adjtest(cA, cC; adjA = true)
     @test batched_mul(cA, batched_adjoint(cA)) ≈ bmm_adjtest(cA, cA; adjB = true)
