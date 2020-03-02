@@ -27,6 +27,5 @@ env:
 
 # Submit to Codecov
 after_success:
-   - if [[ $TRAVIS_JULIA_VERSION = 1.0 ]] && [[ $TRAVIS_OS_NAME = linux ]]; then
-       julia -e 'using Pkg; Pkg.add("Coverage"); using Coverage; Codecov.submit(process_folder())';
-     fi
+  - julia -e 'using Pkg; Pkg.add("Coverage"); using Coverage; Codecov.submit(process_folder())';
+     
