@@ -1,35 +1,38 @@
 using LinearAlgebra
 import Base: -
 
-"""
+_batched_doc = """
+    batched_transpose(A::AbstractArray{T,3})
+    batched_adjoint(A)
+
+Equivalent to applying `transpose` or `adjoint` to each matrix `A[:,:,k]`.
+
+These exist to control how `batched_mul` behaves,
+as it operated on such matrix slices of an array with `ndims(A)==3`.
+
     BatchedTranspose{T, N, S} <: AbstractBatchedMatrix{T, N}
-Batched transpose. Transpose a batch of matrix.
+    BatchedAdjoint{T, N, S}
+
+Lazy wrappers analogous to `Transpose` and `Adjoint`, returned by `batched_transpose`
 """
+
+@doc _batched_doc
 struct BatchedTranspose{T, S} <: AbstractArray{T, 3}
     parent::S
     BatchedTranspose{T, S}(X::S) where {T, S} = new{T, S}(X)
 end
 
-"""
-    batched_transpose(A)
-Lazy batched transpose.
-"""
+@doc _batched_doc
 batched_transpose(A::AbstractArray{T}) where T = BatchedTranspose(A)
 batched_transpose(A::BatchedTranspose) = A.parent
 
-"""
-    BatchedAdjoint{T, N, S} <: AbstractBatchedMatrix{T, N}
-Batched ajoint. Transpose a batch of matrix.
-"""
+@doc _batched_doc
 struct BatchedAdjoint{T, S} <: AbstractArray{T, 3}
     parent::S
     BatchedAdjoint{T, S}(X::S) where {T, S} = new{T, S}(X)
 end
 
-"""
-    batched_adjoint(A)
-Lazy batched adjoint.
-"""
+@doc _batched_doc
 batched_adjoint(A::AbstractArray{T, 3}) where T = BatchedAdjoint(A)
 batched_adjoint(A::BatchedAdjoint) = A.parent
 
