@@ -1,25 +1,31 @@
 ## Documentation: http://docs.travis-ci.com/user/languages/julia/
 language: julia
+
 os:
   - linux
   - osx
+  # - windows   
+  
 julia:
   - 1.0
-  - 1.1
+  - 1.3
   - nightly
+
 matrix:
   allow_failures:
     - julia: nightly
+
 notifications:
   email: false
+
 git:
   depth: 99999999
+
 env:
   # Disable test fuzzing for the moment, as we're a little too slow for Travis
   - NNLIB_TEST_FUZZING=false
 
 # Submit to Codecov
 after_success:
-   - if [[ $TRAVIS_JULIA_VERSION = 1.1 ]] && [[ $TRAVIS_OS_NAME = linux ]]; then
-       julia -e 'using Pkg; Pkg.add("Coverage"); using Coverage; Codecov.submit(process_folder())';
-     fi
+  - julia -e 'using Pkg; Pkg.add("Coverage"); using Coverage; Codecov.submit(process_folder())';
+     
