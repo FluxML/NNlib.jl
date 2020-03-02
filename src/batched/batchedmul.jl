@@ -11,7 +11,8 @@ Batched matrix multiplication. Result has `C[:,:,k] == A[:,:,k] * B[:,:,k]` for 
 """
 function batched_mul(A::AbstractArray{T1, 3}, B::AbstractArray{T2, 3}) where {T1, T2}
     axes(A, 3) == axes(B, 3) || throw(DimensionMismatch("batch size mismatch"))
-    C = similar(A, (axes(A, 1), axes(B, 2), axes(A, 3)))
+    T = promote_type(T1, T2)
+    C = similar(A, T, (axes(A, 1), axes(B, 2), axes(A, 3)))
     batched_mul!(C, A, B)
 end
 

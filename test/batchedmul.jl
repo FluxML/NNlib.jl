@@ -52,6 +52,7 @@ end
     iB = TB.(rand(1:99, 5,7,3))
     iC = zeros(Int, 7,6,3)
     @test batched_mul(iA, iB) == bmm_adjtest(iA, iB)
+    @test batched_mul(cA, iB) ≈ bmm_adjtest(cA, iB)
 
     @test_throws DimensionMismatch batched_mul(rand(2,2,2), rand(TB, 2,2,10))
     @test_throws DimensionMismatch batched_mul(rand(2,2,2), rand(TB, 10,2,2))
