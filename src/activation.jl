@@ -1,6 +1,11 @@
 export σ, sigmoid, hardσ, hardsigmoid, hardtanh, relu, leakyrelu, relu6, rrelu, elu, gelu, swish, selu, celu, softplus, softsign, logσ,
        logsigmoid, logcosh, mish, tanhshrink, softshrink, thresholdrelu, trelu, lisht
 
+## Activation functions
+# 
+# Some of activation functions have its wrapper function for GPU in CuArrays.jl.
+# https://github.com/JuliaGPU/CuArrays.jl/issues/614
+
 """
     σ(x) = 1 / (1 + exp(-x))
 
