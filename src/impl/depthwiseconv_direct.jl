@@ -1,7 +1,7 @@
 ## This file contains direct Julia implementations of depwthwise convolutions
 
 """
-    depthwiseconv_direct!(y, x, w, cdims; alpha=1, beta=0)
+    depthwiseconv_direct!(y, x, w, cdims; α=1, β=0)
 
 Direct depthwise convolution implementation; used for debugging, tests, and mixing/
 matching of strange datatypes within a single convolution.  Uses naive nested for loop
@@ -20,7 +20,7 @@ See the docstring for `conv_direct!()` for more on the optional parameters.
 """
 function depthwiseconv_direct!(y::AbstractArray{yT,5}, x::AbstractArray{xT,5},
                       w::AbstractArray{wT,5}, cdims::DepthwiseConvDims;
-                      alpha::yT=yT(1), beta=false) where {yT, xT, wT}
+                      α::yT=yT(1), β=false) where {yT, xT, wT}
     check_dims(size(x), size(w), size(y), cdims)
 
     width, height, depth = input_size(cdims)
@@ -69,7 +69,7 @@ function depthwiseconv_direct!(y::AbstractArray{yT,5}, x::AbstractArray{xT,5},
                       c_mult, c_in]
             dotprod = muladd(x_val, w_val, dotprod)
         end
-        y[w_idx, h_idx, d_idx, c_out, batch] = alpha*dotprod + beta*y[w_idx, h_idx, d_idx, c_out, batch]
+        y[w_idx, h_idx, d_idx, c_out, batch] = α*dotprod + β*y[w_idx, h_idx, d_idx, c_out, batch]
     end
 
     # Next, do potentially-padded regions:
@@ -114,14 +114,14 @@ function depthwiseconv_direct!(y::AbstractArray{yT,5}, x::AbstractArray{xT,5},
             end
         end
 
-        y[w_idx, h_idx, d_idx, c_out, batch] = alpha*dotprod + beta*y[w_idx, h_idx, d_idx, c_out, batch]
+        y[w_idx, h_idx, d_idx, c_out, batch] = α*dotprod + β*y[w_idx, h_idx, d_idx, c_out, batch]
     end
 
     return y
 end
 
 """
-    ∇depthwiseconv_data_direct!(dx, dy, w, cdims; alpha=1, beta=0)
+    ∇depthwiseconv_data_direct!(dx, dy, w, cdims; α=1, β=0)
 
 Calculate the gradient imposed upon `x` in the depthwise convolution `y = x * w`.
 We make use of the fact that a depthwise convolution is equivalent to `C_in` separate
@@ -135,7 +135,7 @@ for each batch and channel independently.
 function ∇depthwiseconv_data_direct!(
                 dx::AbstractArray{xT,5}, dy::AbstractArray{yT,5},
                 w::AbstractArray{wT,5}, cdims::DepthwiseConvDims;
-                alpha::xT=xT(1), beta=false) where {xT, yT, wT}
+                α::xT=xT(1), β=false) where {xT, yT, wT}
     # We do a separate convolution for each channel in x
     @inbounds for cidx in 1:channels_in(cdims)
         # For this batch and in-channel, we have a normal transposed convolution
@@ -153,13 +153,13 @@ function ∇depthwiseconv_data_direct!(
         )
 
         ∇conv_data_direct!(dx_slice, dy_slice, w_slice, cdims_slice;
-                                               alpha=alpha, beta=beta)
+                                               α=α, β=β)
     end
     return dx
 end
 
 """
-    ∇depthwiseconv_filter_direct!(dw, x, dy, cdims; alpha=1, beta=0)
+    ∇depthwiseconv_filter_direct!(dw, x, dy, cdims; α=1, β=0)
 
 Calculate the gradient imposed upon `w` in the depthwise convolution `y = x * w`.
 """
@@ -168,7 +168,7 @@ Calculate the gradient imposed upon `w` in the depthwise convolution `y = x * w`
 function ∇depthwiseconv_filter_direct!(
                 dw::AbstractArray{wT,5}, x::AbstractArray{xT,5},
                 dy::AbstractArray{yT,5}, cdims::DepthwiseConvDims;
-                alpha::wT=wT(1),beta=false) where {xT, yT, wT}
+                α::wT=wT(1),β=false) where {xT, yT, wT}
     # We do a separate convolution for each channel in x
     @inbounds for cidx in 1:channels_in(cdims)
         # For this batch and in-channel, we have a normal transposed convolution
@@ -186,7 +186,7 @@ function ∇depthwiseconv_filter_direct!(
         )
 
         ∇conv_filter_direct!(dw_slice, x_slice, dy_slice, cdims_slice;
-                                                alpha=alpha, beta=beta)
+                                                α=α, β=β)
         dw[:, :, :, :, cidx:cidx] .= permutedims(dw_slice, (1, 2, 3, 5, 4))
     end
     return dw

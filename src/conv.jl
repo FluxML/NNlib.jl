@@ -29,7 +29,7 @@ export conv, conv!, ∇conv_data, ∇conv_data!, ∇conv_filter, ∇conv_filter!
 
 
 # First, we will define mappings from the generic API names to our accelerated backend
-# implementations. For homogeneous-datatype 1, 2 and 3d convolutions, we default to using
+# implementations. For homogeneous-datatype 1d, 2d and 3d convolutions, we default to using
 # im2col + GEMM.  Do so in a loop, here:
 for (front_name, backend) in (
         # This maps from public, front-facing name, to internal backend name
@@ -86,7 +86,7 @@ end
 
 # We always support a fallback, non-accelerated path, where we use the direct, but
 # slow, implementations.  These should not typically be used, hence the `@debug`,
-# but let's ggo ahead and define them first:
+# but let's go ahead and define them first:
 for front_name in (:conv, :∇conv_data, :∇conv_filter,
                    :depthwiseconv, :∇depthwiseconv_data, :∇depthwiseconv_filter)
     @eval begin
@@ -177,8 +177,6 @@ function conv(x, w::AbstractArray{T, N}; stride=1, pad=0, dilation=1, flipped=fa
     cdims = DenseConvDims(x, w; stride=stride, padding=pad, dilation=dilation, flipkernel=flipped)
     return conv(x, w, cdims)
 end
-
-
 
 
 """

@@ -23,9 +23,8 @@ end
 Segment-wise linear approximation of sigmoid
 See: [BinaryConnect: Training Deep Neural Networks withbinary weights during propagations](https://arxiv.org/pdf/1511.00363.pdf)
 """
-hardσ(x::Real, a=0.2) = oftype(x/1, max(zero(x/1), min(one(x/1), oftype(x/1,a) * x + oftype(x/1,0.5))))
+hardσ(x::Real, a=0.2) = oftype(x / 1, max(zero(x / 1), min(one(x / 1), oftype(x / 1, a) * x + oftype(x / 1, 0.5))))
 const hardsigmoid = hardσ
-
 
 """
     logσ(x)
@@ -43,15 +42,13 @@ Return `log(σ(x))` which is computed in a numerically stable way.
 logσ(x::Real) = -softplus(-x)
 const logsigmoid = logσ
 
-
 """
     hardtanh(x) = max(-1, min(1, x))
 
-Segment-wise linear approximation of tanh. Cheaper  and  more  computational  efficient version of tanh.
+Segment-wise linear approximation of tanh. Cheaper  and  more  computational  efficient version of tanh
 See: (http://ronan.collobert.org/pub/matos/2004_phdthesis_lip6.pdf)
 """
 hardtanh(x::Real) = max(-one(x), min( one(x), x))
-
 
 """
     relu(x) = max(0, x)
@@ -61,7 +58,6 @@ activation function.
 """
 relu(x::Real) = max(zero(x), x)
 
-
 """
     leakyrelu(x, a=0.01) = max(a*x, x)
 
@@ -69,7 +65,7 @@ Leaky [Rectified Linear Unit](https://en.wikipedia.org/wiki/Rectifier_(neural_ne
 activation function.
 You can also specify the coefficient explicitly, e.g. `leakyrelu(x, 0.01)`.
 """
-leakyrelu(x::Real, a = oftype(x / 1, 0.01)) = max(a * x, x / one(x))
+leakyrelu(x::Real, a=0.01) = max(oftype(x / 1, a) * x, x / 1)
 
 """
     relu6(x) = min(max(0, x), 6)
@@ -102,8 +98,7 @@ Exponential Linear Unit activation function.
 See [Fast and Accurate Deep Network Learning by Exponential Linear Units](https://arxiv.org/abs/1511.07289).
 You can also specify the coefficient explicitly, e.g. `elu(x, 1)`.
 """
-elu(x::Real, α = one(x)) = ifelse(x ≥ 0, x / one(x), α * (exp(x) - one(x)))
-
+elu(x::Real, α = one(x)) = ifelse(x ≥ 0, x / 1, α * (exp(x) - one(x)))
 
 """
     gelu(x) = 0.5x * (1 + tanh(√(2/π) * (x + 0.044715x^3)))
@@ -119,7 +114,6 @@ function gelu(x::Real)
     h * x * (one(x) + tanh(λ * (x + α * x^3)))
 end
 
-
 """
     swish(x) = x * σ(x)
 
@@ -128,15 +122,13 @@ See [Swish: a Self-Gated Activation Function](https://arxiv.org/pdf/1710.05941.p
 """
 swish(x::Real) = x * σ(x)
 
-
 """
     lisht(x) = x * tanh(x)
 
-Non-Parametric Linearly Scaled Hyperbolic Tangent Activation Function
+Non-Parametric Linearly Scaled Hyperbolic Tangent Activation Function.
 See [LiSHT](https://arxiv.org/abs/1901.05894)
 """
 lisht(x::Real) = x * tanh(x)
-
 
 """
     selu(x) = λ * (x ≥ 0 ? x : α * (exp(x) - 1))
@@ -150,28 +142,24 @@ See [Self-Normalizing Neural Networks](https://arxiv.org/pdf/1706.02515.pdf).
 function selu(x::Real)
   λ = oftype(x / 1, 1.0507009873554804934193349852946)
   α = oftype(x / 1, 1.6732632423543772848170429916717)
-  λ * ifelse(x > 0, x / one(x), α * (exp(x) - one(x)))
+  λ * ifelse(x > 0, x / 1, α * (exp(x) - one(x)))
 end
 
 """
     celu(x, α=1) = 
         (x ≥ 0 ? x : α * (exp(x/α) - 1))
 
-Continuously Differentiable Exponential Linear Units
 See [Continuously Differentiable Exponential Linear Units](https://arxiv.org/pdf/1704.07483.pdf).
 """
-celu(x::Real, α::Real = one(x)) = ifelse(x ≥ 0, x / one(x), α * (exp(x/α) - one(x))) 
-
+celu(x::Real, α::Real = one(x)) = ifelse(x ≥ 0, x / 1, α * (exp(x/α) - one(x))) 
 
 """
-    trelu(x, theta = 1.0) = x > theta ? x : 0 
+    trelu(x, θ=1.0) = x > θ ? x : 0 
 
-Threshold Gated Rectified Linear   
-See [ThresholdRelu](https://arxiv.org/pdf/1402.3337.pdf)
+See [Threshold Gated Rectified Linear Unit](https://arxiv.org/pdf/1402.3337.pdf)
 """
-trelu(x::Real,theta = one(x)) = ifelse(x> theta, x, zero(x))
+trelu(x::Real,θ = one(x)) = ifelse(x> θ, x, zero(x))
 const thresholdrelu = trelu
-
 
 """
     softsign(x) = x / (1 + |x|)
@@ -180,7 +168,6 @@ See [Quadratic Polynomials Learn Better Image Features](http://www.iro.umontreal
 """
 softsign(x::Real) = x / (one(x) + abs(x))
 
-
 """
     softplus(x) = log(exp(x) + 1)
 
@@ -188,19 +175,17 @@ See [Deep Sparse Rectifier Neural Networks](http://proceedings.mlr.press/v15/glo
 """
 softplus(x::Real) = ifelse(x > 0, x + log1p(exp(-x)), log1p(exp(x)))
 
-
 """
-    logcosh(x)
+    logcosh(x) = x + softplus(-2x) - log(2)
 
 Return `log(cosh(x))` which is computed in a numerically stable way.
 """
 logcosh(x::Real) = x + softplus(-2x) - log(oftype(x, 2))
 
-
 """
     mish(x) = x * tanh(softplus(x))
 
-Self Regularized Non-Monotonic Neural Activation Function
+Self Regularized Non-Monotonic Neural Activation Function.
 See [Mish: A Self Regularized Non-Monotonic Neural Activation Function](https://arxiv.org/abs/1908.08681).
 """
 mish(x::Real) = x * tanh(softplus(x))
@@ -218,7 +203,7 @@ tanhshrink(x::Real) = x - tanh(x)
 
 See [Softshrink Activation Function](https://www.gabormelli.com/RKB/Softshrink_Activation_Function)
 """
-softshrink(x::Real, λ = oftype(x/1, 0.5)) = min(max(zero(x), x - λ), x + λ)
+softshrink(x::Real, λ = oftype(x / 1, 0.5)) = min(max(zero(x), x - λ), x + λ)
 
 # Provide an informative error message if activation functions are called with an array
 for f in (:σ, :σ_stable, :hardσ, :logσ, :hardtanh, :relu, :leakyrelu, :relu6, :rrelu, :elu, :gelu, :swish, :lisht, :selu, :celu, :trelu, :softsign, :softplus, :logcosh, :mish, :tanhshrink, :softshrink)
