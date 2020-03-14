@@ -1,5 +1,6 @@
+using Random
 export softmax, softmax!, ∇softmax, ∇softmax!,
-       logsoftmax, logsoftmax!, ∇logsoftmax, ∇logsoftmax!
+       logsoftmax, logsoftmax!, ∇logsoftmax, ∇logsoftmax!, gumbel_softmax
 
 """
     softmax(x; dims=1)
@@ -110,3 +111,34 @@ end
 
 ∇logsoftmax(Δ, xs; dims=1) = Δ .- sum(Δ, dims=dims) .* softmax(xs, dims=dims)
 ∇logsoftmax!(Δ, xs) = ∇softmax!(Δ, Δ, xs)
+
+"""
+gumbel_softmax(x; dims=1, tau=1, hard=false)
+
+[Gumbel Softmax](https://arxiv.org/abs/1611.01144) turns input array `x` 
+into probability distributions sampled from the Gumbel-Softmax distribution that sum 
+to 1 along the dimensions specified by `dims`.
+
+For a matrix input `x` it will by default (`dims=1`) treat it as a batch of vectors,
+with each column independent. Keyword `dims=2` will instead treat rows independently, 
+etc..."
+
+τ is temperature that controls how close to max it is
+
+If ``hard=True``, the returned samples will be one-hot
+"""
+function gumbel_softmax(xs::AbstractVecOrMat; dims=1, tau=1, hard=false)
+    rng = MersenneTwister(1234);
+    temp = rand!(rng,zeros(size(xs)))
+    gumbels = -log.(-log.(temp))
+    gumbels = (log.(xs)+oftype(xs, gumbels))./tau
+    xs_soft = softmax(gumbels, dims=dims)
+    if hard 
+        max = findmax(xs_soft,dims=dims)[2]
+        out = oftype(xs, zero(xs))
+        out[max] .= 1
+    else
+        out = xs_soft
+    end
+    return out
+end
