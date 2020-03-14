@@ -113,7 +113,7 @@ end
 ∇logsoftmax!(Δ, xs) = ∇softmax!(Δ, Δ, xs)
 
 """
-gumbel_softmax(x; dims=1, tau=1, hard=false)
+    gumbel_softmax(x; dims=1, tau=1, hard=false)
 
 [Gumbel Softmax](https://arxiv.org/abs/1611.01144) turns input array `x` 
 into probability distributions sampled from the Gumbel-Softmax distribution that sum 
@@ -128,7 +128,7 @@ etc..."
 If ``hard=True``, the returned samples will be one-hot
 """
 function gumbel_softmax(xs::AbstractVecOrMat; dims=1, tau=1, hard=false)
-    rng = MersenneTwister(1234);
+    rng = RandomDevice()
     temp = rand!(rng,zeros(size(xs)))
     gumbels = -log.(-log.(temp))
     gumbels = (log.(xs)+oftype(xs, gumbels))./tau
