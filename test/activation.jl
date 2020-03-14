@@ -159,6 +159,10 @@ end
         @test all(sum(gumbel_softmax(xs; dims=2,hard=true), dims = 2) .≈ 1)
         @test sum(gumbel_softmax(vec(xs),)) ≈ 1
 
+        @test all(sum(gumbel_softmax(xs, tau=0.5,hard=true), dims = 1) .≈ 1)
+        @test all(sum(gumbel_softmax(xs; dims=2,tau=0.5,hard=true), dims = 2) .≈ 1)
+        @test sum(gumbel_softmax(vec(xs),tau=0.5)) ≈ 1
+
         xs = [-100_000, -100_000.]
         @test softmax(xs) ≈ [0.5, 0.5]
         @test logsoftmax(xs) ≈ log.([0.5, 0.5])
