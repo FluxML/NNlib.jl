@@ -33,12 +33,12 @@ const _GemmFloat = Union{Float64, Float32, ComplexF64, ComplexF32}
 
 _BATCHED_GEMM_LIST = [
     (:(StridedArray{T, 3}), 'N'),
-    (:(BatchedTranspose{T, <:StridedArray{T, 3}}), 'T'),
-    (:(BatchedAdjoint{T, <:StridedArray{T, 3}}), 'C')
+    (:(BatchedTranspose{T, <:Array{T, 3}}), 'T'),
+    (:(BatchedAdjoint{T, <:Array{T, 3}}), 'C')
 ]
 
 for (TA, transA) in _BATCHED_GEMM_LIST, (TB, transB) in _BATCHED_GEMM_LIST
-    @eval function batched_mul!(C::StridedArray{T, 3}, A::$TA, B::$TB) where {T<:_GemmFloat}
+    @eval function batched_mul!(C::Array{T, 3}, A::$TA, B::$TB) where {T<:_GemmFloat}
         batched_gemm!($transA, $transB, one(T), _unbatch(A), _unbatch(B), zero(T), C)
         C
     end
