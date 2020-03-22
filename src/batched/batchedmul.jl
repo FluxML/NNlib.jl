@@ -8,6 +8,9 @@ include("./batchedadjtrans.jl")
     batched_mul(A, B) -> C
 
 Batched matrix multiplication. Result has `C[:,:,k] == A[:,:,k] * B[:,:,k]` for all `k`.
+
+Using `batched_transpose(A)` or `PermutedDimsArray(A, (2,1,3))` will transpose each `A[:,:,k]`,
+and similarly `batched_adjoint(B)` will use `adjoint(B[:,:,k])`.
 """
 function batched_mul(A::AbstractArray{T1, 3}, B::AbstractArray{T2, 3}) where {T1, T2}
     axes(A, 3) == axes(B, 3) || throw(DimensionMismatch("batch size mismatch"))
@@ -32,7 +35,7 @@ _unbatch(A::BatchedAdjOrTrans) = A.parent
 const _GemmFloat = Union{Float64, Float32, ComplexF64, ComplexF32}
 
 _BATCHED_GEMM_LIST = [
-    (:(StridedArray{T, 3}), 'N'),
+    (:(Array{T, 3}), 'N'),
     (:(BatchedTranspose{T, <:Array{T, 3}}), 'T'),
     (:(BatchedAdjoint{T, <:Array{T, 3}}), 'C')
 ]
@@ -48,12 +51,17 @@ end
 
 _BATCHED_LIST = [
     (:(AbstractArray{<:Any, 3}), :identity),
-    (:(BatchedTranspose{<:Any, <:AbstractArray{<:Any, 3}}), :transpose),
-    (:(BatchedAdjoint{<:Any, <:AbstractArray{<:Any, 3}}), :adjoint)
+    (:BatchedTranspose, :transpose),
+    (:BatchedAdjoint, :adjoint),
 ]
 for (TA, fA) in _BATCHED_LIST, (TB, fB) in _BATCHED_LIST
     @eval function batched_mul!(C::AbstractArray{<:Any, 3}, A::$TA, B::$TB)
         axes(A, 3) == axes(B, 3) == axes(C, 3) || throw(DimensionMismatch("batch size mismatch"))
+        if A isa PermutedDimsArray{<:Number,3,(2,1,3)}
+            return batched_mul!(C, batched_transpose(parent(A)), B)
+        elseif B isa PermutedDimsArray{<:Number,3,(2,1,3)}
+            return batched_mul!(C, A, batched_transpose(parent(B)))
+        end
         @debug "calling fallback method for batched_mul!" typeof(A) typeof(B) typeof(C)
         A′, B′ = _unbatch(A), _unbatch(B)
         @inbounds for k in axes(C, 3)

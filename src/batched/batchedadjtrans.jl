@@ -10,6 +10,9 @@ Equivalent to applying `transpose` or `adjoint` to each matrix `A[:,:,k]`.
 These exist to control how `batched_mul` behaves,
 as it operated on such matrix slices of an array with `ndims(A)==3`.
 
+For arrays of real numbers, `batched_transpose(A) == PermutedDimsArray(A, (2,1,3))`,
+which is a more widely-supported wrapper, and also understood by `batched_mul`.
+
     BatchedTranspose{T, N, S} <: AbstractBatchedMatrix{T, N}
     BatchedAdjoint{T, N, S}
 
@@ -35,6 +38,11 @@ end
 @doc _batched_doc
 batched_adjoint(A::AbstractArray{T, 3}) where T = BatchedAdjoint(A)
 batched_adjoint(A::BatchedAdjoint) = A.parent
+
+batched_adjoint(A::BatchedTranspose{<:Real}) = A.parent
+batched_transpose(A::BatchedAdjoint{<:Real}) = A.parent
+batched_adjoint(A::PermutedDimsArray{<:Real,3,(2,1,3)}) = A.parent
+batched_transpose(A::PermutedDimsArray{<:Number,3,(2,1,3)}) = A.parent
 
 BatchedAdjoint(A) = BatchedAdjoint{Base.promote_op(adjoint,eltype(A)),typeof(A)}(A)
 BatchedTranspose(A) = BatchedTranspose{Base.promote_op(transpose,eltype(A)),typeof(A)}(A)
@@ -62,9 +70,10 @@ Base.similar(A::BatchedAdjOrTrans) = similar(A.parent, size(A))
 
 Base.parent(A::BatchedAdjOrTrans) = A.parent
 
+function Base.strides(A::BatchedAdjOrTrans)
+    sp = strides(A.parent)
+    (sp[2], sp[1], sp[3])
+end
+
 (-)(A::BatchedAdjoint)   = BatchedAdjoint(  -A.parent)
 (-)(A::BatchedTranspose) = BatchedTranspose(-A.parent)
-
-Base.copy(A::BatchedTranspose) = BatchedTranspose(copy(A.parent))
-Base.copy(A::BatchedAdjoint) = BatchedAdjoint(copy(A.parent))
-
