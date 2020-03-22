@@ -13,10 +13,10 @@ as it operated on such matrix slices of an array with `ndims(A)==3`.
 For arrays of real numbers, `batched_transpose(A) == PermutedDimsArray(A, (2,1,3))`,
 which is a more widely-supported wrapper, and also understood by `batched_mul`.
 
-    BatchedTranspose{T, N, S} <: AbstractBatchedMatrix{T, N}
-    BatchedAdjoint{T, N, S}
+    BatchedTranspose{T, S} <: AbstractBatchedMatrix{T, 3}
+    BatchedAdjoint{T, S}
 
-Lazy wrappers analogous to `Transpose` and `Adjoint`, returned by `batched_transpose`.
+Lazy wrappers analogous to `Transpose` and `Adjoint`, returned by `batched_transpose` etc.
 """
 
 @doc _batched_doc

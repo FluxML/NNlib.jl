@@ -86,6 +86,9 @@ using Base.CoreLogging: Debug
     @test copy(batched_adjoint(cA)) isa Array
     @test copy(batched_transpose(cA)) isa Array
 
+    @test strides(batched_transpose(cA)) == strides(PermutedDimsArray(cA, (2,1,3)))
+    @test strides(batched_adjoint(cA)) == (7, 1, 35)
+
 
     cA = randn(Complex{Float64}, 7,5,3)
     TBi = TB==Float64 ? Int64 : Int32
