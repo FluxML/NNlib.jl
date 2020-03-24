@@ -1,6 +1,9 @@
-# batch-wise matrix multiplication
-# wrapper for batched_gemm!
+# batch-wise matrix multiplication,
+# including a wrapper for batched_gemm!
+
 export batched_mul, batched_transpose, batched_adjoint
+
+using LinearAlgebra: BlasFloat
 
 include("./batchedadjtrans.jl")
 
@@ -32,16 +35,14 @@ _unbatch(A::BatchedAdjOrTrans) = A.parent
 
 # batched_gemm!
 
-const _GemmFloat = Union{Float64, Float32, ComplexF64, ComplexF32}
-
 _BATCHED_GEMM_LIST = [
-    (:(Array{T, 3}), 'N'),
-    (:(BatchedTranspose{T, <:Array{T, 3}}), 'T'),
-    (:(BatchedAdjoint{T, <:Array{T, 3}}), 'C')
+    (:(StridedArray{T, 3}), 'N'),
+    (:(BatchedTranspose{T, <:StridedArray{T, 3}}), 'T'),
+    (:(BatchedAdjoint{T, <:StridedArray{T, 3}}), 'C')
 ]
 
 for (TA, transA) in _BATCHED_GEMM_LIST, (TB, transB) in _BATCHED_GEMM_LIST
-    @eval function batched_mul!(C::Array{T, 3}, A::$TA, B::$TB) where {T<:_GemmFloat}
+    @eval function batched_mul!(C::Array{T, 3}, A::$TA, B::$TB) where {T<:BlasFloat}
         batched_gemm!($transA, $transB, one(T), _unbatch(A), _unbatch(B), zero(T), C)
         C
     end
@@ -57,9 +58,9 @@ _BATCHED_LIST = [
 for (TA, fA) in _BATCHED_LIST, (TB, fB) in _BATCHED_LIST
     @eval function batched_mul!(C::AbstractArray{<:Any, 3}, A::$TA, B::$TB)
         axes(A, 3) == axes(B, 3) == axes(C, 3) || throw(DimensionMismatch("batch size mismatch"))
-        if A isa PermutedDimsArray{<:Number,3,(2,1,3)}
+        if A isa PermutedDimsArray{<:BlasFloat,3,(2,1,3)}
             return batched_mul!(C, batched_transpose(parent(A)), B)
-        elseif B isa PermutedDimsArray{<:Number,3,(2,1,3)}
+        elseif B isa PermutedDimsArray{<:BlasFloat,3,(2,1,3)}
             return batched_mul!(C, A, batched_transpose(parent(B)))
         end
         @debug "calling fallback method for batched_mul!" typeof(A) typeof(B) typeof(C)
