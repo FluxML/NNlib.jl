@@ -94,9 +94,9 @@ for (gemm, elt) in gemm_datatype_mappings
                       ptrB, max(1,Base.stride(B,2)), beta, ptrC,
                       max(1,Base.stride(C,2)))
 
-                ptrA += size(A, 1) * size(A, 2) * sizeof($elt)
-                ptrB += size(B, 1) * size(B, 2) * sizeof($elt)
-                ptrC += size(C, 1) * size(C, 2) * sizeof($elt)
+                ptrA += Base.stride(A, 3) * sizeof($elt)
+                ptrB += Base.stride(B, 3) * sizeof($elt)
+                ptrC += Base.stride(C, 3) * sizeof($elt)
             end
 
             C
