@@ -57,8 +57,9 @@ using Base.CoreLogging: Debug
         # mixed wrappers
         @test batched_transpose(batched_adjoint(A)) === A
         @test batched_adjoint(batched_transpose(A)) === A
-        @test batched_transpose(PermutedDimsArray(A, (2,1,3))) === A
-        @test batched_adjoint(PermutedDimsArray(A, (2,1,3))) === A
+        # this should NOT unwrap:
+        @test batched_transpose(PermutedDimsArray(A, (2,1,3))) !== A
+        @test batched_adjoint(PermutedDimsArray(A, (2,1,3))) !== A
 
     end
     @testset "complex" begin
@@ -81,7 +82,7 @@ using Base.CoreLogging: Debug
 
         @test batched_adjoint(batched_adjoint(cA)) === cA
         @test batched_transpose(batched_transpose(cA)) === cA
-        @test batched_transpose(PermutedDimsArray(cA, (2,1,3))) === cA
+        @test batched_transpose(PermutedDimsArray(cA, (2,1,3))) !== cA
         @test batched_adjoint(batched_transpose(cA)) != cA
 
     end

@@ -41,8 +41,8 @@ batched_adjoint(A::BatchedAdjoint) = A.parent
 
 batched_adjoint(A::BatchedTranspose{<:Real}) = A.parent
 batched_transpose(A::BatchedAdjoint{<:Real}) = A.parent
-batched_adjoint(A::PermutedDimsArray{<:Real,3,(2,1,3)}) = A.parent
-batched_transpose(A::PermutedDimsArray{<:Number,3,(2,1,3)}) = A.parent
+# batched_adjoint(A::PermutedDimsArray{<:Real,3,(2,1,3)}) = A.parent
+# batched_transpose(A::PermutedDimsArray{<:Number,3,(2,1,3)}) = A.parent
 
 BatchedAdjoint(A) = BatchedAdjoint{Base.promote_op(adjoint,eltype(A)),typeof(A)}(A)
 BatchedTranspose(A) = BatchedTranspose{Base.promote_op(transpose,eltype(A)),typeof(A)}(A)
@@ -73,6 +73,11 @@ Base.parent(A::BatchedAdjOrTrans) = A.parent
 function Base.strides(A::BatchedAdjOrTrans)
     sp = strides(A.parent)
     (sp[2], sp[1], sp[3])
+end
+function Base.stride(A::BatchedAdjOrTrans, d::Integer)
+    d == 1 && return Base.stride(A.parent, 2)
+    d == 2 && return Base.stride(A.parent, 1)
+    Base.stride(A.parent, d)
 end
 
 (-)(A::BatchedAdjoint)   = BatchedAdjoint(  -A.parent)
