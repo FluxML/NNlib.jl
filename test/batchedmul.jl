@@ -117,7 +117,7 @@ using Base.CoreLogging: Debug
     end
 end
 
-using NNlin: _perm12
+using NNlib: _perm12
 @testset "_perm12" begin
 
     A = rand(Int8, 3,3,3)
