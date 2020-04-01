@@ -74,11 +74,15 @@ function Base.strides(A::BatchedAdjOrTrans)
     sp = strides(A.parent)
     (sp[2], sp[1], sp[3])
 end
+
 function Base.stride(A::BatchedAdjOrTrans, d::Integer)
     d == 1 && return Base.stride(A.parent, 2)
     d == 2 && return Base.stride(A.parent, 1)
     Base.stride(A.parent, d)
 end
+
+Base.unsafe_convert(::Type{Ptr{T}}, A::BatchedAdjOrTrans{T}) where {T} =
+    Base.unsafe_convert(Ptr{T}, parent(A))
 
 (-)(A::BatchedAdjoint)   = BatchedAdjoint(  -A.parent)
 (-)(A::BatchedTranspose) = BatchedTranspose(-A.parent)
