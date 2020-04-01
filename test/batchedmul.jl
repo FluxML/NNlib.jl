@@ -116,3 +116,41 @@ using Base.CoreLogging: Debug
 
     end
 end
+
+using NNlin: _perm12
+@testset "_perm12" begin
+
+    A = rand(Int8, 3,3,3)
+
+    for a in 1:3, b in 1:3, c in 1:3
+        perm = (a,b,c)
+        isperm(perm) || continue
+
+        B = permutedims(A, perm)
+        C = PermutedDimsArray(A, perm)
+        @test _perm12(B) == _perm12(C)
+    end
+
+end
+
+
+using NNlib: is_strided
+@testset "is_strided" begin
+
+    M = ones(10,10)
+
+    @test is_strided(M)
+    @test is_strided(view(M, 1:2:5,:))
+    @test is_strided(PermutedDimsArray(M, (2,1)))
+
+    @test !is_strided(reshape(view(M, 1:2:10,:), 10,:))
+    @test !is_strided((M.+im)')
+    @test !is_strided(Diagonal(ones(3)))
+    #=
+    using SparseArrays
+    @test !is_strided(sparse(M))
+    using NamedDims
+    @test is_strided(NamedDimsArray(M,(:a, :b))) # and 0.029 ns, 0 allocations
+    =#
+
+end
