@@ -133,7 +133,7 @@ using NNlib: _perm12
 
 end
 
-
+using LinearAlgebra
 using NNlib: is_strided
 @testset "is_strided" begin
 
