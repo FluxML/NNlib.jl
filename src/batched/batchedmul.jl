@@ -17,31 +17,34 @@ and similarly `batched_adjoint(B)` will use `adjoint(B[:,:,k])`.
 
 It will also accept `A` or `B` which are `PermutedDimsArray{T,3}`.
 On the CPU, these will still be handled by `BLAS.gemm!` provided `T <: LinearAlgebra.BlasFloat`
-and the can be permuted to be column-major. For `T <: Real` this allows any permutations
+and they can be permuted to be column-major. For `T <: Real`, this allows any permutations
 so long as `Base.stride(A,3) != 1` and `Base.stride(B,3) != 1`.
-For `T <: Complex` instead you must have `Base.stride(A,1) == 1 == Base.stride(B,1)`.
+(For `T <: Complex`, instead you must have `Base.stride(A,1) == 1 == Base.stride(B,1)`.)
 
 Other cases will fall back to `batched_mul_generic!`, which logs a message via `@debug`.
 ```
 julia> A = PermutedDimsArray(rand(5,4,10), (2,1,3)); size(A)
 (4, 5, 10)
 
-julia> strides(A)
+julia> strides(A)  # this will be absorbed by transposing
 (5, 1, 20)
 
 julia> B = PermutedDimsArray(rand(5,10,6), (1,3,2)); size(B)
 (5, 6, 10)
 
-julia> strides(B)
+julia> strides(B)  # this is fine as it is
 (1, 50, 5)
 
-julia> ENV["JULIA_DEBUG"] = NNlib; # nothing logged means we got batched_gemm!
+julia> ENV["JULIA_DEBUG"] = NNlib;
 
-julia> C = batched_mul(A, B); size(C)
+julia> C = batched_mul(A, B); size(C)  # done by batched_gemm!
 (4, 6, 10)
 
 julia> A2 = PermutedDimsArray(rand(10,5,4), (3,2,1)); size(A2)
 (4, 5, 10)
+
+julia> strides(A2)  # this can't be fixed
+(50, 10, 1)
 
 julia> C2 = batched_mul(A2, B); size(C2)
 ┌ Debug: couldn't re-arrange strides for batched_gemm!
@@ -56,8 +59,6 @@ julia> C2 = batched_mul(A2, B); size(C2)
 └ @ NNlib ~/.julia/dev/NNlib/src/batched/batchedmul.jl:133
 (4, 6, 10)
 ```
-On the GPU, perhaps more permutations of dimensions can be handled by `gemm_strided_batched!`,
-which is what gets called.
 """
 function batched_mul(A::AbstractArray{T1, 3}, B::AbstractArray{T2, 3}) where {T1, T2}
     axes(A, 3) == axes(B, 3) || throw(DimensionMismatch("batch size mismatch"))
@@ -194,65 +195,3 @@ else
     is_strided(A::LinearAlgebra.Transpose) = false
     is_strided(A::LinearAlgebra.Adjoint) = false
 end
-
-#=
-"""
-    is_strided_cu(A)
-
-This should return `true` for `A::CuArray`, and also for:
-* Any `view(::CuArray)` or `reshape(::CuArray)` etc. which remains a `StridedArray`
-* Any other wrapper for which `is_strided_cu(parent(A))`
-* Except that `Adjoint(A)` is only unwrapped for real numbers.
-
-Such wrappers include `PermutedDimsArray(::CuArray, ...)`,
-but also those defined elsewhere (such as `NamedDimsArray`s)
-which are assumed not to break strided-ness.
-
-`Transpose` and `Adjoint` don't currently define `strides`, so for now they return `false`.
-"""
-is_strided_cu(A::CuArray) = true
-is_strided_cu(A) = false
-function is_strided(A::AbstractArray)
-    M = parentmodule(typeof(A))
-    if parent(A) === A # Array, SparseMatrix, StaticArray
-        false
-    elseif M === Base || M === Core || M ===LinearAlgebra
-        A isa StridedArray && is_strided_cu(parent(A))
-    else
-        is_strided(parent(A)) # PermutedDimsArray, NamedDimsArray
-    end
-end
-
-# is_strided_cu(A::AbstractArray) = parent(A) === A ? false : is_strided_cu(parent(A))
-# is_strided_cu(A::Union{SubArray, Base.ReshapedArray, Base.ReinterpretArray}) =
-#     A isa StridedArray && is_strided_cu(parent(A))
-
-if hasmethod(Base.strides, Tuple{LinearAlgebra.Transpose})
-    is_strided_cu(A::LinearAlgebra.Transpose) = is_strided(parent(A))
-    is_strided_cu(A::LinearAlgebra.Adjoint) = eltype(A) <: Real && is_strided(parent(A))
-else
-    is_strided_cu(A::LinearAlgebra.Transpose) = false
-    is_strided_cu(A::LinearAlgebra.Adjoint) = false
-end
-
-using CuArrays: is_strided_cu
-@testset "is_strided_cu" begin
-
-    M = cu(ones(10,10))
-
-    @test is_strided_cu(M)
-    @test is_strided_cu(view(M, 1:2:5,:))
-    @test is_strided_cu(PermutedDimsArray(M, (2,1)))
-
-    @test !is_strided_cu(reshape(view(M, 1:2:10,:), 10,:))
-    @test !is_strided_cu((M.+im)')
-    @test !is_strided_cu(ones(10,10))
-    @test !is_strided_cu(Diagonal(ones(3)))
-
-    #=
-    using NamedDims
-    @test is_strided(NamedDimsArray(M,(:a, :b))) # and 0.029 ns, 0 allocations
-    =#
-
-end
-=#
