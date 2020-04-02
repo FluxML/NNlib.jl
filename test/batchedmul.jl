@@ -117,6 +117,49 @@ using Base.CoreLogging: Debug
     end
 end
 
+using ArrayLayouts: DenseColumnMajor, FirstMajor, SecondMajor, FirstUnion, StridedLayout
+using NNlib: memory_layout, storage_type
+
+# Minimal wrapper which ArrayLayouts knows nothing about
+struct TestWrap{T,AT} <: AbstractArray{T,3}
+    data::AT
+    TestWrap(A::AT) where {AT<:AbstractArray{T,3}} where {T} = new{T,AT}(A)
+end
+Base.size(A::TestWrap) = size(A.data)
+Base.getindex(A::TestWrap, i...) = A.data[i...]
+Base.parent(A::TestWrap) = A.data
+Base.strides(A::TestWrap) = strides(A.data)
+Base.unsafe_convert(::Type{Ptr{T}}, A::TestWrap{T}) where {T} =
+    Base.unsafe_convert(Ptr{T}, parent(A))
+
+@testset "ArrayLayouts" begin
+
+    A = randn(7,5,3)
+    memory_layout(A) == DenseColumnMajor()
+
+    memory_layout(batched_transpose(A)) == SecondMajor()
+    memory_layout(batched_adjoint(A)) == SecondMajor()
+
+    memory_layout(PermutedDimsArray(A, (1,3,2))) == FirstMajor()
+    memory_layout(PermutedDimsArray(A, (2,1,3))) == SecondMajor()
+    memory_layout(PermutedDimsArray(A, (2,3,1))) == StridedLayout()
+
+    memory_layout(TestWrap(A)) == StridedLayout()
+    memory_layout(TestWrap(batched_transpose(A))) == StridedLayout()
+    stride(TestWrap(A),3) == stride(A,3)
+
+    storage_type(TestWrap(A)) == typeof(A)
+    storage_type(batched_transpose(A)) == typeof(A)
+
+    B = randn(5,7,3)
+    C = randn(7,6,3)
+
+    batched_mul(A, B)
+    bmm_test(A, B)
+
+end
+
+#=
 using NNlib: _perm12
 @testset "_perm12" begin
 
@@ -154,3 +197,4 @@ using NNlib: is_strided
     =#
 
 end
+=#
