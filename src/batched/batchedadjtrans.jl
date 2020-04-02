@@ -1,4 +1,5 @@
-using LinearAlgebra
+using LinearAlgebra, ArrayLayouts
+
 import Base: -
 
 _batched_doc = """
@@ -70,6 +71,10 @@ Base.similar(A::BatchedAdjOrTrans) = similar(A.parent, size(A))
 
 Base.parent(A::BatchedAdjOrTrans) = A.parent
 
+(-)(A::BatchedAdjoint)   = BatchedAdjoint(  -A.parent)
+(-)(A::BatchedTranspose) = BatchedTranspose(-A.parent)
+
+# C interface
 function Base.strides(A::BatchedAdjOrTrans)
     sp = strides(A.parent)
     (sp[2], sp[1], sp[3])
@@ -84,5 +89,9 @@ end
 Base.unsafe_convert(::Type{Ptr{T}}, A::BatchedAdjOrTrans{T}) where {T} =
     Base.unsafe_convert(Ptr{T}, parent(A))
 
-(-)(A::BatchedAdjoint)   = BatchedAdjoint(  -A.parent)
-(-)(A::BatchedTranspose) = BatchedTranspose(-A.parent)
+ArrayLayouts.MemoryLayout(::Type{BatchedTranspose{T,S}}) where {T,S} =
+    ArrayLayouts.permutelayout(MemoryLayout(S), Val((2,1,3)))
+
+ArrayLayouts.MemoryLayout(::Type{BatchedAdjoint{T,S}}) where {T,S} =
+    ArrayLayouts.permutelayout(ArrayLayouts.conjlayout(T, MemoryLayout(S)), Val((2,1,3)))
+
