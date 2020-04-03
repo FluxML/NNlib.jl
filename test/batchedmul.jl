@@ -6,7 +6,7 @@ using NNlib
 using NNlib: memory_layout, storage_type, batched_mul!
 
 using ArrayLayouts
-using ArrayLayouts: DenseColumnMajor, FirstMajor, SecondMajor, FirstUnion, StridedLayout
+using ArrayLayouts: DenseColumnMajor, UnitStride, StridedLayout, ConjLayout
 
 # Minimal wrapper which ArrayLayouts knows nothing about
 struct TestWrap{T,AT} <: AbstractArray{T,3}
@@ -25,12 +25,12 @@ Base.unsafe_convert(::Type{Ptr{T}}, A::TestWrap{T}) where {T} =
     A = randn(ComplexF64, 7,5,3)
     @test memory_layout(A) == DenseColumnMajor()
 
-    @test memory_layout(batched_transpose(A)) == SecondMajor()
-    @test memory_layout(batched_adjoint(A)) == ConjLayout{SecondMajor}()
+    @test memory_layout(batched_transpose(A)) == UnitStride{2}()
+    @test memory_layout(batched_adjoint(A)) == ConjLayout{UnitStride{2}}()
 
-    @test memory_layout(PermutedDimsArray(A, (1,3,2))) == FirstMajor()
-    @test memory_layout(PermutedDimsArray(A, (2,1,3))) == SecondMajor()
-    @test memory_layout(PermutedDimsArray(A, (2,3,1))) == StridedLayout()
+    @test memory_layout(PermutedDimsArray(A, (1,3,2))) == UnitStride{1}()
+    @test memory_layout(PermutedDimsArray(A, (2,1,3))) == UnitStride{2}()
+    @test memory_layout(PermutedDimsArray(A, (2,3,1))) == UnitStride{3}()
 
     @test memory_layout(TestWrap(A)) == StridedLayout()
     @test memory_layout(TestWrap(batched_transpose(A))) == StridedLayout()

@@ -5,7 +5,8 @@ using LinearAlgebra: BlasFloat, BlasReal
 
 using Base: promote_typejoin
 
-using ArrayLayouts: MemoryLayout, FirstMajor, SecondMajor, ConjLayout, StridedLayout, UnknownLayout
+using ArrayLayouts: MemoryLayout, UnitStride, AbstractColumnMajor, ConjLayout, StridedLayout, UnknownLayout
+const UnitStrideFirst = Union{UnitStride{1}, AbstractColumnMajor}
 
 include("./batchedadjtrans.jl")
 
@@ -92,14 +93,14 @@ end
 # which you could avoid by dispatching on storage type later than on layout.
 
 _BATCHED_GEMM_LIST = [
-    (:FirstUnion, 'N', :identity, :SecondMajor),
-    (:SecondMajor, 'T', :batched_transpose, :FirstUnion),
-    (:(ConjLayout{SecondMajor}), 'C', :batched_adjoint, :Nothing)
+    (:UnitStrideFirst, 'N', :identity, :(UnitStride{2})),
+    (:(UnitStride{2}), 'T', :batched_transpose, :UnitStrideFirst),
+    (:(ConjLayout{UnitStride{2}}), 'C', :batched_adjoint, :Nothing)
 ]
 for (TA, tA, fA, revTA) in _BATCHED_GEMM_LIST, (TB, tB, fB, revTB) in _BATCHED_GEMM_LIST
 
     # Path 1, e.g. C isa Array, batched_transpose(A) or PermutedDimsArray(B, (3,1,2)) both need 'T'
-    @eval function _batched_mul!(::Type{<:Array{T}}, ::FirstUnion, C, ::$TA, A, ::$TB, B, α::Number, β::Number) where {T<:BlasFloat}
+    @eval function _batched_mul!(::Type{<:Array{T}}, ::UnitStrideFirst, C, ::$TA, A, ::$TB, B, α::Number, β::Number) where {T<:BlasFloat}
         batched_gemm!($tA, $tB, convert(T,α), $fA(A), $fB(B), convert(T,β), C)
     end
 
@@ -107,7 +108,7 @@ for (TA, tA, fA, revTA) in _BATCHED_GEMM_LIST, (TB, tB, fB, revTB) in _BATCHED_G
     if tA != 'C' && tB != 'C'
     not_tA = tA == 'T' ? 'N' : 'T'
     not_tB = tB == 'T' ? 'N' : 'T'
-    @eval function _batched_mul!(::Type{<:Array{T}}, ::SecondMajor, C, ::$TA, A, ::$TB, B, α::Number, β::Number) where {T<:BlasFloat}
+    @eval function _batched_mul!(::Type{<:Array{T}}, ::UnitStride{2}, C, ::$TA, A, ::$TB, B, α::Number, β::Number) where {T<:BlasFloat}
         @warn "this is broken!"
         @debug "transposing C, and thus A, B to compensate..." size(A) size(B) size(C) strides(A) strides(B) strides(C)
         batched_gemm!($not_tB, $not_tA, convert(T,α), $fB(B), $fA(A), convert(T,β), batched_transpose(C))
@@ -119,16 +120,16 @@ end
 function _batched_mul!(TC::Type{<:Array{T}}, ::AbstractStridedLayout, C, ::AbstractStridedLayout, A, ::AbstractStridedLayout, B, α::Number, β::Number) where {T<:BlasFloat}
     @debug "using runtime strides" strides(A) strides(B) strides(C)
 
-    MA = Base.stride(A,1) == 1 ? FirstMajor() :
-        Base.stride(A,2) == 1 ? SecondMajor() :
+    MA = Base.stride(A,1) == 1 ? UnitStride{1}() :
+        Base.stride(A,2) == 1 ? UnitStride{2}() :
         return batched_mul_generic!(C,A,B,α,β)
 
-    MB = Base.stride(B,1) == 1 ? FirstMajor() :
-        Base.stride(B,2) == 1 ? SecondMajor() :
+    MB = Base.stride(B,1) == 1 ? UnitStride{1}() :
+        Base.stride(B,2) == 1 ? UnitStride{2}() :
         return batched_mul_generic!(C,A,B,α,β)
 
-    MC = Base.stride(C,1) == 1 ? FirstMajor() :
-        Base.stride(C,2) == 1 ? SecondMajor() :
+    MC = Base.stride(C,1) == 1 ? UnitStride{1}() :
+        Base.stride(C,2) == 1 ? UnitStride{2}() :
         return batched_mul_generic!(C,A,B,α,β)
 
     # Useless, as batched_transpose would make ConjLayout{StridedLayout}()
