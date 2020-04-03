@@ -1,3 +1,6 @@
+using NNlib, Test, LinearAlgebra
+using NNlib: storage_type, is_strided
+
 function bmm_test(a,b; transA = false, transB = false)
     bs = size(a,3)
     transA && (a = permutedims(a, [2,1,3]))
@@ -120,4 +123,43 @@ end
         setindex!(_copyX, 2.0, 1, 2, 1)
         @test _X != _copyX
     end
+end
+
+@testset "storage_type"
+
+    @test storage_type(transpose(reshape(view(rand(10), 2:9),4,:))) == Vector{Float64}
+    @test storage_type(transpose(reshape(view(1:10,     2:9),4,:))) == UnitRange{Int}
+
+    @test storage_type(rand(2), rand(Float32, 2)) == Vector{<:Any}
+    @test storage_type(rand(2), rand(2,3)', rand(2,3,4)) == Array{Float64}
+    @test storage_type([1,2,3], 4:5) == AbstractVector{Int}
+
+end
+
+@testset "is_strided" begin
+
+    M = ones(10,10)
+
+    @test is_strided(M)
+    @test is_strided(view(M, 1:2:5,:))
+    @test is_strided(PermutedDimsArray(M, (2,1)))
+
+    @test !is_strided(reshape(view(M, 1:2:10,:), 10,:))
+    @test !is_strided((M.+im)')
+    @test !is_strided(Diagonal(ones(3)))
+
+    A = ones(2,2,2)
+
+    @test is_strided(batched_adjoint(A))
+    @test is_strided(batched_transpose(A))
+    @test !is_strided(batched_adjoint(A .+ im))
+    @test is_strided(batched_transpose(A .+ im))
+
+    #=
+    using SparseArrays
+    @test !is_strided(sparse(M))
+    using NamedDims
+    @test is_strided(NamedDimsArray(M,(:a, :b))) # and 0.029 ns, 0 allocations
+    =#
+
 end
