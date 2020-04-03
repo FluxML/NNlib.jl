@@ -182,17 +182,17 @@ end
             end
 
         end
-        @testset "batched_mul! with permuted output" begin # this is broken!
+        # @testset "batched_mul! with permuted output" begin # this is broken!
 
-            A = rand(3,3,3)
-            B = rand(3,3,3)
-            C = PermutedDimsArray(zeros(3,3,3), (2,1,3))
-            @test_broken batched_mul(A, B) ≈ batched_mul!(C, B, A)
+        #     A = rand(3,3,3)
+        #     B = rand(3,3,3)
+        #     C = PermutedDimsArray(zeros(3,3,3), (2,1,3))
+        #     @test_broken batched_mul(A, B) ≈ batched_mul!(C, B, A)
 
-            B = batched_adjoint(rand(3,3,3))
-            C = PermutedDimsArray(zeros(3,3,3), (3,1,2))
-            @test_broken batched_mul(A, B) ≈ batched_mul!(C, B, A)
+        #     B = batched_adjoint(rand(3,3,3))
+        #     C = PermutedDimsArray(zeros(3,3,3), (3,1,2))
+        #     @test_broken batched_mul(A, B) ≈ batched_mul!(C, B, A)
 
-        end
+        # end
     end
 end

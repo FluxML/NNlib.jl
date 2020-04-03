@@ -80,44 +80,58 @@ equivalent to `mul!(C[:,:,k], A[:,:,k], B[:,:,k], α, β)` for all `k`.
 The fallback implementation of this literally calls `mul!`,
 and hence can only accept `α!=1` or `β!=0` on Julia >= 1.3.
 """
-function batched_mul!(C::AbstractArray{T,3}, A::AbstractArray{<:Any,3}, B::AbstractArray{<:Any,3}, α::Number=one(T), β::Number=zero(T)) where {T}
+function batched_mul!(C::AbstractArray{T,3}, A::AbstractArray{<:Any,3}, B::AbstractArray{<:Any,3},
+        α::Number=one(T), β::Number=zero(T)) where {T}
+
     # Use promote_typejoin here to ensure Float64 * Int doesn't go to gemm!
     type = promote_typejoin(storage_type(C), promote_typejoin(storage_type(A), storage_type(B)))
-    _batched_mul!(type, memory_layout(C), C, memory_layout(A), A, memory_layout(B), B, α, β)
+
+    _batched_mul!(type, C, memory_layout(C), A, memory_layout(A), B, memory_layout(B), α, β)
     C
 end
 
 # Dispatch on storage type: CuArrays can define _batched_mul!(::CuArray, ...)
 # Dispatch on ArrayLayouts traits: decide where you need 'T' etc.
-# If the list of permutations handled by CuArrays is the same, then some duplication,
-# which you could avoid by dispatching on storage type later than on layout.
 
+# _BATCHED_GEMM_LIST = [
+#     (:UnitStrideFirst, 'N', :identity, :(UnitStride{2})),
+#     (:(UnitStride{2}), 'T', :batched_transpose, :UnitStrideFirst),
+#     (:(ConjLayout{UnitStride{2}}), 'C', :batched_adjoint, :Nothing)
+# ]
+# for (TA, tA, fA, revTA) in _BATCHED_GEMM_LIST, (TB, tB, fB, revTB) in _BATCHED_GEMM_LIST
 _BATCHED_GEMM_LIST = [
-    (:UnitStrideFirst, 'N', :identity, :(UnitStride{2})),
-    (:(UnitStride{2}), 'T', :batched_transpose, :UnitStrideFirst),
-    (:(ConjLayout{UnitStride{2}}), 'C', :batched_adjoint, :Nothing)
+    (:UnitStrideFirst,             'N', :identity),
+    (:(UnitStride{2}),             'T', :batched_transpose),
+    (:(ConjLayout{UnitStride{2}}), 'C', :batched_adjoint)
 ]
-for (TA, tA, fA, revTA) in _BATCHED_GEMM_LIST, (TB, tB, fB, revTB) in _BATCHED_GEMM_LIST
+for (MA, tA, fA) in _BATCHED_GEMM_LIST, (MB, tB, fB) in _BATCHED_GEMM_LIST
 
     # Path 1, e.g. C isa Array, batched_transpose(A) or PermutedDimsArray(B, (3,1,2)) both need 'T'
-    @eval function _batched_mul!(::Type{<:Array{T}}, ::UnitStrideFirst, C, ::$TA, A, ::$TB, B, α::Number, β::Number) where {T<:BlasFloat}
+    @eval function _batched_mul!(::Type{<:Array{T}},
+            C, ::UnitStrideFirst, A, ::$MA, B, ::$MB,
+            α::Number, β::Number) where {T<:BlasFloat}
+
         batched_gemm!($tA, $tB, convert(T,α), $fA(A), $fB(B), convert(T,β), C)
     end
 
-    # Path 2, C = batched_transpose(Array), so transpose the entire equation
-    if tA != 'C' && tB != 'C'
-    not_tA = tA == 'T' ? 'N' : 'T'
-    not_tB = tB == 'T' ? 'N' : 'T'
-    @eval function _batched_mul!(::Type{<:Array{T}}, ::UnitStride{2}, C, ::$TA, A, ::$TB, B, α::Number, β::Number) where {T<:BlasFloat}
-        @warn "this is broken!"
-        @debug "transposing C, and thus A, B to compensate..." size(A) size(B) size(C) strides(A) strides(B) strides(C)
-        batched_gemm!($not_tB, $not_tA, convert(T,α), $fB(B), $fA(A), convert(T,β), batched_transpose(C))
-    end
-end
+    # # Path 2, C = batched_transpose(Array), so transpose the entire equation
+    # if tA != 'C' && tB != 'C'
+    # not_tA = tA == 'T' ? 'N' : 'T'
+    # not_tB = tB == 'T' ? 'N' : 'T'
+    # @eval function _batched_mul!(::Type{<:Array{T}}, C, ::UnitStride{2}, A, ::$MA, B, ::$MB, α::Number, β::Number) where {T<:BlasFloat}
+    #     @warn "this is broken!"
+    #     @debug "transposing C, and thus A, B to compensate..." size(A) size(B) size(C) strides(A) strides(B) strides(C)
+    #     batched_gemm!($not_tB, $not_tA, convert(T,α), $fB(B), $fA(A), convert(T,β), batched_transpose(C))
+    # end
+    # end
 end
 
 # Path 3, use runtime strides. Does not catch ConjLayout{StridedLayout}()
-function _batched_mul!(TC::Type{<:Array{T}}, ::AbstractStridedLayout, C, ::AbstractStridedLayout, A, ::AbstractStridedLayout, B, α::Number, β::Number) where {T<:BlasFloat}
+# function _batched_mul!(TC::Type{<:AbstractArray{T}}, C, ::AbstractStridedLayout, A, ::AbstractStridedLayout, B, ::AbstractStridedLayout, B, α::Number, β::Number) where {T<:BlasFloat}
+function _batched_mul!(TC::Type{<:AbstractArray{T}},
+        C, MC::UnitStrideFirst, A, ::AbstractStridedLayout, B, ::AbstractStridedLayout,
+        α::Number, β::Number) where {T<:BlasFloat}
+
     @debug "using runtime strides" strides(A) strides(B) strides(C)
 
     MA = Base.stride(A,1) == 1 ? UnitStride{1}() :
@@ -128,19 +142,21 @@ function _batched_mul!(TC::Type{<:Array{T}}, ::AbstractStridedLayout, C, ::Abstr
         Base.stride(B,2) == 1 ? UnitStride{2}() :
         return batched_mul_generic!(C,A,B,α,β)
 
-    MC = Base.stride(C,1) == 1 ? UnitStride{1}() :
-        Base.stride(C,2) == 1 ? UnitStride{2}() :
-        return batched_mul_generic!(C,A,B,α,β)
+    # MC = Base.stride(C,1) == 1 ? UnitStride{1}() :
+    #     Base.stride(C,2) == 1 ? UnitStride{2}() :
+    #     return batched_mul_generic!(C,A,B,α,β)
 
     # Useless, as batched_transpose would make ConjLayout{StridedLayout}()
     # MA = A isa BatchedAdjoint ? ArrayLayouts.conjlayout(T, MA) : MA
     # MB = B isa BatchedAdjoint ? ArrayLayouts.conjlayout(T, MB) : MB
 
-    _batched_mul!(TC, MC, C, MA, A, MB, B, α, β)
+    _batched_mul!(TC, C, MC, A, MA, B, MB, α, β)
 end
 
 # Path 4, anything else goes directly to the fallback
-function _batched_mul!(::Type{<:AbstractArray}, ::MemoryLayout, C, ::MemoryLayout, A, ::MemoryLayout, B, α::Number, β::Number)
+function _batched_mul!(::Type{<:AbstractArray},
+        C, ::MemoryLayout, A, ::MemoryLayout, B, ::MemoryLayout, α::Number, β::Number)
+
     batched_mul_generic!(C, A, B, α, β)
 end
 
@@ -156,10 +172,13 @@ _BATCHED_LIST = [
 ]
 for (TA, fA) in _BATCHED_LIST, (TB, fB) in _BATCHED_LIST
 
-    @eval function batched_mul_generic!(C::AbstractArray{T, 3}, A::$TA, B::$TB, α::Number=one(T), β::Number=zero(T)) where {T}
+    @eval function batched_mul_generic!(C::AbstractArray{T, 3}, A::$TA, B::$TB,
+            α::Number=one(T), β::Number=zero(T)) where {T}
+
         axes(A, 3) == axes(B, 3) == axes(C, 3) || throw(DimensionMismatch("batch size mismatch"))
         @debug "calling fallback method for batched_mul!" typeof(A) typeof(B) typeof(C)
         Abase, Bbase = _unbatch(A), _unbatch(B)
+
         if VERSION >= v"1.3"
             @inbounds for k in axes(C, 3)
                 @views mul!(C[:,:,k], $fA(Abase[:,:,k]), $fB(Bbase[:,:,k]), convert(T,α), convert(T,β))
@@ -170,6 +189,7 @@ for (TA, fA) in _BATCHED_LIST, (TB, fB) in _BATCHED_LIST
                 @views mul!(C[:,:,k], $fA(Abase[:,:,k]), $fB(Bbase[:,:,k]))
             end
         end
+
         C
     end
 
