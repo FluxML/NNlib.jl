@@ -54,7 +54,7 @@ end
 
 _batched_mul!(::Type, C, A, B, α::Number, β::Number) = batched_mul_generic!(C, A, B, α, β)
 
-function _batched_mul!(CT::Type{<:Array{T}}, C, A, B, α::Number, β::Number) where {T<:BlasFloat}
+function _batched_mul!(CT::Type{<:DenseArray{T}}, C, A, B, α::Number, β::Number) where {T<:BlasFloat}
 
     are_strided(C, _unbatch(A), _unbatch(B)) || return batched_mul_generic!(C, A, B, α, β)
 
