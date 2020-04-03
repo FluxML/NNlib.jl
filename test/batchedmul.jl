@@ -42,6 +42,29 @@ Base.unsafe_convert(::Type{Ptr{T}}, A::TestWrap{T}) where {T} =
 
 end
 
+#=
+for n in [2,10,50]
+    @show n
+    A = rand(n,n,n); B = PermutedDimsArray(rand(n,n,n), (2,1,3)); C = similar(A);
+    @btime batched_mul!($C, $A, $B);
+    A_ = TestWrap(A); B_ = TestWrap(B); C_ = TestWrap(C);
+    @btime batched_mul!($C, $A_, $B); # runtime strides for 1
+    @btime batched_mul!($C_, $A_, $B_); # or for all
+end
+# n = 2
+#   266.969 ns (0 allocations: 0 bytes)
+#   420.025 ns (1 allocation: 32 bytes)
+#   846.074 ns (5 allocations: 128 bytes)
+# n = 10
+#   2.943 μs (0 allocations: 0 bytes)
+#   3.117 μs (1 allocation: 32 bytes)
+#   3.594 μs (5 allocations: 128 bytes)
+# n = 50
+#   421.166 μs (0 allocations: 0 bytes)
+#   421.283 μs (1 allocation: 32 bytes)
+#   421.789 μs (5 allocations: 128 bytes)
+=#
+
 function bmm_test(a,b; transA = false, transB = false)
     bs = size(a,3)
     transA && (a = permutedims(a, [2,1,3]))
