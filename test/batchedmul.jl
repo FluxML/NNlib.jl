@@ -1,5 +1,5 @@
 using NNlib, Test, LinearAlgebra
-using NNlib: storage_type, is_strided
+using NNlib: storage_type, is_strided, batched_mul!
 
 function bmm_test(a,b; transA = false, transB = false)
     bs = size(a,3)
@@ -125,7 +125,7 @@ end
     end
 end
 
-@testset "storage_type"
+@testset "storage_type" begin
 
     @test storage_type(transpose(reshape(view(rand(10), 2:9),4,:))) == Vector{Float64}
     @test storage_type(transpose(reshape(view(1:10,     2:9),4,:))) == UnitRange{Int}

@@ -17,7 +17,10 @@ To transpose each matrix apply `batched_transpose` to the array,
 and similarly `batched_adjoint`. Other permutations are also handled efficiently,
 provided that the batch index `k` is not the first dimension of the underlying array.
 Thus `PermutedDimsArray(::Array, (1,3,2))` and `PermutedDimsArray(::Array, (3,1,2))` are fine,
-but `PermutedDimsArray(::Array, (3,2,1))` must use the fallback `batched_mul_generic!`.
+but `PermutedDimsArray(::Array, (3,2,1))` will use the fallback `batched_mul_generic!`.
+
+There is an `@debug` message produced by `batched_mul_generic!`,
+setting for instance `ENV["JULIA_DEBUG"] = NNlib` will display this.
 """
 function batched_mul(A::AbstractArray{T1, 3}, B::AbstractArray{T2, 3}) where {T1, T2}
     axes(A, 3) == axes(B, 3) || throw(DimensionMismatch("batch size mismatch"))
@@ -40,8 +43,8 @@ be caused by `batched_transpose` or by for instance `PermutedDimsArray(::Array, 
 For complex arrays, the wrapper made by `batched_adjoint` must be outermost to be seen,
 and in this case `stride(A::BatchedAdjoint,2) == 1` is not optional.
 
-The fallback method calls 5-argument `mul!` on Julia 1.3 and later,
-on earlier verions it will thrown an error if `α!=1` or `β!=0`.
+The fallback method calls 5-argument `mul!` on Julia 1.3 and later.
+On earlier verions it will thrown an error if `α!=1` or `β!=0`.
 """
 function batched_mul!(C::AbstractArray{T,3}, A::AbstractArray{<:Any,3}, B::AbstractArray{<:Any,3},
         α::Number=one(T), β::Number=zero(T)) where {T}
@@ -51,10 +54,9 @@ end
 
 _batched_mul!(::Type, C, A, B, α::Number, β::Number) = batched_mul_generic!(C, A, B, α, β)
 
-function _batched_mul!(::Array{T}, C, A, B, α::Number, β::Number) where {T<:BlasFloat}
+function _batched_mul!(CT::Type{<:Array{T}}, C, A, B, α::Number, β::Number) where {T<:BlasFloat}
 
-    is_strided(C) && is_strided(_unbatch(A)) && is_strided(_unbatch(B)) ||
-        return batched_mul_generic!(C, A, B, α, β)
+    are_strided(C, _unbatch(A), _unbatch(B)) || return batched_mul_generic!(C, A, B, α, β)
 
     if Base.stride(C,1) == 1
     elseif Base.stride(C,2) == 1
@@ -85,7 +87,7 @@ function _batched_mul!(::Array{T}, C, A, B, α::Number, β::Number) where {T<:Bl
         return batched_mul_generic!(C, A, B, α, β)
     end
 
-    _batched_gemm!(transA, transB, convert(T,α), blasA, blasB, convert(T,β), C)
+    _batched_gemm!(CT, transA, transB, convert(T,α), blasA, blasB, convert(T,β), C)
     C
 end
 
@@ -198,3 +200,5 @@ else
     is_strided(A::LinearAlgebra.Transpose) = false
     is_strided(A::LinearAlgebra.Adjoint) = false
 end
+
+are_strided(As...) = mapfoldl(is_strided, &, As; init=true)
