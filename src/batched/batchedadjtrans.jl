@@ -1,4 +1,5 @@
 using LinearAlgebra
+
 import Base: -
 
 _batched_doc = """
@@ -10,10 +11,13 @@ Equivalent to applying `transpose` or `adjoint` to each matrix `A[:,:,k]`.
 These exist to control how `batched_mul` behaves,
 as it operated on such matrix slices of an array with `ndims(A)==3`.
 
-    BatchedTranspose{T, N, S} <: AbstractBatchedMatrix{T, N}
-    BatchedAdjoint{T, N, S}
+For arrays of real numbers, `batched_transpose(A) == PermutedDimsArray(A, (2,1,3))`,
+which is a more widely-supported wrapper, and also understood by `batched_mul`.
 
-Lazy wrappers analogous to `Transpose` and `Adjoint`, returned by `batched_transpose`.
+    BatchedTranspose{T, S} <: AbstractBatchedMatrix{T, 3}
+    BatchedAdjoint{T, S}
+
+Lazy wrappers analogous to `Transpose` and `Adjoint`, returned by `batched_transpose` etc.
 """
 
 @doc _batched_doc
@@ -35,6 +39,13 @@ end
 @doc _batched_doc
 batched_adjoint(A::AbstractArray{T, 3}) where T = BatchedAdjoint(A)
 batched_adjoint(A::BatchedAdjoint) = A.parent
+
+batched_adjoint(A::BatchedTranspose{<:Real}) = A.parent
+batched_transpose(A::BatchedAdjoint{<:Real}) = A.parent
+batched_adjoint(A::PermutedDimsArray{<:Real,3,(2,1,3)}) = A.parent
+batched_transpose(A::PermutedDimsArray{<:Number,3,(2,1,3)}) = A.parent
+# if you can't unwrap, put BatchedAdjoint outside (for dispatch):
+batched_transpose(A::BatchedAdjoint{<:Complex}) = BatchedAdjoint(BatchedTranspose(A.parent))
 
 BatchedAdjoint(A) = BatchedAdjoint{Base.promote_op(adjoint,eltype(A)),typeof(A)}(A)
 BatchedTranspose(A) = BatchedTranspose{Base.promote_op(transpose,eltype(A)),typeof(A)}(A)
@@ -65,6 +76,18 @@ Base.parent(A::BatchedAdjOrTrans) = A.parent
 (-)(A::BatchedAdjoint)   = BatchedAdjoint(  -A.parent)
 (-)(A::BatchedTranspose) = BatchedTranspose(-A.parent)
 
-Base.copy(A::BatchedTranspose) = BatchedTranspose(copy(A.parent))
-Base.copy(A::BatchedAdjoint) = BatchedAdjoint(copy(A.parent))
+# C interface
+function Base.strides(A::Union{BatchedTranspose, BatchedAdjoint{<:Real}})
+    sp = strides(A.parent)
+    (sp[2], sp[1], sp[3])
+end
+
+function Base.stride(A::Union{BatchedTranspose, BatchedAdjoint{<:Real}}, d::Integer)
+    d == 1 && return Base.stride(A.parent, 2)
+    d == 2 && return Base.stride(A.parent, 1)
+    Base.stride(A.parent, d)
+end
+
+Base.unsafe_convert(::Type{Ptr{T}}, A::BatchedAdjOrTrans{T}) where {T} =
+    Base.unsafe_convert(Ptr{T}, parent(A))
 
