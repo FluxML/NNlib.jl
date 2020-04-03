@@ -1,3 +1,47 @@
+using Test
+
+using Base.CoreLogging: Debug
+
+using NNlib
+using NNlib: memory_layout, storage_type, batched_mul!
+
+using ArrayLayouts
+using ArrayLayouts: DenseColumnMajor, FirstMajor, SecondMajor, FirstUnion, StridedLayout
+
+# Minimal wrapper which ArrayLayouts knows nothing about
+struct TestWrap{T,AT} <: AbstractArray{T,3}
+    data::AT
+    TestWrap(A::AT) where {AT<:AbstractArray{T,3}} where {T} = new{T,AT}(A)
+end
+Base.size(A::TestWrap) = size(A.data)
+Base.getindex(A::TestWrap, i...) = A.data[i...]
+Base.parent(A::TestWrap) = A.data
+Base.strides(A::TestWrap) = strides(A.data)
+Base.unsafe_convert(::Type{Ptr{T}}, A::TestWrap{T}) where {T} =
+    Base.unsafe_convert(Ptr{T}, parent(A))
+
+@testset "ArrayLayouts + storage_type" begin
+
+    A = randn(ComplexF64, 7,5,3)
+    @test memory_layout(A) == DenseColumnMajor()
+
+    @test memory_layout(batched_transpose(A)) == SecondMajor()
+    @test memory_layout(batched_adjoint(A)) == ConjLayout{SecondMajor}()
+
+    @test memory_layout(PermutedDimsArray(A, (1,3,2))) == FirstMajor()
+    @test memory_layout(PermutedDimsArray(A, (2,1,3))) == SecondMajor()
+    @test memory_layout(PermutedDimsArray(A, (2,3,1))) == StridedLayout()
+
+    @test memory_layout(TestWrap(A)) == StridedLayout()
+    @test memory_layout(TestWrap(batched_transpose(A))) == StridedLayout()
+    @test memory_layout(TestWrap(batched_adjoint(A))) == ConjLayout{StridedLayout}()
+    @test stride(TestWrap(A),3) == stride(A,3)
+
+    @test storage_type(TestWrap(A)) == typeof(A)
+    @test storage_type(batched_transpose(A)) == typeof(A)
+
+end
+
 function bmm_test(a,b; transA = false, transB = false)
     bs = size(a,3)
     transA && (a = permutedims(a, [2,1,3]))
@@ -21,8 +65,6 @@ function bmm_adjtest(a,b; adjA = false, adjB = false)
 
     cat(c...; dims = 3)
 end
-
-using Base.CoreLogging: Debug
 
 @testset "batched_mul: Float64 * $TB" for TB in [Float64, Float32]
     @testset "real" begin
@@ -57,9 +99,8 @@ using Base.CoreLogging: Debug
         # mixed wrappers
         @test batched_transpose(batched_adjoint(A)) === A
         @test batched_adjoint(batched_transpose(A)) === A
-        # this should NOT unwrap:
-        @test batched_transpose(PermutedDimsArray(A, (2,1,3))) !== A
-        @test batched_adjoint(PermutedDimsArray(A, (2,1,3))) !== A
+        @test batched_transpose(PermutedDimsArray(A, (2,1,3))) === A
+        @test batched_adjoint(PermutedDimsArray(A, (2,1,3))) === A
 
     end
     @testset "complex" begin
@@ -67,22 +108,28 @@ using Base.CoreLogging: Debug
         cA = randn(Complex{Float64}, 7,5,3)
         cB = randn(Complex{TB}, 5,7,3)
         cC = randn(Complex{Float64}, 7,6,3)
-        cA_, cC_ = complex(TB).(cA), complex(TB).(cC)
+        # cA_, cC_ = complex(TB).(cA), complex(TB).(cC)
 
         @test batched_mul(cA, cB) ≈ bmm_adjtest(cA, cB)
         @test batched_mul(batched_adjoint(cA), batched_adjoint(cB)) ≈
             bmm_adjtest(cA, cB; adjA = true, adjB = true)
-        @test batched_mul(batched_adjoint(cA), cC_) ≈ bmm_adjtest(cA, cC_; adjA = true)
-        @test batched_mul(cA, batched_adjoint(cA_)) ≈ bmm_adjtest(cA, cA_; adjB = true)
+        # @test batched_mul(batched_adjoint(cA), cC_) ≈ bmm_adjtest(cA, cC_; adjA = true)
+        # @test batched_mul(cA, batched_adjoint(cA_)) ≈ bmm_adjtest(cA, cA_; adjB = true)
+
+        if VERSION >= v"1.3"
+            Z = batched_mul(cA, cB)
+            @test batched_mul!(similar(Z), cA, cB, 2) ≈ 2 .* Z
+            @test batched_mul!(copy(Z), cA, cB, 1, 1) ≈ 2 .* Z
+        end
 
         if TB == Float64
             @test_logs min_level=Debug batched_mul(cA, cB)
-            @test_logs min_level=Debug batched_mul(cA, PermutedDimsArray(cA_, (2,1,3)))
+            # @test_logs min_level=Debug batched_mul(cA, PermutedDimsArray(cA_, (2,1,3)))
         end
 
         @test batched_adjoint(batched_adjoint(cA)) === cA
         @test batched_transpose(batched_transpose(cA)) === cA
-        @test batched_transpose(PermutedDimsArray(cA, (2,1,3))) !== cA
+        @test batched_transpose(PermutedDimsArray(cA, (2,1,3))) === cA
         @test batched_adjoint(batched_transpose(cA)) != cA
 
     end
@@ -115,86 +162,37 @@ using Base.CoreLogging: Debug
         @test_throws Exception batched_mul!(zeros(2,2,10), rand(2,2,2), rand(TB, 2,2,2))
 
     end
-end
+    if TB == Float32
+        @testset "all PermutedDimsArrays" begin
 
-using ArrayLayouts: DenseColumnMajor, FirstMajor, SecondMajor, FirstUnion, StridedLayout
-using NNlib: memory_layout, storage_type
+            _FUNS = [identity, batched_adjoint]
+            _PERMS = [(1,2,3), (1,3,2), (2,1,3), (3,1,2), (2,3,1), (3,2,1)]
 
-# Minimal wrapper which ArrayLayouts knows nothing about
-struct TestWrap{T,AT} <: AbstractArray{T,3}
-    data::AT
-    TestWrap(A::AT) where {AT<:AbstractArray{T,3}} where {T} = new{T,AT}(A)
-end
-Base.size(A::TestWrap) = size(A.data)
-Base.getindex(A::TestWrap, i...) = A.data[i...]
-Base.parent(A::TestWrap) = A.data
-Base.strides(A::TestWrap) = strides(A.data)
-Base.unsafe_convert(::Type{Ptr{T}}, A::TestWrap{T}) where {T} =
-    Base.unsafe_convert(Ptr{T}, parent(A))
+            @testset "permutations (A ~ $p) & (B ~ $q)" for p in _PERMS, q in _PERMS
+                A = PermutedDimsArray(rand(TB, 3,3,3), p)
+                A0 = collect(A)
+                B = PermutedDimsArray(rand(TB, 3,3,3), q)
+                B0 = collect(B)
+                @testset "functions $f & $g" for f in _FUNS, g in _FUNS
+                    C0 = batched_mul(f(A0), g(B0))
+                    @test batched_mul(f(A), g(B)) ≈ C0
+                    # TestWrap forces it to check strides at runtime
+                    @test batched_mul(TestWrap(f(A)), TestWrap(g(B))) ≈ C0
+                end
+            end
 
-@testset "ArrayLayouts" begin
+        end
+        @testset "batched_mul! with permuted output" begin # this is broken!
 
-    A = randn(7,5,3)
-    memory_layout(A) == DenseColumnMajor()
+            A = rand(3,3,3)
+            B = rand(3,3,3)
+            C = PermutedDimsArray(zeros(3,3,3), (2,1,3))
+            @test_broken batched_mul(A, B) ≈ batched_mul!(C, B, A)
 
-    memory_layout(batched_transpose(A)) == SecondMajor()
-    memory_layout(batched_adjoint(A)) == SecondMajor()
+            B = batched_adjoint(rand(3,3,3))
+            C = PermutedDimsArray(zeros(3,3,3), (3,1,2))
+            @test_broken batched_mul(A, B) ≈ batched_mul!(C, B, A)
 
-    memory_layout(PermutedDimsArray(A, (1,3,2))) == FirstMajor()
-    memory_layout(PermutedDimsArray(A, (2,1,3))) == SecondMajor()
-    memory_layout(PermutedDimsArray(A, (2,3,1))) == StridedLayout()
-
-    memory_layout(TestWrap(A)) == StridedLayout()
-    memory_layout(TestWrap(batched_transpose(A))) == StridedLayout()
-    stride(TestWrap(A),3) == stride(A,3)
-
-    storage_type(TestWrap(A)) == typeof(A)
-    storage_type(batched_transpose(A)) == typeof(A)
-
-    B = randn(5,7,3)
-    C = randn(7,6,3)
-
-    batched_mul(A, B)
-    bmm_test(A, B)
-
-end
-
-#=
-using NNlib: _perm12
-@testset "_perm12" begin
-
-    A = rand(Int8, 3,3,3)
-
-    for a in 1:3, b in 1:3, c in 1:3
-        perm = (a,b,c)
-        isperm(perm) || continue
-
-        B = permutedims(A, perm)
-        C = PermutedDimsArray(A, perm)
-        @test _perm12(B) == _perm12(C)
+        end
     end
-
 end
-
-using LinearAlgebra
-using NNlib: is_strided
-@testset "is_strided" begin
-
-    M = ones(10,10)
-
-    @test is_strided(M)
-    @test is_strided(view(M, 1:2:5,:))
-    @test is_strided(PermutedDimsArray(M, (2,1)))
-
-    @test !is_strided(reshape(view(M, 1:2:10,:), 10,:))
-    @test !is_strided((M.+im)')
-    @test !is_strided(Diagonal(ones(3)))
-    #=
-    using SparseArrays
-    @test !is_strided(sparse(M))
-    using NamedDims
-    @test is_strided(NamedDimsArray(M,(:a, :b))) # and 0.029 ns, 0 allocations
-    =#
-
-end
-=#
