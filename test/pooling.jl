@@ -316,3 +316,44 @@ end
     dx = ∇maxpool(dy, y, x, pdims)
     @test dx[:,:,1,1] == [1.0 0.0 1.0; 0.0 0.0 0.0; 1.0 0.0 1.0]
 end
+
+# Add test for ∇maxpool and ∇meanpool that input k::NTuple{N, Integer},pad,stride instead of pdims::PoolDims
+@testset "Issue #188" begin
+    for rank in (1, 2, 3)
+        for (pool, ∇pool, answer_dict) in (
+                # Main API name
+                (maxpool, ∇maxpool, maxpool_answer_dict),
+                (meanpool, ∇meanpool, meanpool_answer_dict),
+            )
+
+            @testset "$(∇pool)$(rank)d" begin
+                y = answer_dict[rank]["y"]
+                y_nostride = answer_dict[rank]["y_nostride"]
+                y_pad = answer_dict[rank]["y_pad"]
+                dx = answer_dict[rank]["dx"]
+                dx_nostride = answer_dict[rank]["dx_nostride"]
+                dx_pad = answer_dict[rank]["dx_pad"]
+
+                x = reshape(Float64[1:prod(size(dx));], size(dx)..., 1, 1)
+
+                # A "drop channels and batch dimension" helper
+                ddims(x) = dropdims(x, dims=(rank+1, rank+2))
+                
+                # Kernel size of pool in ntuple format
+                k = ntuple(_ -> 2, rank)
+                
+                # Test vanilla pooling
+                y_hat = pool(x, k)
+                @test ddims(∇pool(y_hat, y_hat, x, k)) == dx
+
+                # Strided pooling
+                y_hat = pool(x, k; stride=1)
+                @test ddims(∇pool(y_hat, y_hat, x, k; stride=1)) == dx_nostride
+
+                # Padded pooling
+                y_hat = pool(x, k; pad=1)
+                @test ddims(∇pool(y_hat, y_hat, x, k; pad=1)) == dx_pad
+            end
+        end
+    end
+end
