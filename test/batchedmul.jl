@@ -32,9 +32,9 @@ Base.unsafe_convert(::Type{Ptr{T}}, A::TestWrap{T}) where {T} =
     @test memory_layout(PermutedDimsArray(A, (2,1,3))) == UnitStride{2}()
     @test memory_layout(PermutedDimsArray(A, (2,3,1))) == UnitStride{3}()
 
-    @test memory_layout(TestWrap(A)) == StridedLayout()
-    @test memory_layout(TestWrap(batched_transpose(A))) == StridedLayout()
-    @test memory_layout(TestWrap(batched_adjoint(A))) == ConjLayout{StridedLayout}()
+    @test memory_layout(TestWrap(A)) == UnitStride{1}()
+    @test memory_layout(TestWrap(batched_transpose(A))) == UnitStride{2}()
+    @test memory_layout(TestWrap(batched_adjoint(A))) == ConjLayout{UnitStride{2}}()
     @test stride(TestWrap(A),3) == stride(A,3)
 
     @test storage_type(TestWrap(A)) == typeof(A)
@@ -182,17 +182,6 @@ end
             end
 
         end
-        # @testset "batched_mul! with permuted output" begin # this is broken!
 
-        #     A = rand(3,3,3)
-        #     B = rand(3,3,3)
-        #     C = PermutedDimsArray(zeros(3,3,3), (2,1,3))
-        #     @test_broken batched_mul(A, B) ≈ batched_mul!(C, B, A)
-
-        #     B = batched_adjoint(rand(3,3,3))
-        #     C = PermutedDimsArray(zeros(3,3,3), (3,1,2))
-        #     @test_broken batched_mul(A, B) ≈ batched_mul!(C, B, A)
-
-        # end
     end
 end
