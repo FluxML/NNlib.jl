@@ -3,7 +3,7 @@ using Test
 using Base.CoreLogging: Debug
 
 using NNlib
-using NNlib: memory_layout, storage_type, batched_mul!
+using NNlib: memory_layout, storage_type, batched_mul!, BatchedAdjoint
 
 using ArrayLayouts
 using ArrayLayouts: DenseColumnMajor, UnitStride, StridedLayout, ConjLayout
@@ -130,7 +130,8 @@ end
         @test batched_adjoint(batched_adjoint(cA)) === cA
         @test batched_transpose(batched_transpose(cA)) === cA
         @test batched_transpose(PermutedDimsArray(cA, (2,1,3))) === cA
-        @test batched_adjoint(batched_transpose(cA)) != cA
+        @test batched_adjoint(batched_transpose(cA)) == conj.(cA)
+        @test batched_transpose(batched_adjoint(cA)) isa BatchedAdjoint
 
     end
     @testset "integer" begin

@@ -44,6 +44,8 @@ batched_adjoint(A::BatchedTranspose{<:Real}) = A.parent
 batched_transpose(A::BatchedAdjoint{<:Real}) = A.parent
 batched_adjoint(A::PermutedDimsArray{<:Real,3,(2,1,3)}) = A.parent
 batched_transpose(A::PermutedDimsArray{<:Number,3,(2,1,3)}) = A.parent
+# if you can't unwrap, put BatchedAdjoint outside (for dispatch):
+batched_transpose(A::BatchedAdjoint{<:Complex}) = BatchedAdjoint(BatchedTranspose(A.parent))
 
 BatchedAdjoint(A) = BatchedAdjoint{Base.promote_op(adjoint,eltype(A)),typeof(A)}(A)
 BatchedTranspose(A) = BatchedTranspose{Base.promote_op(transpose,eltype(A)),typeof(A)}(A)
