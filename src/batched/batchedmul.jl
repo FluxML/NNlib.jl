@@ -5,8 +5,10 @@ using LinearAlgebra: BlasFloat, BlasReal
 
 using Base: promote_typejoin
 
-using ArrayLayouts: MemoryLayout, UnitStride, AbstractColumnMajor, ConjLayout, StridedLayout, UnknownLayout
+using ArrayLayouts: MemoryLayout, UnitStride, AbstractColumnMajor, ConjLayout, StridedLayout, UnknownLayout, AbstractStridedLayout
+
 const UnitStrideFirst = Union{UnitStride{1}, AbstractColumnMajor}
+const MaybeConjStrided = Union{AbstractStridedLayout, ConjLayout{<:AbstractStridedLayout}}
 
 include("./batchedadjtrans.jl")
 
@@ -95,6 +97,11 @@ for (MA, tA, fA) in _BATCHED_GEMM_LIST, (MB, tB, fB) in _BATCHED_GEMM_LIST
         batched_gemm!($tA, $tB, convert(T,α), $fA(A), $fB(B), convert(T,β), C)
     end
 
+end
+
+function _batched_mul!(::Type{<:AbstractArray{T}}, C, ::UnitStride{2},
+        A, ::MaybeConjStrided, B, ::MaybeConjStrided, α::Number, β::Number) where {T<:BlasFloat}
+    batched_mul!(batched_transpose(C), batched_transpose(B), batched_transpose(A), α, β)
 end
 
 function _batched_mul!(::Type{<:AbstractArray}, C, ::MemoryLayout, A, ::MemoryLayout, B, ::MemoryLayout,

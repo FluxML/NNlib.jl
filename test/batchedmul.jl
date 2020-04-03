@@ -162,6 +162,29 @@ end
         @test_throws Exception batched_mul!(zeros(2,2,10), rand(2,2,2), rand(TB, 2,2,2))
 
     end
+    @testset "permuted output" begin # this is broken!
+
+        A = rand(3,3,3)
+        B = rand(TB, 3,3,3)
+        C = PermutedDimsArray(zeros(3,3,3), (2,1,3))
+        @test batched_mul(A, B) ≈ batched_mul!(C, A, B)
+        @test batched_mul!(C, A, B) === C # check it returns C, not an un-wrapped version
+
+        A = A .+ im;
+        B = batched_transpose(B .+ im);
+        C = PermutedDimsArray(zeros(ComplexF64, 3,3,3), (3,1,2))
+        @test batched_mul(A, B) ≈ batched_mul!(C, A, B)
+        @test batched_mul(A, B) ≈ C # check it mutated C
+        if TB == Float64 # check it doesn't go to fallback
+            @test_logs min_level=Debug batched_mul!(C, A, B)
+        end
+
+        A = batched_adjoint(A)
+        @test batched_mul(A, B) ≈ batched_mul!(C, A, B)
+        # now this goes to the fallback, becuase this is 'C'*'T' not 'N'
+        memory_layout(batched_transpose(A)) == ConjLayout{UnitStride{1}}()
+
+    end
     if TB == Float32
         @testset "all PermutedDimsArrays" begin
 
@@ -182,6 +205,5 @@ end
             end
 
         end
-
     end
 end
