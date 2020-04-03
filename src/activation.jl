@@ -23,10 +23,10 @@ const sigmoid = σ
 end
 
 """
-   hardσ(x, a=0.2) = max(0, min(1.0, a * x + 0.5))
+    hardσ(x, a=0.2) = max(0, min(1.0, a * x + 0.5))
 
-Segment-wise linear approximation of sigmoid
-See: [BinaryConnect: Training Deep Neural Networks withbinary weights during propagations](https://arxiv.org/pdf/1511.00363.pdf)
+Segment-wise linear approximation of sigmoid.
+See [BinaryConnect: Training Deep Neural Networks withbinary weights during propagations](https://arxiv.org/pdf/1511.00363.pdf).
 """
 hardσ(x::Real, a=0.2) = oftype(x/1, max(zero(x/1), min(one(x/1), oftype(x/1,a) * x + oftype(x/1,0.5))))
 const hardsigmoid = hardσ
@@ -53,7 +53,7 @@ const logsigmoid = logσ
     hardtanh(x) = max(-1, min(1, x))
 
 Segment-wise linear approximation of tanh. Cheaper  and  more  computational  efficient version of tanh.
-See: (http://ronan.collobert.org/pub/matos/2004_phdthesis_lip6.pdf)
+See [Large Scale Machine Learning](http://ronan.collobert.org/pub/matos/2004_phdthesis_lip6.pdf).
 """
 hardtanh(x::Real) = max(-one(x), min( one(x), x))
 
@@ -137,7 +137,7 @@ swish(x::Real) = x * σ(x)
 """
     lisht(x) = x * tanh(x)
 
-Non-Parametric Linearly Scaled Hyperbolic Tangent Activation Function
+Non-Parametric Linearly Scaled Hyperbolic Tangent Activation Function.
 See [LiSHT](https://arxiv.org/abs/1901.05894)
 """
 lisht(x::Real) = x * tanh(x)
@@ -171,7 +171,7 @@ celu(x::Real, α::Real = one(x)) = ifelse(x ≥ 0, x / one(x), α * (exp(x/α) -
 """
     trelu(x, theta = 1.0) = x > theta ? x : 0 
 
-Threshold Gated Rectified Linear   
+Threshold Gated Rectified Linear.
 See [ThresholdRelu](https://arxiv.org/pdf/1402.3337.pdf)
 """
 trelu(x::Real,theta = one(x)) = ifelse(x> theta, x, zero(x))
@@ -205,7 +205,7 @@ logcosh(x::Real) = x + softplus(-2x) - log(oftype(x, 2))
 """
     mish(x) = x * tanh(softplus(x))
 
-Self Regularized Non-Monotonic Neural Activation Function
+Self Regularized Non-Monotonic Neural Activation Function.
 See [Mish: A Self Regularized Non-Monotonic Neural Activation Function](https://arxiv.org/abs/1908.08681).
 """
 mish(x::Real) = x * tanh(softplus(x))
@@ -213,7 +213,7 @@ mish(x::Real) = x * tanh(softplus(x))
 """
     tanhshrink(x) = x - tanh(x)
 
-See [Tanhshrink Activation Function](https://www.gabormelli.com/RKB/Tanhshrink_Activation_Function)
+See [Tanhshrink Activation Function](https://www.gabormelli.com/RKB/Tanhshrink_Activation_Function).
 """
 tanhshrink(x::Real) = x - tanh(x)
 
@@ -221,7 +221,7 @@ tanhshrink(x::Real) = x - tanh(x)
     softshrink(x, λ=0.5) = 
         (x ≥ λ ? x - λ : (-λ ≥ x ? x + λ : 0))
 
-See [Softshrink Activation Function](https://www.gabormelli.com/RKB/Softshrink_Activation_Function)
+See [Softshrink Activation Function](https://www.gabormelli.com/RKB/Softshrink_Activation_Function).
 """
 softshrink(x::Real, λ = oftype(x/1, 0.5)) = min(max(zero(x), x - λ), x + λ)
 
