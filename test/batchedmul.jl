@@ -1,5 +1,6 @@
 using NNlib, Test, LinearAlgebra
-using NNlib: storage_type, is_strided, batched_mul!
+using NNlib: storage_type, storage_typejoin, is_strided,
+    batched_mul!, _unbatch, _copy_if_faster, BatchedAdjoint
 
 function bmm_test(a,b; transA = false, transB = false)
     bs = size(a,3)
@@ -76,12 +77,13 @@ end
     @test_throws Exception batched_mul!(zeros(2,2,10), rand(2,2,2), rand(TB, 2,2,2))
 
     # PermutedDimsArrays
-    for perm in [(1,3,2), (2,1,3)], fun in [identity, batched_adjoint], ty in [identity, complex]
+    for perm in [(1,3,2), (2,1,3), (3,2,1)], fun in [identity, batched_adjoint], ty in [identity, complex]
         A = randn(ty(Float64), 4,4,4)
         B = randn(ty(TB), 4,4,4)
         @test batched_mul(fun(A), PermutedDimsArray(B, perm)) ≈ batched_mul(fun(A), permutedims(B, perm))
         @test batched_mul(fun(PermutedDimsArray(A, perm)), B) ≈ batched_mul(fun(permutedims(A, perm)), B)
-        # when TB=Float64, only the case  (2,1,3) batched_adjoint complex  goes to fallback
+        # when TB=Float64, only the case  perm=(2,1,3); fun=batched_adjoint; ty=complex;  goes to fallback
+        # but all the perm=(3,2,1); cases copy their inputs.
     end
 
     # PermutedDimsArray output
@@ -170,9 +172,9 @@ end
     @test storage_type(transpose(reshape(view(rand(10), 2:9),4,:))) == Vector{Float64}
     @test storage_type(transpose(reshape(view(1:10,     2:9),4,:))) == UnitRange{Int}
 
-    @test storage_type(rand(2), rand(Float32, 2)) == Vector{<:Any}
-    @test storage_type(rand(2), rand(2,3)', rand(2,3,4)) == Array{Float64}
-    @test storage_type([1,2,3], 4:5) == AbstractVector{Int}
+    @test storage_typejoin(rand(2), rand(Float32, 2)) == Vector{<:Any}
+    @test storage_typejoin(rand(2), rand(2,3)', rand(2,3,4)) == Array{Float64}
+    @test storage_typejoin([1,2,3], 4:5) == AbstractVector{Int}
 
 end
 

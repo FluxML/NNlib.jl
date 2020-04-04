@@ -15,20 +15,50 @@ Batched matrix multiplication. Result has `C[:,:,k] == A[:,:,k] * B[:,:,k]` for 
 If `size(B,3) == 1` then instead `C[:,:,k] == A[:,:,k] * B[:,:,1]`, and similarly for `A`.
 
 To transpose each matrix apply `batched_transpose` to the array,
-and similarly `batched_adjoint`. Other permutations are also handled efficiently,
+and similarly `batched_adjoint`. Other permutations are also handled by BLAS,
 provided that the batch index `k` is not the first dimension of the underlying array.
-Thus `PermutedDimsArray(::Array, (1,3,2))` and `PermutedDimsArray(::Array, (3,1,2))` are fine,
-but `PermutedDimsArray(::Array, (3,2,1))` will use the fallback `batched_mul_generic!`.
+Thus `PermutedDimsArray(::Array, (1,3,2))` and `PermutedDimsArray(::Array, (3,1,2))` are fine.
 
-There is an `@debug` message produced by `batched_mul_generic!`,
-setting for instance `ENV["JULIA_DEBUG"] = NNlib` will display this.
+However `PermutedDimsArray(::Array, (3,2,1))` is not acceptable to BLAS,
+and will thus be copied as this is faster than the fallback method `batched_mul_generic!`.
+
+Both this `copy` and `batched_mul_generic!` produce `@debug` messages,
+and setting for instance `ENV["JULIA_DEBUG"] = NNlib` will display them.
 """
 function batched_mul(A::AbstractArray{T1, 3}, B::AbstractArray{T2, 3}) where {T1, T2}
     size(A, 3) == size(B, 3) || size(A, 3) == 1 || size(B, 3) == 1 ||
         throw(DimensionMismatch("batch size mismatch: A != B"))
-    T = promote_type(T1, T2)
+    _batched_mul(storage_typejoin(A, B), A, B)
+end
+
+function _batched_mul(::Type, A, B)
+    T = promote_type(eltype(A), eltype(B))
     C = similar(A, T, (size(A, 1), size(B, 2), max(size(A, 3), size(B, 3))))
     batched_mul!(C, A, B)
+    C
+end
+function _batched_mul(::Type{<:DenseArray{T}}, A, B) where {T<:BlasFloat}
+    C = similar(A, T, (size(A, 1), size(B, 2), max(size(A, 3), size(B, 3))))
+    batched_mul!(C, _copy_if_faster(A), _copy_if_faster(B))
+    C
+end
+
+function _copy_if_faster(X::AbstractArray{<:Number, 3})
+    is_strided(X) || return X
+    if Base.stride(X, 3) == 1 && Base.stride(X, 1) != 1
+        @debug "copying to avoid batched_mul_generic!" typeof(X) size(X) strides(X)
+        return copy(X)
+    end
+    X
+end
+function _copy_if_faster(X::BatchedAdjoint{<:Complex})
+    Xbase = _unbatch(X)
+    is_strided(Xbase) || return X
+    if Base.stride(Xbase, 1) != 1
+        @debug "copying to avoid batched_mul_generic!" typeof(X) size(X) strides(_unbatch(X))
+        return copy(X) # or batched_adjoint(copy(Xbase)), may be better on GPU?
+    end
+    X
 end
 
 """
@@ -42,22 +72,23 @@ If `size(B,3) == 1` then every batch uses `B[:,:,1]` instead.
 This will call `batched_gemm!` whenever possible. For real arrays this means that,
 for `X ∈ [A,B,C]`, either `strides(X,1)==1` or `strides(X,2)==1`, the latter may
 be caused by `batched_transpose` or by for instance `PermutedDimsArray(::Array, (3,1,2))`.
+Unlike `batched_mul` this will never make a copy.
 
 For complex arrays, the wrapper made by `batched_adjoint` must be outermost to be seen,
 and in this case `stride(A::BatchedAdjoint,2) == 1` is not optional.
 """
 function batched_mul!(C::AbstractArray{T,3}, A::AbstractArray{<:Any,3}, B::AbstractArray{<:Any,3},
         α::Number=one(T), β::Number=zero(T)) where {T}
-    _batched_mul!(storage_type(C,A,B), C, A, B, α, β)
+    _batched_mul!(storage_typejoin(C,A,B), C, A, B, α, β)
     C
 end
 
 _batched_mul!(::Type, C, A, B, α::Number, β::Number) = batched_mul_generic!(C, A, B, α, β)
 
-_batched_mul!(CT::Type{<:DenseArray{T}}, C, A, B, α::Number, β::Number) where {T<:BlasFloat} =
-    _batched_try_gemm!(CT, C, A, B, α, β)
+_batched_mul!(DT::Type{<:DenseArray{T}}, C, A, B, α::Number, β::Number) where {T<:BlasFloat} =
+    _batched_try_gemm!(DT, C, A, B, α, β)
 
-function _batched_try_gemm!(CT::Type{<:DenseArray{T}}, C, A, B, α::Number, β::Number) where {T<:BlasFloat}
+function _batched_try_gemm!(DT::Type{<:DenseArray{T}}, C, A, B, α::Number, β::Number) where {T<:BlasFloat}
 
     alpha, beta = promote(α, β, zero(T)) # trick from https://github.com/JuliaLang/julia/pull/33229
     alpha isa T && beta isa T || return batched_mul_generic!(C, A, B, α, β)
@@ -94,7 +125,7 @@ function _batched_try_gemm!(CT::Type{<:DenseArray{T}}, C, A, B, α::Number, β::
         return batched_mul_generic!(C, A, B, α, β)
     end
 
-    _batched_gemm!(CT, transA, transB, alpha, blasA, blasB, beta, C)
+    _batched_gemm!(DT, transA, transB, alpha, blasA, blasB, beta, C)
     C
 end
 
@@ -156,10 +187,10 @@ end
 storage_type(A) = typeof(A)
 
 """
-    storage_type(A, B, C, ...) -> Type
+    storage_typejoin(A, B, C, ...) -> Type
 
 Reduces with `Base.promote_typejoin`, in order that this conveys useful information
-for dispatching to BLAS, rather than information about the storage to allocate:
+for dispatching to BLAS. It does not tell you what container to allocate:
 ```
 julia> storage_type(rand(2), rand(Float32, 2))
 Array{T,1} where T
@@ -171,8 +202,8 @@ julia> storage_type(rand(2), rand(2,3), rand(2,3,4))
 Array{Float64,N} where N
 ```
 """
-storage_type(A, Bs...) = Base.promote_typejoin(storage_type(A), storage_type(Bs...))
-
+storage_typejoin(A, Bs...) = Base.promote_typejoin(storage_type(A), storage_typejoin(Bs...))
+storage_typejoin(A) = storage_type(A)
 
 """
     is_strided(A::AbstractArray) -> Bool
