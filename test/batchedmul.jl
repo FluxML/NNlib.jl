@@ -25,9 +25,18 @@ function bmm_adjtest(a,b; adjA = false, adjB = false)
     cat(c...; dims = 3)
 end
 
+function half_batched_mul(x,y)
+    @assert size(y,3) == 1
+    d = size(x,2)
+    x_mat = reshape(permutedims(x, (1,3,2)),:,d)
+    y_mat = reshape(y,d,:)
+    z_mat = x_mat * y_mat
+    permutedims(reshape(z_mat, size(x,1), size(x,3), :), (1,3,2))
+end
 
 @testset "batched_mul: Float64 * $TB" for TB in [Float64, Float32]
 
+    # Real
     A = randn(7,5,3)
     B = randn(TB, 5,7,3)
     C = randn(7,6,3)
@@ -37,7 +46,7 @@ end
     @test batched_mul(batched_transpose(A), C) ≈ bmm_test(A, C; transA = true)
     @test batched_mul(A, batched_transpose(A)) ≈ bmm_test(A, A; transB = true)
 
-
+    # Complex
     cA = randn(Complex{Float64}, 7,5,3)
     cB = randn(Complex{TB}, 5,7,3)
     cC = randn(Complex{Float64}, 7,6,3)
@@ -47,9 +56,13 @@ end
     @test batched_mul(batched_adjoint(cA), cC) ≈ bmm_adjtest(cA, cC; adjA = true)
     @test batched_mul(cA, batched_adjoint(cA)) ≈ bmm_adjtest(cA, cA; adjB = true)
 
+    # Wrappers which cancel
     @test batched_transpose(batched_transpose(A)) === A
+    @test batched_transpose(PermutedDimsArray(A, (2,1,3))) === A
     @test batched_adjoint(batched_adjoint(cA)) === cA
+    @test batched_transpose(batched_adjoint(cA)) isa NNlib.BatchedAdjoint
 
+    # Integers
     TBi = TB==Float64 ? Int64 : Int32
     iA = rand(1:99, 7,5,3)
     iB = TB.(rand(1:99, 5,7,3))
@@ -57,10 +70,37 @@ end
     @test batched_mul(iA, iB) == bmm_adjtest(iA, iB)
     @test batched_mul(cA, iB) ≈ bmm_adjtest(cA, iB)
 
+    # Errors
     @test_throws DimensionMismatch batched_mul(rand(2,2,2), rand(TB, 2,2,10))
     @test_throws DimensionMismatch batched_mul(rand(2,2,2), rand(TB, 10,2,2))
     @test_throws Exception batched_mul!(zeros(2,2,10), rand(2,2,2), rand(TB, 2,2,2))
 
+    # PermutedDimsArrays
+    for perm in [(1,3,2), (2,1,3)], fun in [identity, batched_adjoint], ty in [identity, complex]
+        A = randn(ty(Float64), 4,4,4)
+        B = randn(ty(TB), 4,4,4)
+        @test batched_mul(fun(A), PermutedDimsArray(B, perm)) ≈ batched_mul(fun(A), permutedims(B, perm))
+        @test batched_mul(fun(PermutedDimsArray(A, perm)), B) ≈ batched_mul(fun(permutedims(A, perm)), B)
+        # when TB=Float64, only the case  (2,1,3) batched_adjoint complex  goes to fallback
+    end
+
+    # PermutedDimsArray output
+    A′ = randn(4,3,2)
+    B′ = batched_adjoint(randn(TB, 5,3,2))
+    C1 = batched_mul(A′, B′) # size 4,5,2
+    C2 = PermutedDimsArray(zeros(5,2,4), (3,1,2)) # size 4,5,2
+    @test C1 ≈ batched_mul!(C2, A′, B′) # Float64: "Debug: transposing C = A * B into Cᵀ = Bᵀ * Aᵀ"
+    @test C1 ≈ C2
+
+    # 5-arg mul!
+    @test 10 .* C1 ≈ batched_mul!(C2, A′, B′, 10)
+    C2 .= 10
+    @test C1 .+ 100 ≈ batched_mul!(C2, A′, B′, 1, 10)
+
+    # Trivial batches for B
+    D′ = randn(TB, 3,5,1)
+    @test size(batched_mul(A′,D′)) == (4,5,2)
+    @test batched_mul(A′,D′) ≈ half_batched_mul(A′, D′)
 end
 
 @testset "BatchedAdjOrTrans interface * $TB" for TB in [Float64, Float32]
