@@ -67,13 +67,15 @@ for (gemm, elt) in gemm_datatype_mappings
                                beta::($elt),
                                C::AbstractArray{$elt, 3})
             @assert !Base.has_offset_axes(A, B, C)
-            @assert size(A, 3) == size(B, 3) == size(C, 3) "batch size mismatch"
+            @assert size(A, 3) == 1 || size(A, 3) == size(C, 3) "batch size mismatch: A != C"
+            @assert size(B, 3) == 1 || size(B, 3) == size(C, 3) "batch size mismatch: B != C"
+
             m = size(A, transA == 'N' ? 1 : 2)
             ka = size(A, transA == 'N' ? 2 : 1)
             kb = size(B, transB == 'N' ? 1 : 2)
             n = size(B, transB == 'N' ? 2 : 1)
             if ka != kb || m != size(C,1) || n != size(C,2)
-                throw(DimensionMismatch("A has size ($m,$ka), B has size ($kb,$n), C has size $(size(C))"))
+                throw(DimensionMismatch("A1 has size ($m,$ka), B1 has size ($kb,$n), C1 has size $(size(C)[1:2])"))
             end
             LinearAlgebra.BLAS.chkstride1(A)
             LinearAlgebra.BLAS.chkstride1(B)
@@ -82,6 +84,10 @@ for (gemm, elt) in gemm_datatype_mappings
             ptrA = Base.unsafe_convert(Ptr{$elt}, A)
             ptrB = Base.unsafe_convert(Ptr{$elt}, B)
             ptrC = Base.unsafe_convert(Ptr{$elt}, C)
+
+            strA = size(A, 3) == 1 ? 0 : Base.stride(A, 3)
+            strB = size(B, 3) == 1 ? 0 : Base.stride(B, 3)
+            strC = Base.stride(C, 3)
 
             for k in 1:size(A, 3)
                 ccall((@blasfunc($(gemm)), libblas), Nothing,
@@ -94,8 +100,8 @@ for (gemm, elt) in gemm_datatype_mappings
                       ptrB, max(1,Base.stride(B,2)), beta, ptrC,
                       max(1,Base.stride(C,2)))
 
-                ptrA += Base.stride(A, 3) * sizeof($elt)
-                ptrB += Base.stride(B, 3) * sizeof($elt)
+                ptrA += strA * sizeof($elt)
+                ptrB += strB * sizeof($elt)
                 ptrC += Base.stride(C, 3) * sizeof($elt)
             end
 

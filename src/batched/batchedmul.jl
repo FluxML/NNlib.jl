@@ -12,6 +12,7 @@ _unbatch(A::BatchedAdjOrTrans) = parent(A)
     batched_mul(A, B) -> C
 
 Batched matrix multiplication. Result has `C[:,:,k] == A[:,:,k] * B[:,:,k]` for all `k`.
+If `size(B,3) == 1` then instead `C[:,:,k] == A[:,:,k] * B[:,:,1]`, and similarly for `A`.
 
 To transpose each matrix apply `batched_transpose` to the array,
 and similarly `batched_adjoint`. Other permutations are also handled efficiently,
@@ -23,9 +24,10 @@ There is an `@debug` message produced by `batched_mul_generic!`,
 setting for instance `ENV["JULIA_DEBUG"] = NNlib` will display this.
 """
 function batched_mul(A::AbstractArray{T1, 3}, B::AbstractArray{T2, 3}) where {T1, T2}
-    axes(A, 3) == axes(B, 3) || throw(DimensionMismatch("batch size mismatch"))
+    size(A, 3) == size(B, 3) || size(A, 3) == 1 || size(B, 3) == 1 ||
+        throw(DimensionMismatch("batch size mismatch: A != B"))
     T = promote_type(T1, T2)
-    C = similar(A, T, (axes(A, 1), axes(B, 2), axes(A, 3)))
+    C = similar(A, T, (size(A, 1), size(B, 2), max(size(A, 3), size(B, 3))))
     batched_mul!(C, A, B)
 end
 
@@ -35,6 +37,7 @@ end
 
 In-place batched matrix multiplication, equivalent to
 `mul!(C[:,:,k], A[:,:,k], B[:,:,k], α, β)` for all `k`.
+If `size(B,3) == 1` then every batch uses `B[:,:,1]` instead.
 
 This will call `batched_gemm!` whenever possible. For real arrays this means that,
 for `X ∈ [A,B,C]`, either `strides(X,1)==1` or `strides(X,2)==1`, the latter may
@@ -60,6 +63,7 @@ function _batched_mul!(CT::Type{<:DenseArray{T}}, C, A, B, α::Number, β::Numbe
 
     if Base.stride(C,1) == 1
     elseif Base.stride(C,2) == 1
+        @debug "transposing C = A * B into Cᵀ = Bᵀ * Aᵀ" size(C) strides(C)
         return batched_mul!(batched_transpose(C), batched_transpose(B), batched_transpose(A), α, β)
     else
         return batched_mul_generic!(C, A, B, α, β)
@@ -103,18 +107,21 @@ for (TA, fA) in _BATCHED_LIST, (TB, fB) in _BATCHED_LIST
 
     @eval function batched_mul_generic!(C::AbstractArray{T, 3}, A::$TA, B::$TB,
             α::Number=one(T), β::Number=zero(T)) where {T}
-        axes(A, 3) == axes(B, 3) == axes(C, 3) || throw(DimensionMismatch("batch size mismatch"))
+        size(A, 3) == size(C, 3) || size(A, 3) == 1 || throw(DimensionMismatch("batch size mismatch: A != C"))
+        size(B, 3) == size(C, 3) || size(B, 3) == 1 || throw(DimensionMismatch("batch size mismatch: B != C"))
         @debug "calling fallback method for batched_mul!" typeof(A) typeof(B) typeof(C)
         Abase, Bbase = _unbatch(A), _unbatch(B)
+        sA, oA = size(A,3) == 1 ? (0,1) : (1,0)
+        sB, oB = size(B,3) == 1 ? (0,1) : (1,0)
 
         if VERSION >= v"1.3"
-            @inbounds for k in axes(C, 3)
-                @views mul!(C[:,:,k], $fA(Abase[:,:,k]), $fB(Bbase[:,:,k]), convert(T,α), convert(T,β))
+            @inbounds for k in 1:size(C,3)
+                @views mul!(C[:,:,k], $fA(Abase[:,:,k*sA+oA]), $fB(Bbase[:,:,k*sB+oB]), convert(T,α), convert(T,β))
             end
         else
             α==1 && β==0 || throw(ArgumentError("5-arg batched_mul_generic! does not work on Julia < 1.3"))
-            @inbounds for k in axes(C, 3)
-                @views mul!(C[:,:,k], $fA(Abase[:,:,k]), $fB(Bbase[:,:,k]))
+            @inbounds for k in 1:size(C,3)
+                @views mul!(C[:,:,k], $fA(Abase[:,:,k*sA+oA]), $fB(Bbase[:,:,k*sB+oB]))
             end
         end
 
