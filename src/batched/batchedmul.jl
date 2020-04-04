@@ -59,6 +59,9 @@ _batched_mul!(CT::Type{<:DenseArray{T}}, C, A, B, α::Number, β::Number) where 
 
 function _batched_try_gemm!(CT::Type{<:DenseArray{T}}, C, A, B, α::Number, β::Number) where {T<:BlasFloat}
 
+    alpha, beta = promote(α, β, zero(T)) # trick from https://github.com/JuliaLang/julia/pull/33229
+    alpha isa T && beta isa T || return batched_mul_generic!(C, A, B, α, β)
+
     are_strided(C, _unbatch(A), _unbatch(B)) || return batched_mul_generic!(C, A, B, α, β)
 
     if Base.stride(C,1) == 1
@@ -91,7 +94,7 @@ function _batched_try_gemm!(CT::Type{<:DenseArray{T}}, C, A, B, α::Number, β::
         return batched_mul_generic!(C, A, B, α, β)
     end
 
-    _batched_gemm!(CT, transA, transB, convert(T,α), blasA, blasB, convert(T,β), C)
+    _batched_gemm!(CT, transA, transB, alpha, blasA, blasB, beta, C)
     C
 end
 
@@ -116,7 +119,7 @@ for (TA, fA) in _BATCHED_LIST, (TB, fB) in _BATCHED_LIST
 
         if VERSION >= v"1.3"
             @inbounds for k in 1:size(C,3)
-                @views mul!(C[:,:,k], $fA(Abase[:,:,k*sA+oA]), $fB(Bbase[:,:,k*sB+oB]), convert(T,α), convert(T,β))
+                @views mul!(C[:,:,k], $fA(Abase[:,:,k*sA+oA]), $fB(Bbase[:,:,k*sB+oB]), α, β)
             end
         elseif α==1 && β==0
             @inbounds for k in 1:size(C,3)
