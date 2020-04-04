@@ -9,10 +9,10 @@ _batched_doc = """
 Equivalent to applying `transpose` or `adjoint` to each matrix `A[:,:,k]`.
 
 These exist to control how `batched_mul` behaves,
-as it operated on such matrix slices of an array with `ndims(A)==3`.
+as it operates on such matrix slices of an array with `ndims(A)==3`.
 
-For arrays of real numbers, `batched_transpose(A) == PermutedDimsArray(A, (2,1,3))`,
-which is a more widely-supported wrapper, and also understood by `batched_mul`.
+`PermutedDimsArray(A, (2,1,3))` is equivalent to `batched_transpose(A)`,
+and is also understood by `batched_mul` (and more widely supported elsewhere).
 
     BatchedTranspose{T, S} <: AbstractBatchedMatrix{T, 3}
     BatchedAdjoint{T, S}

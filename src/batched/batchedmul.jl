@@ -45,9 +45,6 @@ be caused by `batched_transpose` or by for instance `PermutedDimsArray(::Array, 
 
 For complex arrays, the wrapper made by `batched_adjoint` must be outermost to be seen,
 and in this case `stride(A::BatchedAdjoint,2) == 1` is not optional.
-
-The fallback method calls 5-argument `mul!` on Julia 1.3 and later.
-On earlier verions it will thrown an error if `α!=1` or `β!=0`.
 """
 function batched_mul!(C::AbstractArray{T,3}, A::AbstractArray{<:Any,3}, B::AbstractArray{<:Any,3},
         α::Number=one(T), β::Number=zero(T)) where {T}
@@ -57,7 +54,10 @@ end
 
 _batched_mul!(::Type, C, A, B, α::Number, β::Number) = batched_mul_generic!(C, A, B, α, β)
 
-function _batched_mul!(CT::Type{<:DenseArray{T}}, C, A, B, α::Number, β::Number) where {T<:BlasFloat}
+_batched_mul!(CT::Type{<:DenseArray{T}}, C, A, B, α::Number, β::Number) where {T<:BlasFloat} =
+    _batched_try_gemm!(CT, C, A, B, α, β)
+
+function _batched_try_gemm!(CT::Type{<:DenseArray{T}}, C, A, B, α::Number, β::Number) where {T<:BlasFloat}
 
     are_strided(C, _unbatch(A), _unbatch(B)) || return batched_mul_generic!(C, A, B, α, β)
 
@@ -69,7 +69,7 @@ function _batched_mul!(CT::Type{<:DenseArray{T}}, C, A, B, α::Number, β::Numbe
         return batched_mul_generic!(C, A, B, α, β)
     end
 
-    blasA, transA = if A isa BatchedAdjoint
+    blasA, transA = if A isa BatchedAdjoint && T <: Complex
         Base.stride(parent(A),1) == 1 || return batched_mul_generic!(C, A, B, α, β)
         parent(A), 'C'
     elseif Base.stride(A,1) == 1
@@ -80,7 +80,7 @@ function _batched_mul!(CT::Type{<:DenseArray{T}}, C, A, B, α::Number, β::Numbe
         return batched_mul_generic!(C, A, B, α, β)
     end
 
-    blasB, transB = if B isa BatchedAdjoint
+    blasB, transB = if B isa BatchedAdjoint && T <: Complex
         Base.stride(parent(B),1) == 1 || return batched_mul_generic!(C, A, B, α, β)
         parent(B), 'C'
     elseif Base.stride(B,1) == 1
@@ -118,10 +118,14 @@ for (TA, fA) in _BATCHED_LIST, (TB, fB) in _BATCHED_LIST
             @inbounds for k in 1:size(C,3)
                 @views mul!(C[:,:,k], $fA(Abase[:,:,k*sA+oA]), $fB(Bbase[:,:,k*sB+oB]), convert(T,α), convert(T,β))
             end
-        else
-            α==1 && β==0 || throw(ArgumentError("5-arg batched_mul_generic! does not work on Julia < 1.3"))
+        elseif α==1 && β==0
             @inbounds for k in 1:size(C,3)
                 @views mul!(C[:,:,k], $fA(Abase[:,:,k*sA+oA]), $fB(Bbase[:,:,k*sB+oB]))
+            end
+        else
+            @debug "since there is no 5-arg mul!, calling C1 .= α .* (A1 * B1) .+ β .* C" α β
+            @inbounds for k in 1:size(C,3)
+                @views C[:,:,k] .= α .* $fA(Abase[:,:,k*sA+oA]) * $fB(Bbase[:,:,k*sB+oB]) .+ β .* C[:,:,k]
             end
         end
 
