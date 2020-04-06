@@ -7,10 +7,10 @@ export σ, sigmoid, hardσ, hardsigmoid, hardtanh, relu, leakyrelu, relu6, rrelu
 # https://github.com/JuliaGPU/CuArrays.jl/issues/614
 
 """
-    σ(x) = 1 / (1 + exp(-x))
+    σ(x)
 
 Classic [sigmoid](https://en.wikipedia.org/wiki/Sigmoid_function) activation
-function.
+function. Return `1 / (1 + exp(-x))`. 
 """
 σ(x::Real) = one(x) / (one(x) + exp(-x))
 const sigmoid = σ
@@ -23,9 +23,9 @@ const sigmoid = σ
 end
 
 """
-    hardσ(x, a=0.2) = max(0, min(1.0, a * x + 0.5))
+    hardσ(x, a=0.2)
 
-Segment-wise linear approximation of sigmoid.
+Segment-wise linear approximation of sigmoid. Return `max(0, min(1.0, a * x + 0.5))`.
 See [BinaryConnect: Training Deep Neural Networks withbinary weights during propagations](https://arxiv.org/pdf/1511.00363.pdf).
 """
 hardσ(x::Real, a=0.2) = oftype(x / 1, max(zero(x / 1), min(one(x / 1), oftype(x / 1, a) * x + oftype(x / 1, 0.5))))
@@ -48,46 +48,45 @@ logσ(x::Real) = -softplus(-x)
 const logsigmoid = logσ
 
 """
-    hardtanh(x) = max(-1, min(1, x))
+    hardtanh(x)
 
-Segment-wise linear approximation of tanh. Cheaper  and  more  computational  efficient version of tanh.
+Segment-wise linear approximation of tanh. Return `max(-1, min(1, x))`.
+Cheaper  and  more  computational  efficient version of tanh. 
 See [Large Scale Machine Learning](http://ronan.collobert.org/pub/matos/2004_phdthesis_lip6.pdf).
 """
 hardtanh(x::Real) = max(-one(x), min( one(x), x))
 
 """
-    relu(x) = max(0, x)
+    relu(x)
 
 [Rectified Linear Unit](https://en.wikipedia.org/wiki/Rectifier_(neural_networks))
-activation function.
+activation function. Return `max(0, x)`.
 """
 relu(x::Real) = max(zero(x), x)
 
 """
-    leakyrelu(x, a=0.01) = max(a*x, x)
+    leakyrelu(x, a=0.01)
 
 Leaky [Rectified Linear Unit](https://en.wikipedia.org/wiki/Rectifier_(neural_networks))
-activation function.
+activation function. Return `max(a*x, x)`.
 You can also specify the coefficient explicitly, e.g. `leakyrelu(x, 0.01)`.
 """
 leakyrelu(x::Real, a=0.01) = max(oftype(x / 1, a) * x, x / 1)
 
 """
-    relu6(x) = min(max(0, x), 6)
+    relu6(x)
 
 [Rectified Linear Unit](https://en.wikipedia.org/wiki/Rectifier_(neural_networks))
-activation function capped at 6.
+activation function capped at 6. Return `min(max(0, x), 6)`.
 See [Convolutional Deep Belief Networks on CIFAR-10](http://www.cs.utoronto.ca/%7Ekriz/conv-cifar10-aug2010.pdf)
 """
 relu6(x::Real) = min(relu(x), oftype(x, 6))
 
 """
-    rrelu(x, l=1/8, u=1/3) = max(a*x, x)
-
-    a = randomly sampled from uniform distribution U(l, u)
+    rrelu(x, l=1/8, u=1/3)
 
 Randomized Leaky [Rectified Linear Unit](https://arxiv.org/pdf/1505.00853.pdf)
-activation function.
+activation function. Return `max(a*x, x)` where `a` is randomly sampled from uniform distribution U(l, u).
 You can also specify the bound explicitly, e.g. `rrelu(x, 0.0, 1.0)`.
 """
 function rrelu(x::Real, l::Real = 1 / 8.0, u::Real = 1 / 3.0)
@@ -96,20 +95,19 @@ function rrelu(x::Real, l::Real = 1 / 8.0, u::Real = 1 / 3.0)
 end
 
 """
-    elu(x, α=1) =
-      x > 0 ? x : α * (exp(x) - 1)
+    elu(x, α=1)
 
-Exponential Linear Unit activation function.
+Exponential Linear Unit activation function. Return `x > 0 ? x : α * (exp(x) - 1)`.
 See [Fast and Accurate Deep Network Learning by Exponential Linear Units](https://arxiv.org/abs/1511.07289).
 You can also specify the coefficient explicitly, e.g. `elu(x, 1)`.
 """
-elu(x::Real, α = one(x)) = ifelse(x ≥ 0, x / 1, α * (exp(x) - one(x)))
+elu(x::Real, α=one(x)) = ifelse(x ≥ 0, x / 1, α * (exp(x) - one(x)))
 
 """
-    gelu(x) = 0.5x * (1 + tanh(√(2/π) * (x + 0.044715x^3)))
+    gelu(x)
 
 [Gaussian Error Linear Unit](https://arxiv.org/pdf/1606.08415.pdf)
-activation function.
+activation function. Return `0.5x * (1 + tanh(√(2/π) * (x + 0.044715x^3)))`.
 """
 function gelu(x::Real)
     p = oftype(x / 1, π)
@@ -120,28 +118,28 @@ function gelu(x::Real)
 end
 
 """
-    swish(x) = x * σ(x)
+    swish(x)
 
-Self-gated activation function.
+Self-gated activation function. Return `x * σ(x)`.
 See [Swish: a Self-Gated Activation Function](https://arxiv.org/pdf/1710.05941.pdf).
 """
 swish(x::Real) = x * σ(x)
 
 """
-    lisht(x) = x * tanh(x)
+    lisht(x)
 
-Non-Parametric Linearly Scaled Hyperbolic Tangent Activation Function.
+Non-Parametric Linearly Scaled Hyperbolic Tangent Activation Function. Return `x * tanh(x)`.
 See [LiSHT](https://arxiv.org/abs/1901.05894)
 """
 lisht(x::Real) = x * tanh(x)
 
 """
-    selu(x) = λ * (x ≥ 0 ? x : α * (exp(x) - 1))
-
+    selu(x)
+    
     λ ≈ 1.0507
     α ≈ 1.6733
 
-Scaled exponential linear units.
+Scaled exponential linear units. Return `λ * (x ≥ 0 ? x : α * (exp(x) - 1))`. 
 See [Self-Normalizing Neural Networks](https://arxiv.org/pdf/1706.02515.pdf).
 """
 function selu(x::Real)
@@ -151,62 +149,65 @@ function selu(x::Real)
 end
 
 """
-    celu(x, α=1) = 
-        (x ≥ 0 ? x : α * (exp(x/α) - 1))
+    celu(x, α=1)
 
+Return `(x ≥ 0 ? x : α * (exp(x/α) - 1))`.
 See [Continuously Differentiable Exponential Linear Units](https://arxiv.org/pdf/1704.07483.pdf).
 """
-celu(x::Real, α::Real = one(x)) = ifelse(x ≥ 0, x / 1, α * (exp(x/α) - one(x))) 
+celu(x::Real, α::Real=one(x)) = ifelse(x ≥ 0, x / 1, α * (exp(x/α) - one(x))) 
 
 """
-    trelu(x, θ=1.0) = x > θ ? x : 0 
+    trelu(x, θ=1.0) 
 
-Threshold Gated Rectified Linear.
+Threshold Gated Rectified Linear. Return `x > θ ? x : 0`.
 See [ThresholdRelu](https://arxiv.org/pdf/1402.3337.pdf)
 """
-trelu(x::Real,θ = one(x)) = ifelse(x> θ, x, zero(x))
+trelu(x::Real, θ=one(x)) = ifelse(x> θ, x, zero(x))
 const thresholdrelu = trelu
 
 """
-    softsign(x) = x / (1 + |x|)
+    softsign(x) 
 
+Return `x / (1 + |x|)`.
 See [Quadratic Polynomials Learn Better Image Features](http://www.iro.umontreal.ca/~lisa/publications2/index.php/attachments/single/205).
 """
 softsign(x::Real) = x / (one(x) + abs(x))
 
 """
-    softplus(x) = log(exp(x) + 1)
+    softplus(x)
 
+Return `log(exp(x) + 1)`.
 See [Deep Sparse Rectifier Neural Networks](http://proceedings.mlr.press/v15/glorot11a/glorot11a.pdf).
 """
 softplus(x::Real) = ifelse(x > 0, x + log1p(exp(-x)), log1p(exp(x)))
 
 """
-    logcosh(x) = x + softplus(-2x) - log(2)
+    logcosh(x)
 
-Return `log(cosh(x))` which is computed in a numerically stable way.
+Return `log(cosh(x))` which is computed in a numerically stable way as `x + softplus(-2x) - log(2)`.
 """
 logcosh(x::Real) = x + softplus(-2x) - log(oftype(x, 2))
 
 """
-    mish(x) = x * tanh(softplus(x))
+    mish(x)
 
-Self Regularized Non-Monotonic Neural Activation Function.
+Self Regularized Non-Monotonic Neural Activation Function. Return `x * tanh(softplus(x))`.
 See [Mish: A Self Regularized Non-Monotonic Neural Activation Function](https://arxiv.org/abs/1908.08681).
 """
 mish(x::Real) = x * tanh(softplus(x))
 
 """
-    tanhshrink(x) = x - tanh(x)
+    tanhshrink(x)
 
+Return `x - tanh(x)`.
 See [Tanhshrink Activation Function](https://www.gabormelli.com/RKB/Tanhshrink_Activation_Function).
 """
 tanhshrink(x::Real) = x - tanh(x)
 
 """
-    softshrink(x, λ=0.5) = 
-        (x ≥ λ ? x - λ : (-λ ≥ x ? x + λ : 0))
+    softshrink(x, λ=0.5)
 
+Return `(x ≥ λ ? x - λ : (-λ ≥ x ? x + λ : 0))`.
 See [Softshrink Activation Function](https://www.gabormelli.com/RKB/Softshrink_Activation_Function).
 """
 softshrink(x::Real, λ = oftype(x / 1, 0.5)) = min(max(zero(x), x - λ), x + λ)
