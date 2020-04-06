@@ -140,6 +140,19 @@ end
 expand(N, i::Tuple) = i
 expand(N, i::Integer) = ntuple(_ -> i, N)
 
+function ∇maxpool(dy, y, x, k::NTuple{N, Integer}; pad=0, stride=k) where {N}
+    pad = expand(Val(N), pad)
+    stride = expand(Val(N), stride)
+    pdims = PoolDims(x, k; padding=pad, stride=stride)
+    ∇maxpool(dy, y, x, pdims)
+end
+
+function ∇meanpool(dy, y, x, k::NTuple{N, Integer}; pad=0, stride=k) where {N}
+    pad = expand(Val(N), pad)
+    stride = expand(Val(N), stride)
+    pdims = PoolDims(x, k; padding=pad, stride=stride)
+    ∇meanpool(dy, y, x, pdims)
+end
 
 """
     maxpool(x, k::NTuple; pad=0, stride=k)
