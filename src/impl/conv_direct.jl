@@ -18,7 +18,7 @@ function clamp_hi(x, w, L)
 end
 
 """
-    conv_direct!(y, x, w, cdims; α=1, β=0)
+    conv_direct!(y, x, w, cdims; alpha=1, beta=0)
 
 Direct convolution implementation; used for debugging, tests, and mixing/matching of
 strange datatypes within a single convolution.  Uses naive nested for loop implementation
@@ -29,14 +29,14 @@ so that if the user really wants to convolve an image of `UInt8`'s with a `Float
 kernel, storing the result in a `Float32` output, there is at least a function call
 for that madness.
 
-The keyword arguments `α` and `β` control accumulation behavior; this function
-calculates `y = α * x * w + β * y`, therefore by setting `β` to a non-zero
+The keyword arguments `alpha` and `beta` control accumulation behavior; this function
+calculates `y = alpha * x * w + beta * y`, therefore by setting `beta` to a non-zero
 value, the user is able to accumulate values into a pre-allocated `y` buffer, or by
-setting `α` to a non-unitary value, an arbitrary gain factor can be applied.
+setting `alpha` to a non-unitary value, an arbitrary gain factor can be applied.
 
-By defaulting `β` to `false`, we make use of the Bradbury promotion trick to override
+By defaulting `beta` to `false`, we make use of the Bradbury promotion trick to override
 `NaN`'s that may pre-exist within our output buffer, as `false*NaN == 0.0`, whereas
-`0.0*NaN == NaN`.  Only set `β` if you are certain that none of the elements within
+`0.0*NaN == NaN`.  Only set `beta` if you are certain that none of the elements within
 `y` are `NaN`.
 
 The basic implementation performs 3-dimensional convolution; 1-dimensional and 2-
@@ -47,7 +47,7 @@ conv_direct!
 
 function conv_direct!(y::AbstractArray{yT,5}, x::AbstractArray{xT,5},
                       w::AbstractArray{wT,5}, cdims::DenseConvDims;
-                      α::yT = yT(1), β = false) where {yT, xT, wT}
+                      alpha::yT = yT(1), beta = false) where {yT, xT, wT}
     check_dims(size(x), size(w), size(y), cdims)
 
     width, height, depth = input_size(cdims)
@@ -95,7 +95,7 @@ function conv_direct!(y::AbstractArray{yT,5}, x::AbstractArray{xT,5},
                     c_in, c_out]
             dotprod = muladd(x_val, w_val, dotprod)
         end
-        y[w_idx, h_idx, d_idx, c_out, batch] = α*dotprod + β*y[w_idx, h_idx, d_idx, c_out, batch]
+        y[w_idx, h_idx, d_idx, c_out, batch] = alpha*dotprod + beta*y[w_idx, h_idx, d_idx, c_out, batch]
     end
 
     # Next, do potentially-padded regions:
@@ -138,7 +138,7 @@ function conv_direct!(y::AbstractArray{yT,5}, x::AbstractArray{xT,5},
             end
         end
 
-        y[w_idx, h_idx, d_idx, c_out, batch] = α*dotprod + β*y[w_idx, h_idx, d_idx, c_out, batch]
+        y[w_idx, h_idx, d_idx, c_out, batch] = alpha*dotprod + beta*y[w_idx, h_idx, d_idx, c_out, batch]
     end
 
     return y
@@ -146,7 +146,7 @@ end
 
 ## Gradient definitions
 """
-    ∇conv_data_direct!(dx, dy, w, cdims; α=1, β=0)
+    ∇conv_data_direct!(dx, dy, w, cdims; alpha=1, beta=0)
 
 Calculate the gradient imposed upon `x` in the convolution `y = x * w`.
 """
@@ -154,18 +154,18 @@ Calculate the gradient imposed upon `x` in the convolution `y = x * w`.
 
 function ∇conv_data_direct!(dx::AbstractArray{xT,5}, dy::AbstractArray{yT,5},
                             w::AbstractArray{wT,5}, cdims::DenseConvDims;
-                            α::xT=xT(1), β=false) where {xT, yT, wT}
+                            alpha::xT=xT(1), beta=false) where {xT, yT, wT}
     w = transpose_swapbatch(w[end:-1:1, end:-1:1, end:-1:1, :, :])
     dy = predilate(dy, stride(cdims))
     ctdims = DenseConvDims(dy, w; padding=transpose_pad(cdims),
                                   dilation=dilation(cdims),
                                   flipkernel=flipkernel(cdims))
-    dx = conv_direct!(dx, dy, w, ctdims; α=α, β=β)
+    dx = conv_direct!(dx, dy, w, ctdims; alpha=alpha, beta=beta)
     return dx
 end
 
 """
-    ∇conv_filter_direct!(dw, x, dy, cdims; α=1, β=0)
+    ∇conv_filter_direct!(dw, x, dy, cdims; alpha=1, beta=0)
 
 Calculate the gradient imposed upon `w` in the convolution `y = x * w`.
 """
@@ -173,12 +173,12 @@ Calculate the gradient imposed upon `w` in the convolution `y = x * w`.
 
 function ∇conv_filter_direct!(dw::AbstractArray{wT,5}, x::AbstractArray{xT,5},
                               dy::AbstractArray{yT,5}, cdims::DenseConvDims;
-                              α::wT=wT(1), β=false) where {xT, yT, wT}
+                              alpha::wT=wT(1), beta=false) where {xT, yT, wT}
     x = transpose_swapbatch(x[end:-1:1, end:-1:1, end:-1:1, :, :])
     dy = transpose_swapbatch(predilate(dy, stride(cdims)))
     ctdims = DenseConvDims(dy, x; padding=transpose_pad(cdims),
                                     stride=dilation(cdims))
-    conv_direct!(dw, dy, x, ctdims; α=α, β=β)
+    conv_direct!(dw, dy, x, ctdims; alpha=alpha, beta=beta)
     if flipkernel(cdims)
         dw .= dw[end:-1:1, end:-1:1, end:-1:1, :, :]
     end

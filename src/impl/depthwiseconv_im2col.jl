@@ -2,7 +2,7 @@
 
 
 """
-    depthwiseconv_im2col!(y, x, w, cdims, col=similar(x); α=1, β=0)
+    depthwiseconv_im2col!(y, x, w, cdims, col=similar(x); alpha=1, beta=0)
 
 Perform a depthwise convolution using im2col and GEMM, store the result in `y`.
 
@@ -14,7 +14,7 @@ function depthwiseconv_im2col!(
                 y::AbstractArray{T,5}, x::AbstractArray{T,5},
                 w::AbstractArray{T,5}, cdims::DepthwiseConvDims;
                 col::AbstractArray{T,3} = similar(x, im2col_dims(cdims)),
-                α::T=T(1), β::T=T(0)) where T
+                alpha::T=T(1), beta::T=T(0)) where T
     check_dims(size(x), size(w), size(y), cdims)
     
     # This functions exactly the same as conv_im2col!(), except that we shard the
@@ -40,7 +40,7 @@ function depthwiseconv_im2col!(
                 col_ptr = pointer(col_slice, (c_in-1)*M*K+1)
                 w_ptr = pointer(w, (c_in-1)*K*N+1)
                 y_ptr = pointer(y, ((batch_idx - 1)*channels_in(cdims) + c_in - 1)*M*N + 1)
-                gemm!(Val(false), Val(false), M, N, K, α, col_ptr, w_ptr, β, y_ptr)
+                gemm!(Val(false), Val(false), M, N, K, alpha, col_ptr, w_ptr, beta, y_ptr)
             end
         end
     end
@@ -48,7 +48,7 @@ function depthwiseconv_im2col!(
 end
 
 """
-    ∇depthwiseconv_filter_im2col!(dw, w, dy, cdims, col=similar(dw); α=1, β)
+    ∇depthwiseconv_filter_im2col!(dw, w, dy, cdims, col=similar(dw); alpha=1, beta)
 
 Depthwise conv2d backward pass onto the weights using im2col and GEMM.
 See the documentation for `conv_im2col!()` for explanation of optional parameters.
@@ -59,7 +59,7 @@ function ∇depthwiseconv_filter_im2col!(
                 dw::AbstractArray{T,5}, x::AbstractArray{T,5},
                 dy::AbstractArray{T,5}, cdims::DepthwiseConvDims;
                 col::AbstractArray{T,3} = similar(dw, im2col_dims(cdims)),
-                α::T=T(1), β::T=T(0)) where T
+                alpha::T=T(1), beta::T=T(0)) where T
     check_dims(size(x), size(dw), size(dy), cdims)
 
     M = prod(kernel_size(cdims))
@@ -78,19 +78,19 @@ function ∇depthwiseconv_filter_im2col!(
                 col_ptr = pointer(col_slice, (c_in - 1)*M*K + 1)
                 dy_ptr = pointer(dy, (batch_idx - 1)*N*K*channels_in(cdims) + (c_in - 1)*K*N + 1)
                 dw_ptr = pointer(dw, (c_in - 1)*M*N + 1)
-                gemm!(Val(true), Val(false), M, N, K, α, col_ptr, dy_ptr, β, dw_ptr)
+                gemm!(Val(true), Val(false), M, N, K, alpha, col_ptr, dy_ptr, beta, dw_ptr)
             end
         end
 
-        # Because we accumulate over batches in this loop, we must set `β` equal
+        # Because we accumulate over batches in this loop, we must set `beta` equal
         # to `1.0` from this point on.
-        β = T(1)
+        beta = T(1)
     end
     return dw
 end
 
 """
-    depthwiseconv2d_Δx_im2col!(dx, w, dy, cdims, col=similar(dx); α=1, β=0)
+    depthwiseconv2d_Δx_im2col!(dx, w, dy, cdims, col=similar(dx); alpha=1, beta=0)
 
 Depwthwise conv2d backward pass onto the input using im2col and GEMM.
 See the documentation for `conv_im2col!()` for explanation of optional parameters.
@@ -101,7 +101,7 @@ function ∇depthwiseconv_data_im2col!(
                 dx::AbstractArray{T,5}, dy::AbstractArray{T,5},
                 w::AbstractArray{T,5}, cdims::DepthwiseConvDims;
                 col::AbstractArray{T,3} = similar(dx, im2col_dims(cdims)),
-                α::T=T(1), β::T=T(0)) where T
+                alpha::T=T(1), beta::T=T(0)) where T
     check_dims(size(dx), size(w), size(dy), cdims)
 
     M = prod(output_size(cdims))
@@ -119,7 +119,7 @@ function ∇depthwiseconv_data_im2col!(
                 dy_ptr = pointer(dy, (batch_idx - 1)*M*K*channels_in(cdims)+(cidx - 1)*K*M + 1)
                 w_ptr = pointer(w, (cidx - 1)*K*N + 1)
                 col_ptr = pointer(col_slice, (cidx - 1)*M*N + 1)
-                gemm!(Val(false), Val(true), M, N, K, α, dy_ptr, w_ptr, T(0), col_ptr)
+                gemm!(Val(false), Val(true), M, N, K, alpha, dy_ptr, w_ptr, T(0), col_ptr)
             end
         end
         col2im!(view(dx, :, :, :, :, batch_idx), col_slice, cdims)

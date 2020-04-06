@@ -5,7 +5,7 @@ using Statistics
 for name in (:max, :mean)
     @eval function $((Symbol("$(name)pool_direct!")))(
                     y::AbstractArray{T,5}, x::AbstractArray{T,5},
-                    pdims::PoolDims; α::T = T(1), β::T = T(0)) where {T}
+                    pdims::PoolDims; alpha::T = T(1), beta::T = T(0)) where {T}
         check_dims(size(x), size(y), pdims)
 
         width, height, depth = input_size(pdims)
@@ -24,9 +24,9 @@ for name in (:max, :mean)
         @inline project(idx, stride, pad) = (idx - 1)*stride - pad + 1
 
         # If we're doing mean pooling, we represent division by kernel size by rolling it
-        # into the `α` multiplier.
+        # into the `alpha` multiplier.
         if $(name == :mean)
-            α = α/prod(kernel_size(pdims))
+            alpha = alpha/prod(kernel_size(pdims))
         end
 
         # Each loop, we initialize `m` to something, set that here.
@@ -66,7 +66,7 @@ for name in (:max, :mean)
                     error("Unimplemented codegen path")
                 end
             end
-            y[w, h, d, c, batch_idx] = α*m + β*y[w, h, d, c, batch_idx]
+            y[w, h, d, c, batch_idx] = alpha*m + beta*y[w, h, d, c, batch_idx]
         end
 
         # Next, the padded regions
@@ -111,7 +111,7 @@ for name in (:max, :mean)
                         end
                     end
                 end
-                y[w, h, d, c, batch_idx] = α*m + β*y[w, h, d, c, batch_idx]
+                y[w, h, d, c, batch_idx] = alpha*m + beta*y[w, h, d, c, batch_idx]
             end
         end
 
@@ -124,7 +124,7 @@ for name in (:max, :mean)
     @eval function $((Symbol("∇$(name)pool_direct!")))(
                     dx::AbstractArray{T,5}, dy::AbstractArray{T,5},
                     y::AbstractArray{T,5}, x::AbstractArray{T,5},
-                    pdims::PoolDims; α::T = T(1), β::T = T(0)) where {T}
+                    pdims::PoolDims; alpha::T = T(1), beta::T = T(0)) where {T}
         check_dims(size(x), size(dy), pdims)
 
         width, height, depth = input_size(pdims)
@@ -143,9 +143,9 @@ for name in (:max, :mean)
         @inline project(idx, stride, pad) = (idx - 1)*stride - pad + 1
 
         # If we're doing mean pooling, we represent division by kernel size by rolling
-        # it into the `α` multiplier.
+        # it into the `alpha` multiplier.
         if $(name == :mean)
-            α = α/prod(kernel_size(pdims))
+            alpha = alpha/prod(kernel_size(pdims))
         end
 
         # Start with the central region
@@ -176,15 +176,15 @@ for name in (:max, :mean)
                     # If it's equal; this is the one we chose. We only choose one per
                     # kernel window, all other elements of dx must be zero.
                     if y_idx == x[x_idxs...] && !maxpool_already_chose
-                        dx[x_idxs...] = dy_idx*α + β*dx[x_idxs...]
+                        dx[x_idxs...] = dy_idx*alpha + beta*dx[x_idxs...]
                         maxpool_already_chose = true
-                    # Maxpooling does not support `β` right now.  :(
+                    # Maxpooling does not support `beta` right now.  :(
                     #else
-                    #    dx[x_idxs...] = T(0) + β*dx[x_idxs...]
+                    #    dx[x_idxs...] = T(0) + beta*dx[x_idxs...]
                     end
                 elseif $(name == :mean)
                     # Either does meanpool :(
-                    dx[x_idxs...] = dy_idx*α + dx[x_idxs...]
+                    dx[x_idxs...] = dy_idx*alpha + dx[x_idxs...]
                 else
                     error("Unimplemented codegen path")
                 end
@@ -228,13 +228,13 @@ for name in (:max, :mean)
                             x_idxs = (input_kw, input_kh, input_kd, c, batch_idx)
                             if $(name == :max)
                                 if y_idx == x[x_idxs...] && !maxpool_already_chose
-                                    dx[x_idxs...] = dy_idx*α + β*dx[x_idxs...]
+                                    dx[x_idxs...] = dy_idx*alpha + beta*dx[x_idxs...]
                                     maxpool_already_chose = true
                                 #else
-                                #    dx[x_idxs...] = T(0) + β*dx[x_idxs...]
+                                #    dx[x_idxs...] = T(0) + beta*dx[x_idxs...]
                                 end
                             elseif $(name == :mean)
-                                dx[x_idxs...] += dy_idx*α + β*dx[x_idxs...]
+                                dx[x_idxs...] += dy_idx*alpha + beta*dx[x_idxs...]
                             else
                                 error("Unimplemented codegen path")
                             end

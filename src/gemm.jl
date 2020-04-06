@@ -9,9 +9,9 @@ using LinearAlgebra.BLAS: libblas, BlasInt, @blasfunc
 
 Low-level gemm!() call with pointers, borrowed from Knet.jl
 
-Calculates `C = α*op(A)*op(B) + β*C`, where:
+Calculates `C = alpha*op(A)*op(B) + beta*C`, where:
   - `transA` and `transB` set `op(X)` to be either `identity()` or `transpose()`
-  - α and β are scalars
+  - alpha and beta are scalars
   - op(A) is an (M, K) matrix
   - op(B) is a (K, N) matrix
   - C is an (M, N) matrix.
@@ -29,8 +29,8 @@ for (gemm, elt) in gemm_datatype_mappings
     @eval begin
         @inline function gemm!(transA::Val, transB::Val,
                                M::Int, N::Int, K::Int,
-                               α::$(elt), A::Ptr{$elt}, B::Ptr{$elt},
-                               β::$(elt), C::Ptr{$elt})
+                               alpha::$(elt), A::Ptr{$elt}, B::Ptr{$elt},
+                               beta::$(elt), C::Ptr{$elt})
             # Convert our compile-time transpose marker to a char for BLAS
             convtrans(V::Val{false}) = 'N'
             convtrans(V::Val{true})  = 'T'
@@ -52,7 +52,7 @@ for (gemm, elt) in gemm_datatype_mappings
                    Ptr{$elt}, Ref{BlasInt}, Ref{$elt}, Ptr{$elt},
                    Ref{BlasInt}),
                   convtrans(transA), convtrans(transB), M, N, K,
-                  α, A, lda, B, ldb, β, C, ldc)
+                  alpha, A, lda, B, ldb, beta, C, ldc)
         end
     end
 end
@@ -61,10 +61,10 @@ for (gemm, elt) in gemm_datatype_mappings
     @eval begin
         @inline function batched_gemm!(transA::AbstractChar,
                                transB::AbstractChar,
-                               α::($elt),
+                               alpha::($elt),
                                A::AbstractArray{$elt, 3},
                                B::AbstractArray{$elt, 3},
-                               β::($elt),
+                               beta::($elt),
                                C::AbstractArray{$elt, 3})
             @assert !Base.has_offset_axes(A, B, C)
             @assert size(A, 3) == size(B, 3) == size(C, 3) "batch size mismatch"
@@ -90,8 +90,8 @@ for (gemm, elt) in gemm_datatype_mappings
                        Ptr{$elt}, Ref{BlasInt}, Ref{$elt}, Ptr{$elt},
                        Ref{BlasInt}),
                       transA, transB, m, n,
-                      ka, α, ptrA, max(1,Base.stride(A,2)),
-                      ptrB, max(1,Base.stride(B,2)), β, ptrC,
+                      ka, alpha, ptrA, max(1,Base.stride(A,2)),
+                      ptrB, max(1,Base.stride(B,2)), beta, ptrC,
                       max(1,Base.stride(C,2)))
 
                 ptrA += size(A, 1) * size(A, 2) * sizeof($elt)

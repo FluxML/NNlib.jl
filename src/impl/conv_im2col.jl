@@ -11,13 +11,13 @@ end
 end
 
 """
-    conv_im2col!(y, x, w, cdims, col=similar(x); α=1, β=0)
+    conv_im2col!(y, x, w, cdims, col=similar(x); alpha=1, beta=0)
 
 Perform a convolution using im2col and GEMM, store the result in `y`.  The  kwargs
-`α` and `β` control accumulation behavior; internally this operation is
-implemented as a matrix multiply that boils down to `y = α * x * w + β * y`, thus
-by setting `β` to a non-zero value, multiple results can be accumulated into `y`, or
-by setting `α` to a non-unitary value, various gain factors can be applied.
+`alpha` and `beta` control accumulation behavior; internally this operation is
+implemented as a matrix multiply that boils down to `y = alpha * x * w + beta * y`, thus
+by setting `beta` to a non-zero value, multiple results can be accumulated into `y`, or
+by setting `alpha` to a non-unitary value, various gain factors can be applied.
 
 Note for the particularly performance-minded, you can provide a pre-allocated `col`,
 which should eliminate any need for large allocations within this method.
@@ -26,7 +26,7 @@ function conv_im2col!(
                 y::AbstractArray{T,5}, x::AbstractArray{T,5},
                 w::AbstractArray{T,5}, cdims::DenseConvDims;
                 col::AbstractArray{T,3}=similar(x, im2col_dims(cdims)),
-                α::T=T(1), β::T=T(0)) where {T}
+                alpha::T=T(1), beta::T=T(0)) where {T}
     check_dims(size(x), size(w), size(y), cdims)
 
     #   COL   *    W    ->    Y
@@ -55,14 +55,14 @@ function conv_im2col!(
             col_ptr = pointer(col_slice)
             w_ptr = pointer(w)
             y_ptr = pointer(y, (batch_idx - 1)*M*N + 1)
-            gemm!(Val(false), Val(false), M, N, K, α, col_ptr, w_ptr, β, y_ptr)
+            gemm!(Val(false), Val(false), M, N, K, alpha, col_ptr, w_ptr, beta, y_ptr)
         end
     end
     return y
 end
 
 """
-    ∇conv_filter_im2col!(dw, x, dy, cdims, col=similar(dw); α=1, β=0)
+    ∇conv_filter_im2col!(dw, x, dy, cdims, col=similar(dw); alpha=1, beta=0)
 
 Conv backward pass onto the weights using im2col and GEMM; stores the result in `dw`.
 See the documentation for `conv_im2col!()` for explanation of optional parameters.
@@ -71,7 +71,7 @@ function ∇conv_filter_im2col!(
                 dw::AbstractArray{T,5}, x::AbstractArray{T,5},
                 dy::AbstractArray{T,5}, cdims::DenseConvDims;
                 col::AbstractArray{T,3} = similar(dw, im2col_dims(cdims)),
-                α::T=T(1), β::T=T(0)) where {T}
+                alpha::T=T(1), beta::T=T(0)) where {T}
     check_dims(size(x), size(dw), size(dy), cdims)
 
     #   COL'   *   dY   ->    dW
@@ -104,18 +104,18 @@ function ∇conv_filter_im2col!(
             col_ptr = pointer(col_slice)
             dy_ptr = pointer(dy,(batch_idx - 1)*K*N + 1)
             dw_ptr = pointer(dw)
-            gemm!(Val(true), Val(false), M, N, K, α, col_ptr, dy_ptr, β, dw_ptr)
+            gemm!(Val(true), Val(false), M, N, K, alpha, col_ptr, dy_ptr, beta, dw_ptr)
         end
 
-        # Because we accumulate over batches in this loop, we must set `β` equal
+        # Because we accumulate over batches in this loop, we must set `beta` equal
         # to `1.0` from this point on.
-        β = T(1)
+        beta = T(1)
     end
     return dw
 end
 
 """
-    ∇conv_data_im2col!(dx, w, dy, cdims, col=similar(dx); α=1, β=0)
+    ∇conv_data_im2col!(dx, w, dy, cdims, col=similar(dx); alpha=1, beta=0)
 
 Conv2d backward pass onto the input using im2col and GEMM; stores the result in `dx`.
 See the documentation for `conv_im2col!()` for explanation of other parameters.
@@ -124,7 +124,7 @@ function ∇conv_data_im2col!(
                 dx::AbstractArray{T,5}, dy::AbstractArray{T,5},
                 w::AbstractArray{T,5}, cdims::DenseConvDims;
                 col::AbstractArray{T,3} = similar(dx, im2col_dims(cdims)),
-                α::T=T(1), β::T=T(0)) where {T}
+                alpha::T=T(1), beta::T=T(0)) where {T}
     check_dims(size(dx), size(w), size(dy), cdims)
 
     #    dY        W'   ->    dX
@@ -154,7 +154,7 @@ function ∇conv_data_im2col!(
             dy_ptr = pointer(dy, (batch_idx - 1)*M*K + 1)
             w_ptr = pointer(w)
             col_ptr = pointer(col_slice)
-            gemm!(Val(false), Val(true), M, N, K, α, dy_ptr, w_ptr, T(0), col_ptr)
+            gemm!(Val(false), Val(true), M, N, K, alpha, dy_ptr, w_ptr, T(0), col_ptr)
         end
         col2im!(view(dx, :, :, :, :, batch_idx), col_slice, cdims)
     end
