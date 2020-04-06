@@ -1,6 +1,11 @@
 export σ, sigmoid, hardσ, hardsigmoid, hardtanh, relu, leakyrelu, relu6, rrelu, elu, gelu, swish, selu, celu, softplus, softsign, logσ,
        logsigmoid, logcosh, mish, tanhshrink, softshrink, thresholdrelu, trelu, lisht
 
+## Activation functions
+# 
+# Some of activation functions have its wrapper function for GPU in CuArrays.jl.
+# https://github.com/JuliaGPU/CuArrays.jl/issues/614
+
 """
     σ(x) = 1 / (1 + exp(-x))
 
@@ -18,10 +23,10 @@ const sigmoid = σ
 end
 
 """
-   hardσ(x, a=0.2) = max(0, min(1.0, a * x + 0.5))
+    hardσ(x, a=0.2) = max(0, min(1.0, a * x + 0.5))
 
-Segment-wise linear approximation of sigmoid
-See: [BinaryConnect: Training Deep Neural Networks withbinary weights during propagations](https://arxiv.org/pdf/1511.00363.pdf)
+Segment-wise linear approximation of sigmoid.
+See [BinaryConnect: Training Deep Neural Networks withbinary weights during propagations](https://arxiv.org/pdf/1511.00363.pdf).
 """
 hardσ(x::Real, a=0.2) = oftype(x / 1, max(zero(x / 1), min(one(x / 1), oftype(x / 1, a) * x + oftype(x / 1, 0.5))))
 const hardsigmoid = hardσ
@@ -45,8 +50,8 @@ const logsigmoid = logσ
 """
     hardtanh(x) = max(-1, min(1, x))
 
-Segment-wise linear approximation of tanh. Cheaper  and  more  computational  efficient version of tanh
-See: (http://ronan.collobert.org/pub/matos/2004_phdthesis_lip6.pdf)
+Segment-wise linear approximation of tanh. Cheaper  and  more  computational  efficient version of tanh.
+See [Large Scale Machine Learning](http://ronan.collobert.org/pub/matos/2004_phdthesis_lip6.pdf).
 """
 hardtanh(x::Real) = max(-one(x), min( one(x), x))
 
@@ -156,7 +161,8 @@ celu(x::Real, α::Real = one(x)) = ifelse(x ≥ 0, x / 1, α * (exp(x/α) - one(
 """
     trelu(x, θ=1.0) = x > θ ? x : 0 
 
-See [Threshold Gated Rectified Linear Unit](https://arxiv.org/pdf/1402.3337.pdf)
+Threshold Gated Rectified Linear.
+See [ThresholdRelu](https://arxiv.org/pdf/1402.3337.pdf)
 """
 trelu(x::Real,θ = one(x)) = ifelse(x> θ, x, zero(x))
 const thresholdrelu = trelu
@@ -193,7 +199,7 @@ mish(x::Real) = x * tanh(softplus(x))
 """
     tanhshrink(x) = x - tanh(x)
 
-See [Tanhshrink Activation Function](https://www.gabormelli.com/RKB/Tanhshrink_Activation_Function)
+See [Tanhshrink Activation Function](https://www.gabormelli.com/RKB/Tanhshrink_Activation_Function).
 """
 tanhshrink(x::Real) = x - tanh(x)
 
@@ -201,7 +207,7 @@ tanhshrink(x::Real) = x - tanh(x)
     softshrink(x, λ=0.5) = 
         (x ≥ λ ? x - λ : (-λ ≥ x ? x + λ : 0))
 
-See [Softshrink Activation Function](https://www.gabormelli.com/RKB/Softshrink_Activation_Function)
+See [Softshrink Activation Function](https://www.gabormelli.com/RKB/Softshrink_Activation_Function).
 """
 softshrink(x::Real, λ = oftype(x / 1, 0.5)) = min(max(zero(x), x - λ), x + λ)
 

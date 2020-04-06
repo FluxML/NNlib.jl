@@ -13,7 +13,7 @@ as it operated on such matrix slices of an array with `ndims(A)==3`.
     BatchedTranspose{T, N, S} <: AbstractBatchedMatrix{T, N}
     BatchedAdjoint{T, N, S}
 
-Lazy wrappers analogous to `Transpose` and `Adjoint`, returned by `batched_transpose`
+Lazy wrappers analogous to `Transpose` and `Adjoint`, returned by `batched_transpose`.
 """
 
 @doc _batched_doc
