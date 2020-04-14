@@ -3,8 +3,8 @@ export softmax, softmax!, ∇softmax, ∇softmax!,
 
 """
     softmax(x; dims=1)
-    
-[Softmax](https://en.wikipedia.org/wiki/Softmax_function) turns input array `x` 
+
+[Softmax](https://en.wikipedia.org/wiki/Softmax_function) turns input array `x`
 into probability distributions that sum to 1 along the dimensions specified by `dims`.
 It is semantically equivalent to the following:
 
@@ -13,7 +13,7 @@ It is semantically equivalent to the following:
 with additional manipulations enhancing numerical stability.
 
 For a matrix input `x` it will by default (`dims=1`) treat it as a batch of vectors,
-with each column independent. Keyword `dims=2` will instead treat rows independently, 
+with each column independent. Keyword `dims=2` will instead treat rows independently,
 etc...
 ```julia-repl
 julia> softmax([1, 2, 3])
@@ -108,5 +108,9 @@ function logsoftmax!(out::AbstractVecOrMat, xs::AbstractVecOrMat)
     return out
 end
 
+function ∇logsoftmax!(out::AbstractVecOrMat, Δ::AbstractVecOrMat, xs::AbstractVecOrMat)
+    out .= Δ .- sum(Δ, dims=1) .* softmax(xs, dims=1)
+end
+
 ∇logsoftmax(Δ, xs; dims=1) = Δ .- sum(Δ, dims=dims) .* softmax(xs, dims=dims)
-∇logsoftmax!(Δ, xs) = ∇softmax!(Δ, Δ, xs)
+∇logsoftmax!(Δ, xs) = ∇logsoftmax!(Δ, Δ, xs)

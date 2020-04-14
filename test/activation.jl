@@ -265,14 +265,14 @@ end
         @test isapprox(out, NNlib.∇softmax(zeros(size(xs)), xs); rtol=1e-6)
         out = zeros(Float64, size(xs))
         NNlib.∇logsoftmax!(out, xs)
-        @test isapprox(out, NNlib.∇softmax(zeros(size(xs)), xs); rtol=1e-6)
+        @test isapprox(out, NNlib.∇logsoftmax(zeros(size(xs)), xs); rtol=1e-6)
 
         out = ones(Float64, size(xs))
         NNlib.∇softmax!(out, xs)
         @test isapprox(out, NNlib.∇softmax(ones(size(xs)), xs); rtol=1e-6)
         out = ones(Float64, size(xs))
         NNlib.∇logsoftmax!(out, xs)
-        @test isapprox(out, NNlib.∇softmax(ones(size(xs)), xs); rtol=1e-6)
+        @test isapprox(out, NNlib.∇logsoftmax(ones(size(xs)), xs); rtol=1e-6)
 
         xs = [
             -0.238639  0.748142 -0.283194 -0.525461 -1.5348   -0.797842;
@@ -297,14 +297,14 @@ end
         @test isapprox(out, NNlib.∇softmax(zeros(size(xs)), xs); rtol=1e-6)
         out = zeros(Float64, size(xs))
         NNlib.∇logsoftmax!(out, xs)
-        @test isapprox(out, NNlib.∇softmax(zeros(size(xs)), xs); rtol=1e-6)
+        @test isapprox(out, NNlib.∇logsoftmax(zeros(size(xs)), xs); rtol=1e-6)
 
         out = ones(Float64, size(xs))
         NNlib.∇softmax!(out, xs)
         @test isapprox(out, NNlib.∇softmax(ones(size(xs)), xs); rtol=1e-6)
         out = ones(Float64, size(xs))
         NNlib.∇logsoftmax!(out, xs)
-        @test isapprox(out, NNlib.∇softmax(ones(size(xs)), xs); rtol=1e-6)
+        @test isapprox(out, NNlib.∇logsoftmax(ones(size(xs)), xs); rtol=1e-6)
     end
 
 end
