@@ -69,7 +69,7 @@ end
     @test elu(1.0) == 1.0
     @test gelu(1.0) == 0.8411919906082768
     @test swish(1.0) == 1.0 / (1.0 + exp(-1.0))
-    @test lisht(1.0) ≈ 1.0 * tanh(1.0) 
+    @test lisht(1.0) ≈ 1.0 * tanh(1.0)
     @test softplus(1.0) ≈ log(exp(1.0) + 1.0)
     @test softsign(1.0) == 0.5
     @test selu(1.0) == 1.0507009873554804934193349852946
@@ -126,20 +126,20 @@ end
             @test typeof(relu6(Int64(1))) == Int64
             @test typeof(relu6(Int32(1))) == Int32
         end
-        
+
         @testset "hardtanh: " begin
             # hardtanh doesn't have to force floating point outputs
             @test typeof(hardtanh(Int64(1))) == Int64
             @test typeof(hardtanh(Int32(1))) == Int32
         end
-        
+
         @testset "trelu: " begin
             # trelu doesn't have to force floating point outputs
             @test typeof(trelu(Int64(1))) == Int64
             @test typeof(trelu(Int32(1))) == Int32
         end
     end
-    
+
     @testset "Float gradient inference" begin
         test_gradient_float_precision_preserving.(ACTIVATION_FUNCTIONS)
     end
@@ -201,7 +201,7 @@ end
     @test leakyrelu(-0.4,0.3) ≈ -0.12
 
     @test relu6(10.0) == 6.0
-    @test -0.2 <= rrelu(-0.4,0.25,0.5) <= -0.1 
+    @test -0.2 <= rrelu(-0.4,0.25,0.5) <= -0.1
 
     @testset "celu" begin
         @test celu(42) == 42
@@ -225,7 +225,7 @@ end
     end
 
     @test logcosh(1_000.0) + log(2) == 1_000.0
-    
+
     @testset "hardsigmoid" begin
         @test hardsigmoid(0.3) == 0.56
         @test hardsigmoid(-0.3) == 0.44
@@ -234,14 +234,77 @@ end
             @eval @test hardsigmoid.($T[-100_000, 100_000.]) ≈ $T[0., 1.]
         end
     end
-    
+
     @test hardtanh(10.0) == 1.0
     @test lisht(2.5) == 2.5*tanh(2.5)
-    
+
     @testset "trelu" begin
         @test trelu(0.5) == 0.0
         @test trelu(1.0) == 0.0
         @test trelu(1.1) == 1.1
         @test trelu(0.9,0.5) == 0.9
     end
+
+    @testset "mutating softmax" begin
+        xs = Float64[1 2 3; 5 6 7]
+
+        out = zeros(Float64, size(xs))
+        NNlib.softmax!(out, xs)
+        @test isapprox(out, softmax(xs); rtol=1e-6)
+        NNlib.logsoftmax!(out, xs)
+        @test isapprox(out, logsoftmax(xs); rtol=1e-6)
+
+        out = ones(Float64, size(xs))
+        NNlib.softmax!(out, xs)
+        @test isapprox(out, softmax(xs); rtol=1e-6)
+        NNlib.logsoftmax!(out, xs)
+        @test isapprox(out, logsoftmax(xs); rtol=1e-6)
+
+        out = zeros(Float64, size(xs))
+        NNlib.∇softmax!(out, xs)
+        @test isapprox(out, NNlib.∇softmax(zeros(size(xs)), xs); rtol=1e-6)
+        out = zeros(Float64, size(xs))
+        NNlib.∇logsoftmax!(out, xs)
+        @test isapprox(out, NNlib.∇softmax(zeros(size(xs)), xs); rtol=1e-6)
+
+        out = ones(Float64, size(xs))
+        NNlib.∇softmax!(out, xs)
+        @test isapprox(out, NNlib.∇softmax(ones(size(xs)), xs); rtol=1e-6)
+        out = ones(Float64, size(xs))
+        NNlib.∇logsoftmax!(out, xs)
+        @test isapprox(out, NNlib.∇softmax(ones(size(xs)), xs); rtol=1e-6)
+
+        xs = [
+            -0.238639  0.748142 -0.283194 -0.525461 -1.5348   -0.797842;
+             0.690384  0.211427  0.254794 -0.213572 -0.314174 -0.372663;
+            -1.146370 -0.577988  0.718952  0.919720 -0.620773  0.929977
+        ]
+
+        out = zeros(Float64, size(xs))
+        NNlib.softmax!(out, xs)
+        @test isapprox(out, softmax(xs); rtol=1e-6)
+        NNlib.logsoftmax!(out, xs)
+        @test isapprox(out, logsoftmax(xs); rtol=1e-6)
+
+        out = ones(Float64, size(xs))
+        NNlib.softmax!(out, xs)
+        @test isapprox(out, softmax(xs); rtol=1e-6)
+        NNlib.logsoftmax!(out, xs)
+        @test isapprox(out, logsoftmax(xs); rtol=1e-6)
+
+        out = zeros(Float64, size(xs))
+        NNlib.∇softmax!(out, xs)
+        @test isapprox(out, NNlib.∇softmax(zeros(size(xs)), xs); rtol=1e-6)
+        out = zeros(Float64, size(xs))
+        NNlib.∇logsoftmax!(out, xs)
+        @test isapprox(out, NNlib.∇softmax(zeros(size(xs)), xs); rtol=1e-6)
+
+        out = ones(Float64, size(xs))
+        NNlib.∇softmax!(out, xs)
+        @test isapprox(out, NNlib.∇softmax(ones(size(xs)), xs); rtol=1e-6)
+        out = ones(Float64, size(xs))
+        NNlib.∇logsoftmax!(out, xs)
+        @test isapprox(out, NNlib.∇softmax(ones(size(xs)), xs); rtol=1e-6)
+    end
+
 end
