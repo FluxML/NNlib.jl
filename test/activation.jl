@@ -1,6 +1,6 @@
 using NNlib, Test, Zygote
 
-ACTIVATION_FUNCTIONS = [σ, hardσ, logσ, hardtanh, relu, leakyrelu, relu6, rrelu, elu, gelu, celu, swish, lisht, selu, trelu, softplus, softsign, logcosh, mish, tanhshrink, softshrink];
+ACTIVATION_FUNCTIONS = [σ, hardσ, pσ, logσ, hardtanh, ptanh, relu, leakyrelu, relu6, rrelu, elu, gelu, celu, swish, lisht, selu, trelu, softplus, softsign, logcosh, mish, tanhshrink, softshrink];
 
 function test_value_float_precision_preserving(a)
     @testset "$(a): " begin
@@ -38,6 +38,7 @@ end
 @testset "Activation Functions" begin
     @test σ(0.0) == 0.5
     @test hardσ(0.0) == 0.5
+    @test pσ(0.0) == 0.5
     @test hardtanh(0.0) == 0.0
     @test relu(0.0) == 0.0
     @test leakyrelu(0.0) == 0.0
@@ -61,7 +62,9 @@ end
 
     @test σ(1.0) == 1.0 / (1.0 + exp(-1.0))
     @test hardσ(1.0) == max(0,min(1,0.2*1.0 + 0.5))
+    @test abs(pσ(1.0) - σ(1.0)) < 0.05
     @test hardtanh(1.0) == 1.0
+    @test abs(ptanh(1.0) - tanh(1.0)) < 0.05
     @test relu(1.0) == 1.0
     @test leakyrelu(1.0) == 1.0
     @test relu6(1.0) == 1.0
@@ -82,7 +85,9 @@ end
 
     @test σ(-1.0) == 1.0 / (1.0 + exp(1.0))
     @test hardσ(-1.0) == max(0,min(1,0.2*-1.0 + 0.5))
+    @test abs(pσ(-1.0) - σ(-1.0)) < 0.05
     @test hardtanh(-1.0) == -1.0
+    @test abs(ptanh(-1.0) - tanh(-1.0)) < 0.05
     @test relu(-1.0) == 0.0
     @test leakyrelu(-1.0) == -0.01
     @test relu6(-1.0) == 0.0

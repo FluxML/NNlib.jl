@@ -1,4 +1,4 @@
-export σ, sigmoid, hardσ, hardsigmoid, hardtanh, relu, leakyrelu, relu6, rrelu, elu, gelu, swish, selu, celu, softplus, softsign, logσ,
+export σ, sigmoid, hardσ, hardsigmoid, pσ, psigmoid, hardtanh, ptanh, relu, leakyrelu, relu6, rrelu, elu, gelu, swish, selu, celu, softplus, softsign, logσ,
        logsigmoid, logcosh, mish, tanhshrink, softshrink, thresholdrelu, trelu, lisht
 
 ## Activation functions
@@ -225,8 +225,40 @@ See [Softshrink Activation Function](https://www.gabormelli.com/RKB/Softshrink_A
 """
 softshrink(x::Real, λ = oftype(x/1, 0.5)) = min(max(zero(x), x - λ), x + λ)
 
+"""
+    ptanh(x)
+
+Piecewise Approximation of Tanh Function
+
+See [Activation Functions](https://www.gabormelli.com/RKB/Softshrink_Activation_Function).
+"""
+function ptanh(x::Real)
+    l = oftype(x / 1, 1)
+    o = oftype(x / 1, 0)
+    xθ = oftype(x / 1, 1.92033)
+    yθ = oftype(x / 1, 0.96016)
+    λ = oftype(x / 1, 0.26037)
+    ifelse(x > xθ, yθ, ifelse(x > o, yθ - λ * (x - xθ)^2, ifelse(x > -xθ, λ * (x + xθ)^2 - yθ, -yθ)))
+end
+
+"""
+    pσ(x)
+
+Piecewise Approximation of Sigmoid Function
+
+See [Activation Functions](http://www.dontveter.com/bpr/activate.html).
+"""
+function pσ(x::Real)
+    l = oftype(x / 1, 1)
+    o = oftype(x / 1, 0)
+    h = oftype(x / 1, 0.5)
+    x = x / oftype(x / 1, 4.1)
+    ifelse(x > l, l, ifelse(x < -l, o, h + x * (l - h * abs(x))))
+end
+const psigmoid = pσ
+
 # Provide an informative error message if activation functions are called with an array
-for f in (:σ, :σ_stable, :hardσ, :logσ, :hardtanh, :relu, :leakyrelu, :relu6, :rrelu, :elu, :gelu, :swish, :lisht, :selu, :celu, :trelu, :softsign, :softplus, :logcosh, :mish, :tanhshrink, :softshrink)
+for f in (:σ, :σ_stable, :hardσ, :pσ, :logσ, :hardtanh, :ptanh, :relu, :leakyrelu, :relu6, :rrelu, :elu, :gelu, :swish, :lisht, :selu, :celu, :trelu, :softsign, :softplus, :logcosh, :mish, :tanhshrink, :softshrink)
     @eval $(f)(x::AbstractArray, args...) =
       error("Use broadcasting (`", $(string(f)), ".(x)`) to apply activation functions to arrays.")
 end
