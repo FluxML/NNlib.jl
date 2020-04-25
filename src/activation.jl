@@ -228,8 +228,10 @@ softshrink(x::Real, λ = oftype(x/1, 0.5)) = min(max(zero(x), x - λ), x + λ)
 """
     ptanh(x)
 
-Piecewise Approximation of Tanh Function
+Piecewise Approximation of Tanh Function. 
 
+The maximum deviation between ptanh and tanh is 0.04.
+The derivative of ptanh is continous.
 See [Activation Functions](http://www.dontveter.com/bpr/activate.html).
 """
 function ptanh(x::Real)
@@ -244,9 +246,11 @@ end
 """
     pσ(x)
 
-Piecewise Approximation of Sigmoid Function
+Piecewise Approximation of Sigmoid Function. 
 
-See [Activation Functions](http://www.dontveter.com/bpr/activate.html).
+The maximum deviation between pσ and σ is 0.04. 
+The derivative of pσ is continous.
+See [Activation Functions](http://www.dontveter.com/bpr/activate.html). 
 """
 function pσ(x::Real)
     l = oftype(x / 1, 1)
