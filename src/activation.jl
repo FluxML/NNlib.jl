@@ -230,7 +230,7 @@ softshrink(x::Real, λ = oftype(x/1, 0.5)) = min(max(zero(x), x - λ), x + λ)
 
 Piecewise Approximation of Tanh Function
 
-See [Activation Functions](https://www.gabormelli.com/RKB/Softshrink_Activation_Function).
+See [Activation Functions](http://www.dontveter.com/bpr/activate.html).
 """
 function ptanh(x::Real)
     l = oftype(x / 1, 1)
