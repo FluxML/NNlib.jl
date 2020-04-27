@@ -30,9 +30,9 @@ kernel, storing the result in a `Float32` output, there is at least a function c
 for that madness.
 
 The keyword arguments `alpha` and `beta` control accumulation behavior; this function
-calculates `y = alpha * x * w + beta * y`, therefore by setting `beta` to a nonzero
-value, the user is able to accumulate values into a preallocated `y` buffer, or by
-setting `alpha` to a nonunitary value, an arbitrary gain factor can be applied.
+calculates `y = alpha * x * w + beta * y`, therefore by setting `beta` to a non-zero
+value, the user is able to accumulate values into a pre-allocated `y` buffer, or by
+setting `alpha` to a non-unitary value, an arbitrary gain factor can be applied.
 
 By defaulting `beta` to `false`, we make use of the Bradbury promotion trick to override
 `NaN`'s that may pre-exist within our output buffer, as `false*NaN == 0.0`, whereas

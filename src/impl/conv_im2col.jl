@@ -16,8 +16,8 @@ end
 Perform a convolution using im2col and GEMM, store the result in `y`.  The  kwargs
 `alpha` and `beta` control accumulation behavior; internally this operation is
 implemented as a matrix multiply that boils down to `y = alpha * x * w + beta * y`, thus
-by setting `beta` to a nonzero value, multiple results can be accumulated into `y`, or
-by setting `alpha` to a nonunitary value, various gain factors can be applied.
+by setting `beta` to a non-zero value, multiple results can be accumulated into `y`, or
+by setting `alpha` to a non-unitary value, various gain factors can be applied.
 
 Note for the particularly performance-minded, you can provide a pre-allocated `col`,
 which should eliminate any need for large allocations within this method.
@@ -39,7 +39,7 @@ function conv_im2col!(
     # In english, we're grabbing each input patch and laying them out along
     # the M dimension in `col`, so that the GEMM call below multiplies each
     # kernel (which is kernel_h * kernel_w * channels_in elments long) is
-    # dotproducted with that input patch, effectively computing a convolution
+    # dot-producted with that input patch, effectively computing a convolution
     # in a somewhat memory-wasteful but easily-computed way (since we already
     # have an extremely highly-optimized GEMM call available in BLAS).
     M = prod(output_size(cdims))
@@ -162,9 +162,6 @@ function ∇conv_data_im2col!(
 end
 
 
-
-
-
 """
     im2col!(col, x, cdims)
 
@@ -233,7 +230,7 @@ function im2col!(col::AbstractArray{T,2}, x::AbstractArray{T,4},
         end
     end
     
-    
+
     # For each "padded region", we run the fully general version
     @inbounds for (w_region, h_region, d_region) in padded_regions
         for c in 1:C_in,
