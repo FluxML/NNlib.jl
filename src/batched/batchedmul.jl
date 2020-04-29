@@ -192,13 +192,13 @@ storage_type(A) = typeof(A)
 Reduces with `Base.promote_typejoin`, in order that this conveys useful information
 for dispatching to BLAS. It does not tell you what container to allocate:
 ```
-julia> storage_type(rand(2), rand(Float32, 2))
+julia> storage_typejoin(rand(2), rand(Float32, 2))
 Array{T,1} where T
 
 julia> eltype(ans) <: LinearAlgebra.BlasFloat
 false
 
-julia> storage_type(rand(2), rand(2,3), rand(2,3,4))
+julia> storage_typejoin(rand(2), rand(2,3), rand(2,3,4))
 Array{Float64,N} where N
 ```
 """
