@@ -68,7 +68,7 @@ end
     @test rrelu(1.0) == 1.0
     @test elu(1.0) == 1.0
     @test gelu(1.0) == 0.8411919906082768
-    @test swish(1.0) == 1.0 / (1.0 + exp(-1.0))
+    @test swish(1.0) == σ(1.0)
     @test lisht(1.0) ≈ 1.0 * tanh(1.0)
     @test softplus(1.0) ≈ log(exp(1.0) + 1.0)
     @test softsign(1.0) == 0.5
@@ -80,7 +80,7 @@ end
     @test tanhshrink(1.0) ≈ 0.23840584404423515
     @test softshrink(1.0) == 0.5
 
-    @test σ(-1.0) == 1.0 / (1.0 + exp(1.0))
+    @test σ(-1.0) == exp(-1.0) / (1.0 + exp(-1.0))
     @test hardσ(-1.0) == max(0,min(1,0.2*-1.0 + 0.5))
     @test hardtanh(-1.0) == -1.0
     @test relu(-1.0) == 0.0
@@ -89,7 +89,7 @@ end
     @test -1/3.0 <= rrelu(-1.0) <= -1/8.0
     @test elu(-1.0) == exp(-1.0) - 1.0
     @test gelu(-1.0) == -0.15880800939172324
-    @test swish(-1.0) == -1.0 / (1.0 + exp(1.0))
+    @test swish(-1.0) == -σ(-1.0)
     @test lisht(-1.0) ≈ -1.0 * tanh(-1.0)
     @test softplus(-1.0) ≈ log(exp(-1.0) + 1.0)
     @test softsign(-1.0) == -0.5
