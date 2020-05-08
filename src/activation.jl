@@ -2,7 +2,7 @@ export σ, sigmoid, hardσ, hardsigmoid, pσ, psigmoid, hardtanh, ptanh, relu, l
        logsigmoid, logcosh, mish, tanhshrink, softshrink, thresholdrelu, trelu, lisht
 
 ## Activation functions
-# 
+#
 # Some of activation functions have its wrapper function for GPU in CuArrays.jl.
 # https://github.com/JuliaGPU/CuArrays.jl/issues/614
 
@@ -12,15 +12,11 @@ export σ, sigmoid, hardσ, hardsigmoid, pσ, psigmoid, hardtanh, ptanh, relu, l
 Classic [sigmoid](https://en.wikipedia.org/wiki/Sigmoid_function) activation
 function.
 """
-σ(x::Real) = one(x) / (one(x) + exp(-x))
-const sigmoid = σ
-
-# ForwardDiff numerical stability hack
-σ_stable(x::Real) = ifelse(x < -80, zero(x), one(x) / (one(x) + exp(-x)))
-σ(x::Float32) = σ_stable(x)
-@init @require ForwardDiff = "f6369f11-7733-5829-9624-2563aa707210" begin
-  σ(x::ForwardDiff.Dual{T,Float32}) where T = σ_stable(x)
+function σ(x::Real)
+    t = exp(-abs(x))
+    ifelse(x ≥ 0, inv(one(t) + t), t / (one(t) + t))
 end
+const sigmoid = σ
 
 """
     hardσ(x, a=0.2) = max(0, min(1.0, a * x + 0.5))
@@ -159,17 +155,17 @@ function selu(x::Real)
 end
 
 """
-    celu(x, α=1) = 
+    celu(x, α=1) =
         (x ≥ 0 ? x : α * (exp(x/α) - 1))
 
 Continuously Differentiable Exponential Linear Units
 See [Continuously Differentiable Exponential Linear Units](https://arxiv.org/pdf/1704.07483.pdf).
 """
-celu(x::Real, α::Real = one(x)) = ifelse(x ≥ 0, x / one(x), α * (exp(x/α) - one(x))) 
+celu(x::Real, α::Real = one(x)) = ifelse(x ≥ 0, x / one(x), α * (exp(x/α) - one(x)))
 
 
 """
-    trelu(x, theta = 1.0) = x > theta ? x : 0 
+    trelu(x, theta = 1.0) = x > theta ? x : 0
 
 Threshold Gated Rectified Linear.
 See [ThresholdRelu](https://arxiv.org/pdf/1402.3337.pdf)
@@ -218,7 +214,7 @@ See [Tanhshrink Activation Function](https://www.gabormelli.com/RKB/Tanhshrink_A
 tanhshrink(x::Real) = x - tanh(x)
 
 """
-    softshrink(x, λ=0.5) = 
+    softshrink(x, λ=0.5) =
         (x ≥ λ ? x - λ : (-λ ≥ x ? x + λ : 0))
 
 See [Softshrink Activation Function](https://www.gabormelli.com/RKB/Softshrink_Activation_Function).
@@ -260,7 +256,7 @@ end
 const psigmoid = pσ
 
 # Provide an informative error message if activation functions are called with an array
-for f in (:σ, :σ_stable, :hardσ, :pσ, :logσ, :hardtanh, :ptanh, :relu, :leakyrelu, :relu6, :rrelu, :elu, :gelu, :swish, :lisht, :selu, :celu, :trelu, :softsign, :softplus, :logcosh, :mish, :tanhshrink, :softshrink)
+for f in (:σ, :hardσ, :pσ, :logσ, :hardtanh, :ptanh, :relu, :leakyrelu, :relu6, :rrelu, :elu, :gelu, :swish, :lisht, :selu, :celu, :trelu, :softsign, :softplus, :logcosh, :mish, :tanhshrink, :softshrink)
     @eval $(f)(x::AbstractArray, args...) =
       error("Use broadcasting (`", $(string(f)), ".(x)`) to apply activation functions to arrays.")
 end
