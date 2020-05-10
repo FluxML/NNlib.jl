@@ -1,5 +1,6 @@
 module NNlib
 using Requires
+using LoopVectorization
 
 # Include APIs
 include("dim_helpers.jl")
