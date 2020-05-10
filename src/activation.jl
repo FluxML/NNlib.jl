@@ -6,8 +6,6 @@ using LoopVectorization.SLEEFPirates: FloatType
 
 const RealOrFloatType = Union{Real, FloatType}
 
-vifelse(c::Bool, x::Real, y::Real) = ifelse(c, x, y)
-
 ## Activation functions
 #
 # Some of activation functions have its wrapper function for GPU in CuArrays.jl.
