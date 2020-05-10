@@ -1,10 +1,12 @@
 export σ, sigmoid, hardσ, hardsigmoid, hardtanh, relu, leakyrelu, relu6, rrelu, elu, gelu, swish, selu, celu, softplus, softsign, logσ,
        logsigmoid, logcosh, mish, tanhshrink, softshrink, thresholdrelu, trelu, lisht
 
-using LoopVectorization: vifelse
+import LoopVectorization: vifelse
 using LoopVectorization.SLEEFPirates: FloatType
 
 const RealOrFloatType = Union{Real, FloatType}
+
+vifelse(c::Bool, x::Real, y::Real) = ifelse(c, x, y)
 
 ## Activation functions
 #
