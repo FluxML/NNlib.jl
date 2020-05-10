@@ -29,7 +29,7 @@ See also [`logsoftmax`](@ref).
 """
 function softmax(xs::AbstractArray; dims=1)
     max_ = maximum(xs, dims=dims)
-    exp_ = @avx exp.(xs .- max_)
+    exp_ = SLEEF.exp.(xs .- max_)
     exp_ ./ sum(exp_, dims=dims)
 end
 
@@ -86,8 +86,8 @@ See also [`softmax`](@ref).
 """
 function logsoftmax(xs::AbstractArray; dims=1)
     max_ = maximum(xs, dims=dims)
-    exp_ = @avx exp.(xs .- max_)
-    log_ = @avx log.(sum(exp_, dims=dims))
+    exp_ = SLEEF.exp.(xs .- max_)
+    log_ = SLEEF.log.(sum(exp_, dims=dims))
     (xs .- max_) .- log_
 end
 
