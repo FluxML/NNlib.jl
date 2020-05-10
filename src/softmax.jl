@@ -29,7 +29,7 @@ See also [`logsoftmax`](@ref).
 """
 function softmax(xs::AbstractArray; dims=1)
     max_ = maximum(xs, dims=dims)
-    exp_ = SLEEF.exp.(xs .- max_)
+    exp_ = @avx exp.(xs .- max_)
     exp_ ./ sum(exp_, dims=dims)
 end
 
@@ -44,7 +44,7 @@ function softmax!(out::AbstractVecOrMat{T}, xs::AbstractVecOrMat{T}) where {T}
         # Subtract the column-wise maximums to normalize, take exp()
         # out .= exp(xs .- out[end, :])
         @inbounds for i = 1:size(out, 1)
-            out[i, j] = exp(xs[i, j] - out[end, j])
+            out[i, j] = SLEEF.exp(xs[i, j] - out[end, j])
         end
 
         # Normalize by sum of the entire thing
@@ -86,8 +86,8 @@ See also [`softmax`](@ref).
 """
 function logsoftmax(xs::AbstractArray; dims=1)
     max_ = maximum(xs, dims=dims)
-    exp_ = SLEEF.exp.(xs .- max_)
-    log_ = SLEEF.log.(sum(exp_, dims=dims))
+    exp_ = @avx exp.(xs .- max_)
+    log_ = @avx log.(sum(exp_, dims=dims))
     (xs .- max_) .- log_
 end
 
