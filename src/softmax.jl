@@ -2,6 +2,8 @@ export softmax, softmax!, ∇softmax, ∇softmax!,
        logsoftmax, logsoftmax!, ∇logsoftmax, ∇logsoftmax!
 
 const SLEEF = LoopVectorization.SLEEFPirates
+const sleeflog = @static Sys.WORD_SIZE == 64 ? SLEEF.log : log
+const sleefexp = SLEEF.exp
 
 """
     softmax(x; dims=1)
@@ -29,7 +31,7 @@ See also [`logsoftmax`](@ref).
 """
 function softmax(xs::AbstractArray; dims=1)
     max_ = maximum(xs, dims=dims)
-    exp_ = SLEEF.exp.(xs .- max_)
+    exp_ = sleefexp.(xs .- max_)
     exp_ ./ sum(exp_, dims=dims)
 end
 
@@ -44,7 +46,7 @@ function softmax!(out::AbstractVecOrMat{T}, xs::AbstractVecOrMat{T}) where {T}
         # Subtract the column-wise maximums to normalize, take exp()
         # out .= exp(xs .- out[end, :])
         @inbounds for i = 1:size(out, 1)
-            out[i, j] = SLEEF.exp(xs[i, j] - out[end, j])
+            out[i, j] = sleefexp(xs[i, j] - out[end, j])
         end
 
         # Normalize by sum of the entire thing
@@ -86,8 +88,8 @@ See also [`softmax`](@ref).
 """
 function logsoftmax(xs::AbstractArray; dims=1)
     max_ = maximum(xs, dims=dims)
-    exp_ = SLEEF.exp.(xs .- max_)
-    log_ = SLEEF.log.(sum(exp_, dims=dims))
+    exp_ = sleefexp.(xs .- max_)
+    log_ = sleeflog.(sum(exp_, dims=dims))
     (xs .- max_) .- log_
 end
 
@@ -100,10 +102,10 @@ function logsoftmax!(out::AbstractVecOrMat, xs::AbstractVecOrMat)
             end
             s = zero(eltype(out))
             for i = 1:size(out, 1)
-                s += SLEEF.exp(xs[i, j] - xi_max)
+                s += sleefexp(xs[i, j] - xi_max)
             end
             for i = 1:size(out, 1)
-                out[i, j] = xs[i, j] - SLEEF.log(s) - xi_max
+                out[i, j] = xs[i, j] - sleeflog(s) - xi_max
             end
         end
     end
