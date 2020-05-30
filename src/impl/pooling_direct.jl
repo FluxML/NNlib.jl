@@ -159,7 +159,7 @@ for name in (:max, :mean)
             # Grab the output at this index for future use
             y_idx = y[w, h, d, c, batch_idx]
             dy_idx = dy[w, h, d, c, batch_idx]
-            maxpool_already_chose = false
+            # maxpool_already_chose = false
 
             for kd in 1:kernel_d,
                 kh in 1:kernel_h,
@@ -175,9 +175,9 @@ for name in (:max, :mean)
                 if $(name == :max)
                     # If it's equal; this is the one we chose. We only choose one per
                     # kernel window, all other elements of dx must be zero.
-                    if y_idx == x[x_idxs...] && !maxpool_already_chose
-                        dx[x_idxs...] = dy_idx*alpha + beta*dx[x_idxs...]
-                        maxpool_already_chose = true
+                    if y_idx == x[x_idxs...] # && !maxpool_already_chose
+                        dx[x_idxs...] += dy_idx*alpha + beta*dx[x_idxs...]
+                        # maxpool_already_chose = true
                     # Maxpooling does not support `beta` right now.  :(
                     #else
                     #    dx[x_idxs...] = T(0) + beta*dx[x_idxs...]
@@ -202,7 +202,7 @@ for name in (:max, :mean)
                 # Grab the incoming gradient at this index for future use
                 y_idx = y[w, h, d, c, batch_idx]
                 dy_idx = dy[w, h, d, c, batch_idx]
-                maxpool_already_chose = false
+                # maxpool_already_chose = false
 
                 # In these loops, we have to check that we're not reaching off the edge,
                 # we do so by putting in a bunch of conditionals.  :/
@@ -227,9 +227,9 @@ for name in (:max, :mean)
                             # Same as above
                             x_idxs = (input_kw, input_kh, input_kd, c, batch_idx)
                             if $(name == :max)
-                                if y_idx == x[x_idxs...] && !maxpool_already_chose
-                                    dx[x_idxs...] = dy_idx*alpha + beta*dx[x_idxs...]
-                                    maxpool_already_chose = true
+                                if y_idx == x[x_idxs...] # && !maxpool_already_chose
+                                    dx[x_idxs...] += dy_idx*alpha + beta*dx[x_idxs...]
+                                    # maxpool_already_chose = true
                                 #else
                                 #    dx[x_idxs...] = T(0) + beta*dx[x_idxs...]
                                 end
