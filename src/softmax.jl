@@ -28,9 +28,9 @@ julia> softmax([1, 2, 3])
 See also [`logsoftmax`](@ref).
 """
 function softmax(xs::AbstractArray; dims=1)
-    max_ = maximum(xs, dims=dims)
+    max_ = vreduce(max, xs, dims=dims)
     exp_ = SLEEF.exp.(xs .- max_)
-    exp_ ./ sum(exp_, dims=dims)
+    exp_ ./ vreduce(+, exp_, dims=dims)
 end
 
 function softmax!(out::AbstractVecOrMat{T}, xs::AbstractVecOrMat{T}) where {T}
@@ -62,11 +62,11 @@ end
 
 function ∇softmax!(out::AbstractVecOrMat, Δ::AbstractVecOrMat, xs::AbstractVecOrMat)
     sf = softmax(xs)
-    out .= sf .* (Δ .- sum(Δ .* sf, dims = 1))
+    out .= sf .* (Δ .- vreduce(+, Δ .* sf, dims = 1))
 end
 function ∇softmax(Δ, xs; dims=1)
     sf = softmax(xs, dims=dims)
-    sf .* (Δ .- sum(Δ .* sf, dims=dims))
+    sf .* (Δ .- vreduce(+, Δ .* sf, dims=dims))
 end
 ∇softmax!(Δ, xs) = ∇softmax!(Δ, Δ, xs)
 
@@ -85,9 +85,9 @@ It is semantically equivalent to the following:
 See also [`softmax`](@ref).
 """
 function logsoftmax(xs::AbstractArray; dims=1)
-    max_ = maximum(xs, dims=dims)
+    max_ = vreduce(max, xs, dims=dims)
     exp_ = SLEEF.exp.(xs .- max_)
-    log_ = SLEEF.log.(sum(exp_, dims=dims))
+    log_ = SLEEF.log.(vreduce(+, exp_, dims=dims))
     (xs .- max_) .- log_
 end
 
@@ -111,8 +111,8 @@ function logsoftmax!(out::AbstractVecOrMat, xs::AbstractVecOrMat)
 end
 
 function ∇logsoftmax!(out::AbstractVecOrMat, Δ::AbstractVecOrMat, xs::AbstractVecOrMat)
-    out .= Δ .- sum(Δ, dims=1) .* softmax(xs, dims=1)
+    out .= Δ .- vreduce(+, Δ, dims=1) .* softmax(xs, dims=1)
 end
 
-∇logsoftmax(Δ, xs; dims=1) = Δ .- sum(Δ, dims=dims) .* softmax(xs, dims=dims)
+∇logsoftmax(Δ, xs; dims=1) = Δ .- vreduce(+, Δ, dims=dims) .* softmax(xs, dims=dims)
 ∇logsoftmax!(Δ, xs) = ∇logsoftmax!(Δ, Δ, xs)
