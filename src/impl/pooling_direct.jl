@@ -184,7 +184,7 @@ for name in (:max, :mean)
                     end
                 elseif $(name == :mean)
                     # Either does meanpool :(
-                    dx[x_idxs...] += dy_idx*alpha + dx[x_idxs...]
+                    dx[x_idxs...] = dy_idx*alpha + dx[x_idxs...]
                 else
                     error("Unimplemented codegen path")
                 end
