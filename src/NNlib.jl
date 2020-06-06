@@ -13,7 +13,7 @@ else
   @warn "NNPACK not available for your platform: " *
         "$( Pkg.BinaryPlatforms.platform_name(Pkg.BinaryPlatforms.platform_key_abi()))" *
         "($( Pkg.BinaryPlatforms.triplet(Pkg.BinaryPlatforms.platform_key_abi())))
-        You will only be able to use only the default Julia NNlib backend"
+        You will be able to use only the default Julia NNlib backend"
   is_nnpack_available() = false
 end
 
