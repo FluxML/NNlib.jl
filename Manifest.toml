@@ -48,9 +48,9 @@ uuid = "56ddb016-857b-54e1-b83d-db4d58db5568"
 
 [[LoopVectorization]]
 deps = ["DocStringExtensions", "LinearAlgebra", "OffsetArrays", "SIMDPirates", "SLEEFPirates", "UnPack", "VectorizationBase"]
-git-tree-sha1 = "132e6b82e3434a04992a0be60e194f817101c846"
+git-tree-sha1 = "12e1b7c55f5d2f7e763767589a24e851ed43c7a0"
 uuid = "bdcacae8-1622-11e9-2a5c-532679323890"
-version = "0.8.2"
+version = "0.8.3"
 
 [[Markdown]]
 deps = ["Base64"]
@@ -88,9 +88,9 @@ uuid = "ea8e919c-243c-51af-8825-aaa63cd721ce"
 
 [[SIMDPirates]]
 deps = ["VectorizationBase"]
-git-tree-sha1 = "7ac32930e05d1fcb152d792495b9cc4823ca004f"
+git-tree-sha1 = "c328aa037cf6aa84b144debe1e71aa6837fd12a0"
 uuid = "21efa798-c60a-11e8-04d3-e1a92915a26a"
-version = "0.8.5"
+version = "0.8.6"
 
 [[SLEEFPirates]]
 deps = ["Libdl", "SIMDPirates", "VectorizationBase"]
