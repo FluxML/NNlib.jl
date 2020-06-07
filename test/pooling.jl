@@ -316,3 +316,33 @@ end
     dx = ∇maxpool(dy, y, x, pdims)
     @test dx[:,:,1,1] == [1.0 0.0 1.0; 0.0 0.0 0.0; 1.0 0.0 1.0]
 end
+
+# test "true" strided case, see https://github.com/FluxML/NNlib.jl/issues/205
+
+@testset "Issus #205" begin
+    x = [ 
+        0.0299635  0.233456  0.596161   0.161514  0.0094027;
+        0.389984   0.235158  0.579525   0.301893  0.561358;
+        0.0830242  0.483759  0.914904   0.253871  0.820061;
+        0.425287   0.53451   0.0405225  0.729861  0.403925;
+        0.473724   0.571418  0.558427   0.552183  0.561624;
+    ]
+
+    dx_ans = [
+        0.0  0.0  2.0  0.0  0.0;
+        1.0  0.0  0.0  0.0  1.0;
+        0.0  1.0  4.0  0.0  2.0;
+        0.0  1.0  0.0  2.0  0.0;
+        0.0  2.0  0.0  0.0  0.0;  
+    ]
+
+    x = reshape(x, 5, 5, 1, 1)
+    dx_ans = reshape(dx_ans, 5, 5, 1, 1)
+    dy = ones(4,4,1,1)
+    pdims = PoolDims(x, 2; stride=1, padding=0)
+
+    y = maxpool(x, (2,2), pad=0, stride=1)
+    dx = ∇maxpool(dy, y, x, pdims)
+
+    @test dx ≈ dx_ans
+end
