@@ -48,9 +48,9 @@ uuid = "56ddb016-857b-54e1-b83d-db4d58db5568"
 
 [[LoopVectorization]]
 deps = ["DocStringExtensions", "LinearAlgebra", "OffsetArrays", "SIMDPirates", "SLEEFPirates", "UnPack", "VectorizationBase"]
-git-tree-sha1 = "12e1b7c55f5d2f7e763767589a24e851ed43c7a0"
+git-tree-sha1 = "4bd70eaf5c2d9d03a2bdfc03242ffa8da5a729e1"
 uuid = "bdcacae8-1622-11e9-2a5c-532679323890"
-version = "0.8.3"
+version = "0.8.4"
 
 [[Markdown]]
 deps = ["Base64"]
