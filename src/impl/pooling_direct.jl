@@ -6,6 +6,7 @@ for name in (:max, :mean)
     @eval function $((Symbol("$(name)pool_direct!")))(
                     y::AbstractArray{T,5}, x::AbstractArray{T,5},
                     pdims::PoolDims; alpha::T = T(1), beta::T = T(0)) where {T}
+        @assert beta == T(0) "beta not supported yet"
         check_dims(size(x), size(y), pdims)
 
         width, height, depth = input_size(pdims)
@@ -176,7 +177,7 @@ for name in (:max, :mean)
                     # If it's equal; this is the one we chose. We only choose one per
                     # kernel window, all other elements of dx must be zero.
                     if y_idx == x[x_idxs...] && !maxpool_already_chose
-                        dx[x_idxs...] = dy_idx*alpha + beta*dx[x_idxs...]
+                        dx[x_idxs...] += dy_idx*alpha + beta*dx[x_idxs...]
                         maxpool_already_chose = true
                     # Maxpooling does not support `beta` right now.  :(
                     #else
@@ -228,7 +229,7 @@ for name in (:max, :mean)
                             x_idxs = (input_kw, input_kh, input_kd, c, batch_idx)
                             if $(name == :max)
                                 if y_idx == x[x_idxs...] && !maxpool_already_chose
-                                    dx[x_idxs...] = dy_idx*alpha + beta*dx[x_idxs...]
+                                    dx[x_idxs...] += dy_idx*alpha + beta*dx[x_idxs...]
                                     maxpool_already_chose = true
                                 #else
                                 #    dx[x_idxs...] = T(0) + beta*dx[x_idxs...]
