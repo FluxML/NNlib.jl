@@ -6,6 +6,7 @@ for name in (:max, :mean)
     @eval function $((Symbol("$(name)pool_direct!")))(
                     y::AbstractArray{T,5}, x::AbstractArray{T,5},
                     pdims::PoolDims; alpha::T = T(1), beta::T = T(0)) where {T}
+        @assert beta == T(0) "beta not supported yet"
         check_dims(size(x), size(y), pdims)
 
         width, height, depth = input_size(pdims)
