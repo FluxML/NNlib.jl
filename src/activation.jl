@@ -12,10 +12,7 @@ export σ, sigmoid, hardσ, hardsigmoid, hardtanh, relu, leakyrelu, relu6, rrelu
 Classic [sigmoid](https://en.wikipedia.org/wiki/Sigmoid_function) activation
 function.
 """
-function σ(x::Real)
-    t = exp(-abs(x))
-    ifelse(x ≥ 0, inv(one(t) + t), t / (one(t) + t))
-end
+const σ = logistic
 const sigmoid = σ
 
 """
@@ -181,15 +178,6 @@ See [Quadratic Polynomials Learn Better Image Features](http://www.iro.umontreal
 """
 softsign(x::Real) = x / (one(x) + abs(x))
 
-
-"""
-    softplus(x) = log(exp(x) + 1)
-
-See [Deep Sparse Rectifier Neural Networks](http://proceedings.mlr.press/v15/glorot11a/glorot11a.pdf).
-"""
-softplus(x::Real) = ifelse(x > 0, x + log1p(exp(-x)), log1p(exp(x)))
-
-
 """
     logcosh(x)
 
@@ -222,7 +210,7 @@ See [Softshrink Activation Function](https://www.gabormelli.com/RKB/Softshrink_A
 softshrink(x::Real, λ = oftype(x/1, 0.5)) = min(max(zero(x), x - λ), x + λ)
 
 # Provide an informative error message if activation functions are called with an array
-for f in (:σ, :hardσ, :logσ, :hardtanh, :relu, :leakyrelu, :relu6, :rrelu, :elu, :gelu, :swish, :lisht, :selu, :celu, :trelu, :softsign, :softplus, :logcosh, :mish, :tanhshrink, :softshrink)
+for f in (:hardσ, :logσ, :hardtanh, :relu, :leakyrelu, :relu6, :rrelu, :elu, :gelu, :swish, :lisht, :selu, :celu, :trelu, :softsign, :logcosh, :mish, :tanhshrink, :softshrink)
     @eval $(f)(x::AbstractArray, args...) =
       error("Use broadcasting (`", $(string(f)), ".(x)`) to apply activation functions to arrays.")
 end
