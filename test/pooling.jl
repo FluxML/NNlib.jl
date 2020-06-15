@@ -319,6 +319,9 @@ end
 
 # test "true" strided case, see https://github.com/FluxML/NNlib.jl/issues/205
 
+
+# obtained with 
+# using FiniteDifferences
 maxpool_answer_nature = Dict(
     "rank1" => Dict(
         "k2s1p0" => ( # kernel size 2, stride 1, pad 0
@@ -766,15 +769,34 @@ maxpool_answer_nature = Dict(
     )
 )
 
-@testset "Issus #205" begin
-    function check(config)
-        y_maxpool = maxpool(config.x, config.size, pad=config.pad, stride=config.stride)
-        y_meanpool = meanpool(config.x, config.size, pad=config.pad, stride=config.stride)
-        pdims = PoolDims(config.x, config.size; stride=config.stride, padding=config.pad)
-        dy = ones(size(y_maxpool)...) # size(y_maxpool) == size(y_meanpool)
 
-        @test isapprox(config.dx_maxpool, ∇maxpool(dy, y_maxpool, config.x, pdims), rtol=1e-5)
-        @test isapprox(config.dx_meanpool, ∇meanpool(dy, y_meanpool, config.x, pdims), rtol=1e-5)
+@testset "more maxpool and meanpool tests" begin
+    # issue #205
+    function check(config)
+        # CHECK DEFAUL
+        pdims = PoolDims(config.x, config.size; stride=config.stride, padding=config.pad)        
+        
+        y_maxpool = NNlib.maxpool(config.x, pdims)
+        y_meanpool = NNlib.meanpool(config.x, pdims)
+        dy = ones(size(y_maxpool)...) # size(y_maxpool) == size(y_meanpool)
+        @test isapprox(config.dx_maxpool, NNlib.∇maxpool(dy, y_maxpool, config.x, pdims), rtol=1e-5)
+        @test isapprox(config.dx_meanpool, NNlib.∇meanpool(dy, y_meanpool, config.x, pdims), rtol=1e-5)
+        
+        y_maxpool_dir = NNlib.maxpool_direct(config.x, pdims)
+        y_meanpool_dir = NNlib.meanpool_direct(config.x, pdims)
+        dy = ones(size(y_maxpool)...) # size(y_maxpool) == size(y_meanpool)
+        @test y_maxpool_dir ≈ y_maxpool  atol=1e-6
+        @test isapprox(config.dx_maxpool, NNlib.∇maxpool_direct(dy, y_maxpool_dir, config.x, pdims), rtol=1e-5)
+        @test isapprox(config.dx_meanpool, NNlib.∇meanpool_direct(dy, y_meanpool_dir, config.x, pdims), rtol=1e-5)
+
+        if NNlib.is_nnpack_available()
+            if NNlib.nnpack_supported_operation(pdims)
+                y_maxpool_nnp = NNlib.maxpool_nnpack(config.x, pdims)
+                @test y_maxpool_nnp ≈ y_maxpool  atol=1e-6
+                # NNPACK maxpool gradient still missing
+                #@test isapprox(config.dx_maxpool, NNlib.∇maxpool_nnpack(dy, y_maxpool_nnp, config.x, pdims), rtol=1e-5)
+            end
+        end
     end
 
     for (rank_name, config_dict) in maxpool_answer_nature
@@ -783,3 +805,4 @@ maxpool_answer_nature = Dict(
         end
     end
 end
+
