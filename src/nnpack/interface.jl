@@ -1,37 +1,29 @@
 include("impl.jl")
 
 ## NNPACK supports only Float32
-## Uncomment if we decide to cast to Float32
-# for (front_name, backend) in (
-#         :conv          => :_nnpack,
-#         :∇conv_data    => :_nnpack,
-#         :∇conv_filter  => :_nnpack,
-#     )
-#     @eval begin
-#         function $(Symbol("$(front_name)$(backend)!"))(
-#                         out::Array{T1,4}, in1::Array{T2,4}, in2::Array{T3,4},
-#                         cdims::ConvDims; kwargs...) where {T1, T2, T3}
-#             @warn "Automatically converting input tensor to Float32. This will have performance implications" maxlog=1
-#             # Output must of the same type as in the function signature
-#             T1.($(Symbol("$(front_name)$(backend)!"))(Float32.(out), Float32.(in1),
-#                                                       Float32.(in2), cdims; kwargs...))
-#         end
-#     end
-# end
-
-# function maxpool_nnpack!(y::Array{T1, 4}, x::Array{T2, 4}, pdims::PoolDims;
-#                          kwargs...) where {T1, T2}
-#     @warn "Automatically converting input tensor to Float32. This will have performance implications" maxlog=1
-#     # We want the output to be of the same type as desired
-#     T1.(maxpool_nnpack!(Float32.(y), Float32.(x), pdims; kwargs...))
-# end
-
-
-function maxpool_nnpack(x::Array{T, 4}, pdims::PoolDims; kwargs...) where {T}
-    y = similar(x, output_size(pdims)..., channels_out(pdims), size(x, 4))
-    return maxpool_nnpack!(y, x, pdims; kwargs...)
+for (front_name, backend) in (
+        :conv          => :_nnpack,
+        :∇conv_data    => :_nnpack,
+        :∇conv_filter  => :_nnpack,
+    )
+    @eval begin
+        function $(Symbol("$(front_name)$(backend)!"))(
+                        out::Array{T1,4}, in1::Array{T2,4}, in2::Array{T3,4},
+                        cdims::ConvDims; kwargs...) where {T1, T2, T3}
+            @warn "Automatically converting input tensor to Float32. This will have performance implications" maxlog=1
+            # Output must of the same type as in the function signature
+            T1.($(Symbol("$(front_name)$(backend)!"))(Float32.(out), Float32.(in1),
+                                                      Float32.(in2), cdims; kwargs...))
+        end
+    end
 end
 
+function maxpool_nnpack!(y::Array{T1, 4}, x::Array{T2, 4}, pdims::PoolDims;
+                         kwargs...) where {T1, T2}
+    @warn "Automatically converting input tensor to Float32. This will have performance implications" maxlog=1
+    # We want the output to be of the same type as desired
+    T1.(maxpool_nnpack!(Float32.(y), Float32.(x), pdims; kwargs...))
+end
 
 """
     nnpack_supported_operation(cdims::ConvDims)
