@@ -155,8 +155,7 @@ for backend in (Symbol(), :_direct, :_im2col, :_nnpack)
     end
 end
 
-
-# # Use NNPACK if it is available and the operation is supported
+# Use NNPACK if it is available and the operation is supported
 if is_nnpack_available()
     function conv(x::Array{Float32, 4}, w::Array{Float32, 4},
                   cdims::DenseConvDims{2, K, C_in, C_out, (1, 1), P, (1, 1), F};
@@ -177,7 +176,6 @@ if is_nnpack_available()
     end
 end
 
-
 """
     conv(x, w; stride=1, pad=0, dilation=1, flipped=false)
 
@@ -191,7 +189,6 @@ function conv(x, w::AbstractArray{T, N}; stride=1, pad=0, dilation=1, flipped=fa
     cdims = DenseConvDims(x, w; stride=stride, padding=pad, dilation=dilation, flipkernel=flipped)
     return conv(x, w, cdims)
 end
-
 
 """
     depthwiseconv(x, w; stride=1, pad=0, dilation=1, flipped=false)
