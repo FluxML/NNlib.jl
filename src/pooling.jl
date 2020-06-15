@@ -128,12 +128,11 @@ for backend in (Symbol(), :_direct)
     end
 end
 
-
 ## Use NNPACK if it is available and operation is supported.
-## Commented out since corresponding gradient is not available in NNPACK
-## and ∇maxpool_direct is not robust with respect to output numerical imprecisions in NNPACK
+## The corresponding gradient is not available in NNPACK
+## Commented out due to #210
 # if is_nnpack_available()
-#     function maxpool(x::Array{T, 4}, pdims::PoolDims{2, K, S, P, (1, 1)}; kwargs...) where {T, K, S, P}
+#     function maxpool(x::Array{Float32, 4}, pdims::PoolDims{2, K, S, P, (1, 1)}; kwargs...) where {T, K, S, P}
 #         func = nnpack_supported_operation(pdims) ? maxpool_nnpack : maxpool_direct
 #         return func(x, pdims; kwargs...)
 #     end

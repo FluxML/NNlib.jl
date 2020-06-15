@@ -772,26 +772,26 @@ maxpool_answer_nature = Dict(
 
 @testset "more maxpool and meanpool tests" begin
     # issue #205
-    function check(config)
-        # CHECK DEFAUL
+    function check(config, T)
+        # CHECK DEFAULT
         pdims = PoolDims(config.x, config.size; stride=config.stride, padding=config.pad)        
-        
-        y_maxpool = NNlib.maxpool(config.x, pdims)
-        y_meanpool = NNlib.meanpool(config.x, pdims)
-        dy = ones(size(y_maxpool)...) # size(y_maxpool) == size(y_meanpool)
-        @test isapprox(config.dx_maxpool, NNlib.∇maxpool(dy, y_maxpool, config.x, pdims), rtol=1e-5)
-        @test isapprox(config.dx_meanpool, NNlib.∇meanpool(dy, y_meanpool, config.x, pdims), rtol=1e-5)
-        
-        y_maxpool_dir = NNlib.maxpool_direct(config.x, pdims)
-        y_meanpool_dir = NNlib.meanpool_direct(config.x, pdims)
-        dy = ones(size(y_maxpool)...) # size(y_maxpool) == size(y_meanpool)
+        x = T.(config.x)
+        y_maxpool = NNlib.maxpool(x, pdims)
+        y_meanpool = NNlib.meanpool(x, pdims)
+        dy = ones(T, size(y_maxpool)...) # size(y_maxpool) == size(y_meanpool)
+        @test isapprox(config.dx_maxpool, NNlib.∇maxpool(dy, y_maxpool, x, pdims), rtol=1e-5)
+        @test isapprox(config.dx_meanpool, NNlib.∇meanpool(dy, y_meanpool, x, pdims), rtol=1e-5)
+        # CHECK DIRECT
+        y_maxpool_dir = NNlib.maxpool_direct(x, pdims)
+        y_meanpool_dir = NNlib.meanpool_direct(x, pdims)
         @test y_maxpool_dir ≈ y_maxpool  atol=1e-6
-        @test isapprox(config.dx_maxpool, NNlib.∇maxpool_direct(dy, y_maxpool_dir, config.x, pdims), rtol=1e-5)
-        @test isapprox(config.dx_meanpool, NNlib.∇meanpool_direct(dy, y_meanpool_dir, config.x, pdims), rtol=1e-5)
+        @test isapprox(config.dx_maxpool, NNlib.∇maxpool_direct(dy, y_maxpool_dir, x, pdims), rtol=1e-5)
+        @test isapprox(config.dx_meanpool, NNlib.∇meanpool_direct(dy, y_meanpool_dir, x, pdims), rtol=1e-5)
 
-        if NNlib.is_nnpack_available()
+        # CHECK NNPACK
+        if NNlib.is_nnpack_available() && T == Float32
             if NNlib.nnpack_supported_operation(pdims)
-                y_maxpool_nnp = NNlib.maxpool_nnpack(config.x, pdims)
+                y_maxpool_nnp = NNlib.maxpool_nnpack(x, pdims)
                 @test y_maxpool_nnp ≈ y_maxpool  atol=1e-6
                 # NNPACK maxpool gradient still missing
                 #@test isapprox(config.dx_maxpool, NNlib.∇maxpool_nnpack(dy, y_maxpool_nnp, config.x, pdims), rtol=1e-5)
@@ -801,8 +801,26 @@ maxpool_answer_nature = Dict(
 
     for (rank_name, config_dict) in maxpool_answer_nature
         for (setting_name, config) in config_dict
-            check(config)
+            for T in (Float32, Float64)
+                check(config, T)
+            end
         end
     end
+
+    # issue 210
+    x, k = rand(Float32,5,2,1,3), (2,1)
+    pdims1 = NNlib.PoolDims(x,k, padding=1,stride=1)
+    pdims2 = NNlib.PoolDims(x,k, padding=(1,0,0,0),stride=1)
+    @test maxpool(x, pdims1) isa Array{Float32, 4}
+    @test maxpool(x, pdims2) isa Array{Float32, 4}
+    # if NNlib.is_nnpack_available()
+    #     if NNlib.nnpack_supported_operation(pdims1)
+    #         @test NNlib.maxpool_nnpack(x, pdims1) isa Array{Float32, 4}
+    #     end
+    #     if NNlib.nnpack_supported_operation(pdims2)
+    #         print("you should not see this")
+    #         @test NNlib.maxpool_nnpack(x, pdims2) isa Array{Float32, 4}
+    #     end
+    # end
 end
 
