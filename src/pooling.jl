@@ -103,7 +103,7 @@ end
 
 
 # Finally, let's generate auto-allocating versions of all our functions, for all backends:
-for backend in (Symbol(), :_direct)
+for backend in (Symbol(), :_direct, :_nnpack)
     # First make auto-allocating versions of the basic pooling calls:
     for name in (:maxpool, :meanpool)
         @eval begin

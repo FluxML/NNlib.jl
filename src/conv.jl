@@ -106,7 +106,6 @@ end
 # allocation.  :P
 for backend in (Symbol(), :_direct, :_im2col, :_nnpack)
     # First make auto-allocating versions of the conv()-like calls:
-    (backend == :_nnpack && !is_nnpack_available()) && continue
     for name in (:conv, :depthwiseconv)
         @eval begin
             function $(Symbol("$(name)$(backend)"))(
