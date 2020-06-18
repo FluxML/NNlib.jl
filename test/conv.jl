@@ -358,7 +358,7 @@ conv_answer_dict = Dict(
     end
 end
 
-if get(ENV,"NNLIB_TEST_FUZZING","false") == "true"
+if get(ENV, "NNLIB_TEST_FUZZING", "true") == "true"
     # @info("Skipping Convolutional fuzzing tests, set NNLIB_TEST_FUZZING=true to run them")
     @testset "fuzzing" begin
         @info("Starting Convolutional fuzzing tests; this can take a few minutes...")
@@ -559,7 +559,7 @@ end
 end
 
 
-if get(ENV,"NNLIB_TEST_FUZZING","false") == "true"
+if get(ENV,"NNLIB_TEST_FUZZING","true") == "true"
     @testset "fuzzing" begin
         @info("Starting Depthwise Convolutional fuzzing tests; this can take a few minutes...")
         # Now that we're fairly certain things are working, let's fuzz things a little bit:

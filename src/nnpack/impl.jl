@@ -23,7 +23,7 @@ end
 function ∇conv_data_nnpack!(dx::A, dy::A, w::A, cdims::ConvDims;
                                              algo = UInt32(0)) where{A<:Array{Float32, 4}}
     check_dims(size(dx), size(w), size(dy), cdims)
-    threadpool = select_threadpool(cdims, size(y, 4))
+    threadpool = select_threadpool(cdims, size(dy, 4))
     
     if flipkernel(cdims) == 0
         w = flipweight(w)
@@ -36,7 +36,7 @@ end
 function ∇conv_filter_nnpack!(dw::A, x::A, dy::A, cdims::ConvDims;
                                                algo = UInt32(0)) where{A<:Array{Float32, 4}}
     check_dims(size(x), size(dw), size(dy), cdims)
-    threadpool = select_threadpool(cdims, size(y, 4))
+    threadpool = select_threadpool(cdims, size(dy, 4))
     
     nnp_convolution_kernel_gradient(dw, x, dy, algo = algo, padding = padding(cdims),
                                     stride = stride(cdims), threadpool = threadpool)

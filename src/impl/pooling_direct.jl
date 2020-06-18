@@ -176,8 +176,10 @@ for name in (:max, :mean)
                 if $(name == :max)
                     # If it's equal; this is the one we chose. We only choose one per
                     # kernel window, all other elements of dx must be zero.
-                    if y_idx == x[x_idxs...] && !maxpool_already_chose
-                        dx[x_idxs...] += dy_idx*alpha + beta*dx[x_idxs...]
+                    # Uncomment line below if using with non-precise output (e.g. by NNPACK)
+                    # if abs(y_idx - x[x_idxs...]) < 1e-5 && !maxpool_already_chose
+                    if y_idx ≈ x[x_idxs...] && !maxpool_already_chose
+                            dx[x_idxs...] += dy_idx*alpha + beta*dx[x_idxs...]
                         maxpool_already_chose = true
                     # Maxpooling does not support `beta` right now.  :(
                     #else
@@ -228,7 +230,9 @@ for name in (:max, :mean)
                             # Same as above
                             x_idxs = (input_kw, input_kh, input_kd, c, batch_idx)
                             if $(name == :max)
-                                if y_idx == x[x_idxs...] && !maxpool_already_chose
+                                # Uncomment line below if using with non-precise output
+                                # if abs(y_idx - x[x_idxs...]) < 1e-5 && !maxpool_already_chose
+                                if y_idx ≈ x[x_idxs...] && !maxpool_already_chose
                                     dx[x_idxs...] += dy_idx*alpha + beta*dx[x_idxs...]
                                     maxpool_already_chose = true
                                 #else

@@ -60,7 +60,7 @@ end
 # since we can specialize on sizes.
 for front_name in (:conv, :∇conv_data, :∇conv_filter,
                    :depthwiseconv, :∇depthwiseconv_data, :∇depthwiseconv_filter)
-    for backend in (Symbol(), :_direct, :_im2col)
+    for backend in (Symbol(), :_direct, :_im2col) ## NNPACK  is only for 2d conv
         for N in (3, 4)
             @eval begin
                 function $(Symbol("$(front_name)$(backend)!"))(
@@ -85,7 +85,7 @@ for front_name in (:conv, :∇conv_data, :∇conv_filter,
 end
 
 # We always support a fallback, non-accelerated path, where we use the direct, but
-# slow, implementations.  These should not typically be used, hence the `@debug`,
+# slow, implementations.  These should not typically be used, hence the `@warn`,
 # but let's ggo ahead and define them first:
 for front_name in (:conv, :∇conv_data, :∇conv_filter,
                    :depthwiseconv, :∇depthwiseconv_data, :∇depthwiseconv_filter)
@@ -94,7 +94,7 @@ for front_name in (:conv, :∇conv_data, :∇conv_filter,
                         y::AbstractArray{yT,N}, in1::AbstractArray{T1,N},
                         in2::AbstractArray{T2,N}, cdims::ConvDims;
                         kwargs...) where {yT, T1, T2, N}
-            @debug string("Slow fallback implementation invoked for ", $(string(front_name)), "!  ",
+            @warn string("Slow fallback implementation invoked for ", $(string(front_name)), "!  ",
                           "You probably don't want this; check your datatypes.") yT T1 T2
             $(Symbol("$(front_name)_direct!"))(y, in1, in2, cdims; kwargs...)
         end
@@ -104,7 +104,7 @@ end
 # Finally, let's generate auto-allocating versions of all our functions, for all backends.
 # We `@timeit` these methods separately, as we want to know how much time is spent in
 # allocation.  :P
-for backend in (Symbol(), :_direct, :_im2col)
+for backend in (Symbol(), :_direct, :_im2col, :_nnpack)
     # First make auto-allocating versions of the conv()-like calls:
     for name in (:conv, :depthwiseconv)
         @eval begin
@@ -154,13 +154,24 @@ for backend in (Symbol(), :_direct, :_im2col)
     end
 end
 
-
 # Use NNPACK if it is available and the operation is supported
 if is_nnpack_available()
-    function conv(x::Array{xT, 4}, w::Array{wT, 4},
+    function conv(x::Array{Float32, 4}, w::Array{Float32, 4},
                   cdims::DenseConvDims{2, K, C_in, C_out, (1, 1), P, (1, 1), F};
-                  kwargs...) where {xT, wT, K, C_in, C_out, P, F}
+                  kwargs...) where {K, C_in, C_out, P, F}
         return conv_nnpack(x, w, cdims; kwargs...)
+    end
+
+    function ∇conv_data(dy::Array{Float32, 4}, w::Array{Float32, 4},
+                cdims::DenseConvDims{2, K, C_in, C_out, (1, 1), P, (1, 1), F};
+                kwargs...) where {K, C_in, C_out, P, F}
+        return ∇conv_data_nnpack(dy, w, cdims; kwargs...)
+    end
+
+    function ∇conv_filter(x::Array{Float32, 4}, dy::Array{Float32, 4},
+                cdims::DenseConvDims{2, K, C_in, C_out, (1, 1), P, (1, 1), F};
+                kwargs...) where {K, C_in, C_out, P, F}
+        return ∇conv_filter_nnpack(x, dy, cdims; kwargs...)
     end
 end
 
@@ -177,9 +188,6 @@ function conv(x, w::AbstractArray{T, N}; stride=1, pad=0, dilation=1, flipped=fa
     cdims = DenseConvDims(x, w; stride=stride, padding=pad, dilation=dilation, flipkernel=flipped)
     return conv(x, w, cdims)
 end
-
-
-
 
 """
     depthwiseconv(x, w; stride=1, pad=0, dilation=1, flipped=false)
