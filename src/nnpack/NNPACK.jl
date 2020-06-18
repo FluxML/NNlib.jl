@@ -4,10 +4,6 @@ include("libnnpack.jl")
 include("performance.jl")
 include("interface.jl")
 
-const depsjl_path = joinpath(dirname(@__FILE__), "..", "..", "deps", "deps.jl")
-if !isfile(depsjl_path)
-    error("NNPACK not installed properly, run Pkg.build(\"NNlib\"), restart Julia and try again")
-end
 
 const shared_threadpool_dict = Dict{UInt64, Base.RefValue}()
 
@@ -17,7 +13,6 @@ const shared_threadpool_dict = Dict{UInt64, Base.RefValue}()
 Checks if the current hardware is supported by NNPACK.
 """
 function is_nnpack_available()
-    check_deps() isa Nothing || return false
     status = nnp_initialize()
     if status == nnp_status_unsupported_hardware
         return false
@@ -34,15 +29,14 @@ Allows NNPACK to intelligently choose which threadpool to use for getting the be
 performance.
 """
 function allocate_threadpool()
-    global NNPACK_CPU_THREADS = NNPACK_CPU_THREADS > 8 ? UInt64(8) : floor(log2(NNPACK_CPU_THREADS))
-    for i in 1:Int(NNPACK_CPU_THREADS)
+    global NNPACK_CPU_THREADS = NNPACK_CPU_THREADS > 8 ? UInt64(8) : UInt64(exp2(floor(log2(NNPACK_CPU_THREADS))))
+    for i in 0:Int(log2(NNPACK_CPU_THREADS))
         threads = UInt64(2^i)
         push!(shared_threadpool_dict, threads => Ref(pthreadpool_create(threads)))
     end
 end
 
 @init begin
-    check_deps()
     status = nnp_initialize()
     if status == nnp_status_unsupported_hardware
         @warn "Hardware is unsupported by NNPACK so falling back to default NNlib"

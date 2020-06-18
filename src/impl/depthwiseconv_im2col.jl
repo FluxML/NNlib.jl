@@ -13,7 +13,7 @@ depthwiseconv_im2col!
 function depthwiseconv_im2col!(
                 y::AbstractArray{T,5}, x::AbstractArray{T,5},
                 w::AbstractArray{T,5}, cdims::DepthwiseConvDims;
-                col::AbstractArray{T,2} = similar(x, im2col_dims(cdims)),
+                col::AbstractArray{T,3} = similar(x, im2col_dims(cdims)),
                 alpha::T=T(1), beta::T=T(0)) where T
     check_dims(size(x), size(w), size(y), cdims)
     
@@ -27,14 +27,17 @@ function depthwiseconv_im2col!(
     K = prod(kernel_size(cdims))
 
     dcdims = DenseConvDims(cdims)
-    @inbounds for batch_idx in 1:size(x)[end]
-        im2col!(col, view(x, :, :, :, :, batch_idx), dcdims)
+    @threads for batch_idx in 1:size(x)[end]
+        # col_slice is a thread-local workspace
+        col_slice = view(col, :, :, threadid())
+        
+        im2col!(col_slice, view(x, :, :, :, :, batch_idx), dcdims)
 
         # We do a separate convolution for each channel in x, as we must
         for c_in in 1:channels_in(cdims)
             # Walk each pointer forward as we process each input channel
-            GC.@preserve col, w, y, begin
-                col_ptr = pointer(col, (c_in-1)*M*K+1)
+            GC.@preserve col_slice, w, y, begin
+                col_ptr = pointer(col_slice, (c_in-1)*M*K+1)
                 w_ptr = pointer(w, (c_in-1)*K*N+1)
                 y_ptr = pointer(y, ((batch_idx - 1)*channels_in(cdims) + c_in - 1)*M*N + 1)
                 gemm!(Val(false), Val(false), M, N, K, alpha, col_ptr, w_ptr, beta, y_ptr)
@@ -55,7 +58,7 @@ See the documentation for `conv_im2col!()` for explanation of optional parameter
 function ∇depthwiseconv_filter_im2col!(
                 dw::AbstractArray{T,5}, x::AbstractArray{T,5},
                 dy::AbstractArray{T,5}, cdims::DepthwiseConvDims;
-                col::AbstractArray{T,2} = similar(dw, im2col_dims(cdims)),
+                col::AbstractArray{T,3} = similar(dw, im2col_dims(cdims)),
                 alpha::T=T(1), beta::T=T(0)) where T
     check_dims(size(x), size(dw), size(dy), cdims)
 
@@ -63,14 +66,16 @@ function ∇depthwiseconv_filter_im2col!(
     N = channel_multiplier(cdims)
     K = prod(output_size(cdims))
 
-    @inbounds for batch_idx in 1:size(x)[end]
-        im2col!(col, view(x, :, :, :, :, batch_idx), cdims)
+    @threads for batch_idx in 1:size(x)[end]
+        # col_slice is a thread-local workspace
+        col_slice = view(col, :, :, threadid()) 
+        im2col!(col_slice, view(x, :, :, :, :, batch_idx), cdims)
 
         # We do a separate convolution for each channel in x, as we must
         for c_in in 1:channels_in(cdims)
             # Walk each pointer forward as we process each input channel
-            GC.@preserve col, dw, dy, begin
-                col_ptr = pointer(col, (c_in - 1)*M*K + 1)
+            GC.@preserve col_slice, dw, dy, begin
+                col_ptr = pointer(col_slice, (c_in - 1)*M*K + 1)
                 dy_ptr = pointer(dy, (batch_idx - 1)*N*K*channels_in(cdims) + (c_in - 1)*K*N + 1)
                 dw_ptr = pointer(dw, (c_in - 1)*M*N + 1)
                 gemm!(Val(true), Val(false), M, N, K, alpha, col_ptr, dy_ptr, beta, dw_ptr)
@@ -95,7 +100,7 @@ See the documentation for `conv_im2col!()` for explanation of optional parameter
 function ∇depthwiseconv_data_im2col!(
                 dx::AbstractArray{T,5}, dy::AbstractArray{T,5},
                 w::AbstractArray{T,5}, cdims::DepthwiseConvDims;
-                col::AbstractArray{T,2} = similar(dx, im2col_dims(cdims)),
+                col::AbstractArray{T,3} = similar(dx, im2col_dims(cdims)),
                 alpha::T=T(1), beta::T=T(0)) where T
     check_dims(size(dx), size(w), size(dy), cdims)
 
@@ -103,18 +108,21 @@ function ∇depthwiseconv_data_im2col!(
     N = prod(kernel_size(cdims))
     K = channel_multiplier(cdims)
 
-    @inbounds for batch_idx in 1:size(dx)[end]
+    @threads for batch_idx in 1:size(dx)[end]
+        # col_slice is a thread-local workspace
+        col_slice = view(col, :, :, threadid())
+
         # We do a separate convolution for each channel in x, as we must
         for cidx in 1:channels_in(cdims)
-            GC.@preserve col, w, dy, begin
+            GC.@preserve col_slice, w, dy, begin
                 # Walk each pointer forward as we process each input channel
                 dy_ptr = pointer(dy, (batch_idx - 1)*M*K*channels_in(cdims)+(cidx - 1)*K*M + 1)
                 w_ptr = pointer(w, (cidx - 1)*K*N + 1)
-                col_ptr = pointer(col, (cidx - 1)*M*N + 1)
+                col_ptr = pointer(col_slice, (cidx - 1)*M*N + 1)
                 gemm!(Val(false), Val(true), M, N, K, alpha, dy_ptr, w_ptr, T(0), col_ptr)
             end
         end
-        col2im!(view(dx, :, :, :, :, batch_idx), col, cdims)
+        col2im!(view(dx, :, :, :, :, batch_idx), col_slice, cdims)
     end
     return dx
 end

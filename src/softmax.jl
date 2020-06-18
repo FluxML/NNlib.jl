@@ -2,22 +2,28 @@ export softmax, softmax!, ∇softmax, ∇softmax!,
        logsoftmax, logsoftmax!, ∇logsoftmax, ∇logsoftmax!
 
 """
-    softmax(xs) = exp.(xs) ./ sum(exp.(xs))
+    softmax(x; dims=1)
 
-[Softmax](https://en.wikipedia.org/wiki/Softmax_function) takes
-log-probabilities (any real vector) and returns a probability distribution that
-sums to 1.
+[Softmax](https://en.wikipedia.org/wiki/Softmax_function) turns input array `x`
+into probability distributions that sum to 1 along the dimensions specified by `dims`.
+It is semantically equivalent to the following:
 
-If given a matrix it will by default (`dims=1`) treat it as a batch of vectors,
-with each column independent. Keyword `dims=2` will instead treat rows independently, etc.
+    softmax(x; dims=1) = exp.(x) ./ sum(exp.(x), dims=dims)
 
-```
-julia> softmax([1,2,3.])
+with additional manipulations enhancing numerical stability.
+
+For a matrix input `x` it will by default (`dims=1`) treat it as a batch of vectors,
+with each column independent. Keyword `dims=2` will instead treat rows independently,
+etc...
+```julia-repl
+julia> softmax([1, 2, 3])
 3-element Array{Float64,1}:
   0.0900306
   0.244728
   0.665241
 ```
+
+See also [`logsoftmax`](@ref).
 """
 function softmax(xs::AbstractArray; dims=1)
     max_ = maximum(xs, dims=dims)
@@ -64,11 +70,17 @@ end
 
 
 """
-    logsoftmax(xs) = log.(exp.(xs) ./ sum(exp.(xs)))
+    logsoftmax(x; dims=1)
 
 Computes the log of softmax in a more numerically stable
 way than directly taking `log.(softmax(xs))`. Commonly used in
 computing cross entropy loss.
+
+It is semantically equivalent to the following:
+
+    logsoftmax(x; dims=1) = x .- log.(sum(exp.(x), dims=dims))
+
+See also [`softmax`](@ref).
 """
 function logsoftmax(xs::AbstractArray; dims=1)
     max_ = maximum(xs, dims=dims)
@@ -96,5 +108,9 @@ function logsoftmax!(out::AbstractVecOrMat, xs::AbstractVecOrMat)
     return out
 end
 
+function ∇logsoftmax!(out::AbstractVecOrMat, Δ::AbstractVecOrMat, xs::AbstractVecOrMat)
+    out .= Δ .- sum(Δ, dims=1) .* softmax(xs, dims=1)
+end
+
 ∇logsoftmax(Δ, xs; dims=1) = Δ .- sum(Δ, dims=dims) .* softmax(xs, dims=dims)
-∇logsoftmax!(Δ, xs) = ∇softmax!(Δ, Δ, xs)
+∇logsoftmax!(Δ, xs) = ∇logsoftmax!(Δ, Δ, xs)

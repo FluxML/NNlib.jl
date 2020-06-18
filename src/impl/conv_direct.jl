@@ -40,7 +40,7 @@ By defaulting `beta` to `false`, we make use of the Bradbury promotion trick to 
 `y` are `NaN`.
 
 The basic implementation performs 3-dimensional convolution; 1-dimensional and 2-
-dimensional casesa are supported by simply reshaping `y`, `x` and `w`, for which
+dimensional cases are supported by simply reshaping `y`, `x` and `w`, for which
 wrapper methods are available.
 """
 conv_direct!
@@ -161,7 +161,7 @@ function ∇conv_data_direct!(dx::AbstractArray{xT,5}, dy::AbstractArray{yT,5},
                                   dilation=dilation(cdims),
                                   flipkernel=flipkernel(cdims))
     dx = conv_direct!(dx, dy, w, ctdims; alpha=alpha, beta=beta)
-    return transpose_swapbatch(dx)
+    return dx
 end
 
 """
