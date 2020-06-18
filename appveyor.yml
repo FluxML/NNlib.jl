@@ -41,5 +41,9 @@ test_script:
 #   - echo "%JL_CODECOV_SCRIPT%"
 #   - C:\julia\bin\julia -e "%JL_CODECOV_SCRIPT%"
 
+# environment variables
+environment:
+  NNLIB_TEST_FUZZING: "false"
+
 after_test:
   - C:\julia\bin\julia -e "using Pkg; Pkg.add(\"Coverage\"); using Coverage; Codecov.submit(process_folder())"
