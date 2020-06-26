@@ -250,27 +250,12 @@ function im2col!(col::AbstractArray{T,2}, x::AbstractArray{T,4},
 
             kidxs = kernel_index(kw, kh, kd, cdims)
 
-            # If this d is off the edge, then deal with the entire plane
-            # in one fell swoop, like a ravenous flock of crows.  CAW CAW.
-            if input_kd <= 0 || input_kd > depth
-                for kh in 1:kernel_h,
-                    kw in 1:kernel_w
-                    col_reshaped[w, h, d, kidxs..., c] = T(0)
-                end
-                continue
-            end
-
-            # Same for `h`, but in this case it's only a line, not a plane.
-            # This results in slightly less caw'ing.
-            if input_kh <= 0 || input_kh > height
-                for kw in 1:kernel_w
-                    col_reshaped[w, h, d, kidxs..., c] = T(0)
-                end
-                continue
-            end
-
-            # If this `w` is off the edge it and only it gets cleared out
-            if input_kw <= 0 || input_kw > width
+            out_of_bounds = (
+                input_kd <= 0 || input_kd > depth ||
+                input_kh <= 0 || input_kh > height ||
+                input_kw <= 0 || input_kw > width
+            )
+            if out_of_bounds
                 col_reshaped[w, h, d, kidxs..., c] = T(0)
                 continue
             end
