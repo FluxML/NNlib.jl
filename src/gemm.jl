@@ -4,6 +4,8 @@
 using LinearAlgebra
 using LinearAlgebra.BLAS: libblas, BlasInt, @blasfunc
 
+using Compat: get_num_threads, set_num_threads
+
 """
     gemm!()
 
@@ -89,21 +91,27 @@ for (gemm, elt) in gemm_datatype_mappings
             strB = size(B, 3) == 1 ? 0 : Base.stride(B, 3)
             strC = Base.stride(C, 3)
 
-            for k in 1:size(A, 3)
+            old_threads = get_num_threads()
+            set_num_threads(1)
+
+            Threads.@threads for k in 1:size(C, 3)
+
+                ptrAk = ptrA + (k-1) * strA * sizeof($elt)
+                ptrBk = ptrB + (k-1) * strB * sizeof($elt)
+                ptrCk = ptrC + (k-1) * strC * sizeof($elt)
+
                 ccall((@blasfunc($(gemm)), libblas), Nothing,
                       (Ref{UInt8}, Ref{UInt8}, Ref{BlasInt}, Ref{BlasInt},
                        Ref{BlasInt}, Ref{$elt}, Ptr{$elt}, Ref{BlasInt},
                        Ptr{$elt}, Ref{BlasInt}, Ref{$elt}, Ptr{$elt},
                        Ref{BlasInt}),
                       transA, transB, m, n,
-                      ka, alpha, ptrA, max(1,Base.stride(A,2)),
-                      ptrB, max(1,Base.stride(B,2)), beta, ptrC,
+                      ka, alpha, ptrAk, max(1,Base.stride(A,2)),
+                      ptrBk, max(1,Base.stride(B,2)), beta, ptrCk,
                       max(1,Base.stride(C,2)))
-
-                ptrA += strA * sizeof($elt)
-                ptrB += strB * sizeof($elt)
-                ptrC += Base.stride(C, 3) * sizeof($elt)
             end
+
+            set_num_threads(old_threads)
 
             C
         end
