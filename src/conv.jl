@@ -211,23 +211,24 @@ for front_name in (:conv, :∇conv_data, :∇conv_filter,
 end
 
 # Use NNPACK if it is available and the operation is supported
-if is_nnpack_available()
-    function conv(x::Array{Float32, 4}, w::Array{Float32, 4},
-                  cdims::DenseConvDims{2, K, C_in, C_out, (1, 1), P, (1, 1), F};
-                  kwargs...) where {K, C_in, C_out, P, F}
-        return conv_nnpack(x, w, cdims; kwargs...)
-    end
+# commented out 'till proper benchmarking and more correctness test are performed
+# if is_nnpack_available()
+#     function conv(x::Array{Float32, 4}, w::Array{Float32, 4},
+#                   cdims::DenseConvDims{2, K, C_in, C_out, (1, 1), P, (1, 1), F};
+#                   kwargs...) where {K, C_in, C_out, P, F}
+#         return conv_nnpack(x, w, cdims; kwargs...)
+#     end
 
-    function ∇conv_data(dy::Array{Float32, 4}, w::Array{Float32, 4},
-                cdims::DenseConvDims{2, K, C_in, C_out, (1, 1), P, (1, 1), F};
-                kwargs...) where {K, C_in, C_out, P, F}
-        return ∇conv_data_nnpack(dy, w, cdims; kwargs...)
-    end
+#     function ∇conv_data(dy::Array{Float32, 4}, w::Array{Float32, 4},
+#                 cdims::DenseConvDims{2, K, C_in, C_out, (1, 1), P, (1, 1), F};
+#                 kwargs...) where {K, C_in, C_out, P, F}
+#         return ∇conv_data_nnpack(dy, w, cdims; kwargs...)
+#     end
 
-    function ∇conv_filter(x::Array{Float32, 4}, dy::Array{Float32, 4},
-                cdims::DenseConvDims{2, K, C_in, C_out, (1, 1), P, (1, 1), F};
-                kwargs...) where {K, C_in, C_out, P, F}
-        return ∇conv_filter_nnpack(x, dy, cdims; kwargs...)
-    end
-end
+#     function ∇conv_filter(x::Array{Float32, 4}, dy::Array{Float32, 4},
+#                 cdims::DenseConvDims{2, K, C_in, C_out, (1, 1), P, (1, 1), F};
+#                 kwargs...) where {K, C_in, C_out, P, F}
+#         return ∇conv_filter_nnpack(x, dy, cdims; kwargs...)
+#     end
+# end
 ########################################################
