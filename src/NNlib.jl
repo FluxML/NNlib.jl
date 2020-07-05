@@ -1,15 +1,20 @@
 module NNlib
+using Pkg
 using Requires
 using LoopVectorization
+using NNPACK_jll
 
 # Include APIs
 include("dim_helpers.jl")
 
-# NNPACK support
-include(joinpath(@__DIR__, "..", "deps", "deps.jl"))
-if check_deps() == nothing
+
+if isdefined(NNPACK_jll, :libnnpack)
   include("nnpack/NNPACK.jl")
 else
+  @warn "NNPACK not available for your platform: " *
+        "$( Pkg.BinaryPlatforms.platform_name(Pkg.BinaryPlatforms.platform_key_abi()))" *
+        "($( Pkg.BinaryPlatforms.triplet(Pkg.BinaryPlatforms.platform_key_abi())))
+        You will be able to use only the default Julia NNlib backend"
   is_nnpack_available() = false
 end
 

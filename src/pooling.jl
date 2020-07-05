@@ -103,7 +103,7 @@ end
 
 
 # Finally, let's generate auto-allocating versions of all our functions, for all backends:
-for backend in (Symbol(), :_direct, :_im2col)
+for backend in (Symbol(), :_direct, :_nnpack)
     # First make auto-allocating versions of the basic pooling calls:
     for name in (:maxpool, :meanpool)
         @eval begin
@@ -128,14 +128,15 @@ for backend in (Symbol(), :_direct, :_im2col)
     end
 end
 
-
-# Use NNPACK if it is available and operation is supported
-if is_nnpack_available()
-    function maxpool(x::Array{T, 4}, pdims::PoolDims{2, K, S, P, (1, 1)}; kwargs...) where {T, K, S, P}
-        func = nnpack_supported_operation(pdims) ? maxpool_nnpack : maxpool_direct
-        return func(x, pdims; kwargs...)
-    end
-end
+## Use NNPACK if it is available and operation is supported.
+## The corresponding gradient is not available in NNPACK
+## Commented out due to #210
+# if is_nnpack_available()
+#     function maxpool(x::Array{Float32, 4}, pdims::PoolDims{2, K, S, P, (1, 1)}; kwargs...) where {T, K, S, P}
+#         func = nnpack_supported_operation(pdims) ? maxpool_nnpack : maxpool_direct
+#         return func(x, pdims; kwargs...)
+#     end
+# end
 
 expand(N, i::Tuple) = i
 expand(N, i::Integer) = ntuple(_ -> i, N)

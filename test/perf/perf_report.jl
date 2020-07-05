@@ -1,5 +1,7 @@
 using JLD2, NNlib, BenchmarkTools
 
+# TODO organize and compare benchmarks using BenchmarkGroups
+
 # We need things to go quickly here
 BenchmarkTools.DEFAULT_PARAMETERS.samples = 20
 BenchmarkTools.DEFAULT_PARAMETERS.seconds = 2.5
@@ -104,11 +106,13 @@ for rank in (2,),
     end
 
     if NNlib.is_nnpack_available()
-        t_fwd  = @benchmark NNlib.maxpool_nnpack!($y, $x, $pdims)
+        if NNlib.nnpack_supported_operation(pdims)
+            t_fwd  = @benchmark NNlib.maxpool_nnpack!($y, $x, $pdims)
 
-        add_result(t_fwd, "maxpool2d", "nnpack", pdims)
+            add_result(t_fwd, "maxpool2d", "nnpack", pdims)
 
-        @show(pdims)
-        @save "results.jld2" results
+            @show(pdims)
+            @save "results.jld2" results
+        end
     end
 end
