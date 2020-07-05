@@ -233,5 +233,5 @@ for f in (:σ, :hardσ, :logσ, :hardtanh, :relu, :leakyrelu, :relu6, :rrelu, :e
 end
 
 for f in (:σ, :tanh)
-    @eval Base.broadcasted(::typeof($f), x::AbstractArray{T, N}) where {T <: Union{Float64, Float32}, N} = vmap($f, x)
+    @eval Base.broadcasted(::typeof($f), x::Array{T, N}) where {T <: Union{Float64, Float32}, N} = vmap($f, x)
 end

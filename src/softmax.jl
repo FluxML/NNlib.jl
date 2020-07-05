@@ -1,7 +1,12 @@
 export softmax, softmax!, ∇softmax, ∇softmax!,
        logsoftmax, logsoftmax!, ∇logsoftmax, ∇logsoftmax!
 
-const SLEEF = LoopVectorization.SLEEFPirates
+fsum(x; dims) = sum(x, dims = dims)
+fsum(x::Array; dims) = vreduce(+, x, dims = dims)
+fmaximum(x; dims) = sum(x, dims = dims)
+fmaximum(x::Array; dims) = vreduce(max, x, dims = dims)
+fmap(f, x) = map(f, x)
+fmap(f, x::Array) = vmap(f, x)
 
 """
     softmax(x; dims=1)
@@ -28,32 +33,25 @@ julia> softmax([1, 2, 3])
 See also [`logsoftmax`](@ref).
 """
 function softmax(xs::AbstractArray; dims=1)
-    max_ = vreduce(max, xs, dims=dims)
-    exp_ = SLEEF.exp.(xs .- max_)
-    exp_ ./ vreduce(+, exp_, dims=dims)
+    max_ = fmaximum(xs, dims=dims)
+    exp_ = fmap(exp, xs .- max_)
+    exp_ ./ fsum(exp_, dims=dims)
 end
 
-function softmax!(out::AbstractVecOrMat{T}, xs::AbstractVecOrMat{T}) where {T}
-    @inbounds for j = 1:size(xs, 2)
-        # First, store column-wise maximum in the last element of `out`
-        out[end, j] = xs[end, j]
-        @inbounds for i = 1:(size(xs, 1) - 1)
-            out[end, j] = max(out[end, j], xs[i, j])
+function softmax!(out::AbstractVecOrMat, xs::AbstractVecOrMat)
+    for j = 1:size(xs, 2)
+        xi_max = xs[1, j]
+        @avx for i = 1:size(xs, 1)
+            xi_max = max(xi_max, xs[i, j])
         end
-
-        # Subtract the column-wise maximums to normalize, take exp()
-        # out .= exp(xs .- out[end, :])
-        @inbounds for i = 1:size(out, 1)
-            out[i, j] = SLEEF.exp(xs[i, j] - out[end, j])
+        @avx for i = 1:size(out, 1)
+            out[i, j] = exp(xs[i, j] - xi_max)
         end
-
-        # Normalize by sum of the entire thing
-        # out ./= sum(out, 1)
-        s = T(0)
-        @inbounds for i = 1:size(out, 1)
+        s = zero(eltype(out))
+        @avx for i = 1:size(out, 1)
             s += out[i, j]
         end
-        @inbounds for i = 1:size(out, 1)
+        @avx for i = 1:size(out, 1)
             out[i, j] /= s
         end
     end
@@ -62,11 +60,11 @@ end
 
 function ∇softmax!(out::AbstractVecOrMat, Δ::AbstractVecOrMat, xs::AbstractVecOrMat)
     sf = softmax(xs)
-    out .= sf .* (Δ .- vreduce(+, Δ .* sf, dims = 1))
+    out .= sf .* (Δ .- fsum(Δ .* sf, dims = 1))
 end
 function ∇softmax(Δ, xs; dims=1)
     sf = softmax(xs, dims=dims)
-    sf .* (Δ .- vreduce(+, Δ .* sf, dims=dims))
+    sf .* (Δ .- fsum(Δ .* sf, dims=dims))
 end
 ∇softmax!(Δ, xs) = ∇softmax!(Δ, Δ, xs)
 
@@ -85,34 +83,32 @@ It is semantically equivalent to the following:
 See also [`softmax`](@ref).
 """
 function logsoftmax(xs::AbstractArray; dims=1)
-    max_ = vreduce(max, xs, dims=dims)
-    exp_ = SLEEF.exp.(xs .- max_)
-    log_ = SLEEF.log.(vreduce(+, exp_, dims=dims))
+    max_ = fmaximum(xs, dims=dims)
+    exp_ = fmap(exp, xs .- max_)
+    log_ = fmap(log, fsum(exp_, dims=dims))
     (xs .- max_) .- log_
 end
 
 function logsoftmax!(out::AbstractVecOrMat, xs::AbstractVecOrMat)
     for j = 1:size(xs, 2)
-        @inbounds begin
-            xi_max = xs[1, j]
-            for i = 1:size(out, 1)
-                xi_max = max(xi_max, xs[i, j])
-            end
-            s = zero(eltype(out))
-            for i = 1:size(out, 1)
-                s += SLEEF.exp(xs[i, j] - xi_max)
-            end
-            for i = 1:size(out, 1)
-                out[i, j] = xs[i, j] - SLEEF.log(s) - xi_max
-            end
+        xi_max = xs[1, j]
+        @avx for i = 1:size(out, 1)
+            xi_max = max(xi_max, xs[i, j])
+        end
+        s = zero(eltype(out))
+        @avx for i = 1:size(out, 1)
+            s += exp(xs[i, j] - xi_max)
+        end
+        @avx for i = 1:size(out, 1)
+            out[i, j] = xs[i, j] - log(s) - xi_max
         end
     end
     return out
 end
 
 function ∇logsoftmax!(out::AbstractVecOrMat, Δ::AbstractVecOrMat, xs::AbstractVecOrMat)
-    out .= Δ .- vreduce(+, Δ, dims=1) .* softmax(xs, dims=1)
+    out .= Δ .- fsum(Δ, dims=1) .* softmax(xs, dims=1)
 end
 
-∇logsoftmax(Δ, xs; dims=1) = Δ .- vreduce(+, Δ, dims=dims) .* softmax(xs, dims=dims)
+∇logsoftmax(Δ, xs; dims=1) = Δ .- fsum(Δ, dims=dims) .* softmax(xs, dims=dims)
 ∇logsoftmax!(Δ, xs) = ∇logsoftmax!(Δ, Δ, xs)
