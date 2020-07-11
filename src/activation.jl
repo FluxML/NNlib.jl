@@ -1,6 +1,7 @@
 export σ, sigmoid, hardσ, hardsigmoid, hardtanh, relu, leakyrelu, relu6, rrelu, elu, gelu, swish, selu, celu, softplus, softsign, logσ,
        logsigmoid, logcosh, mish, tanhshrink, softshrink, thresholdrelu, trelu, lisht
 
+import Base: tanh
 import LoopVectorization: vifelse
 using LoopVectorization.SLEEFPirates: FloatType
 
