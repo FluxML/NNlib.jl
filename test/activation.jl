@@ -112,6 +112,15 @@ end
         end
     end
 
+    @testset "Broadcasting" begin
+        for T in (Float32, Float64)
+            x = rand(T, 5)
+            for a in ACTIVATION_FUNCTIONS
+                @test a.(x) ≈ map(a, x)
+            end
+        end
+    end
+ 
     @testset "Test Integer64 and Integer32 inputs will force Float64 outputs" begin
         test_value_int_input_forces_float64.(filter(x -> (x != relu && x != relu6 && x != hardtanh && x != trelu), ACTIVATION_FUNCTIONS))
 
