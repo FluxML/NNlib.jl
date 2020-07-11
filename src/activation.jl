@@ -227,7 +227,7 @@ See [Softshrink Activation Function](https://www.gabormelli.com/RKB/Softshrink_A
 softshrink(x::RealOrFloatType, λ = oftype(x/1, 0.5)) = min(max(zero(x), x - λ), x + λ)
 
 # Provide an informative error message if activation functions are called with an array
-for f in (:σ, :hardσ, :logσ, :hardtanh, :relu, :leakyrelu, :relu6, :rrelu, :elu, :gelu, :swish, :lisht, :selu, :celu, :trelu, :softsign, :softplus, :logcosh, :mish, :tanhshrink, :softshrink)
+for f in (:σ, :hardσ, :logσ, :tanh, :hardtanh, :relu, :leakyrelu, :relu6, :rrelu, :elu, :gelu, :swish, :lisht, :selu, :celu, :trelu, :softsign, :softplus, :logcosh, :mish, :tanhshrink, :softshrink)
     @eval $(f)(x::AbstractArray, args...) =
       error("Use broadcasting (`", $(string(f)), ".(x)`) to apply activation functions to arrays.")
     @eval Base.broadcasted(::typeof($f), x::Array{T, N}) where {T <: Union{Float64, Float32}, N} = vmap($f, x)

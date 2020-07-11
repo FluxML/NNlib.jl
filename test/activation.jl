@@ -1,6 +1,6 @@
 using NNlib, Test, Zygote
 
-ACTIVATION_FUNCTIONS = [σ, hardσ, logσ, hardtanh, relu, leakyrelu, relu6, rrelu, elu, gelu, celu, swish, lisht, selu, trelu, softplus, softsign, logcosh, mish, tanhshrink, softshrink];
+ACTIVATION_FUNCTIONS = [σ, hardσ, logσ, tanh, hardtanh, relu, leakyrelu, relu6, rrelu, elu, gelu, celu, swish, lisht, selu, trelu, softplus, softsign, logcosh, mish, tanhshrink, softshrink];
 
 function test_value_float_precision_preserving(a)
     @testset "$(a): " begin
