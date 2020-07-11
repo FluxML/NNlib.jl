@@ -117,10 +117,11 @@ end
             x = rand(T, 5)
             for a in ACTIVATION_FUNCTIONS
                 @test a.(x) ≈ map(a, x)
+                @test Zygote.gradient(z -> sum(a.(z)), x)[1] == a'.(x)
             end
         end
     end
- 
+
     @testset "Test Integer64 and Integer32 inputs will force Float64 outputs" begin
         test_value_int_input_forces_float64.(filter(x -> (x != relu && x != relu6 && x != hardtanh && x != trelu), ACTIVATION_FUNCTIONS))
 
