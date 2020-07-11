@@ -117,7 +117,7 @@ end
             x = rand(T, 5)
             for a in ACTIVATION_FUNCTIONS
                 @test a.(x) ≈ map(a, x)
-                @test Zygote.gradient(z -> sum(a.(z)), x)[1] == a'.(x)
+                @test isapprox(gradient(z -> sum(a.(z)), x)[1], a'.(x))
             end
         end
     end
