@@ -3,7 +3,7 @@ export softmax, softmax!, ∇softmax, ∇softmax!,
 
 fsum(x; dims) = sum(x, dims = dims)
 fsum(x::Array; dims) = vreduce(+, x, dims = dims)
-fmaximum(x; dims) = sum(x, dims = dims)
+fmaximum(x; dims) = maximum(x, dims = dims)
 fmaximum(x::Array; dims) = vreduce(max, x, dims = dims)
 fmap(f, x) = map(f, x)
 fmap(f, x::Array) = vmap(f, x)
