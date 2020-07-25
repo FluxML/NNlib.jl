@@ -1,7 +1,6 @@
 module NNlib
 using Pkg
 using Requires
-using LoopVectorization
 using NNPACK_jll
 
 # Include APIs
