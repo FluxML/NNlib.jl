@@ -1,3 +1,5 @@
+using NNPACK_jll
+
 include("libnnpack_types.jl")
 include("error.jl")
 include("libnnpack.jl")
