@@ -1,6 +1,6 @@
 using NNlib, Test, Zygote
 
-ACTIVATION_FUNCTIONS = [σ, hardσ, logσ, hardtanh, relu, leakyrelu, relu6, rrelu, elu, gelu, celu, swish, lisht, selu, trelu, softplus, softsign, logcosh, mish, tanhshrink, softshrink];
+ACTIVATION_FUNCTIONS = [σ, hardσ, logσ, tanh, hardtanh, relu, leakyrelu, relu6, rrelu, elu, gelu, celu, swish, lisht, selu, trelu, softplus, softsign, logcosh, mish, tanhshrink, softshrink];
 
 function test_value_float_precision_preserving(a)
     @testset "$(a): " begin
@@ -109,6 +109,16 @@ end
         x = rand(5)
         for a in ACTIVATION_FUNCTIONS
             @test_throws ErrorException a(x)
+        end
+    end
+
+    @testset "Broadcasting" begin
+        for T in (Float32, Float64)
+            x = rand(T, 5)
+            for a in ACTIVATION_FUNCTIONS
+                @test a.(x) ≈ map(a, x)
+                @test isapprox(gradient(z -> sum(a.(z)), x)[1], a'.(x))
+            end
         end
     end
 
