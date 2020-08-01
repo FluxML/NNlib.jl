@@ -1,8 +1,6 @@
 module NNlib
 using Pkg
 using Requires
-using LoopVectorization
-using Requires
 
 # Include APIs
 include("dim_helpers.jl")
