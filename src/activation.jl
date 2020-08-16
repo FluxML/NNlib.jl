@@ -22,7 +22,7 @@ const sigmoid = σ
     hardσ(x, a=0.2) = max(0, min(1.0, a * x + 0.5))
 
 Segment-wise linear approximation of sigmoid.
-See [BinaryConnect: Training Deep Neural Networks withbinary weights during propagations](https://arxiv.org/pdf/1511.00363.pdf).
+See [BinaryConnect: Training Deep Neural Networks withbinary weights during propagations](https://arxiv.org/abs/1511.00363).
 """
 hardσ(x, a=0.2) = oftype(x/1, max(zero(x/1), min(one(x/1), oftype(x/1,a) * x + oftype(x/1,0.5))))
 const hardsigmoid = hardσ
@@ -49,7 +49,7 @@ const logsigmoid = logσ
     hardtanh(x) = max(-1, min(1, x))
 
 Segment-wise linear approximation of tanh. Cheaper  and  more  computational  efficient version of tanh.
-See [Large Scale Machine Learning](http://ronan.collobert.org/pub/matos/2004_phdthesis_lip6.pdf).
+See [Large Scale Machine Learning](https://ronan.collobert.com/pub/matos/2004_phdthesis_lip6.pdf).
 """
 hardtanh(x) = max(-one(x), min( one(x), x))
 
@@ -77,7 +77,7 @@ leakyrelu(x, a = oftype(x / 1, 0.01)) = max(a * x, x / one(x))
 
 [Rectified Linear Unit](https://en.wikipedia.org/wiki/Rectifier_(neural_networks))
 activation function capped at 6.
-See [Convolutional Deep Belief Networks on CIFAR-10](http://www.cs.utoronto.ca/%7Ekriz/conv-cifar10-aug2010.pdf)
+See [Convolutional Deep Belief Networks on CIFAR-10](https://www.cs.toronto.edu/~kriz/conv-cifar10-aug2010.pdf)
 """
 relu6(x) = min(relu(x), oftype(x, 6))
 
@@ -86,7 +86,7 @@ relu6(x) = min(relu(x), oftype(x, 6))
 
     a = randomly sampled from uniform distribution U(l, u)
 
-Randomized Leaky [Rectified Linear Unit](https://arxiv.org/pdf/1505.00853.pdf)
+Randomized Leaky [Rectified Linear Unit](https://arxiv.org/abs/1505.00853)
 activation function.
 You can also specify the bound explicitly, e.g. `rrelu(x, 0.0, 1.0)`.
 """
@@ -109,7 +109,7 @@ elu(x, α = one(x)) = ifelse(x ≥ 0, x / one(x), α * (exp(x) - one(x)))
 """
     gelu(x) = 0.5x * (1 + tanh(√(2/π) * (x + 0.044715x^3)))
 
-[Gaussian Error Linear Unit](https://arxiv.org/pdf/1606.08415.pdf)
+[Gaussian Error Linear Unit](https://arxiv.org/abs/1606.08415)
 activation function.
 """
 function gelu(x)
@@ -125,7 +125,7 @@ end
     swish(x) = x * σ(x)
 
 Self-gated activation function.
-See [Swish: a Self-Gated Activation Function](https://arxiv.org/pdf/1710.05941.pdf).
+See [Swish: a Self-Gated Activation Function](https://arxiv.org/abs/1710.05941).
 """
 swish(x) = x * σ(x)
 
@@ -146,7 +146,7 @@ lisht(x) = x * tanh(x)
     α ≈ 1.6733
 
 Scaled exponential linear units.
-See [Self-Normalizing Neural Networks](https://arxiv.org/pdf/1706.02515.pdf).
+See [Self-Normalizing Neural Networks](https://arxiv.org/abs/1706.02515).
 """
 function selu(x)
   λ = oftype(x / 1, 1.0507009873554804934193349852946)
@@ -159,7 +159,7 @@ end
         (x ≥ 0 ? x : α * (exp(x/α) - 1))
 
 Continuously Differentiable Exponential Linear Units
-See [Continuously Differentiable Exponential Linear Units](https://arxiv.org/pdf/1704.07483.pdf).
+See [Continuously Differentiable Exponential Linear Units](https://arxiv.org/abs/1704.07483).
 """
 celu(x, α = one(x)) = ifelse(x ≥ 0, x / one(x), α * (exp(x/α) - one(x)))
 
@@ -168,7 +168,7 @@ celu(x, α = one(x)) = ifelse(x ≥ 0, x / one(x), α * (exp(x/α) - one(x)))
     trelu(x, theta = 1.0) = x > theta ? x : 0
 
 Threshold Gated Rectified Linear.
-See [ThresholdRelu](https://arxiv.org/pdf/1402.3337.pdf)
+See [ThresholdRelu](https://arxiv.org/abs/1402.3337)
 """
 trelu(x, theta = one(x)) = ifelse(x> theta, x, zero(x))
 const thresholdrelu = trelu
