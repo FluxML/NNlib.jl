@@ -95,9 +95,8 @@ function ∇conv_filter_im2col!(
     N = channels_out(cdims)
     K = prod(output_size(cdims))
     
-    @threads for batch_idx in 1:size(x,5)
-        # col_slice is a thread-local workspace
-        col_slice = view(col, :, :, threadid())
+    for batch_idx in 1:size(x,5)
+        col_slice = view(col, :, :, 1)
 
         im2col!(col_slice, view(x, :, :, :, :, batch_idx), cdims)
         GC.@preserve col_slice, dw, dy, begin
