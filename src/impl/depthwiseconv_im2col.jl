@@ -36,7 +36,7 @@ function depthwiseconv_im2col!(
         # We do a separate convolution for each channel in x, as we must
         for c_in in 1:channels_in(cdims)
             # Walk each pointer forward as we process each input channel
-            GC.@preserve col_slice, w, y, begin
+            GC.@preserve col_slice w y begin
                 col_ptr = pointer(col_slice, (c_in-1)*M*K+1)
                 w_ptr = pointer(w, (c_in-1)*K*N+1)
                 y_ptr = pointer(y, ((batch_idx - 1)*channels_in(cdims) + c_in - 1)*M*N + 1)
@@ -74,7 +74,7 @@ function ∇depthwiseconv_filter_im2col!(
         # We do a separate convolution for each channel in x, as we must
         for c_in in 1:channels_in(cdims)
             # Walk each pointer forward as we process each input channel
-            GC.@preserve col_slice, dw, dy, begin
+            GC.@preserve col_slice dw dy begin
                 col_ptr = pointer(col_slice, (c_in - 1)*M*K + 1)
                 dy_ptr = pointer(dy, (batch_idx - 1)*N*K*channels_in(cdims) + (c_in - 1)*K*N + 1)
                 dw_ptr = pointer(dw, (c_in - 1)*M*N + 1)
@@ -114,7 +114,7 @@ function ∇depthwiseconv_data_im2col!(
 
         # We do a separate convolution for each channel in x, as we must
         for cidx in 1:channels_in(cdims)
-            GC.@preserve col_slice, w, dy, begin
+            GC.@preserve col_slice w dy begin
                 # Walk each pointer forward as we process each input channel
                 dy_ptr = pointer(dy, (batch_idx - 1)*M*K*channels_in(cdims)+(cidx - 1)*K*M + 1)
                 w_ptr = pointer(w, (cidx - 1)*K*N + 1)
