@@ -204,7 +204,7 @@ for front_name in (:conv, :∇conv_data, :∇conv_filter,
                         in2::AbstractArray{T2,N}, cdims::ConvDims;
                         kwargs...) where {yT, T1, T2, N}
             @warn string("Slow fallback implementation invoked for ", $(string(front_name)), "!  ",
-                          "You probably don't want this; check your datatypes.") yT T1 T2
+                          "You probably don't want this; check your datatypes.") yT T1 T2 maxlog=1
             $(Symbol("$(front_name)_direct!"))(y, in1, in2, cdims; kwargs...)
         end
     end
