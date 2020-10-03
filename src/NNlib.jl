@@ -23,6 +23,7 @@ include("softmax.jl")
 include("batched/batchedmul.jl")
 include("gemm.jl")
 include("conv.jl")
+include("conv_bias_act.jl")
 include("pooling.jl")
 
 ## Include implementations
