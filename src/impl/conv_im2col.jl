@@ -51,7 +51,7 @@ function conv_im2col!(
         col_slice = view(col, :, :, threadid())
 
         im2col!(col_slice, view(x, :, :, :, :, batch_idx), cdims)
-        GC.@preserve col_slice, w, y, begin
+        GC.@preserve col_slice w y begin
             col_ptr = pointer(col_slice)
             w_ptr = pointer(w)
             y_ptr = pointer(y, (batch_idx - 1)*M*N + 1)
@@ -95,12 +95,11 @@ function ∇conv_filter_im2col!(
     N = channels_out(cdims)
     K = prod(output_size(cdims))
     
-    @threads for batch_idx in 1:size(x,5)
-        # col_slice is a thread-local workspace
-        col_slice = view(col, :, :, threadid())
+    for batch_idx in 1:size(x,5)
+        col_slice = view(col, :, :, 1)
 
         im2col!(col_slice, view(x, :, :, :, :, batch_idx), cdims)
-        GC.@preserve col_slice, dw, dy, begin
+        GC.@preserve col_slice dw dy begin
             col_ptr = pointer(col_slice)
             dy_ptr = pointer(dy,(batch_idx - 1)*K*N + 1)
             dw_ptr = pointer(dw)
@@ -150,7 +149,7 @@ function ∇conv_data_im2col!(
         # col_slice is a thread-local workspace
         col_slice = view(col, :, :, threadid())
 
-        GC.@preserve col_slice, w, dy, begin
+        GC.@preserve col_slice w dy begin
             dy_ptr = pointer(dy, (batch_idx - 1)*M*K + 1)
             w_ptr = pointer(w)
             col_ptr = pointer(col_slice)
