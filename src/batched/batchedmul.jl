@@ -85,12 +85,12 @@ end
 
 _batched_mul!(::Type, C, A, B, α::Number, β::Number) = batched_mul_generic!(C, A, B, α, β)
 
-_batched_mul!(DT::Type{<:DenseArray{T}}, C, A, B, α::Number, β::Number) where {T<:BlasFloat} =
+_batched_mul!(::Type{DT}, C, A, B, α::Number, β::Number) where {DT<:DenseArray{T}} where {T<:BlasFloat} =
     _batched_try_gemm!(DT, C, A, B, α, β)
 
-function _batched_try_gemm!(DT::Type{<:DenseArray{T}}, C, A, B, α::Number, β::Number) where {T<:BlasFloat}
+function _batched_try_gemm!(::Type{DT}, C, A, B, α::Number, β::Number) where {DT<:DenseArray{T}} where {T<:BlasFloat}
 
-    alpha, beta = promote(α, β, zero(T)) # trick from https://github.com/JuliaLang/julia/pull/33229
+    alpha, beta = promote(α, β, zero(T))
     alpha isa T && beta isa T || return batched_mul_generic!(C, A, B, α, β)
 
     are_strided(C, _unbatch(A), _unbatch(B)) || return batched_mul_generic!(C, A, B, α, β)
