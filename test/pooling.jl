@@ -250,7 +250,9 @@ meanpool_answer_dict = Dict(
 
 for rank in (1, 2, 3)
     @testset "pool$(rank)d" begin
-        for (pool, ∇pool, answer_dict) in ((maxpool, ∇maxpool, maxpool_answer_dict),
+        for (pool, ∇pool, answer_dict) in (
+                # Main API name
+                (maxpool, ∇maxpool, maxpool_answer_dict),
                 (meanpool, ∇meanpool, meanpool_answer_dict),
 
                 # _direct name
@@ -793,7 +795,7 @@ maxpool_answer_nature = Dict(
     -0.5,   -1.0,  -0.5,
     -0.25,  -0.5,  -0.25], (3, 3, 1, 1))
     @test all(pool .== valid)
-    
+
     # if NNlib.is_nnpack_available()
     #     if NNlib.nnpack_supported_operation(pdims1)
     #         @test NNlib.maxpool_nnpack(x, pdims1) isa Array{Float32, 4}
