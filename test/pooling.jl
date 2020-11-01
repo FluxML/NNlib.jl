@@ -323,6 +323,7 @@ end
 # using FiniteDifferences
 maxpool_answer_nature = Dict(
     "rank1" => Dict(
+        # kernel size 2, stride 1, pad 0
         "k2s1p0" => (size = (2,),
             stride = 1,
             pad = 0,
@@ -389,6 +390,7 @@ maxpool_answer_nature = Dict(
             ], 5, 1, 1),)
     ),
     "rank2" => Dict(
+        # kernel size 2, stride 1, pad 0
         "k2s1p0" => (size = (2, 2),
             stride = 1,
             pad = 0,
@@ -499,6 +501,7 @@ maxpool_answer_nature = Dict(
             ], 5, 5, 1, 1))
     ),
     "rank3" => Dict(
+        # kernel size 2, stride 1, pad 0
         "k2s1p0" => (size = (2, 2, 2),
             stride = 1,
             pad = 0,
