@@ -1,4 +1,4 @@
-#using NNlib, Test
+# using NNlib, Test
 
 maxpool_answer_dict = Dict(
     1 => Dict(
@@ -250,15 +250,12 @@ meanpool_answer_dict = Dict(
 
 for rank in (1, 2, 3)
     @testset "pool$(rank)d" begin
-        for (pool, ∇pool, answer_dict) in (
-                # Main API name
-                (maxpool, ∇maxpool, maxpool_answer_dict),
+        for (pool, ∇pool, answer_dict) in ((maxpool, ∇maxpool, maxpool_answer_dict),
                 (meanpool, ∇meanpool, meanpool_answer_dict),
 
                 # _direct name
                 (NNlib.maxpool_direct, NNlib.∇maxpool_direct, maxpool_answer_dict),
-                (NNlib.meanpool_direct, NNlib.∇meanpool_direct, meanpool_answer_dict),
-            )
+                (NNlib.meanpool_direct, NNlib.∇meanpool_direct, meanpool_answer_dict),)
 
             @testset "$(pool)$(rank)d" begin
                 y = answer_dict[rank]["y"]
@@ -271,7 +268,7 @@ for rank in (1, 2, 3)
                 x = reshape(Float64[1:prod(size(dx));], size(dx)..., 1, 1)
 
                 # A "drop channels and batch dimension" helper
-                ddims(x) = dropdims(x, dims=(rank+1, rank+2))
+                ddims(x) = dropdims(x, dims=(rank + 1, rank + 2))
 
                 # Let's ensure that a 1x1x1 pooling kernel always just returns `x`
                 @test pool(x, PoolDims(x, 1)) == x
@@ -299,17 +296,17 @@ for rank in (1, 2, 3)
 end
 
 @testset "Pooling - Check Sizes" begin
-  x = rand(10, 10, 3, 10)
-  @test size(maxpool(x, (2, 2))) == (5, 5, 3, 10)
-  @test size(maxpool(x, (2, 2); pad = (1, 1), stride = (2, 2))) == (6, 6, 3, 10)
-  @test size(meanpool(x, (2, 2))) == (5, 5, 3, 10)
-  @test size(meanpool(x, (2, 2); pad = (1, 1), stride = (2, 2))) == (6, 6, 3, 10)
+    x = rand(10, 10, 3, 10)
+    @test size(maxpool(x, (2, 2))) == (5, 5, 3, 10)
+    @test size(maxpool(x, (2, 2); pad=(1, 1), stride=(2, 2))) == (6, 6, 3, 10)
+    @test size(meanpool(x, (2, 2))) == (5, 5, 3, 10)
+    @test size(meanpool(x, (2, 2); pad=(1, 1), stride=(2, 2))) == (6, 6, 3, 10)
 end
 
 # Add another test for 2d maxpool that uses an odd-length size:
 @testset "Issue #133" begin
     x = reshape([(1.:9.)...], 3, 3, 1, 1)
-    pdims = PoolDims(size(x), (2,2), padding = (1,1), stride = (2,2))
+    pdims = PoolDims(size(x), (2, 2), padding=(1, 1), stride=(2, 2))
     y = maxpool(x, pdims)
 
     dy = y .* 0 .+ 1
@@ -324,8 +321,7 @@ end
 # using FiniteDifferences
 maxpool_answer_nature = Dict(
     "rank1" => Dict(
-        "k2s1p0" => ( # kernel size 2, stride 1, pad 0
-            size = (2,),
+        "k2s1p0" => (size = (2,),
             stride = 1,
             pad = 0,
     
@@ -339,10 +335,8 @@ maxpool_answer_nature = Dict(
             
             dx_meanpool = reshape([
                  0.5, 1.0, 1.0, 1.0, 0.5
-            ], 5, 1, 1),
-        ),
-        "k2s1p1" => (
-            size = (2,),
+            ], 5, 1, 1),),
+        "k2s1p1" => (size = (2,),
             stride = 1,
             pad = 1,
             
@@ -356,11 +350,8 @@ maxpool_answer_nature = Dict(
             
             dx_meanpool = reshape([
                  1.0, 1.0, 1.0, 1.0, 1.0
-            ], 5, 1, 1),
-    
-        ),
-        "k3s1p1" => (
-            size = (3,),
+            ], 5, 1, 1),),
+        "k3s1p1" => (size = (3,),
             stride = 1,
             pad = 1,
     
@@ -374,11 +365,8 @@ maxpool_answer_nature = Dict(
             
             dx_meanpool = reshape([
                  0.6666666666, 1.0, 1.0, 1.0, 0.6666666666
-            ], 5, 1, 1),
-    
-        ),
-        "k3s2p1" => (
-            size = (3,),
+            ], 5, 1, 1),),
+        "k3s2p1" => (size = (3,),
             stride = 2,
             pad = 1,
     
@@ -396,12 +384,10 @@ maxpool_answer_nature = Dict(
                  0.333333333,
                  0.666666666,
                  0.333333333,
-            ], 5, 1, 1),
-        )
+            ], 5, 1, 1),)
     ),
     "rank2" => Dict(
-        "k2s1p0" => ( # kernel size 2, stride 1, pad 0
-            size = (2,2),
+        "k2s1p0" => (size = (2, 2),
             stride = 1,
             pad = 0,
 
@@ -427,10 +413,8 @@ maxpool_answer_nature = Dict(
                 0.5   1.0  1.0  1.0  0.5
                 0.5   1.0  1.0  1.0  0.5
                 0.25  0.5  0.5  0.5  0.25
-            ], 5, 5, 1, 1)
-        ),
-        "k2s1p1" => (
-            size = (2,2),
+            ], 5, 5, 1, 1)),
+        "k2s1p1" => (size = (2, 2),
             stride = 1,
             pad = 1,
             
@@ -456,10 +440,8 @@ maxpool_answer_nature = Dict(
                 1.0  1.0  1.0  1.0  1.0
                 1.0  1.0  1.0  1.0  1.0
                 1.0  1.0  1.0  1.0  1.0
-            ], 5, 5, 1, 1)
-        ),
-        "k3s1p1" => (
-            size = (3,3),
+            ], 5, 5, 1, 1)),
+        "k3s1p1" => (size = (3, 3),
             stride = 1,
             pad = 1,
 
@@ -485,10 +467,8 @@ maxpool_answer_nature = Dict(
                 0.666667  1.0       1.0       1.0       0.666667
                 0.666667  1.0       1.0       1.0       0.666667
                 0.444444  0.666667  0.666667  0.666667  0.444444
-            ], 5, 5, 1, 1)
-        ),
-        "k3s2p1" => (
-            size = (3,3),
+            ], 5, 5, 1, 1)),
+        "k3s2p1" => (size = (3, 3),
             stride = 2,
             pad = 1,
 
@@ -514,12 +494,10 @@ maxpool_answer_nature = Dict(
                 0.111111  0.222222  0.111111  0.222222  0.111111
                 0.222222  0.444444  0.222222  0.444444  0.222222
                 0.111111  0.222222  0.111111  0.222222  0.111111
-            ], 5, 5, 1, 1)
-        )
+            ], 5, 5, 1, 1))
     ),
     "rank3" => Dict(
-        "k2s1p0" => ( # kernel size 2, stride 1, pad 0
-            size = (2,2,2),
+        "k2s1p0" => (size = (2, 2, 2),
             stride = 1,
             pad = 0,
     
@@ -578,10 +556,8 @@ maxpool_answer_nature = Dict(
                      0.25   0.5   0.5   0.25
                      0.25   0.5   0.5   0.25
                      0.125  0.25  0.25  0.125
-                ],dims=3), 4,4,3,1,1)
-        ),
-        "k2s1p1" => (
-            size = (2,2,2),
+                ],dims=3), 4,4,3,1,1)),
+        "k2s1p1" => (size = (2, 2, 2),
             stride = 1,
             pad = 1,
             
@@ -640,10 +616,8 @@ maxpool_answer_nature = Dict(
                      1.0  1.0  1.0  1.0
                      1.0  1.0  1.0  1.0
                      1.0  1.0  1.0  1.0
-                ],dims=3), 4,4,3,1,1)
-        ),
-        "k3s1p1" => (
-            size = (3,3,2),
+                ],dims=3), 4,4,3,1,1)),
+        "k3s1p1" => (size = (3, 3, 2),
             stride = 1,
             pad = 1,
     
@@ -702,10 +676,8 @@ maxpool_answer_nature = Dict(
                      0.666667  1.0       1.0       0.666667
                      0.666667  1.0       1.0       0.666667
                      0.444444  0.666667  0.666667  0.444444
-                ],dims=3), 4,4,3,1,1)
-        ),
-        "k3s2p1" => (
-            size = (3,3,2),
+                ],dims=3), 4,4,3,1,1)),
+        "k3s2p1" => (size = (3, 3, 2),
             stride = 2,
             pad = 1,
     
@@ -764,8 +736,7 @@ maxpool_answer_nature = Dict(
                      0.111111   0.222222  0.111111   0.111111
                      0.0555556  0.111111  0.0555556  0.0555556
                      0.0555556  0.111111  0.0555556  0.0555556
-                ],dims=3), 4,4,3,1,1)
-        )
+                ],dims=3), 4,4,3,1,1))
     )
 )
 
@@ -784,7 +755,7 @@ maxpool_answer_nature = Dict(
         # CHECK DIRECT
         y_maxpool_dir = NNlib.maxpool_direct(x, pdims)
         y_meanpool_dir = NNlib.meanpool_direct(x, pdims)
-        @test y_maxpool_dir ≈ y_maxpool  atol=1e-6
+        @test y_maxpool_dir ≈ y_maxpool  atol = 1e-6
         @test isapprox(config.dx_maxpool, NNlib.∇maxpool_direct(dy, y_maxpool_dir, x, pdims), rtol=1e-5)
         @test isapprox(config.dx_meanpool, NNlib.∇meanpool_direct(dy, y_meanpool_dir, x, pdims), rtol=1e-5)
 
@@ -792,9 +763,9 @@ maxpool_answer_nature = Dict(
         if NNlib.is_nnpack_available() && T == Float32
             if NNlib.nnpack_supported_operation(pdims)
                 y_maxpool_nnp = NNlib.maxpool_nnpack(x, pdims)
-                @test y_maxpool_nnp ≈ y_maxpool  atol=1e-6
+                @test y_maxpool_nnp ≈ y_maxpool  atol = 1e-6
                 # NNPACK maxpool gradient still missing
-                #@test isapprox(config.dx_maxpool, NNlib.∇maxpool_nnpack(dy, y_maxpool_nnp, config.x, pdims), rtol=1e-5)
+                # @test isapprox(config.dx_maxpool, NNlib.∇maxpool_nnpack(dy, y_maxpool_nnp, config.x, pdims), rtol=1e-5)
             end
         end
     end
@@ -808,11 +779,21 @@ maxpool_answer_nature = Dict(
     end
 
     # issue 210
-    x, k = rand(Float32,5,2,1,3), (2,1)
-    pdims1 = NNlib.PoolDims(x,k, padding=1,stride=1)
-    pdims2 = NNlib.PoolDims(x,k, padding=(1,0,0,0),stride=1)
-    @test maxpool(x, pdims1) isa Array{Float32, 4}
-    @test maxpool(x, pdims2) isa Array{Float32, 4}
+    x, k = rand(Float32, 5, 2, 1, 3), (2, 1)
+    pdims1 = NNlib.PoolDims(x, k, padding=1, stride=1)
+    pdims2 = NNlib.PoolDims(x, k, padding=(1, 0, 0, 0), stride=1)
+    @test maxpool(x, pdims1) isa Array{Float32,4}
+    @test maxpool(x, pdims2) isa Array{Float32,4}
+
+    # issue #229
+    x = ones(Float32, 4, 4, 1, 1) .* -1
+    pool = meanpool(x, PoolDims(x, 2, padding=1))
+    valid = reshape([
+    -0.25,  -0.5,  -0.25,
+    -0.5,   -1.0,  -0.5,
+    -0.25,  -0.5,  -0.25], (3, 3, 1, 1))
+    @test all(pool .== valid)
+    
     # if NNlib.is_nnpack_available()
     #     if NNlib.nnpack_supported_operation(pdims1)
     #         @test NNlib.maxpool_nnpack(x, pdims1) isa Array{Float32, 4}
