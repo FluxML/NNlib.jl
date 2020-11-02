@@ -56,6 +56,10 @@ end
 
 const sigmoid = σ
 
+∇σ(y, dy) = dy .* conj.(y .* (1 .- y)) # broadcasted gradient, for use by activate!!(f, xs)
+
+∇tanh(y, dy) = dy .* conj.(1 .- y.^2)
+
 """
     hardσ(x) = max(0, min(1, (x + 3) / 6))
 
@@ -178,6 +182,8 @@ julia> lineplot(relu, -2, 2, height=7)
 ```
 """
 relu(x) = ifelse(x<0, zero(x), x)  # faster than max(zero(x), x), still preserves NaN
+
+∇relu(y, dy) = y .> 0
 
 """
     leakyrelu(x, a=0.01) = max(a*x, x)
