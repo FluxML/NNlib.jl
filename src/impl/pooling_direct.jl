@@ -5,7 +5,7 @@ using Statistics
 for name in (:max, :mean)
     @eval function $((Symbol("$(name)pool_direct!")))(
                     y::AbstractArray{T,5}, x::AbstractArray{T,5},
-                    pdims::PoolDims; alpha::T = T(1), beta::T = T(0)) where {T}
+                    pdims::PoolDims; alpha::T=T(1), beta::T=T(0)) where {T}
         @assert beta == T(0) "beta not supported yet"
         check_dims(size(x), size(y), pdims)
 
@@ -22,17 +22,17 @@ for name in (:max, :mean)
         padded_regions, central_region = calc_padding_regions(pdims)
 
         # A helper function to project from output (w, h) to input (input_w, input_h)
-        @inline project(idx, stride, pad) = (idx - 1)*stride - pad + 1
+        @inline project(idx, stride, pad) = (idx - 1) * stride - pad + 1
 
         # If we're doing mean pooling, we represent division by kernel size by rolling it
         # into the `alpha` multiplier.
         if $(name == :mean)
-            alpha = alpha/prod(kernel_size(pdims))
+            alpha = alpha / prod(kernel_size(pdims))
         end
 
         # Each loop, we initialize `m` to something, set that here.
         m_init = if $(name == :max)
-            typemin(T)
+            T <: AbstractFloat ? nextfloat(typemin(T)) : typemin(T)
         elseif $(name == :mean)
             T(0)
         else
@@ -54,9 +54,9 @@ for name in (:max, :mean)
                 kh in 1:kernel_h,
                 kw in 1:kernel_w
 
-                input_kd = project(d, stride_d, pad_d_lo) + (kd - 1)*dil_d
-                input_kh = project(h, stride_h, pad_h_lo) + (kh - 1)*dil_h
-                input_kw = project(w, stride_w, pad_w_lo) + (kw - 1)*dil_w
+                input_kd = project(d, stride_d, pad_d_lo) + (kd - 1) * dil_d
+                input_kh = project(h, stride_h, pad_h_lo) + (kh - 1) * dil_h
+                input_kw = project(w, stride_w, pad_w_lo) + (kw - 1) * dil_w
 
                 # This conditional will be optimized away at compile time
                 if $(name == :max)
@@ -67,7 +67,7 @@ for name in (:max, :mean)
                     error("Unimplemented codegen path")
                 end
             end
-            y[w, h, d, c, batch_idx] = alpha*m + beta*y[w, h, d, c, batch_idx]
+            y[w, h, d, c, batch_idx] = alpha * m + beta * y[w, h, d, c, batch_idx]
         end
 
         # Next, the padded regions
@@ -82,23 +82,23 @@ for name in (:max, :mean)
                 # do so by putting in a bunch of conditionals.  :/
                 m = m_init
                 for kd in 1:kernel_d
-                    input_kd = project(d, stride_d, pad_d_lo) + (kd - 1)*dil_d
+                    input_kd = project(d, stride_d, pad_d_lo) + (kd - 1) * dil_d
                     if input_kd <= 0 || input_kd > depth
-                        m = max(m, 0.0)
+                        # add here condition for handling options for paded value handling  
                         continue
                     end
 
                     for kh in 1:kernel_h
-                        input_kh = project(h, stride_h, pad_h_lo) + (kh - 1)*dil_h
+                        input_kh = project(h, stride_h, pad_h_lo) + (kh - 1) * dil_h
                         if input_kh <= 0 || input_kh > height
-                            m = max(m, 0.0)
+                            # add here condition for handling options for paded value handling  
                             continue
                         end
 
                         for kw in 1:kernel_w
-                            input_kw = project(w, stride_w, pad_w_lo) + (kw - 1)*dil_w
+                            input_kw = project(w, stride_w, pad_w_lo) + (kw - 1) * dil_w
                             if input_kw <= 0 || input_kw > width
-                                m = max(m, 0.0)
+                                # add here condition for handling options for paded value handling  
                                 continue
                             end
 
@@ -112,7 +112,7 @@ for name in (:max, :mean)
                         end
                     end
                 end
-                y[w, h, d, c, batch_idx] = alpha*m + beta*y[w, h, d, c, batch_idx]
+                y[w, h, d, c, batch_idx] = alpha * m + beta * y[w, h, d, c, batch_idx]
             end
         end
 
@@ -125,7 +125,7 @@ for name in (:max, :mean)
     @eval function $((Symbol("∇$(name)pool_direct!")))(
                     dx::AbstractArray{T,5}, dy::AbstractArray{T,5},
                     y::AbstractArray{T,5}, x::AbstractArray{T,5},
-                    pdims::PoolDims; alpha::T = T(1), beta::T = T(0)) where {T}
+                    pdims::PoolDims; alpha::T=T(1), beta::T=T(0)) where {T}
         check_dims(size(x), size(dy), pdims)
 
         width, height, depth = input_size(pdims)
@@ -141,12 +141,12 @@ for name in (:max, :mean)
         padded_regions, central_region = calc_padding_regions(pdims)
 
         # A helper function to project from output (w, h) to input (input_w, input_h)
-        @inline project(idx, stride, pad) = (idx - 1)*stride - pad + 1
+        @inline project(idx, stride, pad) = (idx - 1) * stride - pad + 1
 
         # If we're doing mean pooling, we represent division by kernel size by rolling
         # it into the `alpha` multiplier.
         if $(name == :mean)
-            alpha = alpha/prod(kernel_size(pdims))
+            alpha = alpha / prod(kernel_size(pdims))
         end
 
         # Start with the central region
@@ -166,9 +166,9 @@ for name in (:max, :mean)
                 kh in 1:kernel_h,
                 kw in 1:kernel_w
 
-                input_kd = project(d, stride_d, pad_d_lo) + (kd - 1)*dil_d
-                input_kh = project(h, stride_h, pad_h_lo) + (kh - 1)*dil_h
-                input_kw = project(w, stride_w, pad_w_lo) + (kw - 1)*dil_w
+                input_kd = project(d, stride_d, pad_d_lo) + (kd - 1) * dil_d
+                input_kh = project(h, stride_h, pad_h_lo) + (kh - 1) * dil_h
+                input_kw = project(w, stride_w, pad_w_lo) + (kw - 1) * dil_w
 
                 # This conditional will be optimized away at compile time,
                 # or my name isn't shengdan jingyu
@@ -179,15 +179,15 @@ for name in (:max, :mean)
                     # Uncomment line below if using with non-precise output (e.g. by NNPACK)
                     # if abs(y_idx - x[x_idxs...]) < 1e-5 && !maxpool_already_chose
                     if y_idx ≈ x[x_idxs...] && !maxpool_already_chose
-                            dx[x_idxs...] += dy_idx*alpha + beta*dx[x_idxs...]
+                        dx[x_idxs...] += dy_idx * alpha + beta * dx[x_idxs...]
                         maxpool_already_chose = true
                     # Maxpooling does not support `beta` right now.  :(
-                    #else
+                    # else
                     #    dx[x_idxs...] = T(0) + beta*dx[x_idxs...]
                     end
                 elseif $(name == :mean)
                     # Either does meanpool :(
-                    dx[x_idxs...] = dy_idx*alpha + dx[x_idxs...]
+                    dx[x_idxs...] = dy_idx * alpha + dx[x_idxs...]
                 else
                     error("Unimplemented codegen path")
                 end
@@ -210,19 +210,19 @@ for name in (:max, :mean)
                 # In these loops, we have to check that we're not reaching off the edge,
                 # we do so by putting in a bunch of conditionals.  :/
                 for kd in 1:kernel_d
-                    input_kd = project(d, stride_d, pad_d_lo) + (kd - 1)*dil_d
+                    input_kd = project(d, stride_d, pad_d_lo) + (kd - 1) * dil_d
                     if input_kd <= 0 || input_kd > depth
                         continue
                     end
 
                     for kh in 1:kernel_h
-                        input_kh = project(h, stride_h, pad_h_lo) + (kh - 1)*dil_h
+                        input_kh = project(h, stride_h, pad_h_lo) + (kh - 1) * dil_h
                         if input_kh <= 0 || input_kh > height
                             continue
                         end
 
                         for kw in 1:kernel_w
-                            input_kw = project(w, stride_w, pad_w_lo) + (kw - 1)*dil_w
+                            input_kw = project(w, stride_w, pad_w_lo) + (kw - 1) * dil_w
                             if input_kw <= 0 || input_kw > width
                                 continue
                             end
@@ -233,13 +233,13 @@ for name in (:max, :mean)
                                 # Uncomment line below if using with non-precise output
                                 # if abs(y_idx - x[x_idxs...]) < 1e-5 && !maxpool_already_chose
                                 if y_idx ≈ x[x_idxs...] && !maxpool_already_chose
-                                    dx[x_idxs...] += dy_idx*alpha + beta*dx[x_idxs...]
+                                    dx[x_idxs...] += dy_idx * alpha + beta * dx[x_idxs...]
                                     maxpool_already_chose = true
-                                #else
+                                # else
                                 #    dx[x_idxs...] = T(0) + beta*dx[x_idxs...]
                                 end
                             elseif $(name == :mean)
-                                dx[x_idxs...] += dy_idx*alpha + beta*dx[x_idxs...]
+                                dx[x_idxs...] += dy_idx * alpha + beta * dx[x_idxs...]
                             else
                                 error("Unimplemented codegen path")
                             end
