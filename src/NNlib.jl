@@ -39,4 +39,7 @@ include("impl/depthwiseconv_im2col.jl")
 # Direct implementations of pooling
 include("impl/pooling_direct.jl")
 
+# differentiation rules
+include("chainrulescore.jl")
+
 end # module NNlib
