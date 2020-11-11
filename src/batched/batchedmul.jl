@@ -1,26 +1,48 @@
 
-export batched_mul, batched_transpose, batched_adjoint
+export batched_mul, ⊠
+export batched_transpose, batched_adjoint
 
 include("./batchedadjtrans.jl")
 
-using LinearAlgebra: BlasFloat, Transpose, Adjoint
+using LinearAlgebra: BlasFloat, Transpose, Adjoint, AdjOrTransAbsMat
 
 _unbatch(A) = A
 _unbatch(A::BatchedAdjOrTrans) = parent(A)
 
 """
     batched_mul(A, B) -> C
+    A ⊠ B  # \\boxtimes
 
 Batched matrix multiplication. Result has `C[:,:,k] == A[:,:,k] * B[:,:,k]` for all `k`.
 If `size(B,3) == 1` then instead `C[:,:,k] == A[:,:,k] * B[:,:,1]`, and similarly for `A`.
 
-To transpose each matrix apply `batched_transpose` to the array,
-and similarly `batched_adjoint`. Other permutations are also handled by BLAS,
+To transpose each matrix, apply `batched_adjoint` or `batched_transpose` to the array:
+```julia
+julia> A, B = randn(2,5,17), randn(5,9,17);
+
+julia> A ⊠ B |> size
+(2, 9, 17)
+
+julia> batched_adjoint(A) |> size
+(5, 2, 17)
+
+julia> batched_mul(A, batched_adjoint(randn(9,5,17))) |> size
+(2, 9, 17)
+
+julia> A ⊠ randn(5,9,1) |> size
+(2, 9, 17)
+
+julia> batched_transpose(A) == PermutedDimsArray(A, (2,1,3))
+true
+```
+The equivalent `PermutedDimsArray` may be used in place of `batched_transpose`.
+Other permutations are also handled by BLAS,
 provided that the batch index `k` is not the first dimension of the underlying array.
 Thus `PermutedDimsArray(::Array, (1,3,2))` and `PermutedDimsArray(::Array, (3,1,2))` are fine.
 
-However `A = PermutedDimsArray(::Array, (3,2,1))` is not acceptable to BLAS,
-since `stride(A,3) == 1`. This be copied, as doing so is faster than `batched_mul_generic!`.
+However, `A = PermutedDimsArray(::Array, (3,2,1))` is not acceptable to BLAS,
+since the batch dimension is the contiguous one: `stride(A,3) == 1`.
+This will be copied, as doing so is faster than `batched_mul_generic!`.
 
 Both this `copy` and `batched_mul_generic!` produce `@debug` messages,
 and setting for instance `ENV["JULIA_DEBUG"] = NNlib` will display them.
@@ -30,6 +52,8 @@ function batched_mul(A::AbstractArray{T1, 3}, B::AbstractArray{T2, 3}) where {T1
         throw(DimensionMismatch("batch size mismatch: A != B"))
     _batched_mul(storage_typejoin(A, B), A, B)
 end
+
+const ⊠ = batched_mul
 
 function _batched_mul(::Type, A, B)
     T = promote_type(eltype(A), eltype(B))
@@ -201,6 +225,8 @@ storage_typejoin(A) = storage_type(A)
 
 This generalises `A isa StridedArray` to treat wrappers like `A::PermutedDimsArray`,
 for which it returns `is_strided(parent(A))`.
+
+It returns `true` for `CuArray`s, and `PermutedDimsArray`s of those.
 
 Other wrappers (defined outside Base, LinearAlgebra) are assumed not to break
 strided-ness, and hence also return `is_strided(parent(A))`.
