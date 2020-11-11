@@ -1,5 +1,5 @@
 
-export batched_mul, ⊠
+export batched_mul, ⊠,  batched_vec
 export batched_transpose, batched_adjoint
 
 include("./batchedadjtrans.jl")
@@ -84,6 +84,89 @@ function _copy_if_faster(X::BatchedAdjoint{<:Complex})
     end
     X
 end
+
+
+"""
+    batched_mul(A::Array{T,3}, B::Matrix)
+    batched_mul(A::Matrix, B::Array{T,3})
+    A ⊠ B
+
+This is always matrix-matrix multiplication, but
+either `A` or `B` may lack a batch index.
+
+* When `B` is a matrix, result has `C[:,:,k] == A[:,:,k] * B[:,:]` for all `k`.
+
+* When `A` is a matrix, then `C[:,:,k] == A[:,:] * B[:,:,k]`.
+  This is equivalent to `A ⊡ B` using TensorCore.jl, but implemented using
+  `batched_gemm` instead of one `*`.
+
+```julia
+julia> randn(16,8,32) ⊠ randn(8,4) |> size
+(16, 4, 32)
+
+julia> randn(16,8) ⊠ randn(8,4,32) |> size
+(16, 4, 32)
+```
+
+See also `batched_vec` for `A[:,:,k] * B[:,k]` etc.
+"""
+batched_mul(A::AbstractArray{T,3} where T, B::AbstractMatrix) = _semi_batched_mul(A,B)
+
+# Simplify signature of batched_mul by hiding dispatch on Adjoint etc:
+
+_semi_batched_mul(A::AbstractArray{<:Any,3}, B::AbstractMatrix) =
+    batched_mul(A, reshape(B, size(B)..., 1))
+
+_semi_batched_mul(A::AbstractArray{<:Any,3}, B::Adjoint{<:Number,<:AbstractMatrix}) =
+    batched_mul(A, batched_adjoint(reshape(parent(B), size(parent(B))..., 1)))
+
+_semi_batched_mul(A::AbstractArray{<:Any,3}, B::Transpose{<:Number,<:AbstractMatrix}) =
+    batched_mul(A, batched_transpose(reshape(parent(B), size(parent(B))..., 1)))
+
+batched_mul(A::AbstractMatrix, B::AbstractArray{T,3} where T) = _semi_batched_mul(A,B)
+
+_semi_batched_mul(A::AbstractMatrix, B::AbstractArray{<:Any,3}) =
+    batched_mul(reshape(A, size(A)..., 1), B)
+
+_semi_batched_mul(A::Adjoint{<:Number,<:AbstractMatrix}, B::AbstractArray{<:Any,3}) =
+    batched_mul(batched_adjoint(reshape(parent(A), size(parent(A))..., 1)), B)
+
+_semi_batched_mul(A::Transpose{<:Number,<:AbstractMatrix}, B::AbstractArray{<:Any,3}) =
+    batched_mul(batched_transpose(reshape(parent(A), size(parent(A))..., 1)), B)
+
+"""
+    batched_vec(A::Array{T,3}, B::Matrix)
+    batched_vec(A::Array{T,3}, b::Vector)
+
+Batched matrix-vector multiplication:
+the result has `C[:,:,k] == A[:,:,k] * B[:,k]` for all `k`,
+or else `C[:,:,k] == A[:,:,k] * b` for `b::Vector`.
+
+With the same argument types, `batched_mul(A, B)` would regard `B` as
+a fixed matrix, not a batch of vectors. Both reshape and then
+call `batched_mul(::Array{T,3}, ::Array{T,3})`.
+
+```julia
+julia> A, B, b = randn(16,8,32), randn(8,32), randn(8);
+
+julia> batched_vec(A,B) |> size
+(16, 32)
+
+julia> batched_vec(A,b) |> size
+(16, 32)
+```
+"""
+function batched_vec(A::AbstractArray{T,3} where T, B::AbstractMatrix)
+    # If B is transposed, then stride=1 is the batch dim, so we will end up copying anyway:
+    if B isa AdjOrTransAbsMat{<:BlasFloat, <:StridedMatrix}
+        return batched_vec(A, copy(B))
+    end
+    reshape(batched_mul(A, reshape(B, size(B,1), 1, size(B,2))), size(A,1), size(A,3))
+end
+
+batched_vec(A::AbstractArray{T,3} where T, b::AbstractVector) =
+    reshape(batched_mul(A, reshape(b, length(b), 1, 1)), size(A,1), size(A,3))
+
 
 """
     batched_mul!(C, A, B) -> C

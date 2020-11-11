@@ -176,6 +176,26 @@ end
     end
 end
 
+@testset "batched_mul(ndims < 3), $TM" for TM in [ComplexF64, Int8]
+    A = randn(ComplexF64, 3,3,3)
+    M = rand(TM, 3,3) .+ im
+    V = rand(TM, 3)
+
+    # These are all reshaped and sent to batched_mul(3-array, 3-array)
+    @test batched_mul(A, M) ≈ cat([A[:,:,k] * M for k in 1:3]...; dims=3)
+    @test batched_mul(A, M') ≈ cat([A[:,:,k] * M' for k in 1:3]...; dims=3)
+    @test A ⊠ transpose(M) ≈ cat([A[:,:,k] * transpose(M) for k in 1:3]...; dims=3)
+
+    @test batched_mul(M, A) ≈ cat([M * A[:,:,k] for k in 1:3]...; dims=3)
+    @test batched_mul(M', A) ≈ cat([M' * A[:,:,k] for k in 1:3]...; dims=3)
+    @test transpose(M) ⊠ A ≈ cat([transpose(M) * A[:,:,k] for k in 1:3]...; dims=3)
+
+    # batched_vec
+    @test batched_vec(A, M) ≈ hcat([A[:,:,k] * M[:,k] for k in 1:3]...)
+    @test batched_vec(A, M') ≈ hcat([A[:,:,k] * (M')[:,k] for k in 1:3]...)
+    @test batched_vec(A, V) ≈ hcat([A[:,:,k] * V for k in 1:3]...)
+end
+
 @testset "storage_type" begin
 
     @test storage_type(transpose(reshape(view(rand(10), 2:9),4,:))) == Vector{Float64}
