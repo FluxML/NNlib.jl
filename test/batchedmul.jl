@@ -103,6 +103,15 @@ end
     D′ = randn(TB, 3,5,1)
     @test size(batched_mul(A′,D′)) == (4,5,2)
     @test batched_mul(A′,D′) ≈ half_batched_mul(A′, D′)
+
+    # Large output
+    if TB == Float64
+        N = 50
+        A = rand(N,N,N)
+        B = rand(N,N,N)
+        C = reshape(reduce(hcat, [vec(A[:,:,k] * B[:,:,k]) for k in 1:N]), N,N,N)
+        @test C ≈ A ⊠ B
+    end
 end
 
 @testset "BatchedAdjOrTrans interface * $TB" for TB in [Float64, Float32]
@@ -196,12 +205,5 @@ end
     @test is_strided(batched_transpose(A))
     @test !is_strided(batched_adjoint(A .+ im))
     @test is_strided(batched_transpose(A .+ im))
-
-    #=
-    using SparseArrays
-    @test !is_strided(sparse(M))
-    using NamedDims
-    @test is_strided(NamedDimsArray(M,(:a, :b))) # and 0.029 ns, 0 allocations
-    =#
 
 end
