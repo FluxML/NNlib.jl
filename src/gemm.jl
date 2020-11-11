@@ -4,6 +4,8 @@
 using LinearAlgebra
 using LinearAlgebra.BLAS: libblas, BlasInt, @blasfunc
 
+using Compat: get_num_threads, set_num_threads
+
 """
     gemm!()
 
@@ -67,13 +69,15 @@ for (gemm, elt) in gemm_datatype_mappings
                                beta::($elt),
                                C::AbstractArray{$elt, 3})
             @assert !Base.has_offset_axes(A, B, C)
-            @assert size(A, 3) == size(B, 3) == size(C, 3) "batch size mismatch"
+            @assert size(A, 3) == 1 || size(A, 3) == size(C, 3) "batch size mismatch: A != C"
+            @assert size(B, 3) == 1 || size(B, 3) == size(C, 3) "batch size mismatch: B != C"
+
             m = size(A, transA == 'N' ? 1 : 2)
             ka = size(A, transA == 'N' ? 2 : 1)
             kb = size(B, transB == 'N' ? 1 : 2)
             n = size(B, transB == 'N' ? 2 : 1)
             if ka != kb || m != size(C,1) || n != size(C,2)
-                throw(DimensionMismatch("A has size ($m,$ka), B has size ($kb,$n), C has size $(size(C))"))
+                throw(DimensionMismatch("A1 has size ($m,$ka), B1 has size ($kb,$n), C1 has size $(size(C)[1:2])"))
             end
             LinearAlgebra.BLAS.chkstride1(A)
             LinearAlgebra.BLAS.chkstride1(B)
@@ -83,21 +87,31 @@ for (gemm, elt) in gemm_datatype_mappings
             ptrB = Base.unsafe_convert(Ptr{$elt}, B)
             ptrC = Base.unsafe_convert(Ptr{$elt}, C)
 
-            for k in 1:size(A, 3)
+            strA = size(A, 3) == 1 ? 0 : Base.stride(A, 3)
+            strB = size(B, 3) == 1 ? 0 : Base.stride(B, 3)
+            strC = Base.stride(C, 3)
+
+            old_threads = get_num_threads()
+            set_num_threads(1)
+
+            Threads.@threads for k in 1:size(C, 3)
+
+                ptrAk = ptrA + (k-1) * strA * sizeof($elt)
+                ptrBk = ptrB + (k-1) * strB * sizeof($elt)
+                ptrCk = ptrC + (k-1) * strC * sizeof($elt)
+
                 ccall((@blasfunc($(gemm)), libblas), Nothing,
                       (Ref{UInt8}, Ref{UInt8}, Ref{BlasInt}, Ref{BlasInt},
                        Ref{BlasInt}, Ref{$elt}, Ptr{$elt}, Ref{BlasInt},
                        Ptr{$elt}, Ref{BlasInt}, Ref{$elt}, Ptr{$elt},
                        Ref{BlasInt}),
                       transA, transB, m, n,
-                      ka, alpha, ptrA, max(1,Base.stride(A,2)),
-                      ptrB, max(1,Base.stride(B,2)), beta, ptrC,
+                      ka, alpha, ptrAk, max(1,Base.stride(A,2)),
+                      ptrBk, max(1,Base.stride(B,2)), beta, ptrCk,
                       max(1,Base.stride(C,2)))
-
-                ptrA += size(A, 1) * size(A, 2) * sizeof($elt)
-                ptrB += size(B, 1) * size(B, 2) * sizeof($elt)
-                ptrC += size(C, 1) * size(C, 2) * sizeof($elt)
             end
+
+            set_num_threads(old_threads)
 
             C
         end
