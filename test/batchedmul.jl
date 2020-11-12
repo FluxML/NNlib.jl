@@ -104,13 +104,17 @@ end
     @test size(batched_mul(A′,D′)) == (4,5,2)
     @test batched_mul(A′,D′) ≈ half_batched_mul(A′, D′)
 
-    # Large output
+    # Large output, multi-threaded path
     if TB == Float64
         N = 50
         A = rand(N,N,N)
         B = rand(N,N,N)
         C = reshape(reduce(hcat, [vec(A[:,:,k] * B[:,:,k]) for k in 1:N]), N,N,N)
         @test C ≈ A ⊠ B
+
+        D = rand(N,N,1)
+        E = reshape(reduce(hcat, [vec(A[:,:,k] * D[:,:,1]) for k in 1:N]), N,N,N)
+        @test E ≈ A ⊠ D
     end
 end
 

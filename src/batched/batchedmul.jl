@@ -16,7 +16,8 @@ _unbatch(A::BatchedAdjOrTrans) = parent(A)
 Batched matrix multiplication. Result has `C[:,:,k] == A[:,:,k] * B[:,:,k]` for all `k`.
 If `size(B,3) == 1` then instead `C[:,:,k] == A[:,:,k] * B[:,:,1]`, and similarly for `A`.
 
-To transpose each matrix, apply `batched_adjoint` or `batched_transpose` to the array:
+To transpose each matrix, apply `batched_transpose` to the array,
+or `batched_adjoint` for conjugate-transpose:
 ```julia
 julia> A, B = randn(2,5,17), randn(5,9,17);
 
@@ -102,6 +103,9 @@ either `A` or `B` may lack a batch index.
 
 ```julia
 julia> randn(16,8,32) ⊠ randn(8,4) |> size
+(16, 4, 32)
+
+julia> randn(16,8,32) ⊠ randn(8,4,1) |> size  # equivalent
 (16, 4, 32)
 
 julia> randn(16,8) ⊠ randn(8,4,32) |> size
