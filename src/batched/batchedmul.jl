@@ -18,7 +18,8 @@ If `size(B,3) == 1` then instead `C[:,:,k] == A[:,:,k] * B[:,:,1]`, and similarl
 
 To transpose each matrix, apply `batched_transpose` to the array,
 or `batched_adjoint` for conjugate-transpose:
-```julia
+
+```jldoctest
 julia> A, B = randn(2,5,17), randn(5,9,17);
 
 julia> A ⊠ B |> size
@@ -36,6 +37,7 @@ julia> A ⊠ randn(5,9,1) |> size
 julia> batched_transpose(A) == PermutedDimsArray(A, (2,1,3))
 true
 ```
+
 The equivalent `PermutedDimsArray` may be used in place of `batched_transpose`.
 Other permutations are also handled by BLAS,
 provided that the batch index `k` is not the first dimension of the underlying array.
@@ -98,10 +100,11 @@ either `A` or `B` may lack a batch index.
 * When `B` is a matrix, result has `C[:,:,k] == A[:,:,k] * B[:,:]` for all `k`.
 
 * When `A` is a matrix, then `C[:,:,k] == A[:,:] * B[:,:,k]`.
-  This is equivalent to `A ⊡ B` using TensorCore.jl, but implemented using
-  `batched_gemm` instead of one `*`.
+  This can also be done by reshaping and calling `*`,
+  for instance `A ⊡ B` using TensorCore.jl, but is implemented here using
+  `batched_gemm` instead of `gemm`.
 
-```julia
+```jldoctest
 julia> randn(16,8,32) ⊠ randn(8,4) |> size
 (16, 4, 32)
 
@@ -112,7 +115,7 @@ julia> randn(16,8) ⊠ randn(8,4,32) |> size
 (16, 4, 32)
 ```
 
-See also `batched_vec` for `A[:,:,k] * B[:,k]` etc.
+See also `batched_vec` to regard `B` as a batch of vectors, `A[:,:,k] * B[:,k]`.
 """
 batched_mul(A::AbstractArray{T,3} where T, B::AbstractMatrix) = _semi_batched_mul(A,B)
 
@@ -150,7 +153,7 @@ With the same argument types, `batched_mul(A, B)` would regard `B` as
 a fixed matrix, not a batch of vectors. Both reshape and then
 call `batched_mul(::Array{T,3}, ::Array{T,3})`.
 
-```julia
+```jldoctest
 julia> A, B, b = randn(16,8,32), randn(8,32), randn(8);
 
 julia> batched_vec(A,B) |> size
