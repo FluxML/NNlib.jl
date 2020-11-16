@@ -1,26 +1,51 @@
 
-export batched_mul, batched_transpose, batched_adjoint
+export batched_mul, ⊠,  batched_vec
+export batched_transpose, batched_adjoint
 
 include("./batchedadjtrans.jl")
 
-using LinearAlgebra: BlasFloat, Transpose, Adjoint
+using LinearAlgebra: BlasFloat, Transpose, Adjoint, AdjOrTransAbsMat
 
 _unbatch(A) = A
 _unbatch(A::BatchedAdjOrTrans) = parent(A)
 
 """
     batched_mul(A, B) -> C
+    A ⊠ B  # \\boxtimes
 
 Batched matrix multiplication. Result has `C[:,:,k] == A[:,:,k] * B[:,:,k]` for all `k`.
 If `size(B,3) == 1` then instead `C[:,:,k] == A[:,:,k] * B[:,:,1]`, and similarly for `A`.
 
-To transpose each matrix apply `batched_transpose` to the array,
-and similarly `batched_adjoint`. Other permutations are also handled by BLAS,
+To transpose each matrix, apply `batched_transpose` to the array,
+or `batched_adjoint` for conjugate-transpose:
+
+```jldoctest
+julia> A, B = randn(2,5,17), randn(5,9,17);
+
+julia> A ⊠ B |> size
+(2, 9, 17)
+
+julia> batched_adjoint(A) |> size
+(5, 2, 17)
+
+julia> batched_mul(A, batched_adjoint(randn(9,5,17))) |> size
+(2, 9, 17)
+
+julia> A ⊠ randn(5,9,1) |> size
+(2, 9, 17)
+
+julia> batched_transpose(A) == PermutedDimsArray(A, (2,1,3))
+true
+```
+
+The equivalent `PermutedDimsArray` may be used in place of `batched_transpose`.
+Other permutations are also handled by BLAS,
 provided that the batch index `k` is not the first dimension of the underlying array.
 Thus `PermutedDimsArray(::Array, (1,3,2))` and `PermutedDimsArray(::Array, (3,1,2))` are fine.
 
-However `A = PermutedDimsArray(::Array, (3,2,1))` is not acceptable to BLAS,
-since `stride(A,3) == 1`. This be copied, as doing so is faster than `batched_mul_generic!`.
+However, `A = PermutedDimsArray(::Array, (3,2,1))` is not acceptable to BLAS,
+since the batch dimension is the contiguous one: `stride(A,3) == 1`.
+This will be copied, as doing so is faster than `batched_mul_generic!`.
 
 Both this `copy` and `batched_mul_generic!` produce `@debug` messages,
 and setting for instance `ENV["JULIA_DEBUG"] = NNlib` will display them.
@@ -30,6 +55,8 @@ function batched_mul(A::AbstractArray{T1, 3}, B::AbstractArray{T2, 3}) where {T1
         throw(DimensionMismatch("batch size mismatch: A != B"))
     _batched_mul(storage_typejoin(A, B), A, B)
 end
+
+const ⊠ = batched_mul
 
 function _batched_mul(::Type, A, B)
     T = promote_type(eltype(A), eltype(B))
@@ -60,6 +87,93 @@ function _copy_if_faster(X::BatchedAdjoint{<:Complex})
     end
     X
 end
+
+
+"""
+    batched_mul(A::Array{T,3}, B::Matrix)
+    batched_mul(A::Matrix, B::Array{T,3})
+    A ⊠ B
+
+This is always matrix-matrix multiplication, but
+either `A` or `B` may lack a batch index.
+
+* When `B` is a matrix, result has `C[:,:,k] == A[:,:,k] * B[:,:]` for all `k`.
+
+* When `A` is a matrix, then `C[:,:,k] == A[:,:] * B[:,:,k]`.
+  This can also be done by reshaping and calling `*`,
+  for instance `A ⊡ B` using TensorCore.jl, but is implemented here using
+  `batched_gemm` instead of `gemm`.
+
+```jldoctest
+julia> randn(16,8,32) ⊠ randn(8,4) |> size
+(16, 4, 32)
+
+julia> randn(16,8,32) ⊠ randn(8,4,1) |> size  # equivalent
+(16, 4, 32)
+
+julia> randn(16,8) ⊠ randn(8,4,32) |> size
+(16, 4, 32)
+```
+
+See also `batched_vec` to regard `B` as a batch of vectors, `A[:,:,k] * B[:,k]`.
+"""
+batched_mul(A::AbstractArray{T,3} where T, B::AbstractMatrix) = _semi_batched_mul(A,B)
+
+# Simplify signature of batched_mul by hiding dispatch on Adjoint etc:
+
+_semi_batched_mul(A::AbstractArray{<:Any,3}, B::AbstractMatrix) =
+    batched_mul(A, reshape(B, size(B)..., 1))
+
+_semi_batched_mul(A::AbstractArray{<:Any,3}, B::Adjoint{<:Number,<:AbstractMatrix}) =
+    batched_mul(A, batched_adjoint(reshape(parent(B), size(parent(B))..., 1)))
+
+_semi_batched_mul(A::AbstractArray{<:Any,3}, B::Transpose{<:Number,<:AbstractMatrix}) =
+    batched_mul(A, batched_transpose(reshape(parent(B), size(parent(B))..., 1)))
+
+batched_mul(A::AbstractMatrix, B::AbstractArray{T,3} where T) = _semi_batched_mul(A,B)
+
+_semi_batched_mul(A::AbstractMatrix, B::AbstractArray{<:Any,3}) =
+    batched_mul(reshape(A, size(A)..., 1), B)
+
+_semi_batched_mul(A::Adjoint{<:Number,<:AbstractMatrix}, B::AbstractArray{<:Any,3}) =
+    batched_mul(batched_adjoint(reshape(parent(A), size(parent(A))..., 1)), B)
+
+_semi_batched_mul(A::Transpose{<:Number,<:AbstractMatrix}, B::AbstractArray{<:Any,3}) =
+    batched_mul(batched_transpose(reshape(parent(A), size(parent(A))..., 1)), B)
+
+"""
+    batched_vec(A::Array{T,3}, B::Matrix)
+    batched_vec(A::Array{T,3}, b::Vector)
+
+Batched matrix-vector multiplication:
+the result has `C[:,:,k] == A[:,:,k] * B[:,k]` for all `k`,
+or else `C[:,:,k] == A[:,:,k] * b` for `b::Vector`.
+
+With the same argument types, `batched_mul(A, B)` would regard `B` as
+a fixed matrix, not a batch of vectors. Both reshape and then
+call `batched_mul(::Array{T,3}, ::Array{T,3})`.
+
+```jldoctest
+julia> A, B, b = randn(16,8,32), randn(8,32), randn(8);
+
+julia> batched_vec(A,B) |> size
+(16, 32)
+
+julia> batched_vec(A,b) |> size
+(16, 32)
+```
+"""
+function batched_vec(A::AbstractArray{T,3} where T, B::AbstractMatrix)
+    # If B is transposed, then stride=1 is the batch dim, so we will end up copying anyway:
+    if B isa AdjOrTransAbsMat{<:BlasFloat, <:StridedMatrix}
+        return batched_vec(A, copy(B))
+    end
+    reshape(batched_mul(A, reshape(B, size(B,1), 1, size(B,2))), size(A,1), size(A,3))
+end
+
+batched_vec(A::AbstractArray{T,3} where T, b::AbstractVector) =
+    reshape(batched_mul(A, reshape(b, length(b), 1, 1)), size(A,1), size(A,3))
+
 
 """
     batched_mul!(C, A, B) -> C
@@ -201,6 +315,8 @@ storage_typejoin(A) = storage_type(A)
 
 This generalises `A isa StridedArray` to treat wrappers like `A::PermutedDimsArray`,
 for which it returns `is_strided(parent(A))`.
+
+It returns `true` for `CuArray`s, and `PermutedDimsArray`s of those.
 
 Other wrappers (defined outside Base, LinearAlgebra) are assumed not to break
 strided-ness, and hence also return `is_strided(parent(A))`.

@@ -103,6 +103,19 @@ end
     D′ = randn(TB, 3,5,1)
     @test size(batched_mul(A′,D′)) == (4,5,2)
     @test batched_mul(A′,D′) ≈ half_batched_mul(A′, D′)
+
+    # Large output, multi-threaded path
+    if TB == Float64
+        N = 50
+        A = rand(N,N,N)
+        B = rand(N,N,N)
+        C = reshape(reduce(hcat, [vec(A[:,:,k] * B[:,:,k]) for k in 1:N]), N,N,N)
+        @test C ≈ A ⊠ B
+
+        D = rand(N,N,1)
+        E = reshape(reduce(hcat, [vec(A[:,:,k] * D[:,:,1]) for k in 1:N]), N,N,N)
+        @test E ≈ A ⊠ D
+    end
 end
 
 @testset "BatchedAdjOrTrans interface * $TB" for TB in [Float64, Float32]
@@ -167,6 +180,26 @@ end
     end
 end
 
+@testset "batched_mul(ndims < 3), $TM" for TM in [ComplexF64, Int8]
+    A = randn(ComplexF64, 3,3,3)
+    M = rand(TM, 3,3) .+ im
+    V = rand(TM, 3)
+
+    # These are all reshaped and sent to batched_mul(3-array, 3-array)
+    @test batched_mul(A, M) ≈ cat([A[:,:,k] * M for k in 1:3]...; dims=3)
+    @test batched_mul(A, M') ≈ cat([A[:,:,k] * M' for k in 1:3]...; dims=3)
+    @test A ⊠ transpose(M) ≈ cat([A[:,:,k] * transpose(M) for k in 1:3]...; dims=3)
+
+    @test batched_mul(M, A) ≈ cat([M * A[:,:,k] for k in 1:3]...; dims=3)
+    @test batched_mul(M', A) ≈ cat([M' * A[:,:,k] for k in 1:3]...; dims=3)
+    @test transpose(M) ⊠ A ≈ cat([transpose(M) * A[:,:,k] for k in 1:3]...; dims=3)
+
+    # batched_vec
+    @test batched_vec(A, M) ≈ hcat([A[:,:,k] * M[:,k] for k in 1:3]...)
+    @test batched_vec(A, M') ≈ hcat([A[:,:,k] * (M')[:,k] for k in 1:3]...)
+    @test batched_vec(A, V) ≈ hcat([A[:,:,k] * V for k in 1:3]...)
+end
+
 @testset "storage_type" begin
 
     @test storage_type(transpose(reshape(view(rand(10), 2:9),4,:))) == Vector{Float64}
@@ -196,12 +229,5 @@ end
     @test is_strided(batched_transpose(A))
     @test !is_strided(batched_adjoint(A .+ im))
     @test is_strided(batched_transpose(A .+ im))
-
-    #=
-    using SparseArrays
-    @test !is_strided(sparse(M))
-    using NamedDims
-    @test is_strided(NamedDimsArray(M,(:a, :b))) # and 0.029 ns, 0 allocations
-    =#
 
 end
