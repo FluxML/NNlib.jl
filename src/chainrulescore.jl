@@ -24,7 +24,7 @@ for (f, df) in [
 ]
     pullback = Symbol(:broadcasted_, f, :_pullback)
     @eval @adjoint function Base.Broadcast.broadcasted(::typeof($f), x::Numeric)
-        Ω = f.(x)
+        Ω = $f.(x)
         $pullback(Δ) = (nothing, Δ .* $df)
         return Ω, $pullback
     end
@@ -87,7 +87,7 @@ for pool in [:maxpool, :meanpool]
     ∇pool = Symbol(:∇, pool)
     pullback = Symbol(pool, :_pullback)
     @eval function ChainRulesCore.rrule(::typeof($pool), x, pdims::PoolDims; kw...)
-        Ω = maxpool(x, pdims; kw...)
+        Ω = $pool(x, pdims; kw...)
         $pullback(Δ) = (NO_FIELDS, @thunk($∇pool(Δ, Ω, x, pdims; kw...)), DoesNotExist())
         return Ω, $pullback
     end
