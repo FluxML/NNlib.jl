@@ -1,57 +1,33 @@
-using ChainRulesCore
+using ChainRulesCore, ZygoteRules
 using ArrayLayouts: MemoryLayout, AbstractColumnMajor
 
 const Numeric = Union{AbstractArray{<:T}, T} where {T<:Number}
 
-drelu(x, Δ) = ifelse(x > 0, Δ, zero(x))
-
-function ChainRulesCore.rrule(
-    ::typeof(Base.Broadcast.broadcasted),
-    ::typeof(relu),
-    x::Numeric,
-)
-    broadcasted_relu_pullback(Δ) = (NO_FIELDS, NO_FIELDS, @thunk(drelu.(x, Δ)))
-    return relu.(x), broadcasted_relu_pullback
-end
+@scalar_rule(selu(x), dselu(x))
+@scalar_rule(elu(x, α), (delu(x, α), DoesNotExist()))
+@scalar_rule(σ(x::Real), Ω * (1 - Ω))
 
 function dselu(x)
     λ = oftype(x/1, 1.0507009873554804934193349852946)
     α = oftype(x/1, 1.6732632423543772848170429916717)
     return λ * ifelse(x > 0, one(x), α * exp(x))
 end
-
-@scalar_rule(selu(x), dselu(x))
-function ChainRulesCore.rrule(
-    ::typeof(Base.Broadcast.broadcasted),
-    ::typeof(selu),
-    x::Numeric,
-)
-    broadcasted_selu_pullback(Δ) = (NO_FIELDS, NO_FIELDS, @thunk(dselu.(x) .* Δ))
-    return selu.(x), broadcasted_selu_pullback
-end
-
 delu(x, α) = ifelse(x ≥ 0, one(x), α * exp(x))
 
-@scalar_rule(elu(x, α), (delu(x, α), DoesNotExist()))
-function ChainRulesCore.rrule(
-    ::typeof(Base.Broadcast.broadcasted),
-    ::typeof(elu),
-    x::Numeric,
-    α::Numeric,
-)
-    broadcasted_elu_pullback(Δ) = (NO_FIELDS, NO_FIELDS, @thunk(delu.(x) .* Δ), DoesNotExist())
-    return elu.(x), broadcasted_elu_pullback
-end
-
-@scalar_rule(σ(x::Real), Ω * (1 - Ω))
-function ChainRulesCore.rrule(
-    ::typeof(Base.Broadcast.broadcasted),
-    ::typeof(σ),
-    x::Numeric,
-)
-    Ω = σ.(x)
-    broadcasted_σ_pullback(Δ) = (NO_FIELDS, NO_FIELDS, @thunk(Δ .* conj.(Ω .* (1 .- Ω))), DoesNotExist())
-    return Ω, broadcasted_σ_pullback
+# This is a performance hack specifically for Zygote, because it doesn't handle fused
+# broadcasts well
+for (f, df) in [
+    (:relu, :(x .> 0)),
+    (:selu, :(dselu.(x))),
+    (:elu, :(delu.(x))),
+    (:σ, :(conj.(Ω .* (1 .- Ω)))),
+]
+    pullback = Symbol(:broadcasted_, f, :_pullback)
+    @eval @adjoint function Base.Broadcast.broadcasted(::typeof($f), x::Numeric)
+        Ω = f.(x)
+        $pullback(Δ) = (nothing, Δ .* $df)
+        return Ω, $pullback
+    end
 end
 
 for softmax in [:softmax, :logsoftmax]
