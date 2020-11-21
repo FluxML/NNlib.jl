@@ -93,7 +93,11 @@ for pool in [:maxpool, :meanpool]
     end
 end
 
-function ChainRulesCore.rrule(::typeof(batched_mul), A, B)
+function ChainRulesCore.rrule(
+    ::typeof(batched_mul),
+    A::AbstractArray{S,3},
+    B::AbstractArray{T,3},
+) where {S,T}
     function batched_mul_pullback(Δ)
         return (
             NO_FIELDS,
