@@ -1,4 +1,4 @@
-using ChainRulesCore, ZygoteRules
+using ChainRulesCore
 using ArrayLayouts: MemoryLayout, AbstractColumnMajor
 
 const Numeric = Union{AbstractArray{<:T}, T} where {T<:Number}
@@ -13,22 +13,6 @@ function dselu(x)
     return λ * ifelse(x > 0, one(x), α * exp(x))
 end
 delu(x, α) = ifelse(x ≥ 0, one(x), α * exp(x))
-
-# This is a performance hack specifically for Zygote, because it doesn't handle fused
-# broadcasts well
-for (f, df) in [
-    (:relu, :(x .> 0)),
-    (:selu, :(dselu.(x))),
-    (:elu, :(delu.(x))),
-    (:σ, :(conj.(Ω .* (1 .- Ω)))),
-]
-    pullback = Symbol(:broadcasted_, f, :_pullback)
-    @eval @adjoint function Base.Broadcast.broadcasted(::typeof($f), x::Numeric)
-        Ω = $f.(x)
-        $pullback(Δ) = (nothing, Δ .* $df)
-        return Ω, $pullback
-    end
-end
 
 for softmax in [:softmax, :logsoftmax]
     local ∇softmax = Symbol(:∇, softmax)
