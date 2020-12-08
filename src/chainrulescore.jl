@@ -1,5 +1,4 @@
 using ChainRulesCore
-using ArrayLayouts: MemoryLayout, AbstractColumnMajor
 
 const Numeric = Union{AbstractArray{<:T}, T} where {T<:Number}
 
@@ -32,9 +31,7 @@ for Dims in [:DenseConvDims, :DepthwiseConvDims, :PoolDims]
     end
 end
 
-colmajor(x) = colmajor(MemoryLayout(typeof(x)), x)
-colmajor(_, x) = convert(Array, x)
-colmajor(::AbstractColumnMajor, x) = x
+colmajor(x) = (is_strided(x) && stride(x,1) == 1) ? x : collect(x)
 
 for conv in [:conv, :depthwiseconv]
     local ∇conv_data, ∇conv_filter = Symbol.(:∇, conv, [:_data, :_filter])
