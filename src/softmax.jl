@@ -1,5 +1,6 @@
 export softmax, softmax!, ∇softmax, ∇softmax!,
-       logsoftmax, logsoftmax!, ∇logsoftmax, ∇logsoftmax!
+       logsoftmax, logsoftmax!, ∇logsoftmax, ∇logsoftmax!,
+       logsumexp
 
 """
     softmax(x; dims=1)
@@ -114,3 +115,20 @@ end
 
 ∇logsoftmax(Δ, xs; dims=1) = Δ .- sum(Δ, dims=dims) .* softmax(xs, dims=dims)
 ∇logsoftmax!(Δ, xs) = ∇logsoftmax!(Δ, Δ, xs)
+
+
+
+"""
+    logsumexp(x; dims=:)
+
+Computes `log(sum(exp.(x); dims=dims)) in a numerically stable
+way.
+
+See also [`logsoftmax`](@ref).
+"""
+function logsumexp(xs::AbstractArray; dims=:)
+    max_ = maximum(xs, dims=dims)
+    exp_ = exp.(xs .- max_)
+    log_ = log.(sum(exp_, dims=dims))
+    max_ .+ log_
+end
