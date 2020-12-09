@@ -1,13 +1,17 @@
 export conv_bias_act, conv_bias_act!
 
-function conv_bias_act(x::AbstractArray{xT,N}, w::AbstractArray{wT,N}, cdims::ConvDims, b::AbstractArray{bT,N}, σ=identity; kwargs...) where {xT, wT, bT, N}
+function conv_bias_act(x::AbstractArray{xT,N}, w::AbstractArray{wT,N}, 
+                cdims::ConvDims, b::AbstractArray{bT,N}, σ=identity; kwargs...) where {xT, wT, bT, N}
     y = similar(x, promote_type(xT, wT, bT), output_size(cdims)..., channels_out(cdims), size(x,N))
     conv_bias_act!(y, x, w, cdims, b, σ; kwargs...)
     return y
 end
 
-conv_bias_act!(y::AbstractArray{T,5}, x::AbstractArray{T,5}, w::AbstractArray{T,5}, cdims::ConvDims, b::AbstractArray{T,5}, σ=identity; kwargs...) where {T} =
-    σ.(conv!(y, x, w, cdims) .+ b)
+function conv_bias_act!(y::AbstractArray{yT,5}, x::AbstractArray{xT,5}, w::AbstractArray{wT,5}, 
+                cdims::ConvDims, b::AbstractArray{bT,5}, σ=identity; kwargs...) where {yT, xT, wT, bT}
+    conv!(y, x, w, cdims)
+    return σ.(y .+ b)
+end
 
 for N in (3, 4)
     @eval begin
