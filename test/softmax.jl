@@ -1,4 +1,6 @@
- @testset "softmax" begin
+ using Zygote
+
+@testset "softmax" begin
     xs = rand(5,5)
     @test all(sum(softmax(xs), dims = 1) .≈ 1)
     @test all(sum(softmax(xs; dims=2), dims = 2) .≈ 1)
@@ -36,7 +38,8 @@
     @test isapprox(NNlib.∇logsoftmax(ones(size(xs)), xs), ys; rtol = 1e-6)
     @test isapprox(NNlib.∇softmax(ones(size(xs)), xs), zeros(size(xs)); atol = 1e-6)
 end
- @testset "mutating softmax" begin
+
+@testset "mutating softmax" begin
     xs = Float64[1 2 3; 5 6 7]
 
     out = zeros(Float64, size(xs))
@@ -98,8 +101,11 @@ end
     @test isapprox(out, NNlib.∇logsoftmax(ones(size(xs)), xs); rtol=1e-6)
 end
 
-@testset "logsumexp"
+@testset "logsumexp" begin
+    flogsoft(x; dims) = mean(x .- logsoftmax(x; dims=dims), dims=dims) 
+    
     x = rand(3,4)
-    @test logsumexp(x) ≈ x .+ logsoftmax(x; dims=:)
-    @test logsumexp(x; dims=1) ≈ x .+ logsoftmax(x; dims=1)
+    @test logsumexp(x) ≈ flogsoft(x, dims=:)
+    @test logsumexp(x; dims=1) ≈ flogsoft(x, dims=1)
+    @test gradient(x -> logsumexp(x), x)[1] ≈ gradient(x -> flogsoft(x, dims=:), x)[1]
 end

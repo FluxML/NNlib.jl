@@ -358,7 +358,6 @@ conv_answer_dict = Dict(
     end
 end
 
-<<<<<<< HEAD
 if get(ENV, "NNLIB_TEST_FUZZING", "false") == "true"
     # @info("Skipping Convolutional fuzzing tests, set NNLIB_TEST_FUZZING=true to run them")
     @testset "fuzzing" begin
@@ -448,97 +447,6 @@ if get(ENV, "NNLIB_TEST_FUZZING", "false") == "true"
 else
     @info "Skipping Convolutional fuzzing tests, set NNLIB_TEST_FUZZING=true to run them"
 end
-=======
-# if get(ENV, "NNLIB_TEST_FUZZING", "true") == "true"
-#     # @info("Skipping Convolutional fuzzing tests, set NNLIB_TEST_FUZZING=true to run them")
-#     @testset "fuzzing" begin
-#         @info("Starting Convolutional fuzzing tests; this can take a few minutes...")
-#         # Now that we're fairly certain things are working, let's fuzz things a little bit:
-#         for x_size in (
-#                 # 1d tests
-#                 (1,), (3,), (7,),
-#                 # 2d tests
-#                 (1, 3), (3, 3), (12, 3), (20, 17),
-#                 # 3d tests
-#                 (1, 1, 3), (3, 5, 4), (20, 17, 14),
-#             ),
-#             C_in in (1, 3),
-#             batch in (1, 5)
-
-#             # Allocate x in this outer loop to save on allocations and speed things up
-#             x = rand(x_size..., C_in, batch)
-#             dx_direct = similar(x)
-#             dx_im2col = similar(x)
-
-#             for w_size in (
-#                     (1,), (3,), (7,),
-#                     (1,1), (1,3), (3,4), (7, 4),
-#                     (1,1,1), (1,1,3,), (3,4,3), (7,3,2)),
-#                 C_out in (1, 4)
-
-#                 # Give some output to the user that something is in fact happening.
-#                 print(".")
-
-#                 # Allocate w in this outer loop to save on allocations and speed things up
-#                 w = rand(w_size..., C_in, C_out)
-#                 dw_direct = similar(w)
-#                 dw_im2col = similar(w)
-
-#                 for S_size in (1, 2, 4, (1,2), (4,1), (2,1,4)),
-#                     P_size in (0, 1, 2, (0,3,0,3), (4,1,4,2), (1,2,3,4,5,6)),
-#                     D_size in (1, 2, 4, (1,2), (3,2), (4,2,3))
-
-#                     # Skip tests that are impossible due to mismatched sizes
-#                     try
-#                         DenseConvDims(x, w;
-#                             stride=S_size, padding=P_size, dilation=D_size,
-#                         )
-#                     catch e
-#                         if isa(e, DimensionMismatch) || isa(e, MethodError)
-#                             continue
-#                         end
-#                         rethrow(e)
-#                     end
-
-#                     # Do the actual convolution, comparing convolution implementations
-#                     cdims = DenseConvDims(x, w; stride=S_size, padding=P_size, dilation=D_size)
-
-#                     # We use mutating calls with explicitly different initial values, so as
-#                     # to be sure to catch when we're leaving pieces of the output untouched.
-#                     y_direct = ones(output_size(cdims)..., C_out, batch) .* 666.666
-#                     y_im2col = ones(output_size(cdims)..., C_out, batch) .* 777.777
-
-#                     # Do the convolutions
-#                     NNlib.conv_direct!(y_direct, x, w, cdims)
-#                     NNlib.conv_im2col!(y_im2col, x, w, cdims)
-
-#                     # Compare!
-#                     @test y_direct ≈ y_im2col
-#                     dy = y_im2col
-
-#                     # Now push backwards; first for the filter.  Again, we initialize our
-#                     # memory so that segments that never get touched are immediately noticable
-#                     fill!(dw_direct, 666.666)
-#                     fill!(dw_im2col, 777.777)
-#                     NNlib.∇conv_filter_direct!(dw_direct, x, dy, cdims)
-#                     NNlib.∇conv_filter_im2col!(dw_im2col, x, dy, cdims)
-#                     @test dw_direct ≈ dw_im2col
-
-#                     # And then for the input
-#                     fill!(dx_direct, 666.666)
-#                     fill!(dx_im2col, 777.777)
-#                     NNlib.∇conv_data_direct!(dx_direct, dy, w, cdims)
-#                     NNlib.∇conv_data_im2col!(dx_im2col, dy, w, cdims)
-#                     @test dx_direct ≈ dx_im2col
-#                 end
-#             end
-#         end
-#         println()
-#     end
-# else
-#     @info "Skipping Convolutional fuzzing tests, set NNLIB_TEST_FUZZING=true to run them"
-# end
->>>>>>> 25b5f6e (add logsumexp)
 
 @testset "Depthwise Convolution" begin
     # Start with some easy-to-debug cases that we have worked through and _know_ work
@@ -651,7 +559,6 @@ end
 end
 
 
-<<<<<<< HEAD
 if get(ENV,"NNLIB_TEST_FUZZING","false") == "true"
     @testset "fuzzing" begin
         @info("Starting Depthwise Convolutional fuzzing tests; this can take a few minutes...")
@@ -740,96 +647,6 @@ if get(ENV,"NNLIB_TEST_FUZZING","false") == "true"
 else
     @info "Skipping Depthwise Convolutional fuzzing tests, set NNLIB_TEST_FUZZING=true to run them"
 end
-=======
-# if get(ENV,"NNLIB_TEST_FUZZING","true") == "true"
-#     @testset "fuzzing" begin
-#         @info("Starting Depthwise Convolutional fuzzing tests; this can take a few minutes...")
-#         # Now that we're fairly certain things are working, let's fuzz things a little bit:
-#         for x_size in (
-#                 # 1d tests
-#                 (1,), (3,), (7,),
-#                 # 2d tests
-#                 (1, 3), (3, 3), (12, 3), (20, 17),
-#                 # 3d tests
-#                 (1, 1, 3), (3, 5, 4), (20, 17, 14),
-#             ),
-#             C_in in (1, 3),
-#             batch in (1, 5)
-
-#             # Allocate x in this outer loop to save on allocations and speed things up
-#             x = rand(x_size..., C_in, batch)
-#             dx_direct = similar(x)
-#             dx_im2col = similar(x)
-
-#             for w_size in (
-#                     (1,), (3,), (7,),
-#                     (1,1), (1,3), (3,4), (7, 4),
-#                     (1,1,1), (1,1,3,), (3,4,3), (7,3,2)),
-#                 C_mult in (1, 4)
-
-#                 # Give some output to the user that something is in fact happening.
-#                 print(".")
-
-#                 # Allocate w in this outer loop to save on allocations and speed things up
-#                 w = rand(w_size..., C_mult, C_in)
-#                 dw_direct = similar(w)
-#                 dw_im2col = similar(w)
-
-#                 for S_size in (1, 2, 4, (1,2), (4,1), (2,1,4)),
-#                     P_size in (0, 1, 2, (0,3,0,3), (4,1,4,2), (1,2,3,4,5,6)),
-#                     D_size in (1, 2, 4, (1,2), (3,2), (4,2,3))
-
-#                     # Skip tests that are impossible due to mismatched sizes
-#                     try
-#                         DepthwiseConvDims(x, w;
-#                             stride=S_size, padding=P_size, dilation=D_size,
-#                         )
-#                     catch e
-#                         if isa(e, DimensionMismatch) || isa(e, MethodError)
-#                             continue
-#                         end
-#                         rethrow(e)
-#                     end
-
-#                     # Do the actual convolution, comparing convolution implementations
-#                     cdims = DepthwiseConvDims(x, w; stride=S_size, padding=P_size, dilation=D_size)
-
-#                     # We use mutating calls with explicitly different initial values, so as
-#                     # to be sure to catch when we're leaving pieces of the output untouched.
-#                     y_direct = ones(output_size(cdims)..., channels_out(cdims), batch) .* 666.666
-#                     y_im2col = ones(output_size(cdims)..., channels_out(cdims), batch) .* 777.777
-
-#                     # Do the convolutions
-#                     NNlib.depthwiseconv_direct!(y_direct, x, w, cdims)
-#                     NNlib.depthwiseconv_im2col!(y_im2col, x, w, cdims)
-
-#                     # Compare!
-#                     @test y_direct ≈ y_im2col
-#                     dy = y_im2col
-
-#                     # Now push backwards; first for the filter.  Again, we initialize our
-#                     # memory so that segments that never get touched are immediately noticable
-#                     fill!(dw_direct, 666.666)
-#                     fill!(dw_im2col, 777.777)
-#                     NNlib.∇depthwiseconv_filter_direct!(dw_direct, x, dy, cdims)
-#                     NNlib.∇depthwiseconv_filter_im2col!(dw_im2col, x, dy, cdims)
-#                     @test dw_direct ≈ dw_im2col
-
-#                     # And then for the input
-#                     fill!(dx_direct, 666.666)
-#                     fill!(dx_im2col, 777.777)
-#                     NNlib.∇depthwiseconv_data_direct!(dx_direct, dy, w, cdims)
-#                     NNlib.∇depthwiseconv_data_im2col!(dx_im2col, dy, w, cdims)
-#                     @test dx_direct ≈ dx_im2col
-#                 end
-#             end
-#         end
-#         println()
-#     end
-# else
-#     @info "Skipping Depthwise Convolutional fuzzing tests, set NNLIB_TEST_FUZZING=true to run them"
-# end
->>>>>>> 25b5f6e (add logsumexp)
 
 
 @testset "conv_wrapper" begin
