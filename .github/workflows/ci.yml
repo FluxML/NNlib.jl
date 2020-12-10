@@ -11,7 +11,7 @@ on:
     tags: '*'
 jobs:
   test:
-    name: Julia ${{ matrix.version }} - ${{ matrix.os }} - ${{ matrix.arch }} - ${{ github.event_name }}
+    name: Julia ${{ matrix.version }} - ${{ matrix.os }} - ${{ matrix.julia-threads }} thread(s) - ${{ github.event_name }} 
     runs-on: ${{ matrix.os }}
     env:
       JULIA_NUM_THREADS: ${{ matrix.julia-threads }}
