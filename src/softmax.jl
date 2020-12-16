@@ -27,9 +27,13 @@ julia> softmax([1, 2, 3])
 See also [`logsoftmax`](@ref).
 """
 function softmax(xs::AbstractArray; dims=1)
-    max_ = maximum(xs, dims=dims)
-    exp_ = exp.(xs .- max_)
-    exp_ ./ sum(exp_, dims=dims)
+    xs = exp.(xs .- maximum(xs, dims=dims))
+    xs ./= sum(xs, dims=dims)
+end
+
+function softmax!(xs::AbstractArray; dims=1)
+    map!(exp, xs, xs .- maximum(xs, dims=dims))
+    xs ./= sum(xs, dims=dims)
 end
 
 function softmax!(out::AbstractVecOrMat{T}, xs::AbstractVecOrMat{T}) where {T}
