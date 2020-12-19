@@ -32,18 +32,18 @@ julia> softmax([1, 2, 3])
 
 See also [`logsoftmax`](@ref).
 """
-softmax(x; dims = 1) = softmax!(similar(x), x; dims)
-softmax!(x; dims = 1) = softmax!(x, x; dims)
+softmax(x; dims = 1) = softmax!(similar(x), x; dims = dims)
+softmax!(x; dims = 1) = softmax!(x, x; dims = dims)
 function softmax!(out::T, x::T; dims = 1) where {T<:AbstractArray}
-    out .= exp.(x .- maximum(x; dims))
-    out ./= sum(out; dims)
+    out .= exp.(x .- maximum(x; dims = dims))
+    out ./= sum(out; dims = dims)
 end
 
-∇softmax(Δ, x; dims = 1) = ∇softmax!(similar(Δ), Δ, x; dims)
-∇softmax!(Δ, x; dims = 1) = ∇softmax!(Δ, Δ, x; dims)
+∇softmax(Δ, x; dims = 1) = ∇softmax!(similar(Δ), Δ, x; dims = dims)
+∇softmax!(Δ, x; dims = 1) = ∇softmax!(Δ, Δ, x; dims = dims)
 function ∇softmax!(out::T, Δ::T, x::T; dims = 1) where {T<:AbstractArray}
-    softmax!(out, x; dims)
-    out .*= Δ .- sum(Δ .* out; dims)
+    softmax!(out, x; dims = dims)
+    out .*= Δ .- sum(Δ .* out; dims = dims)
 end
 
 
@@ -60,19 +60,19 @@ It is semantically equivalent to the following:
 
 See also [`softmax`](@ref).
 """
-logsoftmax(x; dims = 1) = logsoftmax!(similar(x), x; dims)
-logsoftmax!(x; dims = 1) = logsoftmax!(x, x; dims)
+logsoftmax(x; dims = 1) = logsoftmax!(similar(x), x; dims = dims)
+logsoftmax!(x; dims = 1) = logsoftmax!(x, x; dims = dims)
 function logsoftmax!(out::T, x::T; dims = 1) where {T<:AbstractArray}
-    out .= x .- maximum(x; dims)
+    out .= x .- maximum(x; dims = dims)
     # out .= out .- log.(sum(exp.(out); dims = dims))  # WARN: this will decrease performance.
-    log_ = log.(sum(exp.(out); dims))
+    log_ = log.(sum(exp.(out); dims = dims))
     out .-= log_
 end
 
-∇logsoftmax(Δ, x; dims = 1) = ∇logsoftmax!(similar(Δ), Δ, x; dims)
-∇logsoftmax!(Δ, x; dims = 1) = ∇logsoftmax!(Δ, Δ, x; dims)
+∇logsoftmax(Δ, x; dims = 1) = ∇logsoftmax!(similar(Δ), Δ, x; dims = dims)
+∇logsoftmax!(Δ, x; dims = 1) = ∇logsoftmax!(Δ, Δ, x; dims = dims)
 function ∇logsoftmax!(out::T, Δ::T, x::T; dims = 1) where {T<:AbstractArray}
-    out .= Δ .- sum(Δ, dims = dims) .* softmax!(out, x; dims)
+    out .= Δ .- sum(Δ, dims = dims) .* softmax!(out, x; dims = dims)
 end
 
 """
@@ -84,6 +84,6 @@ way.
 See also [`logsoftmax`](@ref).
 """
 function logsumexp(x::AbstractArray; dims = :)
-    max_ = maximum(x; dims)
-    max_ .+ log.(sum(exp.(x .- max_); dims))
+    max_ = maximum(x; dims = dims)
+    max_ .+ log.(sum(exp.(x .- max_); dims = dims))
 end
