@@ -43,7 +43,7 @@ end
 ∇softmax!(Δ, x; dims = 1) = ∇softmax!(Δ, Δ, x; dims)
 function ∇softmax!(out::T, Δ::T, x::T; dims = 1) where {T<:AbstractArray}
     softmax!(out, x; dims)
-    out .= out .* (Δ .- sum(Δ .* out; dims))
+    out .*= Δ .- sum(Δ .* out; dims)
 end
 
 
@@ -72,10 +72,8 @@ end
 ∇logsoftmax(Δ, x; dims = 1) = ∇logsoftmax!(similar(Δ), Δ, x; dims)
 ∇logsoftmax!(Δ, x; dims = 1) = ∇logsoftmax!(Δ, Δ, x; dims)
 function ∇logsoftmax!(out::T, Δ::T, x::T; dims = 1) where {T<:AbstractArray}
-    softmax!(out, x; dims)
-    out .= Δ .- sum(Δ, dims = dims) .* out
+    out .= Δ .- sum(Δ, dims = dims) .* softmax!(out, x; dims)
 end
-
 
 """
     logsumexp(x; dims=:)
