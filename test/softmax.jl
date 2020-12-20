@@ -1,6 +1,10 @@
 using Zygote
 using Statistics: mean
 
+@testset "softmax integer input" begin
+    @test softmax(Int[0, 0]) == [0.5, 0.5]
+end
+
 @testset "softmax" begin
     xs = rand(5, 5)
     @test all(sum(softmax(xs), dims = 1) .≈ 1)
