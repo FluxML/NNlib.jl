@@ -1,14 +1,21 @@
 using Zygote, NNlib
 using Random
+using LinearAlgebra
 using NNlib: conv, ∇conv_data, depthwiseconv, batched_mul
 using FiniteDifferences: grad, central_fdm
 
-function gradcheck(f, xs...; rtol = 1e-6, atol = 1e-6)
+function gradcheck(f, xs...; rtol = 1e-5, atol = 1e-5)
   grad_zygote = gradient(f, xs...)
   grad_finite_difference = grad(central_fdm(5, 1), f, xs...)
   #return all(isapprox.(grad_zygote, grad_finite_difference; rtol = rtol, atol = atol))
   for (grad_zygote, grad_finite_difference) in zip(grad_zygote, grad_finite_difference)
     @test isapprox(grad_zygote, grad_finite_difference; rtol = rtol, atol = atol)
+    if !isapprox(grad_zygote, grad_finite_difference; rtol = rtol, atol = atol)
+      display(grad_zygote - grad_finite_difference)
+      @show maximum(grad_zygote - grad_finite_difference)
+      @show norm(grad_zygote) norm(grad_finite_difference)
+      println()
+    end
   end
 end
 
@@ -23,11 +30,11 @@ gradtest((x, W, b) -> elu.(W*x .+ b, 2), 5, (2,5), 2)
 gradtest((x, W, b) -> elu.(W*x .+ b, 2), (5,3), (2,5), 2)
 
 # tests for https://github.com/FluxML/Zygote.jl/issues/758
-gradient(xs -> sum(selu.(xs)), [1_000, 10_000]) == ([1.0507009873554805, 1.0507009873554805],)
-gradient(x -> selu(x), 1_000) == (1.0507009873554805,)
-gradient(xs -> sum(elu.(xs, 2)), [1_000, 10_000]) == ([1., 1.],)
-gradient(x -> elu(x, 2), 1_000) == (1.,)
-gradient(x -> elu(x, 2), -1) == (2*exp(-1),)
+@test gradient(xs -> sum(selu.(xs)), [1_000, 10_000])[1] ≈ [1.0507009873554805, 1.0507009873554805] rtol=1e-8
+@test gradient(x -> selu(x), 1_000) == (1.0507009873554805,)
+@test gradient(xs -> sum(elu.(xs, 2)), [1_000, 10_000]) == ([1., 1.],)
+@test gradient(x -> elu(x, 2), 1_000) == (1.,)
+@test gradient(x -> elu(x, 2), -1) == (2*exp(-1),)
 gradcheck(x->sum(selu.(x)),[100., 1_000.])
 gradcheck(x->sum(elu.(x, 3.5)),[100., 1_000.])
 gradcheck(x->sum(elu.(x, 3.5)),[1_000., 10_000.]) # for elu the tests are passing but for selu not, interesting
