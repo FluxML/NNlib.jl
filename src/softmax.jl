@@ -33,18 +33,31 @@ julia> softmax([1, 2, 3])
 See also [`logsoftmax`](@ref).
 """
 softmax(x; dims = 1) = softmax!(similar(x, (float ∘ eltype)(x)), x; dims = dims)
+
 softmax!(x; dims = 1) = softmax!(x, x; dims = dims)
+
 function softmax!(out::O, x::T; dims = 1) where {O<:AbstractArray,T<:AbstractArray}
     out .= exp.(x .- maximum(x; dims = dims))
     out ./= sum(out; dims = dims)
 end
 
-∇softmax(Δ, x; dims = 1) = ∇softmax!(similar(Δ), Δ, x; dims = dims)
-∇softmax!(Δ, x; dims = 1) = ∇softmax!(Δ, Δ, x; dims = dims)
-function ∇softmax!(out::O, Δ::O, x::T; dims = 1) where {O<:AbstractArray,T<:AbstractArray}
-    softmax!(out, x; dims = dims)
-    out .*= Δ .- sum(Δ .* out; dims = dims)
+∇softmax(Δ, x, y; dims = 1) = ∇softmax!(similar(Δ), Δ, x, y; dims = dims)
+
+## Can introduce at the end of deprecation cycle of ∇softmax!(out, Δ, x; dims = 1)  
+#∇softmax!(Δ, x, y; dims = 1) = ∇softmax!(Δ, Δ, x, y; dims = dims)
+
+function ∇softmax!(out::AbstractArray, Δ::AbstractArray, 
+                    x::AbstractArray, y::AbstractArray; dims = 1)
+    out .*= Δ .- sum(Δ .* y; dims = dims)
 end
+
+
+# ∇softmax(Δ, x; dims = 1) = ∇softmax!(similar(Δ), Δ, x; dims = dims)
+# ∇softmax!(Δ, x; dims = 1) = ∇softmax!(Δ, Δ, x; dims = dims)
+# function ∇softmax!(out::O, Δ::O, x::T; dims = 1) where {O<:AbstractArray,T<:AbstractArray}
+#     softmax!(out, x; dims = dims)
+#     out .*= Δ .- sum(Δ .* out; dims = dims)
+# end
 
 
 """
@@ -61,7 +74,9 @@ It is semantically equivalent to the following:
 See also [`softmax`](@ref).
 """
 logsoftmax(x; dims = 1) = logsoftmax!(similar(x, (float ∘ eltype)(x)), x; dims = dims)
+
 logsoftmax!(x; dims = 1) = logsoftmax!(x, x; dims = dims)
+
 function logsoftmax!(out::O, x::T; dims = 1) where {O<:AbstractArray,T<:AbstractArray}
     out .= x .- maximum(x; dims = dims)
     # out .-= log.(sum(exp.(out); dims = dims))  # WARN: this will decrease performance.
@@ -69,15 +84,15 @@ function logsoftmax!(out::O, x::T; dims = 1) where {O<:AbstractArray,T<:Abstract
     out .-= log_
 end
 
-∇logsoftmax(Δ, x; dims = 1) = ∇logsoftmax!(similar(Δ), Δ, x; dims = dims)
-∇logsoftmax!(Δ, x; dims = 1) = ∇logsoftmax!(Δ, Δ, x; dims = dims)
-function ∇logsoftmax!(
-    out::O,
-    Δ::O,
-    x::T;
-    dims = 1,
-) where {O<:AbstractArray,T<:AbstractArray}
-    out .= Δ .- sum(Δ, dims = dims) .* softmax!(out, x; dims = dims)
+
+∇logsoftmax(Δ, x, y; dims = 1) = ∇logsoftmax!(similar(Δ), Δ, x, y; dims = dims)
+
+## Can introduce at the end of deprecation cycle of ∇logsoftmax!(out, Δ, x; dims = 1)  
+# ∇logsoftmax!(Δ, x, y; dims = 1) = ∇logsoftmax!(Δ, Δ, x, y; dims = dims)
+
+function ∇logsoftmax!(out::AbstractArray, Δ::AbstractArray,
+                    x::AbstractArray, y::AbstractArray; dims = 1) 
+    out .= Δ .- sum(Δ, dims = dims) .* exp.(y)
 end
 
 """

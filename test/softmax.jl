@@ -34,8 +34,11 @@ end
     xs = Float32[1 2 3; 1000 2000 3000]
     @test logsoftmax(xs) ≈ [-999 -1998 -2997; 0 0 0.0]
 
-    @test ∇logsoftmax(ones(Float32, size(xs)), xs) ≈ Float32[1 1 1; -1 -1 -1]
-    @test ∇softmax(ones(Float32, size(xs)), xs) ≈ zeros(Float32, size(xs))
+    y = logsoftmax(xs)
+    @test ∇logsoftmax(ones(Float32, size(xs)), xs, y) ≈ Float32[1 1 1; -1 -1 -1]
+    
+    y = softmax(xs)
+    @test ∇softmax(ones(Float32, size(xs)), xs, y) ≈ zeros(Float32, size(xs))
 
     # These values precalculated using PyTorch's nn.LogSoftmax
     xs = [
@@ -69,10 +72,13 @@ end
 
         map([zeros, ones]) do fn
             Δ = fn(Float64, size(xs))
-            ∇softmax!(out, Δ, xs)
-            @test out ≈ ∇softmax(Δ, xs) rtol = 1e-6
-            ∇logsoftmax!(out, Δ, xs)
-            @test out ≈ ∇logsoftmax(Δ, xs) rtol = 1e-6
+            y = softmax(xs) 
+            ∇softmax!(out, Δ, xs, y)
+            @test out ≈ ∇softmax(Δ, xs, y)  rtol = 1e-6
+            
+            y = logsoftmax(xs)
+            ∇logsoftmax!(out, Δ, xs, y)
+            @test out ≈ ∇logsoftmax(Δ, xs, y)  rtol = 1e-6
         end
     end
 end
