@@ -31,7 +31,7 @@ for Dims in [:DenseConvDims, :DepthwiseConvDims, :PoolDims]
     end
 end
 
-colmajor(x) = (is_strided(x) && stride(x,1) == 1) ? x : collect(x)
+colmajor(x) = (is_strided(x) && Base.stride(x, 1) == 1) ? x : collect(x)
 
 for conv in [:conv, :depthwiseconv]
     local ∇conv_data, ∇conv_filter = Symbol.(:∇, conv, [:_data, :_filter])
