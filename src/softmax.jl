@@ -1,6 +1,12 @@
-export softmax, softmax!, ∇softmax, ∇softmax!,
-       logsoftmax, logsoftmax!, ∇logsoftmax, ∇logsoftmax!,
-       logsumexp
+export softmax,
+    softmax!,
+    ∇softmax,
+    ∇softmax!,
+    logsoftmax,
+    logsoftmax!,
+    ∇logsoftmax,
+    ∇logsoftmax!,
+    logsumexp
 
 """
     softmax(x; dims=1)
@@ -26,48 +32,19 @@ julia> softmax([1, 2, 3])
 
 See also [`logsoftmax`](@ref).
 """
-function softmax(xs::AbstractArray; dims=1)
-    max_ = maximum(xs, dims=dims)
-    exp_ = exp.(xs .- max_)
-    exp_ ./ sum(exp_, dims=dims)
+softmax(x; dims = 1) = softmax!(similar(x, (float ∘ eltype)(x)), x; dims = dims)
+softmax!(x; dims = 1) = softmax!(x, x; dims = dims)
+function softmax!(out::O, x::T; dims = 1) where {O<:AbstractArray,T<:AbstractArray}
+    out .= exp.(x .- maximum(x; dims = dims))
+    out ./= sum(out; dims = dims)
 end
 
-function softmax!(out::AbstractVecOrMat{T}, xs::AbstractVecOrMat{T}) where {T}
-     @inbounds for j = 1:size(xs, 2)
-         # First, store column-wise maximum in the last element of `out`
-         out[end, j] = xs[end, j]
-         @inbounds for i = 1:(size(xs, 1) - 1)
-             out[end, j] = max(out[end, j], xs[i, j])
-         end
-
-         # Subtract the column-wise maximums to normalize, take exp()
-         # out .= exp(xs .- out[end, :])
-         @inbounds for i = 1:size(out, 1)
-             out[i, j] = exp(xs[i, j] - out[end, j])
-         end
-
-         # Normalize by sum of the entire thing
-         # out ./= sum(out, 1)
-         s = T(0)
-         @inbounds for i = 1:size(out, 1)
-            s += out[i, j]
-         end
-         @inbounds for i = 1:size(out, 1)
-            out[i, j] /= s
-         end
-    out
-    end
+∇softmax(Δ, x; dims = 1) = ∇softmax!(similar(Δ), Δ, x; dims = dims)
+∇softmax!(Δ, x; dims = 1) = ∇softmax!(Δ, Δ, x; dims = dims)
+function ∇softmax!(out::O, Δ::O, x::T; dims = 1) where {O<:AbstractArray,T<:AbstractArray}
+    softmax!(out, x; dims = dims)
+    out .*= Δ .- sum(Δ .* out; dims = dims)
 end
-
-function ∇softmax!(out::AbstractVecOrMat, Δ::AbstractVecOrMat, xs::AbstractVecOrMat)
-    sf = softmax(xs)
-    out .= sf .* (Δ .- sum(Δ .* sf, dims = 1))
-end
-function ∇softmax(Δ, xs; dims=1)
-    sf = softmax(xs, dims=dims)
-    sf .* (Δ .- sum(Δ .* sf, dims=dims))
-end
-∇softmax!(Δ, xs) = ∇softmax!(Δ, Δ, xs)
 
 
 """
@@ -83,38 +60,25 @@ It is semantically equivalent to the following:
 
 See also [`softmax`](@ref).
 """
-function logsoftmax(xs::AbstractArray; dims=1)
-    max_ = maximum(xs, dims=dims)
-    exp_ = exp.(xs .- max_)
-    log_ = log.(sum(exp_, dims=dims))
-    (xs .- max_) .- log_
+logsoftmax(x; dims = 1) = logsoftmax!(similar(x, (float ∘ eltype)(x)), x; dims = dims)
+logsoftmax!(x; dims = 1) = logsoftmax!(x, x; dims = dims)
+function logsoftmax!(out::O, x::T; dims = 1) where {O<:AbstractArray,T<:AbstractArray}
+    out .= x .- maximum(x; dims = dims)
+    # out .-= log.(sum(exp.(out); dims = dims))  # WARN: this will decrease performance.
+    log_ = log.(sum(exp.(out); dims = dims))
+    out .-= log_
 end
 
-function logsoftmax!(out::AbstractVecOrMat, xs::AbstractVecOrMat)
-    for j = 1:size(xs, 2)
-        @inbounds begin
-             xi_max = xs[1, j]
-             for i = 1:size(out, 1)
-                 xi_max = max(xi_max, xs[i, j])
-             end
-             s = zero(eltype(out))
-             for i = 1:size(out, 1)
-                 s += exp(xs[i, j] - xi_max)
-             end
-             for i = 1:size(out, 1)
-                 out[i, j] = xs[i, j] - log(s) - xi_max
-             end
-        end
-    end
-    return out
+∇logsoftmax(Δ, x; dims = 1) = ∇logsoftmax!(similar(Δ), Δ, x; dims = dims)
+∇logsoftmax!(Δ, x; dims = 1) = ∇logsoftmax!(Δ, Δ, x; dims = dims)
+function ∇logsoftmax!(
+    out::O,
+    Δ::O,
+    x::T;
+    dims = 1,
+) where {O<:AbstractArray,T<:AbstractArray}
+    out .= Δ .- sum(Δ, dims = dims) .* softmax!(out, x; dims = dims)
 end
-
-function ∇logsoftmax!(out::AbstractVecOrMat, Δ::AbstractVecOrMat, xs::AbstractVecOrMat)
-    out .= Δ .- sum(Δ, dims=1) .* softmax(xs, dims=1)
-end
-
-∇logsoftmax(Δ, xs; dims=1) = Δ .- sum(Δ, dims=dims) .* softmax(xs, dims=dims)
-∇logsoftmax!(Δ, xs) = ∇logsoftmax!(Δ, Δ, xs)
 
 """
     logsumexp(x; dims=:)
@@ -124,8 +88,7 @@ way.
 
 See also [`logsoftmax`](@ref).
 """
-function logsumexp(xs::AbstractArray; dims=:)
-    max_ = maximum(xs, dims=dims)
-    log_ = log.(sum(exp.(xs .- max_), dims=dims))
-    return max_ .+ log_
+function logsumexp(x::AbstractArray; dims = :)
+    max_ = maximum(x; dims = dims)
+    max_ .+ log.(sum(exp.(x .- max_); dims = dims))
 end
