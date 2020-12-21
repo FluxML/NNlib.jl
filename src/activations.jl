@@ -56,7 +56,7 @@ end
 
 const sigmoid = σ
 
-∇σ(y, dy) = dy .* conj.(y .* (1 .- y)) # broadcasted gradient, for use by activate!!(f, xs)
+∇σ(y, dy) = dy .* conj.(y .* (1 .- y)) # broadcasted gradient, for use by map!!(f, xs)
 
 ∇tanh(y, dy) = dy .* conj.(1 .- y.^2)
 
