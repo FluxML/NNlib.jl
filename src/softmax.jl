@@ -22,15 +22,28 @@ with additional manipulations enhancing numerical stability.
 For a matrix input `x` it will by default (`dims=1`) treat it as a batch of vectors,
 with each column independent. Keyword `dims=2` will instead treat rows independently,
 etc...
-```julia-repl
+
+See also [`logsoftmax`](@ref).
+
+** Usage Examples**
+
+```jldoctest
 julia> softmax([1, 2, 3])
 3-element Array{Float64,1}:
   0.0900306
   0.244728
   0.665241
-```
 
-See also [`logsoftmax`](@ref).
+julia> softmax([1 2 3; 2 2 2])  # dims=1
+2×3 Array{Float64,2}:
+ 0.268941  0.5  0.731059
+ 0.731059  0.5  0.268941
+
+julia> softmax([1 2 3; 2 2 2]; dims=2)
+2×3 Array{Float64,2}:
+ 0.0900306  0.244728  0.665241
+ 0.333333   0.333333  0.333333
+```
 """
 softmax(x; dims = 1) = softmax!(similar(x, (float ∘ eltype)(x)), x; dims = dims)
 
@@ -41,24 +54,17 @@ function softmax!(out::O, x::T; dims = 1) where {O<:AbstractArray,T<:AbstractArr
     out ./= sum(out; dims = dims)
 end
 
-∇softmax(Δ, x, y; dims = 1) = ∇softmax!(similar(Δ), Δ, x, y; dims = dims)
+∇softmax(Δ::AbstractArray{T}, x::AbstractArray, y::AbstractArray{S}; dims = 1) where {T,S} = 
+    ∇softmax!(similar(y, promote_type(T, S)), Δ, x, y; dims = dims)
 
 ## Can introduce at the end of deprecation cycle of ∇softmax!(out, Δ, x; dims = 1)  
 #∇softmax!(Δ, x, y; dims = 1) = ∇softmax!(Δ, Δ, x, y; dims = dims)
 
 function ∇softmax!(out::AbstractArray, Δ::AbstractArray, 
                     x::AbstractArray, y::AbstractArray; dims = 1)
-    out .*= Δ .- sum(Δ .* y; dims = dims)
+    out .= Δ .* y
+    out .= out .- y .* sum(out; dims = dims)
 end
-
-
-# ∇softmax(Δ, x; dims = 1) = ∇softmax!(similar(Δ), Δ, x; dims = dims)
-# ∇softmax!(Δ, x; dims = 1) = ∇softmax!(Δ, Δ, x; dims = dims)
-# function ∇softmax!(out::O, Δ::O, x::T; dims = 1) where {O<:AbstractArray,T<:AbstractArray}
-#     softmax!(out, x; dims = dims)
-#     out .*= Δ .- sum(Δ .* out; dims = dims)
-# end
-
 
 """
     logsoftmax(x; dims=1)
@@ -80,12 +86,12 @@ logsoftmax!(x; dims = 1) = logsoftmax!(x, x; dims = dims)
 function logsoftmax!(out::O, x::T; dims = 1) where {O<:AbstractArray,T<:AbstractArray}
     out .= x .- maximum(x; dims = dims)
     # out .-= log.(sum(exp.(out); dims = dims))  # WARN: this will decrease performance.
-    log_ = log.(sum(exp.(out); dims = dims))
+    log_ = log.(sum(exp, out; dims = dims))
     out .-= log_
 end
 
-
-∇logsoftmax(Δ, x, y; dims = 1) = ∇logsoftmax!(similar(Δ), Δ, x, y; dims = dims)
+∇logsoftmax(Δ:: AbstractArray{T}, x:: AbstractArray, y:: AbstractArray{S}; dims = 1) where {T,S} = 
+    ∇logsoftmax!(similar(y, promote_type(T, S)), Δ, x, y; dims = dims)
 
 ## Can introduce at the end of deprecation cycle of ∇logsoftmax!(out, Δ, x; dims = 1)  
 # ∇logsoftmax!(Δ, x, y; dims = 1) = ∇logsoftmax!(Δ, Δ, x, y; dims = dims)

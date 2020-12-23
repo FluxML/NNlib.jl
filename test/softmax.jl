@@ -51,8 +51,12 @@ end
         -0.930163 0.0519798 0.0549979 0.3799 -0.477112 0.437428
         0.69246 0.569494 -0.503191 -0.925947 -0.0870738 -1.0697
     ]
-    @test ∇logsoftmax(ones(size(xs)), xs) ≈ ys rtol = 1e-6
-    @test ∇softmax(ones(size(xs)), xs) ≈ zeros(size(xs)) atol = 1e-6
+    
+    y = logsoftmax(xs)
+    @test ∇logsoftmax(ones(size(xs)), xs, y) ≈ ys rtol = 1e-6
+    
+    y = softmax(xs)
+    @test ∇softmax(ones(size(xs)), xs, y) ≈ zeros(size(xs)) atol = 1e-6
 end
 
 @testset "mutating softmax" begin
