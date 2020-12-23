@@ -66,6 +66,12 @@ function ∇softmax!(out::AbstractArray, Δ::AbstractArray,
     out .= out .- y .* sum(out; dims = dims)
 end
 
+function ChainRulesCore.rrule(::typeof(softmax), xs; dims=1)
+    y = softmax(xs; dims=dims)
+    softmax_pullback(Δ) = (NO_FIELDS, ∇softmax(Δ, xs, y, dims=dims))
+    return y, softmax_pullback
+end
+
 """
     logsoftmax(x; dims=1)
 
@@ -101,6 +107,12 @@ function ∇logsoftmax!(out::AbstractArray, Δ::AbstractArray,
     out .= Δ .- sum(Δ, dims = dims) .* exp.(y)
 end
 
+function ChainRulesCore.rrule(::typeof(logsoftmax), xs; dims=1)
+    y = logsoftmax(xs; dims=dims)
+    logsoftmax_pullback(Δ) = (NO_FIELDS, ∇logsoftmax(Δ, xs, y, dims=dims))
+    return y, logsoftmax_pullback
+end
+
 """
     logsumexp(x; dims=:)
 
@@ -112,14 +124,4 @@ See also [`logsoftmax`](@ref).
 function logsumexp(x::AbstractArray; dims = :)
     max_ = maximum(x; dims = dims)
     max_ .+ log.(sum(exp.(x .- max_); dims = dims))
-end
-
-for f in [:softmax, :logsoftmax]
-    ∇f = Symbol(:∇, f)
-    pullback = Symbol(f, :_pullback)
-    @eval function ChainRulesCore.rrule(::typeof($f), xs; dims=1)
-        y = $f(xs; dims=dims)
-        $pullback(Δ) = (NO_FIELDS, $∇f(Δ, xs, y, dims=dims))
-        return y, $pullback
-    end
 end
