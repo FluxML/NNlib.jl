@@ -1,4 +1,3 @@
-using Zygote
 using Statistics: mean
 
 @testset "softmax integer input" begin
@@ -85,6 +84,15 @@ end
             @test out ≈ ∇logsoftmax(Δ, xs, y)  rtol = 1e-6
         end
     end
+
+    @testset "AD rules" begin
+        x = rand(3,4) 
+        x̄ = rand(3,4) 
+        ȳ = rand(3,4)
+        for f in (softmax, logsoftmax), d in (:, 1, 2)
+            rrule_test(f, ȳ, (x,x̄); fkwargs=(; dims=d))
+        end
+    end
 end
 
 @testset "logsumexp" begin
@@ -93,5 +101,7 @@ end
     x = rand(3, 4)
     @test logsumexp(x) ≈ flogsoft(x, dims = :)
     @test logsumexp(x; dims = 1) ≈ flogsoft(x, dims = 1)
-    @test gradient(x -> logsumexp(x), x)[1] ≈ gradient(x -> flogsoft(x, dims = :), x)[1]
+    for d  in (:,1, 2)
+        autodiff_test(x -> sum(logsumexp(x; dims=d)), x)
+    end
 end

@@ -1,4 +1,18 @@
 using NNlib, Test, Statistics
+using ChainRulesTestUtils
+import FiniteDifferences
+import Zygote
+
+"""
+Compare numerical and automatic gradient.
+`f` has to be a scalar valued function. 
+"""
+function autodiff_test(f, x)
+    fdm = FiniteDifferences.central_fdm(5, 1)
+    g_ad = Zygote.gradient(f, x)[1]
+    g_fd = FiniteDifferences.grad(fdm, f, x)[1] 
+    @test g_ad ≈ g_fd
+end
 
 @testset "Activation Functions" begin
     include("activation.jl")
