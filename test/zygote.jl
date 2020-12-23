@@ -12,7 +12,7 @@ function gradcheck(f, xs...; rtol = 1e-5, atol = 1e-5)
     @test isapprox(grad_zygote, grad_finite_difference; rtol = rtol, atol = atol)
     if !isapprox(grad_zygote, grad_finite_difference; rtol = rtol, atol = atol)
       display(grad_zygote - grad_finite_difference)
-      @show maximum(grad_zygote - grad_finite_difference)
+      @show maximum(abs, grad_zygote - grad_finite_difference)
       @show norm(grad_zygote) norm(grad_finite_difference)
       println()
     end
