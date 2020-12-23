@@ -3,6 +3,9 @@ using Random
 using LinearAlgebra
 using NNlib: conv, ∇conv_data, depthwiseconv, batched_mul
 using FiniteDifferences: grad, central_fdm
+using StableRNGs
+
+const rng = StableRNG(123)
 
 function gradcheck(f, xs...; rtol = 1e-5, atol = 1e-5, broken=false)
   grad_zygote = gradient(f, xs...)
@@ -61,8 +64,8 @@ gradtest(x -> logsoftmax(x).*(1:3), (3,5))
 gradtest(x -> logsoftmax(x, dims=2).*(1:3), (3,5))
 
 @testset "conv: spatial_rank=$spatial_rank" for spatial_rank in (1, 2, 3)
-  x = rand(repeat([5], spatial_rank)..., 3, 2)
-  w = rand(repeat([3], spatial_rank)..., 3, 3)
+  x = rand(rng, repeat([5], spatial_rank)..., 3, 2)
+  w = rand(rng, repeat([3], spatial_rank)..., 3, 3)
   cdims = DenseConvDims(x, w)
   gradtest((x, w) -> conv(x, w, cdims), x, w)
   gradtest((x, w) -> sum(conv(x, w, cdims)), x, w)  # https://github.com/FluxML/Flux.jl/issues/1055
@@ -88,23 +91,23 @@ gradtest(x -> logsoftmax(x, dims=2).*(1:3), (3,5))
 end
 
 @testset "pooling: spatial_rank=$spatial_rank" for spatial_rank in (1, 2)
-  x = rand(repeat([10], spatial_rank)..., 3, 2)
+  x = rand(rng, repeat([10], spatial_rank)..., 3, 2)
   pdims = PoolDims(x, 2)
-  gradtest(x -> maxpool(x, pdims), x; broken=spatial_rank == 2)
+  gradtest(x -> maxpool(x, pdims), x; broken=spatial_rank <= 2)
   gradtest(x -> meanpool(x, pdims), x)
   gradtest(x -> sum(maxpool(x, pdims)), x)
   gradtest(x -> sum(meanpool(x, pdims)), x)
 
   #https://github.com/FluxML/NNlib.jl/issues/188
   k = ntuple(_ -> 2, spatial_rank)  # Kernel size of pool in ntuple format
-  gradtest(x -> maxpool(x, k), x; broken=spatial_rank == 2)
+  gradtest(x -> maxpool(x, k), x; broken=spatial_rank <= 2)
   gradtest(x -> meanpool(x, k), x)
   gradtest(x -> sum(maxpool(x, k)), x)
   gradtest(x -> sum(meanpool(x, k)), x)
 end
 
 @testset "batched matrix multiplication" begin
-  rng, M, P, Q = MersenneTwister(123456), 13, 7, 11
+  M, P, Q = 13, 7, 11
   B = 3
   gradtest(batched_mul, randn(rng, M, P, B), randn(rng, P, Q, B))
 end
