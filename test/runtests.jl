@@ -7,11 +7,11 @@ import Zygote
 Compare numerical and automatic gradient.
 `f` has to be a scalar valued function. 
 """
-function autodiff_test(f, x)
+function autodiff_test(f, x; atol=1e-9, rtol=1e-9)
     fdm = FiniteDifferences.central_fdm(5, 1)
     g_ad = Zygote.gradient(f, x)[1]
     g_fd = FiniteDifferences.grad(fdm, f, x)[1] 
-    @test g_ad ≈ g_fd
+    @test g_ad ≈ g_fd   atol=atol rtol=rtol
 end
 
 @testset "Activation Functions" begin

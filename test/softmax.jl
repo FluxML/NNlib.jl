@@ -102,6 +102,6 @@ end
     @test logsumexp(x) ≈ flogsoft(x, dims = :)
     @test logsumexp(x; dims = 1) ≈ flogsoft(x, dims = 1)
     for d  in (:,1, 2)
-        autodiff_test(x -> sum(logsumexp(x; dims=d)), x)
+        autodiff_test(x -> sum(logsumexp(x; dims=d)), x, atol=1e-6)
     end
 end
