@@ -90,7 +90,7 @@ function logsoftmax!(out::O, x::T; dims = 1) where {O<:AbstractArray,T<:Abstract
     out .-= log_
 end
 
-∇logsoftmax(Δ:: AbstractArray{T}, x:: AbstractArray, y:: AbstractArray{S}; dims = 1) where {T,S} = 
+∇logsoftmax(Δ::AbstractArray{T}, x::AbstractArray, y::AbstractArray{S}; dims = 1) where {T,S} = 
     ∇logsoftmax!(similar(y, promote_type(T, S)), Δ, x, y; dims = dims)
 
 ## Can introduce at the end of deprecation cycle of ∇logsoftmax!(out, Δ, x; dims = 1)  
