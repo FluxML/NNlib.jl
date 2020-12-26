@@ -73,7 +73,7 @@ end
         logsoftmax!(out, xs)
         @test out ≈ logsoftmax(xs) rtol = 1e-6
 
-        map([zeros, ones]) do fn
+        @testset "$fn(Float64, $(size(xs)))" for fn in [zeros, ones, rand]
             Δ = fn(Float64, size(xs))
             y = softmax(xs) 
             ∇softmax!(out, Δ, xs, y)
@@ -102,6 +102,6 @@ end
     @test logsumexp(x) ≈ flogsoft(x, dims = :)
     @test logsumexp(x; dims = 1) ≈ flogsoft(x, dims = 1)
     for d  in (:,1, 2)
-        autodiff_test(x -> sum(logsumexp(x; dims=d)), x, atol=1e-6)
+        zygote_gradient_test(x -> sum(logsumexp(x; dims=d)), x, atol=1e-6)
     end
 end
