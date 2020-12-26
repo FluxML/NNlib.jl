@@ -1,5 +1,6 @@
 
-### v0.8 Deprecations
+### v0.8 deprecations
+
 @deprecate ∇softmax(Δ, x; dims=1)   ∇softmax(Δ, x, softmax(x, dims=dims); dims=dims)
 @deprecate ∇softmax!(Δ, x; dims=1)   ∇softmax!(Δ, Δ, x, softmax(x, dims=dims); dims=dims)
 @deprecate ∇softmax!(out, Δ, x; dims=1)   ∇softmax!(out, Δ, x, softmax(x, dims=dims); dims=dims)
