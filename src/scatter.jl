@@ -22,7 +22,7 @@ supported array type and be the same type.`Array`, `StaticArray` and `CuArray`
 are currently supported.
 """
 function scatter!(op, ys::AbstractArray{T}, us::AbstractArray{T}, xs::AbstractArray{<:IntOrTuple}) where {T<:Real}
-    @simd for k = 1:length(xs)
+    @simd for k in CartesianIndices(xs)
         k = CartesianIndices(xs)[k]
         ys_v = view(ys, xs[k]...)
         us_v = view(us, k)
