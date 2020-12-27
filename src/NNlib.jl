@@ -4,6 +4,7 @@ using Pkg
 using Requires
 using ChainRulesCore
 using Base.Broadcast: broadcasted
+using Statistics: mean
 
 const Numeric = Union{AbstractArray{<:T}, T} where {T<:Number}
 
