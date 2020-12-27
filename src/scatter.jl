@@ -23,7 +23,6 @@ are currently supported.
 """
 function scatter!(op, ys::AbstractArray{T}, us::AbstractArray{T}, xs::AbstractArray{<:IntOrTuple}) where {T<:Real}
     @simd for k in CartesianIndices(xs)
-        k = CartesianIndices(xs)[k]
         ys_v = view(ys, xs[k]...)
         us_v = view(us, k)
         @inbounds ys_v .= (op).(ys_v, us_v)
