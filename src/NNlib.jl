@@ -6,7 +6,7 @@ using Requires
 include("dim_helpers.jl")
 
 is_nnpack_available() = false
-  
+
 @init @require NNPACK_jll="a6bfbf70-4841-5cb9-aa18-3a8ad3c413ee"  begin
   if isdefined(NNPACK_jll, :libnnpack)
     include("nnpack/NNPACK.jl")
@@ -38,5 +38,9 @@ include("impl/depthwiseconv_im2col.jl")
 
 # Direct implementations of pooling
 include("impl/pooling_direct.jl")
+
+# differentiation rules
+include("chainrulescore.jl")
+include("zygoterules.jl")
 
 end # module NNlib

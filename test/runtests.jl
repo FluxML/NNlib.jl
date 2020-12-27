@@ -19,3 +19,6 @@ end
 @testset "Softmax" begin
     include("softmax.jl")
 end
+@testset "Zygote" begin
+    include("zygote.jl")
+end
