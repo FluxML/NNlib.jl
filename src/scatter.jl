@@ -5,7 +5,7 @@ const IntOrTuple = Union{Integer,Tuple}
 """
     scatter!(op, ys, us, xs)
 
-Scatter operation.
+Scatter operation. For each index `k` in `xs`, accumulate values in `ys` according to
 
     ys[xs[k]...] = (op).(ys[xs[k]...], us[k...])
 
