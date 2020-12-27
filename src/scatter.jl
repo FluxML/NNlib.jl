@@ -25,8 +25,8 @@ are currently supported.
 function scatter!(op, dst::AbstractArray{T}, src::AbstractArray{T}, idx::AbstractArray{<:IntOrTuple}) where {T<:Real}
     @simd for k in CartesianIndices(idx)
         dst_v = view(dst, idx[k]...)
-        us_v = view(src, k)
-        @inbounds dst_v .= (op).(dst_v, us_v)
+        src_v = view(src, k)
+        @inbounds dst_v .= (op).(dst_v, src_v)
     end
     dst
 end
