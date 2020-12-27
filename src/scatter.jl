@@ -3,61 +3,62 @@ export scatter!
 const IntOrTuple = Union{Integer,Tuple}
 
 """
-    scatter!(op, ys, us, xs)
+    scatter!(op, dst, src, idx)
 
-Scatter operation. For each index `k` in `xs`, accumulate values in `ys` according to
+Scatter operation, which applies specified operation on `src` and `dst` according to `idx`.
+For each index `k` in `idx`, accumulate values in `dst` according to
 
-    ys[xs[k]...] = (op).(ys[xs[k]...], us[k...])
+    dst[idx[k]...] = (op).(dst[idx[k]...], src[k...])
 
 # Arguments
-- `op`: operations to be applied on `ys` and `us`, e.g. `+`, `-`, `*`, `/`, `max` and `min`.
-- `ys`: the destination for `us` to aggregate to. This argument will be mutated.
-- `us`: the source data for aggregating.
-- `xs`: the mapping for aggregation from source (index) to destination (value).
-The index of `xs` is corresponding to the index of `us` and the value of `xs` is
-corresponding to the index of `ys`. The value of `xs` can be `Int` or `Tuple` type.
+- `op`: operations to be applied on `dst` and `src`, e.g. `+`, `-`, `*`, `/`, `max` and `min`.
+- `dst`: the destination for `src` to aggregate to. This argument will be mutated.
+- `src`: the source data for aggregating.
+- `idx`: the mapping for aggregation from source (index) to destination (value).
+The index of `idx` is corresponding to the index of `src` and the value of `idx` is
+corresponding to the index of `dst`. The value of `idx` can be `Int` or `Tuple` type.
 
-The dimension of `us` must equal to dimension of `xs`. `ys`, `us` and `xs` must be
+The dimension of `src` must equal to dimension of `idx`. `dst`, `src` and `idx` must be
 supported array type and be the same type.`Array`, `StaticArray` and `CuArray`
 are currently supported.
 """
-function scatter!(op, ys::AbstractArray{T}, us::AbstractArray{T}, xs::AbstractArray{<:IntOrTuple}) where {T<:Real}
-    @simd for k in CartesianIndices(xs)
-        ys_v = view(ys, xs[k]...)
-        us_v = view(us, k)
-        @inbounds ys_v .= (op).(ys_v, us_v)
+function scatter!(op, dst::AbstractArray{T}, src::AbstractArray{T}, idx::AbstractArray{<:IntOrTuple}) where {T<:Real}
+    @simd for k in CartesianIndices(idx)
+        dst_v = view(dst, idx[k]...)
+        us_v = view(src, k)
+        @inbounds dst_v .= (op).(dst_v, us_v)
     end
-    ys
+    dst
 end
 
 """
-    scatter!(mean, ys, us, xs)
+    scatter!(mean, dst, src, idx)
 
-Scatter mean operation. For each index `k` in `xs`, accumulate values in `ys` according to
+Scatter mean operation. For each index `k` in `idx`, accumulate values in `dst` according to
 
-    ys[xs[k]...] = ys[xs[k]...] + mean.(us[k...])
+    dst[idx[k]...] = dst[idx[k]...] + mean.(src[k...])
 
 # Arguments
-- `ys`: the destination for `us` to aggregate to. This argument will be mutated.
-- `us`: the source data for aggregating.
-- `xs`: the mapping for aggregation from source (index) to destination (value).
-The index of `xs` is corresponding to the index of `us` and the value of `xs` is
-corresponding to the index of `ys`. The value of `xs` can be `Int` or `Tuple` type.
+- `dst`: the destination for `src` to aggregate to. This argument will be mutated.
+- `src`: the source data for aggregating.
+- `idx`: the mapping for aggregation from source (index) to destination (value).
+The index of `idx` is corresponding to the index of `src` and the value of `idx` is
+corresponding to the index of `dst`. The value of `idx` can be `Int` or `Tuple` type.
 
-The dimension of `us` must equal to dimension of `xs`. `ys`, `us` and `xs` must be
+The dimension of `src` must equal to dimension of `idx`. `dst`, `src` and `idx` must be
 supported array type and be the same type.`Array`, `StaticArray` and `CuArray`
 are currently supported.
 """
-function scatter!(op::typeof(mean), ys::AbstractArray{T}, us::AbstractArray{T}, xs::AbstractArray{<:IntOrTuple}) where {T<:Real}
-    Ns = zero(ys)
-    ys_ = zero(ys)
-    scatter!(+, Ns, one.(us), xs)
-    scatter!(+, ys_, us, xs)
-    ys .+= safe_div.(ys_, Ns)
-    return ys
+function scatter!(op::typeof(mean), dst::AbstractArray{T}, src::AbstractArray{T}, idx::AbstractArray{<:IntOrTuple}) where {T<:Real}
+    Ns = zero(dst)
+    dst_ = zero(dst)
+    scatter!(+, Ns, one.(src), idx)
+    scatter!(+, dst_, src, idx)
+    dst .+= safe_div.(dst_, Ns)
+    return dst
 end
 
-function scatter!(op, ys::AbstractArray{T}, us::AbstractArray{S}, xs::AbstractArray{<:IntOrTuple}) where {T<:Real,S<:Real}
+function scatter!(op, dst::AbstractArray{T}, src::AbstractArray{S}, idx::AbstractArray{<:IntOrTuple}) where {T<:Real,S<:Real}
     PT = promote_type(T, S)
-    scatter!(op, PT.(ys), PT.(us), xs)
+    scatter!(op, PT.(dst), PT.(src), idx)
 end
