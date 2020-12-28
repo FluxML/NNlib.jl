@@ -2,6 +2,8 @@ using NNlib, Test, Statistics
 using ChainRulesTestUtils
 import FiniteDifferences
 import Zygote
+using Zygote: gradient
+using StableRNGs
 
 include("test_utils.jl")
 
@@ -29,6 +31,7 @@ end
 @testset "Softmax" begin
     include("softmax.jl")
 end
+
 @testset "Zygote" begin
     include("zygote.jl")
 end

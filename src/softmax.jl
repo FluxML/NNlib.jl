@@ -66,6 +66,11 @@ function ∇softmax!(out::AbstractArray, Δ::AbstractArray,
     out .= out .- y .* sum(out; dims = dims)
 end
 
+# Old 2-arg version recomputing forward
+∇softmax(Δ, x; dims=1) = ∇softmax(Δ, x, softmax(x, dims=dims); dims=dims)
+∇softmax!(Δ, x; dims=1) = ∇softmax!(Δ, Δ, x, softmax(x, dims=dims); dims=dims)
+∇softmax!(out, Δ, x; dims=1) = ∇softmax!(out, Δ, x, softmax(x, dims=dims); dims=dims)
+
 function ChainRulesCore.rrule(::typeof(softmax), xs; dims=1)
     y = softmax(xs; dims=dims)
     softmax_pullback(Δ) = (NO_FIELDS, ∇softmax(Δ, xs, y, dims=dims))
@@ -98,10 +103,12 @@ end
 
 ∇logsoftmax(Δ::AbstractArray{T}, x::AbstractArray, y::AbstractArray{S}; dims = 1) where {T,S} = 
     ∇logsoftmax!(similar(y, promote_type(T, S)), Δ, x, y; dims = dims)
-
-## Can introduce at the end of deprecation cycle of ∇logsoftmax!(out, Δ, x; dims = 1)  
-# ∇logsoftmax!(Δ, x, y; dims = 1) = ∇logsoftmax!(Δ, Δ, x, y; dims = dims)
-
+    
+# Old 2-arg version recomputing forward
+∇logsoftmax(Δ, x; dims=1) =  ∇logsoftmax(Δ, x, logsoftmax(x, dims=dims); dims=dims)
+∇logsoftmax!(Δ, x; dims=1) =  ∇logsoftmax!(Δ, Δ, x, logsoftmax(x, dims=dims); dims=dims)
+∇logsoftmax!(out, Δ, x; dims=1) =  ∇logsoftmax!(out, Δ, x, logsoftmax(x, dims=dims); dims=dims)
+    
 function ∇logsoftmax!(out::AbstractArray, Δ::AbstractArray,
                     x::AbstractArray, y::AbstractArray; dims = 1) 
     out .= Δ .- sum(Δ, dims = dims) .* exp.(y)
