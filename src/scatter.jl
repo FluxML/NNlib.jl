@@ -5,7 +5,8 @@ const IntOrTuple = Union{Integer,Tuple}
 """
     scatter!(op, dst, src, idx)
 
-Scatter operation, which applies specified operation on `src` and `dst` according to `idx`.
+Scatter operation, which scatters data in `src` and assigns to `dst` according to `idx`.
+With the data going to the same place, specified operation is applied on to reduce data.
 For each index `k` in `idx`, accumulate values in `dst` according to
 
     dst[idx[k]...] = (op).(dst[idx[k]...], src[k...])
@@ -19,8 +20,7 @@ The index of `idx` is corresponding to the index of `src` and the value of `idx`
 corresponding to the index of `dst`. The value of `idx` can be `Int` or `Tuple` type.
 
 The dimension of `src` must equal to dimension of `idx`. `dst`, `src` and `idx` must be
-supported array type and be the same type.`Array`, `StaticArray` and `CuArray`
-are currently supported.
+supported array type and be the same type.
 """
 function scatter!(op, dst::AbstractArray{T}, src::AbstractArray{T}, idx::AbstractArray{<:IntOrTuple}) where {T<:Real}
     @simd for k in CartesianIndices(idx)
@@ -34,7 +34,9 @@ end
 """
     scatter!(mean, dst, src, idx)
 
-Scatter mean operation. For each index `k` in `idx`, accumulate values in `dst` according to
+Scatter mean operation, which scatters data in `src` and assigns to `dst` according to `idx`.
+With the data going to the same place, mean is applied on to reduce data.
+For each index `k` in `idx`, accumulate values in `dst` according to
 
     dst[idx[k]...] = dst[idx[k]...] + mean.(src[k...])
 
@@ -46,8 +48,7 @@ The index of `idx` is corresponding to the index of `src` and the value of `idx`
 corresponding to the index of `dst`. The value of `idx` can be `Int` or `Tuple` type.
 
 The dimension of `src` must equal to dimension of `idx`. `dst`, `src` and `idx` must be
-supported array type and be the same type.`Array`, `StaticArray` and `CuArray`
-are currently supported.
+supported array type and be the same type.
 """
 function scatter!(op::typeof(mean), dst::AbstractArray{T}, src::AbstractArray{T}, idx::AbstractArray{<:IntOrTuple}) where {T<:Real}
     Ns = zero(dst)
