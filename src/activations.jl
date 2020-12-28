@@ -222,7 +222,28 @@ See [Softshrink Activation Function](https://www.gabormelli.com/RKB/Softshrink_A
 softshrink(x, λ = oftype(x/1, 0.5)) = min(max(zero(x), x - λ), x + λ)
 
 # Provide an informative error message if activation functions are called with an array
-for f in (:σ, :hardσ, :logσ, :hardtanh, :relu, :leakyrelu, :relu6, :rrelu, :elu, :gelu, :swish, :lisht, :selu, :celu, :trelu, :softsign, :softplus, :logcosh, :mish, :tanhshrink, :softshrink)
+for f in (:σ, :hardσ, :logσ, :hardtanh, :relu, :leakyrelu, 
+        :relu6, :rrelu, :elu, :gelu, :swish, :lisht, :selu, 
+        :celu, :trelu, :softsign, :softplus, :logcosh, :mish, :tanhshrink, :softshrink)
     @eval $(f)(x::AbstractArray, args...) =
       error("Use broadcasting (`", $(string(f)), ".(x)`) to apply activation functions to arrays.")
 end
+
+# # This is a performance hack specifically for Zygote, because it doesn't handle fused
+# # broadcasts well
+for (f, df) in [
+    (:relu, :(x .> 0)),
+    (:selu, :(dselu.(x))),
+    (:elu, :(delu.(x))),
+    (:σ, :(conj.(Ω .* (1 .- Ω)))),
+    ]
+
+    pullback = Symbol(:broadcasted_, f, :_pullback)
+    @eval function ChainRulesCore.rrule(::typeof(broadcasted),
+                                                ::typeof($f), x::Numeric)
+        Ω = $f.(x)
+        $pullback(Δ) = (NO_FIELDS, NO_FIELDS, Δ .* $df)
+        return Ω, $pullback
+    end
+end
+

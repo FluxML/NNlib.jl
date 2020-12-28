@@ -1,6 +1,11 @@
 module NNlib
+
 using Pkg
 using Requires
+using ChainRulesCore
+using Base.Broadcast: broadcasted
+
+const Numeric = Union{AbstractArray{<:T}, T} where {T<:Number}
 
 # Include APIs
 include("dim_helpers.jl")
@@ -18,7 +23,7 @@ is_nnpack_available() = false
   end
 end
 
-include("activation.jl")
+include("activations.jl")
 include("softmax.jl")
 include("batched/batchedmul.jl")
 include("gemm.jl")
@@ -41,6 +46,5 @@ include("impl/pooling_direct.jl")
 
 # differentiation rules
 include("chainrulescore.jl")
-include("zygoterules.jl")
 
 end # module NNlib
