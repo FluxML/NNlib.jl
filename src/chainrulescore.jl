@@ -1,7 +1,3 @@
-using ChainRulesCore
-
-const Numeric = Union{AbstractArray{<:T}, T} where {T<:Number}
-
 @scalar_rule(selu(x), dselu(x))
 @scalar_rule(elu(x, α), (delu(x, α), DoesNotExist()))
 @scalar_rule(σ(x::Real), Ω * (1 - Ω))
