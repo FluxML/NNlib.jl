@@ -229,9 +229,10 @@ for f in (:σ, :hardσ, :logσ, :hardtanh, :relu, :leakyrelu,
       error("Use broadcasting (`", $(string(f)), ".(x)`) to apply activation functions to arrays.")
 end
 
-# # This is a performance hack specifically for Zygote, because it doesn't handle fused
-# # broadcasts well
-# TODO: don't define these for ADs other than Zygote
+# Define rrules for broadcasted activation functions.
+# This is a performance hack is specifically for Zygote, because it doesn't handle fused
+# broadcasts well; but it generally should be good (or at least harmless) for any AD, as 
+# it saves ADing the broadcasting machinery.
 for (f, df) in [
     (:relu, :(x .> 0)),
     (:selu, :(dselu.(x))),
