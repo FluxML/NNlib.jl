@@ -47,3 +47,6 @@ end
 @testset "Gather" begin
     include("gather.jl")
 end
+@testset "Utilities" begin
+    include("utils.jl")
+end
