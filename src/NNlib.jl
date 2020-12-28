@@ -4,6 +4,7 @@ using Pkg
 using Requires
 using ChainRulesCore
 using Base.Broadcast: broadcasted
+using DataStructures: DefaultDict
 using Statistics: mean
 
 const Numeric = Union{AbstractArray{<:T}, T} where {T<:Number}
@@ -33,6 +34,7 @@ include("conv_bias_act.jl")
 include("pooling.jl")
 include("upsample.jl")
 include("utils.jl")
+include("gather.jl")
 include("scatter.jl")
 
 ## Include implementations

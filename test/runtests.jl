@@ -44,3 +44,6 @@ end
 @testset "Scatter" begin
     include("scatter.jl")
 end
+@testset "Gather" begin
+    include("gather.jl")
+end
