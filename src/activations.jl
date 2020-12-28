@@ -231,6 +231,7 @@ end
 
 # # This is a performance hack specifically for Zygote, because it doesn't handle fused
 # # broadcasts well
+# TODO: don't define these for ADs other than Zygote
 for (f, df) in [
     (:relu, :(x .> 0)),
     (:selu, :(dselu.(x))),
@@ -246,4 +247,3 @@ for (f, df) in [
         return Ω, $pullback
     end
 end
-
