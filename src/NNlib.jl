@@ -43,6 +43,7 @@ include("impl/depthwiseconv_im2col.jl")
 
 # Direct implementations of pooling
 include("impl/pooling_direct.jl")
+include("deprecations.jl")
 
 # differentiation rules
 include("chainrulescore.jl")

@@ -1,4 +1,3 @@
-using Zygote
 using Statistics: mean
 
 @testset "softmax integer input" begin
@@ -34,8 +33,11 @@ end
     xs = Float32[1 2 3; 1000 2000 3000]
     @test logsoftmax(xs) ≈ [-999 -1998 -2997; 0 0 0.0]
 
-    @test ∇logsoftmax(ones(Float32, size(xs)), xs) ≈ Float32[1 1 1; -1 -1 -1]
-    @test ∇softmax(ones(Float32, size(xs)), xs) ≈ zeros(Float32, size(xs))
+    y = logsoftmax(xs)
+    @test ∇logsoftmax(ones(Float32, size(xs)), xs, y) ≈ Float32[1 1 1; -1 -1 -1]
+    
+    y = softmax(xs)
+    @test ∇softmax(ones(Float32, size(xs)), xs, y) ≈ zeros(Float32, size(xs))
 
     # These values precalculated using PyTorch's nn.LogSoftmax
     xs = [
@@ -48,8 +50,12 @@ end
         -0.930163 0.0519798 0.0549979 0.3799 -0.477112 0.437428
         0.69246 0.569494 -0.503191 -0.925947 -0.0870738 -1.0697
     ]
-    @test ∇logsoftmax(ones(size(xs)), xs) ≈ ys rtol = 1e-6
-    @test ∇softmax(ones(size(xs)), xs) ≈ zeros(size(xs)) atol = 1e-6
+    
+    y = logsoftmax(xs)
+    @test ∇logsoftmax(ones(size(xs)), xs, y) ≈ ys rtol = 1e-6
+    
+    y = softmax(xs)
+    @test ∇softmax(ones(size(xs)), xs, y) ≈ zeros(size(xs)) atol = 1e-6
 end
 
 @testset "mutating softmax" begin
@@ -67,12 +73,24 @@ end
         logsoftmax!(out, xs)
         @test out ≈ logsoftmax(xs) rtol = 1e-6
 
-        map([zeros, ones]) do fn
+        @testset "$fn(Float64, $(size(xs)))" for fn in [zeros, ones, rand]
             Δ = fn(Float64, size(xs))
-            ∇softmax!(out, Δ, xs)
-            @test out ≈ ∇softmax(Δ, xs) rtol = 1e-6
-            ∇logsoftmax!(out, Δ, xs)
-            @test out ≈ ∇logsoftmax(Δ, xs) rtol = 1e-6
+            y = softmax(xs) 
+            ∇softmax!(out, Δ, xs, y)
+            @test out ≈ ∇softmax(Δ, xs, y)  rtol = 1e-6
+            
+            y = logsoftmax(xs)
+            ∇logsoftmax!(out, Δ, xs, y)
+            @test out ≈ ∇logsoftmax(Δ, xs, y)  rtol = 1e-6
+        end
+    end
+
+    @testset "AD rules" begin
+        x = rand(3,4) 
+        x̄ = rand(3,4) 
+        ȳ = rand(3,4)
+        for f in (softmax, logsoftmax), d in (:, 1, 2)
+            rrule_test(f, ȳ, (x,x̄); fkwargs=(; dims=d))
         end
     end
 end
@@ -83,5 +101,7 @@ end
     x = rand(3, 4)
     @test logsumexp(x) ≈ flogsoft(x, dims = :)
     @test logsumexp(x; dims = 1) ≈ flogsoft(x, dims = 1)
-    @test gradient(x -> logsumexp(x), x)[1] ≈ gradient(x -> flogsoft(x, dims = :), x)[1]
+    for d  in (:,1, 2)
+        zygote_gradient_test(x -> sum(logsumexp(x; dims=d)), x, atol=1e-6)
+    end
 end

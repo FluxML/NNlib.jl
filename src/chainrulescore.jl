@@ -9,16 +9,6 @@ function dselu(x)
 end
 delu(x, α) = ifelse(x ≥ 0, one(x), α * exp(x))
 
-for softmax in [:softmax, :logsoftmax]
-    local ∇softmax = Symbol(:∇, softmax)
-    pullback = Symbol(softmax, :_pullback)
-
-    @eval function ChainRulesCore.rrule(::typeof($softmax), xs; dims=1)
-        $pullback(Δ) = (NO_FIELDS, @thunk($∇softmax(Δ, xs, dims=dims)))
-        return $softmax(xs; dims=dims), $pullback
-    end
-end
-
 for Dims in [:DenseConvDims, :DepthwiseConvDims, :PoolDims]
     pullback = Symbol(Dims, :_pullback)
     @eval function ChainRulesCore.rrule(::Type{$Dims}, args...; kwargs...)
