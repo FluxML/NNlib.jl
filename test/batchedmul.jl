@@ -231,3 +231,10 @@ end
     @test is_strided(batched_transpose(A .+ im))
 
 end
+
+@testset "AutoDiff" begin
+  M, P, Q = 13, 7, 11
+  B = 3
+  gradtest(batched_mul, randn(rng, M, P, B), randn(rng, P, Q, B))
+end
+

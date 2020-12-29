@@ -5,6 +5,8 @@ import Zygote
 using Zygote: gradient
 using StableRNGs
 
+const rng = StableRNG(123)
+
 include("test_utils.jl")
 
 @testset "Activation Functions" begin
@@ -30,8 +32,4 @@ end
 
 @testset "Softmax" begin
     include("softmax.jl")
-end
-
-@testset "AutoDiff" begin
-    include("autodiff.jl")
 end

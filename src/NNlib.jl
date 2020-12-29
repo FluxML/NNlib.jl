@@ -45,7 +45,4 @@ include("impl/depthwiseconv_im2col.jl")
 include("impl/pooling_direct.jl")
 include("deprecations.jl")
 
-# differentiation rules
-include("chainrulescore.jl")
-
 end # module NNlib

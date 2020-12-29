@@ -2,7 +2,7 @@ using Random
 const IntOrTuple = Union{Int, NTuple{N,Int} where N}
 
 gradtest(f, dims::IntOrTuple...; kw...) = 
-    gradtest(f, rand.(Float32, dims)...; kw...)
+    gradtest(f, rand.(rng, Float64, dims)...; kw...)
 
 """
 Compare numerical gradient and automatic gradient
@@ -10,14 +10,14 @@ given by Zygote. `f` has to be a scalar valued function.
 
 Applies also `ChainRulesTestUtils.rrule_test` if the rrule for `f` is explicitly defined.
 """
-function gradtest(f, xs...; atol=1e-5, rtol=1e-5, fkwargs=(;), 
+function gradtest(f, xs...; atol=1e-6, rtol=1e-6, fkwargs=(;), 
                     check_rrule=false, 
                     check_broadcast=false,
                     broken=false)
     
     if check_rrule
         y = f(xs...; fkwargs...)
-        simil(x) = x isa Number ? rand(typeof(x)) : rand!(similar(x)) 
+        simil(x) = x isa Number ? rand(rng, typeof(x)) : rand!(rng, similar(x)) 
         ȳ =  simil(y)
         xx̄s = [(x, simil(x)) for x in xs]
         rrule_test(f, ȳ, xx̄s...; fkwargs=fkwargs)

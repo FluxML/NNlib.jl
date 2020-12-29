@@ -1,4 +1,5 @@
-export σ, sigmoid, hardσ, hardsigmoid, hardtanh, relu, leakyrelu, relu6, rrelu, elu, gelu, swish, selu, celu, softplus, softsign, logσ,
+export σ, sigmoid, hardσ, hardsigmoid, hardtanh, relu, leakyrelu, relu6, rrelu, elu, 
+        gelu, swish, selu, celu, softplus, softsign, logσ,
        logsigmoid, logcosh, mish, tanhshrink, softshrink, thresholdrelu, trelu, lisht
 
 ## Activation functions
@@ -7,12 +8,12 @@ export σ, sigmoid, hardσ, hardsigmoid, hardtanh, relu, leakyrelu, relu6, rrelu
 # https://github.com/JuliaGPU/CuArrays.jl/issues/614
 
 """
-    σ(x) = 1 / (1 + exp(-x))
+    sigmoid(x) = 1 / (1 + exp(-x))
 
 Classic [sigmoid](https://en.wikipedia.org/wiki/Sigmoid_function) activation
 function.
 """
-function σ(x)
+function sigmoid(x)
     t = exp(-abs(x))
     ifelse(x ≥ 0, inv(one(t) + t), t / (one(t) + t))
 end
@@ -24,7 +25,8 @@ const sigmoid = σ
 Segment-wise linear approximation of sigmoid.
 See [BinaryConnect: Training Deep Neural Networks withbinary weights during propagations](https://arxiv.org/abs/1511.00363).
 """
-hardσ(x, a=0.2) = oftype(x/1, max(zero(x/1), min(one(x/1), oftype(x/1,a) * x + oftype(x/1,0.5))))
+hardσ(x, a=0.2) = 
+    oftype(x/1, max(zero(x/1), min(one(x/1), oftype(x/1,a) * x + oftype(x/1,0.5))))
 const hardsigmoid = hardσ
 
 
@@ -228,6 +230,19 @@ for f in (:σ, :hardσ, :logσ, :hardtanh, :relu, :leakyrelu,
     @eval $(f)(x::AbstractArray, args...) =
       error("Use broadcasting (`", $(string(f)), ".(x)`) to apply activation functions to arrays.")
 end
+
+
+@scalar_rule(selu(x), dselu(x))
+@scalar_rule(elu(x, α), (delu(x, α), DoesNotExist()))
+@scalar_rule(σ(x::Real), Ω * (1 - Ω))
+
+function dselu(x)
+    λ = oftype(x/1, 1.0507009873554804934193349852946)
+    α = oftype(x/1, 1.6732632423543772848170429916717)
+    return λ * ifelse(x > 0, one(x), α * exp(x))
+end
+delu(x, α) = ifelse(x ≥ 0, one(x), α * exp(x))
+
 
 # Define rrules for broadcasted activation functions.
 # This is a performance hack is specifically for Zygote, because it doesn't handle fused

@@ -166,3 +166,14 @@ function meanpool(x, k::NTuple{N, Integer}; pad=0, stride=k) where N
     pdims = PoolDims(x, k; padding=pad, stride=stride)
     return meanpool(x, pdims)
 end
+
+
+for pool in [:maxpool, :meanpool]
+    ∇pool = Symbol(:∇, pool)
+    pullback = Symbol(pool, :_pullback)
+    @eval function ChainRulesCore.rrule(::typeof($pool), x, pdims::PoolDims; kw...)
+        Ω = $pool(x, pdims; kw...)
+        $pullback(Δ) = (NO_FIELDS, $∇pool(Δ, Ω, x, pdims; kw...), DoesNotExist())
+        return Ω, $pullback
+    end
+end

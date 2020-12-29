@@ -208,3 +208,39 @@ end
     @test trelu(0.9,0.5) == 0.9
 end
 
+@testset "AutoDiff" begin
+    for f in ACTIVATION_FUNCTIONS
+        gradtest(f, rand())
+        gradtest(f, rand(10, 10), check_broadcast=true)
+    end
+
+    gradtest((x, W, b) -> relu.(W*x .+ b), 5, (2,5), 2)
+    gradtest((x, W, b) -> relu.(W*x .+ b), (5,3), (2,5), 2)
+    gradtest((x, W, b) -> selu.(W*x .+ b), 5, (2,5), 2)
+    gradtest((x, W, b) -> selu.(W*x .+ b), (5,3), (2,5), 2, atol=1e-4)
+    gradtest((x, W, b) -> elu.(W*x .+ b, 2), 5, (2,5), 2)
+    gradtest((x, W, b) -> elu.(W*x .+ b, 2), (5,3), (2,5), 2, atol=1e-4)
+
+    # tests for https://github.com/FluxML/Zygote.jl/issues/758
+    @test gradient(xs -> sum(selu.(xs)), [1_000, 10_000])[1] ≈ [1.0507009873554805, 1.0507009873554805] rtol=1e-8
+    @test gradient(x -> selu(x), 1_000) == (1.0507009873554805,)
+    @test gradient(xs -> sum(elu.(xs, 2)), [1_000, 10_000]) == ([1., 1.],)
+    @test gradient(x -> elu(x, 2), 1_000) == (1.,)
+    @test gradient(x -> elu(x, 2), -1) == (2*exp(-1),)
+    gradtest(x-> selu.(x),[100., 1_000.])
+    gradtest(x -> elu.(x, 3.5),[100., 1_000.])
+    gradtest(x -> elu.(x, 3.5),[1_000., 10_000.]) # for elu the tests are passing but for selu not, interesting
+    # numerical instability even for the linear part of such function, see:
+    # julia> ngradient(x->sum(selu.(x)),[1_000., 10_000.])
+    # ([1.0506591796875, 1.0506591796875],)
+    # julia> gradient(x->sum(selu.(x)),[1_000., 10_000.])
+    # ([1.0507009873554805, 1.0507009873554805],)
+    @test gradtest(x -> selu.(x),[1_000., 10_000.])
+    @test gradtest(x -> selu.(x), 10, atol=1e-4)
+
+    gradtest((x, W, b) -> σ.(W*x .+ b), 5, (2,5), 2)
+    gradtest((x, W, b) -> σ.(W*x .+ b), (5,3), (2,5), 2)
+    gradtest((x, W, b) -> logσ.(W*x .+ b), 5, (2,5), 2)
+    gradtest((x, W, b) -> logσ.(W*x .+ b), (5,3), (2,5), 2)
+end
+

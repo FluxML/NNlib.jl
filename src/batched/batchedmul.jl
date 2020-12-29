@@ -56,6 +56,22 @@ function batched_mul(A::AbstractArray{T1, 3}, B::AbstractArray{T2, 3}) where {T1
     _batched_mul(storage_typejoin(A, B), A, B)
 end
 
+function ChainRulesCore.rrule(
+    ::typeof(batched_mul),
+    A::AbstractArray{S,3},
+    B::AbstractArray{T,3},
+) where {S,T}
+    function batched_mul_pullback(Δ)
+        return (
+            NO_FIELDS,
+            @thunk(batched_mul(Δ, batched_adjoint(B))),
+            @thunk(batched_mul(batched_adjoint(A), Δ)),
+        )
+    end
+    batched_mul(A, B), batched_mul_pullback
+end
+
+
 const ⊠ = batched_mul
 
 function _batched_mul(::Type, A, B)

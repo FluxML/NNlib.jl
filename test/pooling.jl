@@ -810,3 +810,18 @@ maxpool_answer_nature = Dict(
     # end
 end
 
+@testset "AutoDiff: spatial_rank=$spatial_rank" for spatial_rank in (1, 2)
+  x = rand(rng, repeat([10], spatial_rank)..., 3, 2)
+  pdims = PoolDims(x, 2)
+  gradtest(x -> maxpool(x, pdims), x; broken=spatial_rank <= 1)
+  gradtest(x -> meanpool(x, pdims), x)
+  gradtest(x -> sum(maxpool(x, pdims)), x)
+  gradtest(x -> sum(meanpool(x, pdims)), x)
+
+  #https://github.com/FluxML/NNlib.jl/issues/188
+  k = ntuple(_ -> 2, spatial_rank)  # Kernel size of pool in ntuple format
+  gradtest(x -> maxpool(x, k), x; broken=spatial_rank <= 1)
+  gradtest(x -> meanpool(x, k), x)
+  gradtest(x -> sum(maxpool(x, k)), x)
+  gradtest(x -> sum(meanpool(x, k)), x)
+end

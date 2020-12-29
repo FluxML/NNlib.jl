@@ -684,3 +684,30 @@ end
     @test size(NNlib.∇conv_data_direct!(x, y, w, cdims)) == x_size
     @test size(NNlib.∇conv_filter_direct!(w, x, y, cdims)) == w_size
 end
+
+@testset "AutoDiff: spatial_rank=$spatial_rank" for spatial_rank in (1, 2, 3)
+  x = rand(rng, repeat([5], spatial_rank)..., 3, 2)
+  w = rand(rng, repeat([3], spatial_rank)..., 3, 3)
+  cdims = DenseConvDims(x, w)
+  gradtest((x, w) -> conv(x, w, cdims), x, w)
+  gradtest((x, w) -> sum(conv(x, w, cdims)), x, w)  # https://github.com/FluxML/Flux.jl/issues/1055
+
+  y = conv(x, w, cdims)
+  gradtest((y, w) -> ∇conv_data(y, w, cdims), y, w)
+  # if spatial_rank == 3
+  #   @test_broken gradtest((y, w) -> sum(∇conv_data(y, w, cdims)), y, w)
+  # else
+    gradtest((y, w) -> sum(∇conv_data(y, w, cdims)), y, w)
+  # end
+
+  dcdims = DepthwiseConvDims(x, w)
+  gradtest((x, w) -> depthwiseconv(x, w, dcdims), x, w)
+
+  y = depthwiseconv(x, w, dcdims)
+  gradtest((y, w) -> ∇depthwiseconv_data(y, w, dcdims), y, w)
+  # if spatial_rank == 3
+  #   @test_broken gradtest((y, w) -> sum(∇depthwiseconv_data(y, w, dcdims)), y, w)
+  # else
+    gradtest((y, w) -> sum(∇depthwiseconv_data(y, w, dcdims)), y, w)
+  # end
+end
