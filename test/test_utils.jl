@@ -1,8 +1,7 @@
-using Random
 const IntOrTuple = Union{Int, NTuple{N,Int} where N}
 
 gradtest(f, dims::IntOrTuple...; kw...) = 
-    gradtest(f, rand.(rng, Float64, dims)...; kw...)
+    gradtest(f, randn.(rng, Float64, dims)...; kw...)
 
 """
 Compare numerical gradient and automatic gradient
@@ -17,18 +16,23 @@ function gradtest(f, xs...; atol=1e-6, rtol=1e-6, fkwargs=(;),
     
     if check_rrule
         y = f(xs...; fkwargs...)
-        simil(x) = x isa Number ? rand(rng, typeof(x)) : rand!(rng, similar(x)) 
+        simil(x) = x isa Number ? randn(rng, typeof(x)) : randn!(rng, similar(x)) 
         ȳ =  simil(y)
         xx̄s = [(x, simil(x)) for x in xs]
         rrule_test(f, ȳ, xx̄s...; fkwargs=fkwargs)
     end
-
-    h = check_broadcast ? 
-        (xs...) -> sum(sin.(f.(xs...; fkwargs...))) :
-        (xs...) -> sum(sin.(f(xs...; fkwargs...)))
     
+    if check_broadcast
+        length(fkwargs) > 0 && @warn("CHECK_BROADCAST: dropping keywords args") 
+        h = (xs...) -> sum(sin.(f.(xs...)))
+    else
+        h = (xs...) -> sum(sin.(f(xs...; fkwargs...)))
+    end
+
+    # @show @code_ir h(xs...)
     y_true = h(xs...)
-    fdm = FiniteDifferences.central_fdm(5, 1)
+    
+    fdm = central_fdm(5, 1)
     gs_fd = FiniteDifferences.grad(fdm, h, xs...) 
     
     y_ad, pull = Zygote.pullback(h, xs...)

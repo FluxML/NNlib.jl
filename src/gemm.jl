@@ -4,8 +4,6 @@
 using LinearAlgebra
 using LinearAlgebra.BLAS: libblas, BlasInt, @blasfunc
 
-using Compat: get_num_threads, set_num_threads
-
 """
     gemm!()
 

@@ -1,6 +1,8 @@
-using NNlib, Test, Statistics
-using ChainRulesTestUtils
+using NNlib, Test, Statistics, Random
+using ChainRulesCore, ChainRulesTestUtils
+using Base.Broadcast: broadcasted
 import FiniteDifferences
+using FiniteDifferences: FiniteDifferenceMethod, central_fdm
 import Zygote
 using Zygote: gradient
 using StableRNGs

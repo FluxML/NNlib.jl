@@ -1,9 +1,8 @@
 using NNlib, Test, Zygote
+using NNlib: ACTIVATIONS
 
-ACTIVATION_FUNCTIONS = [sigmoid, hardsigmoid, logsigmoid, hardtanh, relu, leakyrelu, 
-                        relu6, rrelu, elu, gelu, celu, swish, lisht, 
-                        selu, trelu, softplus, softsign, logcosh, mish, 
-                        tanhshrink, softshrink];
+ACTIVATION_FUNCTIONS = 
+    [@eval($a) for a in ACTIVATIONS]
 
 function test_value_float_precision_preserving(a)
     @testset "$(a): " begin
@@ -209,11 +208,34 @@ end
 end
 
 @testset "AutoDiff" begin
-    for f in ACTIVATION_FUNCTIONS
-        gradtest(f, rand())
-        gradtest(f, rand(10, 10), check_broadcast=true)
-    end
+    
+    local rng = StableRNG(17)
 
+    for f in ACTIVATION_FUNCTIONS
+        f == rrelu && continue # stocastich output
+        
+        # gradtest(f, rand(rng))
+        # gradtest(f, (2, 3), check_broadcast=true)
+        
+        ## Avoid singular points of some activations
+        ## problematic for finite diff methods
+        gradtest(f, +2 + rand(rng))
+        gradtest(f, -2 - rand(rng))
+        gradtest(f, +2 .+ rand(rng, 2, 2), check_broadcast=true)
+        gradtest(f, -2 .- rand(rng, 2, 2), check_broadcast=true)
+
+        if Symbol(f) in NNlib.UNARY_ACTS
+            @test rrule(f, rand()) !== nothing
+            @test rrule(broadcasted, f, rand(2)) !== nothing
+        end
+        if Symbol(f) in NNlib.BINARY_ACTS
+            @test rrule(f, rand(), rand()) !== nothing
+            @test rrule(broadcasted, f, rand(2), rand(2)) !== nothing
+        end
+    end 
+    
+    gradtest((x, W, b) -> σ.(W*x .+ b), 5, (2,5), 2)
+    gradtest((x, W, b) -> σ.(W*x .+ b), (5,3), (2,5), 2)
     gradtest((x, W, b) -> relu.(W*x .+ b), 5, (2,5), 2)
     gradtest((x, W, b) -> relu.(W*x .+ b), (5,3), (2,5), 2)
     gradtest((x, W, b) -> selu.(W*x .+ b), 5, (2,5), 2)
@@ -229,14 +251,9 @@ end
     @test gradient(x -> elu(x, 2), -1) == (2*exp(-1),)
     gradtest(x-> selu.(x),[100., 1_000.])
     gradtest(x -> elu.(x, 3.5),[100., 1_000.])
-    gradtest(x -> elu.(x, 3.5),[1_000., 10_000.]) # for elu the tests are passing but for selu not, interesting
-    # numerical instability even for the linear part of such function, see:
-    # julia> ngradient(x->sum(selu.(x)),[1_000., 10_000.])
-    # ([1.0506591796875, 1.0506591796875],)
-    # julia> gradient(x->sum(selu.(x)),[1_000., 10_000.])
-    # ([1.0507009873554805, 1.0507009873554805],)
-    @test gradtest(x -> selu.(x),[1_000., 10_000.])
-    @test gradtest(x -> selu.(x), 10, atol=1e-4)
+    gradtest(x -> elu.(x, 3.5),[1_000., 10_000.])
+    gradtest(x -> selu.(x), [1_000., 10_000.])
+    gradtest(x -> selu.(x), 10, atol=1e-4)
 
     gradtest((x, W, b) -> σ.(W*x .+ b), 5, (2,5), 2)
     gradtest((x, W, b) -> σ.(W*x .+ b), (5,3), (2,5), 2)
