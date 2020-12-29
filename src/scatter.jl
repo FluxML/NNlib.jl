@@ -1,7 +1,5 @@
 export scatter!
 
-const IntOrTuple = Union{Integer,Tuple}
-
 """
     scatter!(op, dst, src, idx)
 

@@ -7,6 +7,7 @@ using Base.Broadcast: broadcasted
 using DataStructures: DefaultDict
 using Statistics: mean
 
+const IntOrTuple = Union{Integer,Tuple}
 const Numeric = Union{AbstractArray{<:T}, T} where {T<:Number}
 
 # Include APIs
