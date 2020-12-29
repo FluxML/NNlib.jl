@@ -55,7 +55,7 @@ for pool in [:maxpool, :meanpool]
     pullback = Symbol(pool, :_pullback)
     @eval function ChainRulesCore.rrule(::typeof($pool), x, pdims::PoolDims; kw...)
         Ω = $pool(x, pdims; kw...)
-        $pullback(Δ) = (NO_FIELDS, @thunk($∇pool(Δ, Ω, x, pdims; kw...)), DoesNotExist())
+        $pullback(Δ) = (NO_FIELDS, $∇pool(Δ, Ω, x, pdims; kw...), DoesNotExist())
         return Ω, $pullback
     end
 end

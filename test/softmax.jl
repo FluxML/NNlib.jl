@@ -87,10 +87,8 @@ end
 
     @testset "AD rules" begin
         x = rand(3,4) 
-        x̄ = rand(3,4) 
-        ȳ = rand(3,4)
         for f in (softmax, logsoftmax), d in (:, 1, 2)
-            rrule_test(f, ȳ, (x,x̄); fkwargs=(; dims=d))
+            gradtest(f, x; fkwargs=(; dims=d), check_rrule=true)
         end
     end
 end
@@ -102,6 +100,6 @@ end
     @test logsumexp(x) ≈ flogsoft(x, dims = :)
     @test logsumexp(x; dims = 1) ≈ flogsoft(x, dims = 1)
     for d  in (:,1, 2)
-        zygote_gradient_test(x -> sum(logsumexp(x; dims=d)), x, atol=1e-6)
+        gradtest(logsumexp, x, atol=1e-6, fkwargs=(; dims=d))
     end
 end

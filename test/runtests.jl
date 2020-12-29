@@ -8,7 +8,7 @@ using StableRNGs
 include("test_utils.jl")
 
 @testset "Activation Functions" begin
-    include("activation.jl")
+    include("activations.jl")
 end
 
 @testset "Batched Multiplication" begin
@@ -32,6 +32,6 @@ end
     include("softmax.jl")
 end
 
-@testset "Zygote" begin
-    include("zygote.jl")
+@testset "AutoDiff" begin
+    include("autodiff.jl")
 end
