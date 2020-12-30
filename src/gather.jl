@@ -13,18 +13,10 @@ For each index `k` in `idx`, assign values to `dst` according to
 - `src`: the source data to be assigned.
 - `idx`: the mapping for assignment from source to destination.
 """
-function gather!(dst::AbstractArray{T,N}, src::AbstractArray{T}, idx::AbstractArray{<:Integer,N}) where {T,N}
+function gather!(dst::AbstractArray{T,N}, src::AbstractArray{T}, idx::AbstractArray{<:IntOrTuple,N}) where {T,N}
     @assert size(dst) == size(idx) "dst and idx must have the same size."
     for k = CartesianIndices(idx)
         @inbounds dst[k] = src[idx[k]]
-    end
-    dst
-end
-
-function gather!(dst::AbstractArray{T,N}, src::AbstractArray{T}, idx::AbstractArray{<:Tuple,N}) where {T,N}
-    @assert size(dst) == size(idx) "dst and idx must have the same size."
-    for k = CartesianIndices(idx)
-        @inbounds dst[k] = src[idx[k]...]
     end
     dst
 end
