@@ -1,3 +1,5 @@
+export pixel_shuffle
+
 """
     pixel_shuffle(x, r)
     
