@@ -8,7 +8,7 @@ safe_div(x, y) = ifelse(iszero(y), x, x/y)
 """
     least_dims(idxs)
 
-Compute the least dimensions, of which array can be accessed by the indecies `idxs`.
+Compute the least dimensions, of which array can be accessed by the indices `idxs`.
 """
 least_dims(idxs::AbstractArray{<:Integer}) = (maximum(idxs), )
 
