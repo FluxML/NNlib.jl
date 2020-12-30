@@ -35,3 +35,7 @@ end
 @testset "Softmax" begin
     include("softmax.jl")
 end
+
+@testset "Misc Stuff" begin
+    include("misc.jl")
+end
