@@ -33,33 +33,22 @@ end
 const sigmoid = σ
 
 """
-    hardσ(x, a=0.2) = max(0, min(1.0, a * x + 0.5))
+    hardσ(x, a=0.2) = max(0, min(1, a * x + 0.5))
 
 Segment-wise linear approximation of sigmoid.
 See [BinaryConnect: Training Deep Neural Networks withbinary weights during propagations](https://arxiv.org/abs/1511.00363).
 """
-hardσ(x, a=0.2) = 
-    oftype(x/1, max(zero(x/1), min(one(x/1), oftype(x/1,a) * x + oftype(x/1,0.5))))
+hardσ(x, a=0.2) = oftype(x/1, max(zero(x/1), min(one(x/1), oftype(x/1,a) * x + oftype(x/1,0.5))))
     
 const hardsigmoid = hardσ
-
 
 """
     logσ(x)
 
 Return `log(σ(x))` which is computed in a numerically stable way.
-
-    julia> logσ(0)
-    -0.6931471805599453
-    julia> logσ.([-100, -10, 100])
-    3-element Array{Float64,1}:
-     -100.0
-      -10.000045398899218
-       -3.720075976020836e-44
 """
 logσ(x) = -softplus(-x)
 const logsigmoid = logσ
-
 
 """
     hardtanh(x) = max(-1, min(1, x))
@@ -110,8 +99,7 @@ function rrelu(x, l = 1 / 8.0, u = 1 / 3.0)
 end
 
 """
-    elu(x, α=1) =
-        x > 0 ? x : α * (exp(x) - 1)
+    elu(x, α=1) = x > 0 ? x : α * (exp(x) - 1)
 
 Exponential Linear Unit activation function.
 See [Fast and Accurate Deep Network Learning by Exponential Linear Units](https://arxiv.org/abs/1511.07289).
@@ -121,21 +109,18 @@ elu(x, α=1) = ifelse(x ≥ 0, x/1, α * (exp(x) - 1))
 
 deriv_elu(x, Ω, α=1) = ifelse(x ≥ 0, one(x), Ω + α)
 
+
 """
-    gelu(x) = 
-        0.5x * (1 + tanh(√(2/π) * (x + 0.044715x^3)))
+    gelu(x) = 0.5x * (1 + tanh(√(2/π) * (x + 0.044715x^3)))
 
 [Gaussian Error Linear Unit](https://arxiv.org/abs/1606.08415)
 activation function.
 """
 function gelu(x)
-    p = oftype(x / 1, π)
-    λ = oftype(x / 1, √(2 / p))
+    λ = oftype(x / 1, √(2 / π))
     α = oftype(x / 1, 0.044715)
-    h = oftype(x / 1, 0.5)
-    h * x * (1 + tanh(λ * (x + α * x^3)))
+    x/2 * (1 + tanh(λ * (x + α * x^3)))
 end
-
 
 """
     swish(x) = x * σ(x)
@@ -145,7 +130,6 @@ See [Swish: a Self-Gated Activation Function](https://arxiv.org/abs/1710.05941).
 """
 swish(x) = x * σ(x)
 
-
 """
     lisht(x) = x * tanh(x)
 
@@ -153,7 +137,6 @@ Non-Parametric Linearly Scaled Hyperbolic Tangent Activation Function.
 See [LiSHT](https://arxiv.org/abs/1901.05894)
 """
 lisht(x) = x * tanh(x)
-
 
 """
     selu(x) = λ * (x ≥ 0 ? x : α * (exp(x) - 1))
@@ -176,7 +159,6 @@ function deriv_selu(Ω)
     return ifelse(Ω > 0, λ, Ω + α*λ)
 end
 
-
 """
     celu(x, α=1) = x ≥ 0 ? x : α * (exp(x/α) - 1)
 
@@ -184,7 +166,6 @@ Continuously Differentiable Exponential Linear Units
 See [Continuously Differentiable Exponential Linear Units](https://arxiv.org/abs/1704.07483).
 """
 celu(x, α=1) = ifelse(x ≥ 0, x/1, α * (exp(x/α) - 1))
-
 
 """
     trelu(x, theta=1) = x > theta ? x : 0
@@ -195,7 +176,6 @@ See [ThresholdRelu](https://arxiv.org/abs/1402.3337)
 trelu(x, theta=1) = ifelse(x > theta, x, zero(x))
 const thresholdrelu = trelu
 
-
 """
     softsign(x) = x / (1 + |x|)
 
@@ -203,14 +183,12 @@ See [Quadratic Polynomials Learn Better Image Features](http://www.iro.umontreal
 """
 softsign(x) = x / (one(x) + abs(x))
 
-
 """
     softplus(x) = log(exp(x) + 1)
 
 See [Deep Sparse Rectifier Neural Networks](http://proceedings.mlr.press/v15/glorot11a/glorot11a.pdf).
 """
 softplus(x) = ifelse(x > 0, x + log1p(exp(-x)), log1p(exp(x)))
-
 
 """
     logcosh(x)
