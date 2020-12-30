@@ -20,14 +20,23 @@ corresponding to the index of `dst`. The value of `idx` can be `Int` or `Tuple` 
 The dimension of `src` must equal to dimension of `idx`. `dst`, `src` and `idx` must be
 supported array type and be the same type.
 """
-function scatter!(op, dst::AbstractArray{T}, src::AbstractArray{T}, idx::AbstractArray{<:IntOrTuple}) where {T<:Real}
-    @simd for k in CartesianIndices(idx)
-        dst_v = view(dst, idx[k]...)
-        src_v = view(src, k)
-        @inbounds dst_v .= (op).(dst_v, src_v)
+function scatter!(op, dst::AbstractArray{T}, src::AbstractArray{T}, idx::AbstractArray{<:IntOrTuple},
+                  dims::Colon) where {T<:Real}
+    @inbounds for k in CartesianIndices(idx)
+        dst[idx[k]...] = op(dst[idx[k]...], src[k])
     end
     dst
 end
+
+# function scatter!(op, dst::AbstractArray{T}, src::AbstractArray{T}, idx::AbstractArray{<:IntOrTuple},
+#                   dims::Integer=1) where {T<:Real}
+#     @simd for k in CartesianIndices(idx)
+#         dst_v = view(dst, colons(dims)..., idx[k]...)
+#         src_v = view(src, k)
+#         @inbounds dst_v .= (op).(dst_v, src_v)
+#     end
+#     dst
+# end
 
 """
     scatter!(mean, dst, src, idx)
@@ -48,16 +57,28 @@ corresponding to the index of `dst`. The value of `idx` can be `Int` or `Tuple` 
 The dimension of `src` must equal to dimension of `idx`. `dst`, `src` and `idx` must be
 supported array type and be the same type.
 """
-function scatter!(op::typeof(mean), dst::AbstractArray{T}, src::AbstractArray{T}, idx::AbstractArray{<:IntOrTuple}) where {T<:Real}
+function scatter!(op::typeof(mean), dst::AbstractArray{T}, src::AbstractArray{T}, idx::AbstractArray{<:IntOrTuple},
+                  dims::Colon) where {T<:Real}
     Ns = zero(dst)
     dst_ = zero(dst)
-    scatter!(+, Ns, one.(src), idx)
-    scatter!(+, dst_, src, idx)
+    scatter!(+, Ns, one.(src), idx, dims)
+    scatter!(+, dst_, src, idx, dims)
     dst .+= safe_div.(dst_, Ns)
     return dst
 end
 
-function scatter!(op, dst::AbstractArray{T}, src::AbstractArray{S}, idx::AbstractArray{<:IntOrTuple}) where {T<:Real,S<:Real}
+function scatter!(op::typeof(mean), dst::AbstractArray{T}, src::AbstractArray{T}, idx::AbstractArray{<:IntOrTuple},
+                  dims::Integer=1) where {T<:Real}
+    Ns = zero(dst)
+    dst_ = zero(dst)
+    scatter!(+, Ns, one.(src), idx, dims)
+    scatter!(+, dst_, src, idx, dims)
+    dst .+= safe_div.(dst_, Ns)
+    return dst
+end
+
+function scatter!(op, dst::AbstractArray{T}, src::AbstractArray{S}, idx::AbstractArray{<:IntOrTuple},
+                  dims::Union{Integer,Colon}=1) where {T<:Real,S<:Real}
     PT = promote_type(T, S)
-    scatter!(op, PT.(dst), PT.(src), idx)
+    scatter!(op, PT.(dst), PT.(src), idx, dims)
 end
