@@ -1,7 +1,8 @@
 const IntOrTuple = Union{Int, NTuple{N,Int} where N}
 
 gradtest(f, dims::IntOrTuple...; kw...) = 
-    gradtest(f, randn.(rng, Float64, dims)...; kw...)
+    gradtest(f, randn.(Ref(rng), Float64, dims)...; kw...) # julia v1.3 compat
+    # gradtest(f, randn.(rng, Float64, dims)...; kw...) 
 
 """
 Compare numerical gradient and automatic gradient
@@ -29,7 +30,6 @@ function gradtest(f, xs...; atol=1e-6, rtol=1e-6, fkwargs=NamedTuple(),
         h = (xs...) -> sum(sin.(f(xs...; fkwargs...)))
     end
 
-    # @show @code_ir h(xs...)
     y_true = h(xs...)
     
     fdm = central_fdm(5, 1)
