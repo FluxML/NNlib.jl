@@ -24,6 +24,7 @@ is_nnpack_available() = false
 end
 
 include("activations.jl")
+
 include("softmax.jl")
 include("batched/batchedmul.jl")
 include("gemm.jl")
@@ -44,8 +45,5 @@ include("impl/depthwiseconv_im2col.jl")
 # Direct implementations of pooling
 include("impl/pooling_direct.jl")
 include("deprecations.jl")
-
-# differentiation rules
-include("chainrulescore.jl")
 
 end # module NNlib

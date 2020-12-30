@@ -1,14 +1,18 @@
-using NNlib, Test, Statistics
-using ChainRulesTestUtils
+using NNlib, Test, Statistics, Random
+using ChainRulesCore, ChainRulesTestUtils
+using Base.Broadcast: broadcasted
 import FiniteDifferences
+using FiniteDifferences: FiniteDifferenceMethod, central_fdm
 import Zygote
 using Zygote: gradient
 using StableRNGs
 
+const rng = StableRNG(123)
+
 include("test_utils.jl")
 
 @testset "Activation Functions" begin
-    include("activation.jl")
+    include("activations.jl")
 end
 
 @testset "Batched Multiplication" begin
@@ -30,8 +34,4 @@ end
 
 @testset "Softmax" begin
     include("softmax.jl")
-end
-
-@testset "Zygote" begin
-    include("zygote.jl")
 end

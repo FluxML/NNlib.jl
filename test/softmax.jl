@@ -84,15 +84,6 @@ end
             @test out ≈ ∇logsoftmax(Δ, xs, y)  rtol = 1e-6
         end
     end
-
-    @testset "AD rules" begin
-        x = rand(3,4) 
-        x̄ = rand(3,4) 
-        ȳ = rand(3,4)
-        for f in (softmax, logsoftmax), d in (:, 1, 2)
-            rrule_test(f, ȳ, (x,x̄); fkwargs=(; dims=d))
-        end
-    end
 end
 
 @testset "logsumexp" begin
@@ -101,7 +92,21 @@ end
     x = rand(3, 4)
     @test logsumexp(x) ≈ flogsoft(x, dims = :)
     @test logsumexp(x; dims = 1) ≈ flogsoft(x, dims = 1)
-    for d  in (:,1, 2)
-        zygote_gradient_test(x -> sum(logsumexp(x; dims=d)), x, atol=1e-6)
+end
+
+
+@testset "AutoDiff" begin
+    for f in (softmax, logsoftmax), d in (:, 1, 2)
+        gradtest(f, (3,4); fkwargs=(; dims=d), check_rrule=true)
+    end
+    gradtest(x -> softmax(x).*(1:3), 3)
+    gradtest(x -> softmax(x).*(1:3), (3,5), atol=1e-4)
+    gradtest(x -> softmax(x, dims=2).*(1:3), (3,5), atol=1e-4)
+    gradtest(x -> logsoftmax(x).*(1:3), 3)
+    gradtest(x -> logsoftmax(x).*(1:3), (3,5))
+    gradtest(x -> logsoftmax(x, dims=2).*(1:3), (3,5))
+
+    for d  in (:, 1, 2)
+        gradtest(logsumexp, (3,4), fkwargs=(; dims=d))
     end
 end

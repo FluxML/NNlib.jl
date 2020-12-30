@@ -1,9 +1,8 @@
 using NNlib, Test, Zygote
+using NNlib: ACTIVATIONS
 
-ACTIVATION_FUNCTIONS = [σ, hardσ, logσ, hardtanh, relu, leakyrelu, 
-                        relu6, rrelu, elu, gelu, celu, swish, lisht, 
-                        selu, trelu, softplus, softsign, logcosh, mish, 
-                        tanhshrink, softshrink];
+ACTIVATION_FUNCTIONS = 
+    [@eval($a) for a in ACTIVATIONS]
 
 function test_value_float_precision_preserving(a)
     @testset "$(a): " begin
@@ -38,8 +37,8 @@ function test_gradient_float_precision_preserving(a)
     end
 end
 
-@test σ(0.0) == 0.5
-@test hardσ(0.0) == 0.5
+@test sigmoid(0.0) == 0.5
+@test hardsigmoid(0.0) == 0.5
 @test hardtanh(0.0) == 0.0
 @test relu(0.0) == 0.0
 @test leakyrelu(0.0) == 0.0
@@ -61,8 +60,8 @@ end
 @test tanhshrink(0.0) == 0.0
 @test softshrink(0.0) == 0.0
 
-@test σ(1.0) == 1.0 / (1.0 + exp(-1.0))
-@test hardσ(1.0) == max(0,min(1,0.2*1.0 + 0.5))
+@test sigmoid(1.0) == 1.0 / (1.0 + exp(-1.0))
+@test hardsigmoid(1.0) == max(0,min(1,0.2*1.0 + 0.5))
 @test hardtanh(1.0) == 1.0
 @test relu(1.0) == 1.0
 @test leakyrelu(1.0) == 1.0
@@ -70,7 +69,7 @@ end
 @test rrelu(1.0) == 1.0
 @test elu(1.0) == 1.0
 @test gelu(1.0) == 0.8411919906082768
-@test swish(1.0) == σ(1.0)
+@test swish(1.0) == sigmoid(1.0)
 @test lisht(1.0) ≈ 1.0 * tanh(1.0)
 @test softplus(1.0) ≈ log(exp(1.0) + 1.0)
 @test softsign(1.0) == 0.5
@@ -82,8 +81,8 @@ end
 @test tanhshrink(1.0) ≈ 0.23840584404423515
 @test softshrink(1.0) == 0.5
 
-@test σ(-1.0) == exp(-1.0) / (1.0 + exp(-1.0))
-@test hardσ(-1.0) == max(0,min(1,0.2*-1.0 + 0.5))
+@test sigmoid(-1.0) == exp(-1.0) / (1.0 + exp(-1.0))
+@test hardsigmoid(-1.0) == max(0,min(1,0.2*-1.0 + 0.5))
 @test hardtanh(-1.0) == -1.0
 @test relu(-1.0) == 0.0
 @test leakyrelu(-1.0) == -0.01
@@ -91,7 +90,7 @@ end
 @test -1/3.0 <= rrelu(-1.0) <= -1/8.0
 @test elu(-1.0) == exp(-1.0) - 1.0
 @test gelu(-1.0) == -0.15880800939172324
-@test swish(-1.0) == -σ(-1.0)
+@test swish(-1.0) == -sigmoid(-1.0)
 @test lisht(-1.0) ≈ -1.0 * tanh(-1.0)
 @test softplus(-1.0) ≈ log(exp(-1.0) + 1.0)
 @test softsign(-1.0) == -0.5
@@ -207,3 +206,58 @@ end
     @test trelu(1.1) == 1.1
     @test trelu(0.9,0.5) == 0.9
 end
+
+@testset "AutoDiff" begin
+    
+    local rng = StableRNG(17)
+
+    for f in ACTIVATION_FUNCTIONS
+        f == rrelu && continue # stocastich output
+        
+        # gradtest(f, rand(rng))
+        # gradtest(f, (2, 3), check_broadcast=true)
+        
+        ## Avoid singular points of some activations
+        ## problematic for finite diff methods
+        gradtest(f, +2 + rand(rng))
+        gradtest(f, -2 - rand(rng))
+        gradtest(f, +2 .+ rand(rng, 2, 2), check_broadcast=true)
+        gradtest(f, -2 .- rand(rng, 2, 2), check_broadcast=true)
+
+        if Symbol(f) in NNlib.UNARY_ACTS
+            @test rrule(f, rand()) !== nothing
+            @test rrule(broadcasted, f, rand(2)) !== nothing
+        end
+        if Symbol(f) in NNlib.BINARY_ACTS
+            @test rrule(f, rand(), rand()) !== nothing
+            @test rrule(broadcasted, f, rand(2), rand(2)) !== nothing
+        end
+    end 
+    
+    gradtest((x, W, b) -> σ.(W*x .+ b), 5, (2,5), 2)
+    gradtest((x, W, b) -> σ.(W*x .+ b), (5,3), (2,5), 2)
+    gradtest((x, W, b) -> relu.(W*x .+ b), 5, (2,5), 2)
+    gradtest((x, W, b) -> relu.(W*x .+ b), (5,3), (2,5), 2)
+    gradtest((x, W, b) -> selu.(W*x .+ b), 5, (2,5), 2)
+    gradtest((x, W, b) -> selu.(W*x .+ b), (5,3), (2,5), 2, atol=1e-4)
+    gradtest((x, W, b) -> elu.(W*x .+ b, 2), 5, (2,5), 2)
+    gradtest((x, W, b) -> elu.(W*x .+ b, 2), (5,3), (2,5), 2, atol=1e-4)
+
+    # tests for https://github.com/FluxML/Zygote.jl/issues/758
+    @test gradient(xs -> sum(selu.(xs)), [1_000, 10_000])[1] ≈ [1.0507009873554805, 1.0507009873554805] rtol=1e-8
+    @test gradient(x -> selu(x), 1_000) == (1.0507009873554805,)
+    @test gradient(xs -> sum(elu.(xs, 2)), [1_000, 10_000]) == ([1., 1.],)
+    @test gradient(x -> elu(x, 2), 1_000) == (1.,)
+    @test gradient(x -> elu(x, 2), -1) == (2*exp(-1),)
+    gradtest(x-> selu.(x),[100., 1_000.])
+    gradtest(x -> elu.(x, 3.5),[100., 1_000.])
+    gradtest(x -> elu.(x, 3.5),[1_000., 10_000.])
+    gradtest(x -> selu.(x), [1_000., 10_000.])
+    gradtest(x -> selu.(x), 10, atol=1e-4)
+
+    gradtest((x, W, b) -> σ.(W*x .+ b), 5, (2,5), 2)
+    gradtest((x, W, b) -> σ.(W*x .+ b), (5,3), (2,5), 2)
+    gradtest((x, W, b) -> logσ.(W*x .+ b), 5, (2,5), 2)
+    gradtest((x, W, b) -> logσ.(W*x .+ b), (5,3), (2,5), 2)
+end
+
