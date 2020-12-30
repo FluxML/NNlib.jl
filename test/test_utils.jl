@@ -9,7 +9,7 @@ given by Zygote. `f` has to be a scalar valued function.
 
 Applies also `ChainRulesTestUtils.rrule_test` if the rrule for `f` is explicitly defined.
 """
-function gradtest(f, xs...; atol=1e-6, rtol=1e-6, fkwargs=(;), 
+function gradtest(f, xs...; atol=1e-6, rtol=1e-6, fkwargs=NamedTuple(), 
                     check_rrule=false, 
                     check_broadcast=false,
                     broken=false)
