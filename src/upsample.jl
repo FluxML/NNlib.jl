@@ -1,30 +1,47 @@
 export bilinear_upsample, ∇bilinear_upsample
 
-# Creates interpolation points for resampling, creates the same grid as used in Image.jl `imresize`.
-function construct_xq(n::T, m::T) where T<:Integer
-    typed1 = one(n)
-    typed2 = 2typed1
-    step = n // m
-    offset = (n + typed1)//typed2 - step//typed2 - step*(m//typed2 - typed1)
-    x = range(offset, step=step, length=m)
-    xq = clamp.(x, typed1//typed1, n//typed1)
-    return xq
+
+"""
+    bilinear_upsample(x::AbstractArray{<:Number,4}, k::NTuple{2,Int})
+
+Upsamples the first 2 dimensions of the array `x` by the upsample factors stored in `k`,
+using bilinear interpolation. 
+
+The size of the output is equal to 
+`(k[1]*S1, k[2]*S2, S3, S4)`, where `S1, S2, S3, S4 = size(x)`.
+
+The interpolation grid is identical to the one used by `imresize` from `Images.jl`.
+
+Currently only 2d upsampling is supported.
+"""
+function bilinear_upsample(x::AbstractArray{<:Number,4}, k::NTuple{2,Int})
+    imgsize = size(x)
+    newsize = get_newsize(imgsize, k)
+
+    # Get linear interpolation lower- and upper index, and weights
+    ilow1, ihigh1, wdiff1 = get_inds_and_ws(x, imgsize[1], newsize[1], 1)
+    ilow2, ihigh2, wdiff2 = get_inds_and_ws(x, imgsize[2], newsize[2], 2)
+
+    # Adjust the upper interpolation indices of the second dimension
+    ihigh2_r = adjoint_of_idx(ilow2)[ihigh2]
+
+    @inbounds y = @view(x[ilow1,ilow2,:,:]) .* (1 .- wdiff1) .+ @view(x[ihigh1,ilow2,:,:]) .* wdiff1
+    @inbounds y = y .* (1 .- wdiff2) .+ @view(y[:,ihigh2_r,:,:]) .* wdiff2
+    return y
 end
 
-# Creates interpolation lower and upper indices, and broadcastable weights
-function get_inds_and_ws(xq, dim)
-    n = length(xq)
+function get_inds_and_ws(x::T, n::Int, m::Int, dim::Int) where T <: AbstractArray
+    # Creates interpolation grid for resampling. 
+    # Creates the same grid as used in Image.jl `imresize`.
+    step = n // m
+    offset = (n + 1)//2 - step//2 - step * (m//2 - 1)
+    xq = clamp.(range(offset, step=step, length=m), 1, n)
+
+    # Creates interpolation lower and upper indices, and broadcastable weights
     ilow = floor.(Int, xq)
     ihigh = ceil.(Int, xq)
-    wdiff = xq .- ilow
-    if dim == 1
-        newsizetup = (n, 1, 1, 1)
-    elseif dim == 2
-        newsizetup = (1, n, 1, 1)
-    else
-        error("Unreachable reached")
-    end
-    wdiff = reshape(wdiff, newsizetup)
+    sizew = ntuple(i-> i == dim ? length(xq) : 1, ndims(x))
+    wdiff = convert(T, reshape(xq .- ilow, sizew)) # wdiff possibly lives on gpu
     return ilow, ihigh, wdiff
 end
 
@@ -58,91 +75,11 @@ function adjoint_of_idx(idx::Vector{T}) where T<:Integer
     return idx_adjoint
 end
 
-function get_newsize(oldsize, k_upsample)
-    newsize = (i <= length(k_upsample) ? s*k_upsample[i] : s for (i,s) in enumerate(oldsize))
+function get_newsize(oldsize, k)
+    newsize = (i <= length(k) ? s*k[i] : s for (i,s) in enumerate(oldsize))
     return tuple(newsize...)
 end
 
-"""
-    bilinear_upsample(img::AbstractArray{T,4}, k::NTuple{2,<:Real}) where T
-
-# Arguments
-- `img::AbstractArray`: the array to be upsampled, must have at least 2 dimensions.
-- `k_upsample`: a tuple containing the factors with which the first two dimensions of `img` are upsampled.
-
-# Outputs
-- `imgupsampled`: the upsampled version of `img`. The size of `imgupsampled` is
-equal to `(k_upsample[1]*S1, k_upsample[2]*S2, S3, S4)`, where `S1,S2,S3,S4 = size(img)`.
-
-# Explanation
-Upsamples the first two dimensions of the 4-dimensional array `img` by the two upsample factors stored in `k_upsample`,
-using bilinear interpolation. The interpolation grid is identical to the one used by `imresize` from `Images.jl`.
-"""
-function bilinear_upsample(img::AbstractArray{T,4}, k_upsample::NTuple{2,<:Real}) where T
-
-    ilow1, ihigh1, wdiff1, ilow2, ihigh2, wdiff2, ihigh2_r = setup_upsample(img, k_upsample)
-
-    @inbounds imgupsampled = @view(img[ilow1,ilow2,:,:]) .* (1 .- wdiff1) .+ @view(img[ihigh1,ilow2,:,:]) .* wdiff1
-    @inbounds imgupsampled = imgupsampled .* (1 .- wdiff2) .+ @view(imgupsampled[:,ihigh2_r,:,:]) .* wdiff2
-
-    return imgupsampled
-end
-
-"""
-    setup_upsample(imgsize::NTuple{4,<:Integer}, imgdtype, k_upsample::NTuple{2,<:Real})
-
-Creates arrays of interpolation indices and weights for the bilinear_upsample2d operation.
-"""
-function setup_upsample(img, k_upsample::NTuple{2,<:Real})
-    n_dims = 4
-    imgsize = size(img)
-    newsize = get_newsize(imgsize, k_upsample)
-
-    # Create interpolation grids
-    xq1 = construct_xq(imgsize[1], newsize[1])
-    xq2 = construct_xq(imgsize[2], newsize[2])
-
-    # Get linear interpolation lower- and upper index, and weights
-    ilow1, ihigh1, wdiff1 = get_inds_and_ws(xq1, 1)
-    ilow2, ihigh2, wdiff2 = get_inds_and_ws(xq2, 2)
-
-    # Adjust the upper interpolation indices of the second dimension
-    ihigh2_r = adjoint_of_idx(ilow2)[ihigh2]
-
-    wdiff1 = eltype(img).(wdiff1)
-    wdiff2 = eltype(img).(wdiff2)
-
-    # if typeof(img) <: CuArray
-    #     wdiff1 = CuArray(wdiff1)
-    #     wdiff2 = CuArray(wdiff2)
-    # end
-
-    return ilow1, ihigh1, wdiff1, ilow2, ihigh2, wdiff2, ihigh2_r
-
-end
-
-"""
-    get_downsamplekernel(n::T) where T<:Integer
-
-# Arguments
-- `n<:Integer`: upsample factor for which a downsample kernel will be determined
-
-# Outputs
-- `kernel`: downsample kernel
-"""
-function get_downsamplekernel(n::T) where T<:Integer
-    step = 1//n
-    if n % 2 == 0
-        start = step//2
-        upward = collect(start:step:1//1)
-        kernel = [upward; reverse(upward)]
-    else
-        start = step
-        upward = collect(start:step:1//1)
-        kernel = [upward; reverse(upward[1:end-1])]
-    end
-    return kernel
-end
 
 """
     ∇bilinear_upsample(arr::AbstractArray, factors::Tuple{T,T} where T<:Integer)
@@ -160,7 +97,7 @@ in this implementation is performed using `Flux.Conv` in combination with a down
 upsampling factors. Because of the zero-padding during convolution, the values at the boundary are polluted by edge-effects,
 which have been corrected for manually.
 """
-function ∇bilinear_upsample(arr::AbstractArray, factors::Tuple{T,T} where T<:Integer)
+function ∇bilinear_upsample(arr::AbstractArray{<:Number, 4}, factors::NTuple{2,Int})
 
     if size(arr,1) == factors[1]
         arr = sum(arr, dims=1)
@@ -261,3 +198,28 @@ function ∇bilinear_upsample(arr::AbstractArray, factors::Tuple{T,T} where T<:I
 
     return arr_ds
 end
+
+
+"""
+    get_downsamplekernel(n::T) where T<:Integer
+
+# Arguments
+- `n<:Integer`: upsample factor for which a downsample kernel will be determined
+
+# Outputs
+- `kernel`: downsample kernel
+"""
+function get_downsamplekernel(n::T) where T<:Integer
+    step = 1//n
+    if n % 2 == 0
+        start = step//2
+        upward = collect(start:step:1//1)
+        kernel = [upward; reverse(upward)]
+    else
+        start = step
+        upward = collect(start:step:1//1)
+        kernel = [upward; reverse(upward[1:end-1])]
+    end
+    return kernel
+end
+
