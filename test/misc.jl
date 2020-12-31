@@ -48,5 +48,16 @@
     y2 = pixel_shuffle(x2, 3)
     @test cat(y1, y2, dims=4) == y
 
-    gradtest(x -> pixel_shuffle(x, 2), rand(3, 3, 8, 2))
+    for d in [1, 2, 3]
+        r = rand(1:5)
+        n = rand(1:5)
+        c = rand(1:5)
+        insize = rand(1:5, d)
+        x = rand(insize..., r^d*c, n)
+        
+        y = pixel_shuffle(x, r)
+        @test size(y) == ((r .* insize)..., c, n)
+
+        gradtest(x -> pixel_shuffle(x, r), x)
+    end
 end

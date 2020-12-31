@@ -10,13 +10,16 @@ towards high resolution features.
 
 Reference : https://arxiv.org/pdf/1609.05158.pdf
 """
-function pixel_shuffle(x::AbstractArray{T, 4}, r::Integer) where T
-    w, h, c, n = size(x)
-    @assert c % r^2 == 0
-    c_out = c ÷ r^2
-    w_out = w * r
-    h_out = h * r
-    x = reshape(x, (w, h, r, r, c_out, n))
-    x = permutedims(x, (3, 1, 4, 2, 5, 6))
-    return reshape(x, (w_out, h_out, c_out, n))
+function pixel_shuffle(x::AbstractArray, r::Integer)    
+    @assert ndims(x) > 2
+    d = ndims(x) - 2
+    sizein = size(x)[1:d]
+    cin, n = size(x, d+1), size(x, d+2) 
+    @assert cin % r^d == 0
+    cout = cin ÷ r^d
+    # x = reshape(x, sizein..., fill(r, d)..., cout, n) # bug https://github.com/FluxML/Zygote.jl/issues/866
+    x = reshape(x, sizein..., ntuple(i->r, d)..., cout, n)
+    perm = [d+1:2d 1:d]' |> vec  # = [d+1, 1, d+2, 2, ..., 2d, d]
+    x = permutedims(x, (perm..., 2d+1, 2d+2))
+    return reshape(x, ((r .* sizein)..., cout, n))
 end
