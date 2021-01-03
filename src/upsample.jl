@@ -27,7 +27,8 @@ function bilinear_upsample(x::AbstractArray{<:Number,4}, k::NTuple{2,Int})
     ihigh2_r = adjoint_of_idx(ilow2)[ihigh2]
 
     @inbounds y = @view(x[ilow1,ilow2,:,:]) .* (1 .- wdiff1) .+ @view(x[ihigh1,ilow2,:,:]) .* wdiff1
-    @inbounds y = y .* (1 .- wdiff2) .+ @view(y[:,ihigh2_r,:,:]) .* wdiff2
+    @inbounds y .= y .* (1 .- wdiff2) .+ y[:,ihigh2_r,:,:] .* wdiff2
+    # @inbounds y = y .* (1 .- wdiff2) .+ @view(y[:,ihigh2_r,:,:]) .* wdiff2 # equivalent to line above
     return y
 end
 
@@ -100,23 +101,22 @@ which have been corrected for manually.
 """
 function ∇bilinear_upsample(Δ::AbstractArray{<:Number, 4}, k::NTuple{2,Int})
     # This function is gpu friendly
-     
+    
+    # Be more efficient on some corner cases
     if size(Δ, 1) == k[1]
         Δ = sum(Δ, dims=1)
         k = (1, k[2])
     end
-
     if size(Δ, 2) == k[2]
         Δ = sum(Δ, dims=2)
         k = (k[1], 1)
     end
-
-    if (size(Δ, 1) == 1) & (size(Δ, 2) == 1)
+    if (size(Δ, 1) == 1) && (size(Δ, 2) == 1)
         dx = Δ
         return dx
     end
 
-    n_chan, n_batch = size(Δ,3), size(Δ,4)
+    n_chan, n_batch = size(Δ, 3), size(Δ, 4)
 
     kern1 = get_downsamplekernel(k[1])
     kern2 = get_downsamplekernel(k[2])
