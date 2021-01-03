@@ -15,5 +15,3 @@ least_dims(idxs::AbstractArray{<:Integer}) = (maximum(idxs), )
 function least_dims(idxs::AbstractArray{<:Tuple})
     Tuple(maximum(xs) for xs in zip(idxs...))
 end
-
-colons(n::Integer) = repeat([:,], n)
