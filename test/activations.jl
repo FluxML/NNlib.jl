@@ -6,7 +6,7 @@ ACTIVATION_FUNCTIONS =
 
 function test_value_float_precision_preserving(a)
     @testset "$(a): " begin
-        for T in [Float32, Float64]
+        for T in [Float16, Float32, Float64]
             for val in [-10, -1, 0, 1, 10]
                 val = @inferred a(T(val))
                 @test typeof(val) == T
@@ -15,20 +15,9 @@ function test_value_float_precision_preserving(a)
     end
 end
 
-function test_value_int_input_forces_float64(a)
-    @testset "$(a): " begin
-        for T in [Int32, Int64]
-            for val in [-10, -1, 0, 1, 10]
-                val = @inferred a(T(val))
-                @test typeof(val) == Float64
-            end
-        end
-    end
-end
-
 function test_gradient_float_precision_preserving(a)
     @testset "$(a): " begin
-        for T in [Float32, Float64]
+        for T in [Float16, Float32, Float64]
             for val in [-10, -1, 0, 1, 10]
                 val = @inferred a'(T(val))
                 @test typeof(val) == T
@@ -61,7 +50,7 @@ end
 @test softshrink(0.0) == 0.0
 
 @test sigmoid(1.0) == 1.0 / (1.0 + exp(-1.0))
-@test hardsigmoid(1.0) == max(0,min(1,0.2*1.0 + 0.5))
+@test hardsigmoid(1.0) == max(0,min(1, (1 + 3)/6))
 @test hardtanh(1.0) == 1.0
 @test relu(1.0) == 1.0
 @test leakyrelu(1.0) == 1.0
@@ -82,7 +71,7 @@ end
 @test softshrink(1.0) == 0.5
 
 @test sigmoid(-1.0) == exp(-1.0) / (1.0 + exp(-1.0))
-@test hardsigmoid(-1.0) == max(0,min(1,0.2*-1.0 + 0.5))
+@test hardsigmoid(-1.0) == max(0,min(1,(-1+3)/6 ))
 @test hardtanh(-1.0) == -1.0
 @test relu(-1.0) == 0.0
 @test leakyrelu(-1.0) == -0.01
@@ -110,34 +99,6 @@ end
     x = rand(5)
     for a in ACTIVATION_FUNCTIONS
         @test_throws ErrorException a(x)
-    end
-end
-
-@testset "Test Integer64 and Integer32 inputs will force Float64 outputs" begin
-    test_value_int_input_forces_float64.(filter(x -> (x != relu && x != relu6 && x != hardtanh && x != trelu), ACTIVATION_FUNCTIONS))
-
-    @testset "relu: " begin
-        # relu doesn't have to force floating point outputs
-        @test typeof(relu(Int64(1))) == Int64
-        @test typeof(relu(Int32(1))) == Int32
-    end
-
-    @testset "relu6: " begin
-        # relu6 doesn't have to force floating point outputs
-        @test typeof(relu6(Int64(1))) == Int64
-        @test typeof(relu6(Int32(1))) == Int32
-    end
-
-    @testset "hardtanh: " begin
-        # hardtanh doesn't have to force floating point outputs
-        @test typeof(hardtanh(Int64(1))) == Int64
-        @test typeof(hardtanh(Int32(1))) == Int32
-    end
-
-    @testset "trelu: " begin
-        # trelu doesn't have to force floating point outputs
-        @test typeof(trelu(Int64(1))) == Int64
-        @test typeof(trelu(Int32(1))) == Int32
     end
 end
 
@@ -189,9 +150,8 @@ end
 @test logcosh(1_000.0) + log(2) == 1_000.0
 
 @testset "hardsigmoid" begin
-    @test hardsigmoid(0.3) == 0.56
-    @test hardsigmoid(-0.3) == 0.44
-    @test hardsigmoid(0.1,0.5) == 0.55
+    @test hardsigmoid(0.3) == max(0,min(1,(0.3+3)/6))
+    @test hardsigmoid(-0.3) == max(0,min(1,(-0.3+3)/6))
     for T in [:Float32, :Float64]
         @eval @test hardsigmoid.($T[-100_000, 100_000.]) ≈ $T[0., 1.]
     end
@@ -260,4 +220,3 @@ end
     gradtest((x, W, b) -> logσ.(W*x .+ b), 5, (2,5), 2)
     gradtest((x, W, b) -> logσ.(W*x .+ b), (5,3), (2,5), 2)
 end
-
