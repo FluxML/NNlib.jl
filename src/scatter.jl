@@ -46,7 +46,7 @@ end
 function scatter_vec!(op, dst::AbstractArray{T}, src::AbstractArray{T}, idx::AbstractArray{<:IntOrTuple},
                       dims::Integer) where {T<:Real}
     @simd for k in CartesianIndices(idx)
-        dst_v = view(dst, colons(dims)..., idx[k]...)
+        dst_v = view(dst, Base.ntuple(_->Colon(), dims)..., idx[k]...)
         src_v = view(src, k)
         @inbounds dst_v .= (op).(dst_v, src_v)
     end
