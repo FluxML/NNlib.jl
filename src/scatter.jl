@@ -28,7 +28,7 @@ Examples for dims are lists here:
 function scatter!(op, dst::AbstractArray{T}, src::AbstractArray{T}, idx::AbstractArray{<:IntOrTuple},
                   dims::Integer=1) where {T<:Real}
     if dims > 0
-        scatter_vec!(op, dst, src, idx, dims)
+        scatter_vec!(op, dst, src, idx, Val(dims))
     elseif dims == 0
         scatter_scl!(op, dst, src, idx)
     else
