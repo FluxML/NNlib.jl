@@ -36,7 +36,7 @@ where destination `dst` is created according to `idx`.
 - `idx`: the mapping for assignment from source to destination.
 """
 function gather(src::AbstractArray{T}, idx::AbstractArray{<:IntOrTuple}) where {T}
-    dst = Array{T}(undef, size(idx)...)
+    dst = similar(src, axes(idx)...)
     gather!(dst, src, idx)
 end
 
