@@ -1,4 +1,4 @@
-export gather, gather_indices
+export gather, gather!
 
 """
     gather!(dst, src, idx, dims)
@@ -23,7 +23,8 @@ Examples for dims are lists here:
 """
 function gather!(dst::AbstractArray{T,N}, src::AbstractArray{T}, idx::AbstractArray{<:IntOrTuple,N},
                  dims::Integer=1) where {T,N}
-    @assert size(dst) == size(idx) "dst and idx must have the same size."
+    @boundscheck _check_output(idx, dst, src, dims)
+    @boundscheck _check_input(idx, src)
     if dims > 0
         gather_vec!(dst, src, idx, Val(dims))
     elseif dims == 0
