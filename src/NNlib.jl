@@ -4,7 +4,6 @@ using Pkg
 using Requires
 using ChainRulesCore
 using Base.Broadcast: broadcasted
-using DataStructures: DefaultDict
 using Statistics: mean
 
 const IntOrTuple = Union{Integer,Tuple}

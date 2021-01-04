@@ -77,10 +77,10 @@ function gather(src::AbstractArray{T}, idx::AbstractArray{<:IntOrTuple}, dims::I
     gather!(dst, src, idx, dims)
 end
 
-function gather_indices(X::Array{T}) where T
-    Y = DefaultDict{T,Vector{CartesianIndex}}(CartesianIndex[])
-    @inbounds for (ind, val) = pairs(X)
-        push!(Y[val], ind)
-    end
-    Y
-end
+# function gather_indices(X::Array{T}) where T
+#     Y = DefaultDict{T,Vector{CartesianIndex}}(CartesianIndex[])
+#     @inbounds for (ind, val) = pairs(X)
+#         push!(Y[val], ind)
+#     end
+#     Y
+# end
