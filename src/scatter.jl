@@ -25,8 +25,10 @@ Examples for dims are lists here:
 - `dims=1`: dst[:, idx[k]...] = (op).(dst[:, idx[k]...], src[k...])
 - `dims=2`: dst[:, :, idx[k]...] = (op).(dst[:, :, idx[k]...], src[k...])
 """
-function scatter!(op, dst::AbstractArray{T}, src::AbstractArray{T}, idx::AbstractArray{<:IntOrTuple},
+function scatter!(op, dst::AbstractArray{T}, src::AbstractArray{T}, idx::AbstractArray{<:IntOrTuple};
                   dims::Integer=1) where {T<:Real}
+    # @boundscheck _check_output(idx, dst)
+    @boundscheck _check_input(idx, src)
     if dims > 0
         scatter_vec!(op, dst, src, idx, Val(dims))
     elseif dims == 0
@@ -36,8 +38,8 @@ function scatter!(op, dst::AbstractArray{T}, src::AbstractArray{T}, idx::Abstrac
     end
 end
 
-function scatter_scl!(op, dst::AbstractArray{T}, src::AbstractArray{T}, idx::AbstractArray{<:IntOrTuple}) where {T<:Real}
-    @inbounds for k in CartesianIndices(idx)
+@inbounds function scatter_scl!(op, dst::AbstractArray{T}, src::AbstractArray{T}, idx::AbstractArray{<:IntOrTuple}) where {T<:Real}
+    for k in CartesianIndices(idx)
         dst[idx[k]...] = op(dst[idx[k]...], src[k])
     end
     dst
@@ -45,8 +47,9 @@ end
 
 function scatter_vec!(op, dst::AbstractArray{T}, src::AbstractArray{T}, idx::AbstractArray{<:IntOrTuple},
                       dims::Integer) where {T<:Real}
+    colons = Base.ntuple(_->Colon(), dims)
     @simd for k in CartesianIndices(idx)
-        dst_v = view(dst, Base.ntuple(_->Colon(), dims)..., idx[k]...)
+        dst_v = view(dst, colons..., idx[k]...)
         src_v = view(src, k)
         @inbounds dst_v .= (op).(dst_v, src_v)
     end
@@ -77,18 +80,18 @@ Examples for dims are lists here:
 - `dims=1`: dst[:, idx[k]...] = (op).(dst[:, idx[k]...], src[k...])
 - `dims=2`: dst[:, :, idx[k]...] = (op).(dst[:, :, idx[k]...], src[k...])
 """
-function scatter!(op::typeof(mean), dst::AbstractArray{T}, src::AbstractArray{T}, idx::AbstractArray{<:IntOrTuple},
+function scatter!(op::typeof(mean), dst::AbstractArray{T}, src::AbstractArray{T}, idx::AbstractArray{<:IntOrTuple};
                   dims::Integer=1) where {T<:Real}
     Ns = zero(dst)
     dst_ = zero(dst)
-    scatter!(+, Ns, one.(src), idx, dims)
-    scatter!(+, dst_, src, idx, dims)
+    scatter!(+, Ns, one.(src), idx; dims=dims)
+    scatter!(+, dst_, src, idx; dims=dims)
     dst .+= safe_div.(dst_, Ns)
     return dst
 end
 
-function scatter!(op, dst::AbstractArray{T}, src::AbstractArray{S}, idx::AbstractArray{<:IntOrTuple},
+function scatter!(op, dst::AbstractArray{T}, src::AbstractArray{S}, idx::AbstractArray{<:IntOrTuple};
                   dims::Integer=1) where {T<:Real,S<:Real}
     PT = promote_type(T, S)
-    scatter!(op, PT.(dst), PT.(src), idx, dims)
+    scatter!(op, PT.(dst), PT.(src), idx; dims=dims)
 end

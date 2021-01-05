@@ -21,7 +21,7 @@ Examples for dims are lists here:
 - `dims=1`: dst[:, k...] .= src[:, idx[k]...]
 - `dims=2`: dst[:, :, k...] .= src[:, :, idx[k]...]
 """
-function gather!(dst::AbstractArray{T,N}, src::AbstractArray{T}, idx::AbstractArray{<:IntOrTuple,N},
+function gather!(dst::AbstractArray{T,N}, src::AbstractArray{T}, idx::AbstractArray{<:IntOrTuple,N};
                  dims::Integer=1) where {T,N}
     @boundscheck _check_output(idx, dst, src, dims)
     @boundscheck _check_input(idx, src)
@@ -72,9 +72,9 @@ Examples for dims are lists here:
 - `dims=1`: dst[:, k...] .= src[:, idx[k]...]
 - `dims=2`: dst[:, :, k...] .= src[:, :, idx[k]...]
 """
-function gather(src::AbstractArray{T}, idx::AbstractArray{<:IntOrTuple}, dims::Integer=1) where {T}
+function gather(src::AbstractArray{T}, idx::AbstractArray{<:IntOrTuple}; dims::Integer=1) where {T}
     dst = similar(src, axes(idx)...)
-    gather!(dst, src, idx, dims)
+    gather!(dst, src, idx; dims=dims)
 end
 
 # function gather_indices(X::Array{T}) where T
