@@ -97,7 +97,15 @@ function rrelu(x, l = 1 / 8.0, u = 1 / 3.0)
     a = oftype(x / 1, (u - l) * rand() + l)
     return leakyrelu(x, a)
 end
-
+"""
+   sinerelu(x, epsilon = 0.0025) = x > 0 ? x : epsilon * (sin(x) - cos(x))
+   
+Sine Rectified Linear Unit activation function
+See [SineReLU - An alternative to the ReLU](https://medium.com/@wilder.rodrigues/sinerelu-an-alternative-to-the-relu-activation-function-e46a6199997d)
+"""
+function sinerelu(x, epsilon = 0.0025)
+    return x > 0 ? x : epsilon * (sin(x) - cos(x))
+end
 """
     elu(x, α=1) = x > 0 ? x : α * (exp(x) - 1)
 
