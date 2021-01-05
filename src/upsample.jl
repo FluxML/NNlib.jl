@@ -1,4 +1,4 @@
-export bilinear_upsample, ∇bilinear_upsample
+export bilinear_upsample, ∇bilinear_upsample, pixel_shuffle
 
 """
     bilinear_upsample(x::AbstractArray{<:Number,4}, k::NTuple{2,Int})
@@ -118,13 +118,10 @@ function ∇bilinear_upsample(Δ::AbstractArray{<:Number, 4}, k::NTuple{2,Int})
 
     n_chan, n_batch = size(Δ, 3), size(Δ, 4)
 
-    kern1 = get_downsamplekernel(k[1])
-    kern2 = get_downsamplekernel(k[2])
+    kern1 = get_downsamplekernel(Δ, k[1])
+    kern2 = get_downsamplekernel(Δ, k[2])
     kern = kern1 .* kern2'
-    # TODO there must be a more convenient way to send to gpu 
-    kern = convert(typeof(Δ), reshape(kern, size(kern)..., 1, 1))
-    kern = dropdims(kern, dims=(3,4))
-
+    
     pad = (floor(Int, k[1]//2), floor(Int, k[2]//2))
     stride = k
     weight = similar(Δ, eltype(Δ), (size(kern)..., n_chan, n_chan))
@@ -197,17 +194,9 @@ function ∇bilinear_upsample(Δ::AbstractArray{<:Number, 4}, k::NTuple{2,Int})
     return dx
 end
 
-
-"""
-    get_downsamplekernel(n::Int)
-
-# Arguments
-- `n`: upsample factor for which a downsample kernel will be determined
-
-# Outputs
-- `kernel`: downsample kernel
-"""
-function get_downsamplekernel(n::Int)
+# `n` upsample factor for which a downsample kernel will be determined.
+# Δ is given in case of necessity of gpu conversion 
+function get_downsamplekernel(Δ, n::Int)
     step = 1//n
     if n % 2 == 0
         start = step//2
@@ -218,6 +207,9 @@ function get_downsamplekernel(n::Int)
         upward = collect(start:step:1//1)
         kernel = [upward; reverse(upward[1:end-1])]
     end
+    # TODO there must be a more convenient way to send to gpu 
+    kernel = convert(typeof(Δ), reshape(kernel, length(kernel), 1, 1, 1))
+    kernel = dropdims(kernel, dims=(2,3,4))
     return kernel
 end
 
@@ -227,4 +219,29 @@ function ChainRulesCore.rrule(::typeof(bilinear_upsample), x, k)
         (NO_FIELDS, ∇bilinear_upsample(Δ, k), DoesNotExist())
     end
     return Ω, bilinear_upsample_pullback
+end
+
+
+"""
+    pixel_shuffle(x, r)
+    
+Pixel shuffling operation. `r` is the upscale factor for shuffling.
+The operation converts an input of size [W,H,r²C,N] to size [rW,rH,C,N]
+Used extensively in super-resolution networks to upsample 
+towards high resolution features.
+
+Reference : https://arxiv.org/pdf/1609.05158.pdf
+"""
+function pixel_shuffle(x::AbstractArray, r::Integer)
+    @assert ndims(x) > 2
+    d = ndims(x) - 2
+    sizein = size(x)[1:d]
+    cin, n = size(x, d+1), size(x, d+2) 
+    @assert cin % r^d == 0
+    cout = cin ÷ r^d
+    # x = reshape(x, sizein..., fill(r, d)..., cout, n) # bug https://github.com/FluxML/Zygote.jl/issues/866
+    x = reshape(x, sizein..., ntuple(i->r, d)..., cout, n)
+    perm = [d+1:2d 1:d]' |> vec  # = [d+1, 1, d+2, 2, ..., 2d, d]
+    x = permutedims(x, (perm..., 2d+1, 2d+2))
+    return reshape(x, ((r .* sizein)..., cout, n))
 end
