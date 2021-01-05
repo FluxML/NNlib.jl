@@ -18,7 +18,7 @@ end
 
 _check_input(idx::AbstractArray{<:Integer}, arr) = checkbounds(arr, minimum(idx):maximum(idx))
 
-function _check_input(idx::AbstractArray{Tuple}, arr)
+function _check_input(idx::AbstractArray{<:Tuple}, arr)
     pairs = map(xs -> Base.OneTo(maximum(xs)), zip(idx...))
     checkbounds(arr, pairs...)
 end
