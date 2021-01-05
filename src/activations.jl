@@ -58,7 +58,7 @@ const logsigmoid = logσ
 Segment-wise linear approximation of tanh. Cheaper  and  more  computational  efficient version of tanh.
 See [Large Scale Machine Learning](https://ronan.collobert.com/pub/matos/2004_phdthesis_lip6.pdf).
 """
-hardtanh(x) = max(-1, min(1, x))
+hardtanh(x) = max(-one(x), min(one(x), x))
 
 """
     relu(x) = max(0, x)
@@ -66,7 +66,7 @@ hardtanh(x) = max(-1, min(1, x))
 [Rectified Linear Unit](https://en.wikipedia.org/wiki/Rectifier_(neural_networks))
 activation function.
 """
-relu(x) = max(0, x)
+relu(x) = max(zero(x), x)
 
 """
     leakyrelu(x, a=0.01) = max(a*x, x)
@@ -84,7 +84,7 @@ leakyrelu(x, a=oftf(x, 0.01)) = max(a * x, x)
 activation function capped at 6.
 See [Convolutional Deep Belief Networks on CIFAR-10](https://www.cs.toronto.edu/~kriz/conv-cifar10-aug2010.pdf)
 """
-relu6(x) = min(relu(x), 6)
+relu6(x) = min(relu(x), oftype(x, 6))
 
 """
     rrelu(x, l=1/8, u=1/3) = max(a*x, x)
@@ -107,7 +107,7 @@ Exponential Linear Unit activation function.
 See [Fast and Accurate Deep Network Learning by Exponential Linear Units](https://arxiv.org/abs/1511.07289).
 You can also specify the coefficient explicitly, e.g. `elu(x, 1)`.
 """
-elu(x, α=1) = ifelse(x ≥ 0, x, α * (exp(x) - 1))
+elu(x, α=1) = ifelse(x ≥ 0, float(x), α * (exp(x) - 1))
 
 deriv_elu(Ω, α=1) = ifelse(Ω ≥ 0, 1, Ω + α)
 
@@ -171,7 +171,7 @@ end
 Continuously Differentiable Exponential Linear Units
 See [Continuously Differentiable Exponential Linear Units](https://arxiv.org/abs/1704.07483).
 """
-celu(x, α=1) = ifelse(x ≥ 0, x, α * (exp(x/α) - 1))
+celu(x, α=1) = ifelse(x ≥ 0, float(x), α * (exp(x/α) - 1))
 
 """
     trelu(x, theta=1) = x > theta ? x : 0
