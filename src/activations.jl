@@ -17,7 +17,8 @@ end
 # Aliases
 export sigmoid, hardsigmoid, logsigmoid, thresholdrelu
 
-
+# of type float
+oftf(x, y) = oftype(float(x), y)
 
 """
     σ(x) = 1 / (1 + exp(-x))
@@ -33,13 +34,14 @@ end
 const sigmoid = σ
 
 """
-    hardσ(x, a=0.2) = max(0, min(1, a * x + 0.5))
+    hardσ(x) = max(0, min(1, (x + 3) / 6)
 
-Segment-wise linear approximation of sigmoid.
-See [BinaryConnect: Training Deep Neural Networks withbinary weights during propagations](https://arxiv.org/abs/1511.00363).
+Piecewise linear approximation of sigmoid.
 """
-hardσ(x, a=0.2) = oftype(x/1, max(zero(x/1), min(one(x/1), oftype(x/1,a) * x + oftype(x/1,0.5))))
-    
+hardσ(x) = max(0, min(1, (x + 3) / 6))
+
+# https://pytorch.org/docs/stable/generated/torch.nn.Hardsigmoid.html
+
 const hardsigmoid = hardσ
 
 """
@@ -56,7 +58,7 @@ const logsigmoid = logσ
 Segment-wise linear approximation of tanh. Cheaper  and  more  computational  efficient version of tanh.
 See [Large Scale Machine Learning](https://ronan.collobert.com/pub/matos/2004_phdthesis_lip6.pdf).
 """
-hardtanh(x) = max(-one(x), min( one(x), x))
+hardtanh(x) = max(-one(x), min(one(x), x))
 
 """
     relu(x) = max(0, x)
@@ -73,7 +75,7 @@ Leaky [Rectified Linear Unit](https://en.wikipedia.org/wiki/Rectifier_(neural_ne
 activation function.
 You can also specify the coefficient explicitly, e.g. `leakyrelu(x, 0.01)`.
 """
-leakyrelu(x, a = oftype(x/1, 0.01)) = max(a * x, x/1)
+leakyrelu(x, a=oftf(x, 0.01)) = max(a * x, x)
 
 """
     relu6(x) = min(max(0, x), 6)
@@ -93,8 +95,8 @@ Randomized Leaky [Rectified Linear Unit](https://arxiv.org/abs/1505.00853)
 activation function.
 You can also specify the bound explicitly, e.g. `rrelu(x, 0.0, 1.0)`.
 """
-function rrelu(x, l = 1 / 8.0, u = 1 / 3.0)
-    a = oftype(x / 1, (u - l) * rand() + l)
+function rrelu(x::T, l=1//8, u=1//3) where T<:Number
+    a = (u - l) * rand(float(T)) + l
     return leakyrelu(x, a)
 end
 
@@ -105,10 +107,9 @@ Exponential Linear Unit activation function.
 See [Fast and Accurate Deep Network Learning by Exponential Linear Units](https://arxiv.org/abs/1511.07289).
 You can also specify the coefficient explicitly, e.g. `elu(x, 1)`.
 """
-elu(x, α=1) = ifelse(x ≥ 0, x/1, α * (exp(x) - 1))
+elu(x, α=1) = ifelse(x ≥ 0, float(x), α * (exp(x) - 1))
 
-deriv_elu(x, Ω, α=1) = ifelse(x ≥ 0, one(x), Ω + α)
-
+deriv_elu(Ω, α=1) = ifelse(Ω ≥ 0, 1, Ω + α)
 
 """
     gelu(x) = 0.5x * (1 + tanh(√(2/π) * (x + 0.044715x^3)))
@@ -117,10 +118,12 @@ deriv_elu(x, Ω, α=1) = ifelse(x ≥ 0, one(x), Ω + α)
 activation function.
 """
 function gelu(x)
-    λ = oftype(x / 1, √(2 / π))
-    α = oftype(x / 1, 0.044715)
+    α = oftf(x, 0.044715)
+    λ = oftf(x, gelu_λ)
     x/2 * (1 + tanh(λ * (x + α * x^3)))
 end
+
+const gelu_λ = √(2 / π)
 
 """
     swish(x) = x * σ(x)
@@ -148,15 +151,18 @@ Scaled exponential linear units.
 See [Self-Normalizing Neural Networks](https://arxiv.org/abs/1706.02515).
 """
 function selu(x)
-    λ = oftype(x/1, 1.0507009873554804934193349852946)
-    α = oftype(x/1, 1.6732632423543772848170429916717)
-    λ * ifelse(x > 0, x/1, α * (exp(x) - 1))
+    λ = oftf(x, selu_λ)
+    α = oftf(x, selu_α)
+    λ * ifelse(x > 0, x, α * (exp(x) - 1))
 end
 
+const selu_λ = 1.0507009873554804934193349852946
+const selu_α = 1.6732632423543772848170429916717
+
 function deriv_selu(Ω)
-    λ = oftype(Ω/1, 1.0507009873554804934193349852946)
-    α = oftype(Ω/1, 1.6732632423543772848170429916717)
-    return ifelse(Ω > 0, λ, Ω + α*λ)
+    λ = oftf(Ω, selu_λ)
+    α = oftf(Ω, selu_α)
+    ifelse(Ω > 0, λ, Ω + α * λ)
 end
 
 """
@@ -165,7 +171,7 @@ end
 Continuously Differentiable Exponential Linear Units
 See [Continuously Differentiable Exponential Linear Units](https://arxiv.org/abs/1704.07483).
 """
-celu(x, α=1) = ifelse(x ≥ 0, x/1, α * (exp(x/α) - 1))
+celu(x, α=1) = ifelse(x ≥ 0, float(x), α * (exp(x/α) - 1))
 
 """
     trelu(x, theta=1) = x > theta ? x : 0
@@ -174,6 +180,7 @@ Threshold Gated Rectified Linear.
 See [ThresholdRelu](https://arxiv.org/abs/1402.3337)
 """
 trelu(x, theta=1) = ifelse(x > theta, x, zero(x))
+
 const thresholdrelu = trelu
 
 """
@@ -181,7 +188,7 @@ const thresholdrelu = trelu
 
 See [Quadratic Polynomials Learn Better Image Features](http://www.iro.umontreal.ca/~lisa/publications2/index.php/attachments/single/205).
 """
-softsign(x) = x / (one(x) + abs(x))
+softsign(x) = x / (1 + abs(x))
 
 """
     softplus(x) = log(exp(x) + 1)
@@ -195,8 +202,9 @@ softplus(x) = ifelse(x > 0, x + log1p(exp(-x)), log1p(exp(x)))
 
 Return `log(cosh(x))` which is computed in a numerically stable way.
 """
-logcosh(x) = x + softplus(-2x) - log(oftype(x, 2))
+logcosh(x) = x + softplus(-2x) - oftf(x, log2)
 
+const log2 = log(2)
 
 """
     mish(x) = x * tanh(softplus(x))
@@ -219,7 +227,7 @@ tanhshrink(x) = x - tanh(x)
 
 See [Softshrink Activation Function](https://www.gabormelli.com/RKB/Softshrink_Activation_Function).
 """
-softshrink(x, λ = oftype(x/1, 0.5)) = min(max(zero(x), x - λ), x + λ)
+softshrink(x, λ=oftf(x, 0.5)) = min(max(0, x - λ), x + λ)
 
 # Provide an informative error message if activation functions are called with an array
 for f in ACTIVATIONS
@@ -241,7 +249,7 @@ UNARY_ACTS = [ # f, df
     (:hardtanh,     :(-1 < x < 1)),
     (:selu,         :(deriv_selu(Ω))),
     (:σ,            :(conj(Ω * (1 - Ω)))),
-    (:elu,          :(deriv_elu(x, Ω))),
+    (:elu,          :(deriv_elu(Ω))),
     ]
 
 for (f, df) in UNARY_ACTS
@@ -260,7 +268,7 @@ end
 
 
 BINARY_ACTS = [ # f, df1, df2
-    (:elu, :(deriv_elu(x1, Ω, x2)), :(DoesNotExist())), # TODO use real deriv instead of DNE
+    (:elu, :(deriv_elu(Ω, x2)), :(DoesNotExist())), # TODO use real deriv instead of DNE
     ]
 
 for (f, df1, df2) in BINARY_ACTS

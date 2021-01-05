@@ -6,7 +6,7 @@ ACTIVATION_FUNCTIONS =
 
 function test_value_float_precision_preserving(a)
     @testset "$(a): " begin
-        for T in [Float32, Float64]
+        for T in [Float16, Float32, Float64]
             for val in [-10, -1, 0, 1, 10]
                 val = @inferred a(T(val))
                 @test typeof(val) == T
@@ -28,7 +28,7 @@ end
 
 function test_gradient_float_precision_preserving(a)
     @testset "$(a): " begin
-        for T in [Float32, Float64]
+        for T in [Float16, Float32, Float64]
             for val in [-10, -1, 0, 1, 10]
                 val = @inferred a'(T(val))
                 @test typeof(val) == T
@@ -61,7 +61,7 @@ end
 @test softshrink(0.0) == 0.0
 
 @test sigmoid(1.0) == 1.0 / (1.0 + exp(-1.0))
-@test hardsigmoid(1.0) == max(0,min(1,0.2*1.0 + 0.5))
+@test hardsigmoid(1.0) == max(0,min(1, (1 + 3)/6))
 @test hardtanh(1.0) == 1.0
 @test relu(1.0) == 1.0
 @test leakyrelu(1.0) == 1.0
@@ -82,7 +82,7 @@ end
 @test softshrink(1.0) == 0.5
 
 @test sigmoid(-1.0) == exp(-1.0) / (1.0 + exp(-1.0))
-@test hardsigmoid(-1.0) == max(0,min(1,0.2*-1.0 + 0.5))
+@test hardsigmoid(-1.0) == max(0,min(1,(-1+3)/6 ))
 @test hardtanh(-1.0) == -1.0
 @test relu(-1.0) == 0.0
 @test leakyrelu(-1.0) == -0.01
@@ -189,9 +189,8 @@ end
 @test logcosh(1_000.0) + log(2) == 1_000.0
 
 @testset "hardsigmoid" begin
-    @test hardsigmoid(0.3) == 0.56
-    @test hardsigmoid(-0.3) == 0.44
-    @test hardsigmoid(0.1,0.5) == 0.55
+    @test hardsigmoid(0.3) == max(0,min(1,(0.3+3)/6))
+    @test hardsigmoid(-0.3) == max(0,min(1,(-0.3+3)/6))
     for T in [:Float32, :Float64]
         @eval @test hardsigmoid.($T[-100_000, 100_000.]) ≈ $T[0., 1.]
     end
@@ -260,4 +259,3 @@ end
     gradtest((x, W, b) -> logσ.(W*x .+ b), 5, (2,5), 2)
     gradtest((x, W, b) -> logσ.(W*x .+ b), (5,3), (2,5), 2)
 end
-
