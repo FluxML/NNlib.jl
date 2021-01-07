@@ -124,7 +124,13 @@ function ∇bilinear_upsample(Δ::AbstractArray{<:Number, 4}, k::NTuple{2,Int})
     
     pad = (floor(Int, k[1]//2), floor(Int, k[2]//2))
     stride = k
-    weight = cat(fill(kern, n_chan), dims=(3,4))
+    
+    weight = similar(Δ, eltype(Δ), (size(kern)..., n_chan, n_chan))
+    weight .= 0
+    for i in 1:n_chan
+        weight[:,:,i,i] .= kern
+    end
+    # weight = cat(fill(kern, n_chan), dims=(3,4)) # produces Array{Any}, revisit in the future
     
     dx = conv(Δ, weight, pad=pad, stride=stride)
 
