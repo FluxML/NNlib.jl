@@ -13,7 +13,7 @@ The interpolation grid is identical to the one used by `imresize` from `Images.j
 
 Currently only 2d upsampling is supported.
 """
-function bilinear_upsample(x::AbstractArray{<:Number,4}, k::NTuple{2,Int})
+function bilinear_upsample(x::AbstractArray{T,4}, k::NTuple{2,Int}) where T
     # This function is gpu friendly
     
     imgsize = size(x)
