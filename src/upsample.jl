@@ -1,7 +1,7 @@
-export bilinear_upsample, ∇bilinear_upsample, pixel_shuffle
+export upsample_bilinear, ∇upsample_bilinear, pixel_shuffle
 
 """
-    bilinear_upsample(x::AbstractArray{<:Number,4}, k::NTuple{2,Int})
+    upsample_bilinear(x::AbstractArray{<:Number,4}, k::NTuple{2,Int})
 
 Upsamples the first 2 dimensions of the array `x` by the upsample factors stored in `k`,
 using bilinear interpolation. 
@@ -13,7 +13,7 @@ The interpolation grid is identical to the one used by `imresize` from `Images.j
 
 Currently only 2d upsampling is supported.
 """
-function bilinear_upsample(x::AbstractArray{T,4}, k::NTuple{2,Int}) where T
+function upsample_bilinear(x::AbstractArray{T,4}, k::NTuple{2,Int}) where T
     # This function is gpu friendly
     
     imgsize = size(x)
@@ -83,7 +83,7 @@ end
 
 
 """
-    ∇bilinear_upsample(Δ::AbstractArray{<:Number,4}, k::NTuple{2,Int})
+    ∇upsample_bilinear(Δ::AbstractArray{<:Number,4}, k::NTuple{2,Int})
     
 # Arguments
 - `Δ`: array that has been upsampled using the upsample factors in `k`
@@ -93,13 +93,13 @@ end
 
 # Explanation
 
-Custom adjoint for [`bilinear_upsample`](@ref). 
+Custom adjoint for [`upsample_bilinear`](@ref). 
 The adjoint of upsampling is a downsampling operation, which
 in this implementation is performed using `NNlib.conv` in combination with a downsampling kernel based on the
 upsampling factors. Because of the zero-padding during convolution, the values at the boundary are polluted by edge-effects,
 which have been corrected for manually.
 """
-function ∇bilinear_upsample(Δ::AbstractArray{<:Number, 4}, k::NTuple{2,Int})
+function ∇upsample_bilinear(Δ::AbstractArray{<:Number, 4}, k::NTuple{2,Int})
     # This function is gpu friendly
     
     # Be more efficient on some corner cases
@@ -125,7 +125,12 @@ function ∇bilinear_upsample(Δ::AbstractArray{<:Number, 4}, k::NTuple{2,Int})
     pad = (floor(Int, k[1]//2), floor(Int, k[2]//2))
     stride = k
     
-    weight = cat(fill(kern, n_chan)..., dims=(3,4)) 
+    weight = similar(Δ, eltype(Δ), (size(kern)..., n_chan, n_chan))
+    weight .= 0
+    for i in 1:n_chan
+        weight[:,:,i,i] .= kern
+    end
+    # weight = cat(fill(kern, n_chan)..., dims=(3,4)) # slow
     dx = conv(Δ, weight, pad=pad, stride=stride)
 
     # Still have to fix edge effects due to zero-padding of convolution,
@@ -138,7 +143,12 @@ function ∇bilinear_upsample(Δ::AbstractArray{<:Number, 4}, k::NTuple{2,Int})
         kern1 = kern[1:nextras[1],:]
         pad1 = (0, pad[2])
         stride1 = (1, stride[2])
-        weight1 = cat(fill(kern1, n_chan)..., dims=(3,4)) 
+        weight1 = similar(Δ, eltype(Δ), (size(kern1)..., n_chan, n_chan))
+        weight1 .= 0
+        for i in 1:n_chan
+            weight1[:,:,i,i] .= kern1
+        end
+        # weight1 = cat(fill(kern1, n_chan)..., dims=(3,4)) # slow
         dx[[1],:,:,:] .+= conv(Δ[1:nextras[1],:,:,:], weight1, pad=pad1, stride=stride1)
         weight1 .= weight1[end:-1:1,:,:,:]
         dx[[end],:,:,:] .+= conv(Δ[end-nextras[1]+1:end,:,:,:], weight1, pad=pad1, stride=stride1)
@@ -154,7 +164,12 @@ function ∇bilinear_upsample(Δ::AbstractArray{<:Number, 4}, k::NTuple{2,Int})
         kern2 = kern[:,1:nextras[2]]
         pad2 = (pad[1], 0)
         stride2 = (stride[1], 1)
-        weight2 = cat(fill(kern2, n_chan)..., dims=(3,4)) 
+        weight2 = similar(Δ, eltype(Δ), (size(kern2)..., n_chan, n_chan))
+        weight2 .= 0
+        for i in 1:n_chan
+            weight2[:,:,i,i] .= kern2
+        end
+        # weight2 = cat(fill(kern2, n_chan)..., dims=(3,4)) # slow
     
         yy = conv(Δ[:,1:nextras[2],:,:], weight2, pad=pad2, stride=stride2)
         dx[:,[1],:,:] .+= conv(Δ[:,1:nextras[2],:,:], weight2, pad=pad2, stride=stride2)
@@ -199,12 +214,12 @@ function get_downsamplekernel(Δ, n::Int)
     return kernel
 end
 
-function ChainRulesCore.rrule(::typeof(bilinear_upsample), x, k)
-    Ω = bilinear_upsample(x, k)
-    function bilinear_upsample_pullback(Δ)
-        (NO_FIELDS, ∇bilinear_upsample(Δ, k), DoesNotExist())
+function ChainRulesCore.rrule(::typeof(upsample_bilinear), x, k)
+    Ω = upsample_bilinear(x, k)
+    function upsample_bilinear_pullback(Δ)
+        (NO_FIELDS, ∇upsample_bilinear(Δ, k), DoesNotExist())
     end
-    return Ω, bilinear_upsample_pullback
+    return Ω, upsample_bilinear_pullback
 end
 
 
