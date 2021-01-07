@@ -138,12 +138,7 @@ function ∇bilinear_upsample(Δ::AbstractArray{<:Number, 4}, k::NTuple{2,Int})
         kern1 = kern[1:nextras[1],:]
         pad1 = (0, pad[2])
         stride1 = (1, stride[2])
-        weight1 = similar(Δ, eltype(Δ), (size(kern1)..., n_chan, n_chan))
-        weight1 .= 0
-        for i in 1:n_chan
-            weight1[:,:,i,i] .= kern1
-        end
-    
+        weight1 = cat(fill(kern1, n_chan)..., dims=(3,4)) 
         dx[[1],:,:,:] .+= conv(Δ[1:nextras[1],:,:,:], weight1, pad=pad1, stride=stride1)
         weight1 .= weight1[end:-1:1,:,:,:]
         dx[[end],:,:,:] .+= conv(Δ[end-nextras[1]+1:end,:,:,:], weight1, pad=pad1, stride=stride1)
@@ -159,12 +154,8 @@ function ∇bilinear_upsample(Δ::AbstractArray{<:Number, 4}, k::NTuple{2,Int})
         kern2 = kern[:,1:nextras[2]]
         pad2 = (pad[1], 0)
         stride2 = (stride[1], 1)
-        weight2 = similar(Δ, eltype(Δ), (size(kern2)..., n_chan, n_chan))
-        weight2 .= 0
-        for i in 1:n_chan
-            weight2[:,:,i,i] .= kern2
-        end
-
+        weight2 = cat(fill(kern2, n_chan)..., dims=(3,4)) 
+    
         yy = conv(Δ[:,1:nextras[2],:,:], weight2, pad=pad2, stride=stride2)
         dx[:,[1],:,:] .+= conv(Δ[:,1:nextras[2],:,:], weight2, pad=pad2, stride=stride2)
         weight2 .= weight2[:,end:-1:1,:,:]
