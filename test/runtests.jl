@@ -6,6 +6,8 @@ using FiniteDifferences: FiniteDifferenceMethod, central_fdm
 import Zygote
 using Zygote: gradient
 using StableRNGs
+using CUDA
+CUDA.allowscalar(false)
 
 const rng = StableRNG(123)
 
@@ -36,6 +38,6 @@ end
     include("softmax.jl")
 end
 
-@testset "Misc Stuff" begin
-    include("misc.jl")
+@testset "Upsampling" begin
+    include("upsample.jl")
 end

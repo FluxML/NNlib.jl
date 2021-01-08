@@ -24,14 +24,13 @@ is_nnpack_available() = false
 end
 
 include("activations.jl")
-
 include("softmax.jl")
-include("misc.jl")
 include("batched/batchedmul.jl")
 include("gemm.jl")
 include("conv.jl")
 include("conv_bias_act.jl")
 include("pooling.jl")
+include("upsample.jl")
 
 ## Include implementations
 include("impl/padding_edges.jl")
