@@ -151,3 +151,92 @@ function scatter(op::typeof(mean), src::AbstractArray{T}, idx::AbstractArray{<:I
     dst = zeros(FT, size(src)[1:dims]..., least_dims(idx)...)
     scatter!(mean, dst, FT.(src), idx, dims=dims)
 end
+
+
+## Gradients
+
+#∇scatter_dst!()
+∇scatter_src!(op::typeof(+), Δ, dst, idx) = gather(Δ, idx)
+∇scatter_src!(op::typeof(-), Δ, dst, idx) = -∇scatter_src!(+, Δ, dst, idx)
+∇scatter_src(op::typeof(+), Δ, idx) = gather(zero(Δ)+Δ, idx)
+∇scatter_src(op::typeof(-), Δ, idx) = -∇scatter_src(+, Δ, idx)
+
+for op in [+, -]
+    @eval @adjoint scatter!(op::typeof($op), dst::AbstractArray, src::AbstractArray, idx::AbstractArray) =
+        scatter!(op, copy(dst), src, idx), Δ -> (nothing, Δ, ∇scatter_src!(op, Δ, dst, idx), nothing)
+
+    @eval @adjoint scatter(op::typeof($op), src::AbstractArray{T}, idx::AbstractArray) where {T<:Real} =
+        scatter(op, src, idx), Δ -> (nothing, ∇scatter_src(op, Δ, idx), nothing)
+end
+
+
+∇scatter_src!(op::typeof(*), Δ, dst, idx) = gather(dst, idx) .* gather(Δ, idx)
+∇scatter_src!(op::typeof(/), Δ, dst, idx) = -∇scatter_src!(*, Δ, dst, idx) ./ src.^2
+∇scatter_src(op::typeof(*), Δ, idx) = gather(zero(Δ)+Δ, idx)
+∇scatter_src(op::typeof(/), Δ, idx) = -∇scatter_src(*, Δ, idx) ./ src.^2
+
+for op in [*, /]
+    @eval @adjoint function scatter!(op::typeof($op), dst::Array{T}, src::Array{T}, idx::Array{<:IntOrTuple}) where {T<:Real}
+        scatter!(op, copy(dst), src, idx), function (Δ)
+            Δdst = scatter!(op, Δ .+ zero(dst), src, idx)
+            rev_idx = reverse_indices(idx)
+            Δsrc = ∇scatter_src!(op, Δ, dst, idx)
+            @inbounds for ind = CartesianIndices(idx)
+                inds = filter(x -> x != ind, rev_idx[idx[ind]])
+                for i = 1:size(src, 1)
+                    Δsrc[i, ind] *= prod(j -> src[i, j], inds)
+                end
+            end
+            (nothing, Δdst, Δsrc, nothing)
+        end
+    end
+
+    @eval @adjoint function scatter(op::typeof($op), src::AbstractArray{T}, idx::AbstractArray{Int}) where {T<:Real}
+        scatter(op, src, idx), function (Δ)
+            rev_idx = reverse_indices(idx)
+            Δsrc = ∇scatter_src(op, Δ, idx)
+            @inbounds for ind = CartesianIndices(idx)
+                inds = filter(x -> x != ind, rev_idx[idx[ind]])
+                for i = 1:size(src, 1)
+                    Δsrc[i, ind] = op(Δsrc[i, ind], prod(j -> src[i, j], inds))
+                end
+            end
+            (nothing, Δsrc, nothing)
+        end
+    end
+end
+
+for op in [max, min]
+    @eval @adjoint function scatter!(op::typeof($op), dst::Array{T}, src::Array{T}, idx::Array{<:IntOrTuple}) where {T<:Real}
+        m = scatter!(op, copy(dst), src, idx)
+        m, function (Δ)
+           Δdst = (dst .== m) .* Δ
+           Δsrc = (src .== gather(m, idx)) .* gather(Δ, idx)
+           (nothing, Δdst, Δsrc, nothing)
+        end
+    end
+
+    @eval @adjoint function scatter(op::typeof($op), src::AbstractArray{T}, idx::AbstractArray{Int}) where {T<:Real}
+        m = scatter(op, src, idx)
+        m, function (Δ)
+            Δsrc = (src .== gather(m, idx)) .* gather(zero(Δ)+Δ, idx)
+            (nothing, Δsrc, nothing)
+        end
+    end
+end
+
+
+@adjoint function scatter!(op::typeof(mean), dst::AbstractArray, src::AbstractArray, idx::AbstractArray)
+    scatter!(op, copy(dst), src, idx), function (Δ)
+        Δsrc = divide_by_counts!(gather(Δ, idx), idx, size(dst, 2))
+        (nothing, Δ, Δsrc, nothing)
+    end
+end
+
+@adjoint function scatter(op::typeof(mean), src::AbstractArray{T}, idx::AbstractArray{Int}) where {T<:Real}
+    m = scatter(op, src, idx)
+    m, function (Δ)
+        Δsrc = divide_by_counts!(gather(zero(Δ)+Δ, idx), idx, size(m, 2))
+        (nothing, Δsrc, nothing)
+    end
+end

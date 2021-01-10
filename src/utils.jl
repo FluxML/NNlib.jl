@@ -30,3 +30,27 @@ function _check_output(idx::AbstractArray{<:IntOrTuple}, dst, src, dims)
     dst_dims[begin:dims] == src_dims[begin:dims] || throw(ArgumentError("dst and src must have the same dimensions in the first $(dims) dimensions"))
     dst_dims[dims+1:end] == idx_dims || throw(ArgumentError("dst must have the same dimensions with idx from $(dims+1)-th"))
 end
+
+function reverse_indices(X::Array{T}) where T
+    Y = Dict{T,Vector{CartesianIndex}}()
+    @inbounds for (ind, val) = pairs(X)
+        Y[val] = get(Y, val, CartesianIndex[])
+        push!(Y[val], ind)
+    end
+    Y
+end
+
+function count_indices(idx::AbstractArray, N)
+    counts = zero.(idx)
+    @inbounds for i = 1:N
+        counts += sum(idx.==i) * (idx.==i)
+    end
+    counts
+end
+
+function divide_by_counts!(xs, idx::AbstractArray, N)
+    counts = count_indices(idx, N)
+    @inbounds for ind = CartesianIndices(counts)
+        view(xs, :, ind) ./= counts[ind]
+    end
+end

@@ -76,11 +76,3 @@ function gather(src::AbstractArray{T}, idx::AbstractArray{<:IntOrTuple}; dims::I
     dst = similar(src, axes(idx)...)
     gather!(dst, src, idx; dims=dims)
 end
-
-# function gather_indices(X::Array{T}) where T
-#     Y = DefaultDict{T,Vector{CartesianIndex}}(CartesianIndex[])
-#     @inbounds for (ind, val) = pairs(X)
-#         push!(Y[val], ind)
-#     end
-#     Y
-# end
