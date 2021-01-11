@@ -29,9 +29,6 @@ The interpolation grid is identical to the one used by open-cv.
 
 Currently only 2d upsampling is supported.
 """
-function upsample_bilinear end
-
-# this is the user-facing part
 function upsample_bilinear(x::AbstractArray{T,4}, scale::NTuple{2,Real}=(1,1); outsize::Union{Nothing,NTuple{2,Integer}}=nothing) where T
     w,h,c,n = size(x)
     if outsize===nothing
@@ -150,8 +147,6 @@ end
 # Outputs
 - `dx`: downsampled version of `Δ`
 """
-function ∇upsample_bilinear end
-
 function ∇upsample_bilinear(Δ::AbstractArray{T,4}, scale::NTuple{2,Real}=(1,1); outsize::Union{Nothing,NTuple{2,Integer}}=nothing) where T
     w,h,c,n = size(Δ)
     if outsize===nothing
