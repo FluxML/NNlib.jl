@@ -1,12 +1,17 @@
 @testset "upsample_bilinear 2d" begin
-    x = reshape(Float32[1. 2.; 3. 4.], (2,2,1,1))
-    y_true =   [1//1  5//4    7//4    2//1;
-                1//1  5//4    7//4    2//1;
-                5//3  23//12  29//12  8//3;
-                7//3  31//12  37//12  10//3;
-                3//1  13//4   15//4   4//1;
-                3//1  13//4   15//4   4//1][:,:,:,:]
-   
+    x = Float32[1 2; 3 4][:,:,:,:]
+    x = cat(x,x; dims=3)
+    x = cat(x,x; dims=4)
+
+    y_true = [ 1//1  4//3   5//3   2//1;
+            7//5 26//15 31//15 12//5;
+            9//5 32//15 37//15 14//5;
+           11//5 38//15 43//15 16//5;
+           13//5 44//15 49//15 18//5;
+            3//1 10//3  11//3   4//1]
+    y_true = cat(y_true,y_true; dims=3)
+    y_true = cat(y_true,y_true; dims=4)
+
     y = upsample_bilinear(x, (3, 2))
     @test size(y) == size(y_true)
     @test eltype(y) == Float32
@@ -14,17 +19,19 @@
 
     gradtest(x->upsample_bilinear(x, (3, 2)), x, atol=1e-4)
 
-    if CUDA.has_cuda()
-        y = upsample_bilinear(x |> cu, (3, 2))
-        @test y isa CuArray 
-        @test Array(y) ≈ y_true
-        g_gpu = Zygote.gradient(x -> sum(sin.(upsample_bilinear(x, (3, 2))))
-                                , x |> cu)[1]
-        @test g_gpu isa CuArray
-        g_cpu = Zygote.gradient(x -> sum(sin.(upsample_bilinear(x, (3, 2))))
-                                , x)[1]
-        @test Array(g_cpu) ≈ g_cpu  atol=1e-4
-    end
+    # this test can be performed again, as soon as the corresponding CUDA functionality is merged
+
+    # if CUDA.has_cuda()
+    #     y = upsample_bilinear(x |> cu, (3, 2))
+    #     @test y isa CuArray
+    #     @test Array(y) ≈ y_true
+    #     g_gpu = Zygote.gradient(x -> sum(sin.(upsample_bilinear(x, (3, 2))))
+    #                             , x |> cu)[1]
+    #     @test g_gpu isa CuArray
+    #     g_cpu = Zygote.gradient(x -> sum(sin.(upsample_bilinear(x, (3, 2))))
+    #                             , x)[1]
+    #     @test Array(g_cpu) ≈ g_cpu  atol=1e-4
+    # end
 end
 
 @testset "pixel_shuffle" begin
@@ -46,7 +53,7 @@ end
               5 13 7 15
               2 10 4 12
               6 14 8 16][:,:,:,:]
-    
+
     y = pixel_shuffle(x, 2)
     @test size(y) == size(y_true)
     @test y_true == y
@@ -70,7 +77,7 @@ end
     x = reshape(1:4*3*27*2, (4,3,27,2))
     y = pixel_shuffle(x, 3)
     @test size(y) == (12, 9, 3, 2)
-    # batch dimension is preserved 
+    # batch dimension is preserved
     x1 = x[:,:,:,[1]]
     x2 = x[:,:,:,[2]]
     y1 = pixel_shuffle(x1, 3)
@@ -83,11 +90,10 @@ end
         c = rand(1:5)
         insize = rand(1:5, d)
         x = rand(insize..., r^d*c, n)
-        
+
         y = pixel_shuffle(x, r)
         @test size(y) == ((r .* insize)..., c, n)
 
         gradtest(x -> pixel_shuffle(x, r), x)
     end
 end
-
