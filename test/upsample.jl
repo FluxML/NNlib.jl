@@ -3,12 +3,12 @@
     x = cat(x,x; dims=3)
     x = cat(x,x; dims=4)
 
-    y_true = [ 1//1  4//3   5//3   2//1;
-            7//5 26//15 31//15 12//5;
-            9//5 32//15 37//15 14//5;
-           11//5 38//15 43//15 16//5;
-           13//5 44//15 49//15 18//5;
-            3//1 10//3  11//3   4//1]
+    y_true = Float32[ 1//1  4//3   5//3   2//1;
+                      7//5 26//15 31//15 12//5;
+                      9//5 32//15 37//15 14//5;
+                     11//5 38//15 43//15 16//5;
+                     13//5 44//15 49//15 18//5;
+                      3//1 10//3  11//3   4//1][:,:,:,:]
     y_true = cat(y_true,y_true; dims=3)
     y_true = cat(y_true,y_true; dims=4)
 
@@ -17,7 +17,7 @@
     @test eltype(y) == Float32
     @test y ≈ y_true
 
-    gradtest(x->upsample_bilinear(x, (3, 2)), x, atol=1e-4)
+    gradtest(x->upsample_bilinear(x, (3, 2)), x, atol=1e-3) # works to higher precision for Float64
 
     # this test can be performed again, as soon as the corresponding CUDA functionality is merged
 

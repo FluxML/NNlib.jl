@@ -84,60 +84,6 @@ function upsample_bilinear_whcn!(output::AbstractArray{T,4}, input::AbstractArra
     return output
 end
 
-# this is just for convenience, to support matrices
-
-# function upsample_bilinear_whcn!(output::AbstractMatrix, input::AbstractMatrix)
-#     y = reshape(output, (size(output)..., 1, 1))
-#     x = reshape(input,  (size(input)..., 1, 1))
-#     return dropdims(upsample_bilinear_whcn!(y, x); dims=(3,4))
-# end
-
-# function upsample_bilinear(x::AbstractArray{T,2}, scale::NTuple{2,Real}=(1,1); outsize::Union{Nothing,NTuple{2,Integer}}=nothing) where T
-#     w,h = size(x)
-#     if outsize===nothing
-#         out_w = floor(Int, scale[1]*w)
-#         out_h = floor(Int, scale[2]*h)
-#     else
-#         out_w, out_h = outsize
-#     end
-#     y = Array{T,2}(undef, out_w, out_h)
-#     return upsample_bilinear_whcn!(y,x)
-# end
-
-
-# here is a cwhn implementation for later use
-# much faster than whcn on single core, multi-threaded they are about the same, depends on n and c
-# innermost channel loop should vectorize automatically
-function upsample_bilinear_cwhn!(output::AbstractArray{T,4},input::AbstractArray{T,4}) where T
-    if size(input) == size(output)
-        return input
-    end
-    size(input)[[1,4]] == size(output)[[1,4]] || error("Number of input and output channels and batches must match. Got input $(size(input)) and output $(size(output))")
-    channels, in_w, in_h, batches = size(input)
-    out_w, out_h = size(output)[[2,3]]
-
-    width_scale  = (in_w - 1) / (out_w - 1) # area_pixel_compute_scale(in_w, out_w, align_corners, scales[1]);
-    height_scale = (in_h - 1) / (out_h - 1) # area_pixel_compute_scale(in_h, out_h, align_corners, scales[2]);
-
-    # might make more sense to parallelize an inner loop in case batches=1
-    @inbounds Threads.@threads for n in 1:batches
-        for oh in 0:out_h-1
-            ih0, ih1, h0lambda, h1lambda = compute_source_index_and_lambda(height_scale, oh, in_h, out_h)
-            for ow in 0:out_w-1
-                iw0, iw1, w0lambda, w1lambda = compute_source_index_and_lambda(width_scale, ow, in_w, out_w)
-                for c in 1:channels
-                    output[c, ow+1, oh+1, n] =
-                        (h0lambda * w0lambda * input[c, iw0+1, ih0+1, n] + # h0 * w0 * i00
-                         h0lambda * w1lambda * input[c, iw1+1, ih0+1, n] + # h0 * w1 * i01
-                         h1lambda * w0lambda * input[c, iw0+1, ih1+1, n] + # h1 * w0 * i10
-                         h1lambda * w1lambda * input[c, iw1+1, ih1+1, n])  # h1 * w1 * i11
-                    end
-            end
-        end
-    end
-    return output
-end
-
 """
     ∇upsample_bilinear(Δ::AbstractArray{T,4}, scale::NTuple{2,Real}=(1,1); outsize::Union{Nothing,NTuple{2,Integer}}=nothing) where T
 
@@ -168,8 +114,8 @@ function ∇upsample_bilinear_whcn!(Δ::AbstractArray{T,4}, grad_input::Abstract
     out_w, out_h, _, _ = size(Δ)
     output_slice_size = out_h * out_w
 
-    width_scale  = T((in_w - 1) // (out_w - 1)) # area_pixel_compute_scale(in_w, out_w, align_corners, scales[1]);
-    height_scale = T((in_h - 1) // (out_h - 1)) # area_pixel_compute_scale(in_h, out_h, align_corners, scales[2]);
+    width_scale  = T((in_w - 1) // (out_w - 1))
+    height_scale = T((in_h - 1) // (out_h - 1))
 
     @inline idx(c, h, w) = c * in_h * in_w + h * in_w + w + 1
 
