@@ -3,6 +3,9 @@
     x = cat(x,x; dims=3)
     x = cat(x,x; dims=4)
 
+    # this output matches the one of pytorch v1.5.0
+    # nn.UpsamplingBilinear2d(scale_factor=(3,2))
+    # for above x
     y_true = Float32[ 1//1  4//3   5//3   2//1;
                       7//5 26//15 31//15 12//5;
                       9//5 32//15 37//15 14//5;
@@ -18,6 +21,11 @@
     @test y ≈ y_true
 
     gradtest(x->upsample_bilinear(x, (3, 2)), x, atol=1e-3) # works to higher precision for Float64
+
+    # additional grad check, also compliant with pytorch
+    o = ones(Float32,6,4,1,1)
+    grad_true = Float32[6 6; 6 6][:,:,:,:]
+    @test ∇upsample_bilinear(o, (3,2)) ≈ grad_true
 
     # this test can be performed again, as soon as the corresponding CUDA functionality is merged
 
