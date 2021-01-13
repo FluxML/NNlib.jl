@@ -1,4 +1,4 @@
-export scatter!, scatter
+export scatter!, scatter, ∇scatter_dst!, ∇scatter_src!, ∇scatter_src
 
 """
     scatter!(op, dst, src, idx, dims)
@@ -155,12 +155,13 @@ end
 
 ## Gradients
 
-opname(op::typeof(+)) = :add
-opname(op::typeof(-)) = :sub
-opname(op::typeof(*)) = :mul
-opname(op::typeof(/)) = :div
+opname(::typeof(+)) = :add
+opname(::typeof(-)) = :sub
+opname(::typeof(*)) = :mul
+opname(::typeof(/)) = :div
 
-#∇scatter_dst!()
+
+∇scatter_dst!(op, Δ) = Δ
 
 modify_src(::typeof(+), X) = X
 modify_src(::typeof(-), X) = -X
@@ -174,7 +175,7 @@ modify_src(::typeof(-), X) = -X
 for op in [+, -]
     pullback = Symbol(:scatter!_, opname(op), :_pullback)
     @eval function ChainRulesCore.rrule(::typeof(scatter!), op::typeof($op), dst::AbstractArray, src::AbstractArray, idx::AbstractArray)
-        $pullback(Δ) = (NO_FIELDS, NO_FIELDS, Δ, ∇scatter_src!(op, Δ, idx), DoesNotExist())
+        $pullback(Δ) = (NO_FIELDS, NO_FIELDS, ∇scatter_dst!(op, Δ), ∇scatter_src!(op, Δ, idx), DoesNotExist())
         scatter!(op, copy(dst), src, idx), $pullback
     end
 
@@ -185,6 +186,8 @@ for op in [+, -]
     end
 end
 
+
+∇scatter_dst!(op::Union{typeof(*),typeof(/)}, Δ, dst, src, idx) = scatter!(op, Δ .+ zero(dst), src, idx)
 
 modify_src(::typeof(*), X, Y) = X
 modify_src(::typeof(/), X, Y) = -X ./ Y.^2
@@ -218,7 +221,7 @@ end
 for op in [*, /]
     pullback = Symbol(:scatter!_, opname(op), :_pullback)
     @eval function ChainRulesCore.rrule(::typeof(scatter!), op::typeof($op), dst::AbstractArray, src::AbstractArray, idx::AbstractArray)
-        $pullback(Δ) = (NO_FIELDS, NO_FIELDS, scatter!(op, Δ .+ zero(dst), src, idx), ∇scatter_src!(op, Δ, dst, src, idx), DoesNotExist())
+        $pullback(Δ) = (NO_FIELDS, NO_FIELDS, ∇scatter_dst!(op, Δ, dst, src, idx), ∇scatter_src!(op, Δ, dst, src, idx), DoesNotExist())
         scatter!(op, copy(dst), src, idx), $pullback
     end
 
@@ -229,6 +232,8 @@ for op in [*, /]
     end
 end
 
+
+∇scatter_dst!(::Union{typeof(max),typeof(min)}, Δ, X) = X .* Δ
 
 modify_src(::Union{typeof(max),typeof(min)}, X, Y) = X .* Y
 
@@ -241,33 +246,31 @@ function ∇scatter_src(op::Union{typeof(max),typeof(min)}, Δ, dst, src, idx)
 end
 
 for op in [max, min]
+    pullback = Symbol(:scatter!_, Symbol(op), :_pullback)
     @eval function ChainRulesCore.rrule(::typeof(scatter!), op::typeof($op), dst::AbstractArray, src::AbstractArray, idx::AbstractArray)
         m = scatter!(op, copy(dst), src, idx)
-        m, function (Δ)
-           Δdst = (dst .== m) .* Δ
-           (NO_FIELDS, NO_FIELDS, Δdst, ∇scatter_src!(op, Δ, dst, src, idx), DoesNotExist())
-        end
+        X = (dst .== m)
+        $pullback(Δ) = (NO_FIELDS, NO_FIELDS, ∇scatter_dst!(op, Δ, X), ∇scatter_src!(op, Δ, dst, src, idx), DoesNotExist())
+        m, $pullback
     end
 
     pullback = Symbol(:scatter_, Symbol(op), :_pullback)
     @eval function ChainRulesCore.rrule(::typeof(scatter), op::typeof($op), src::AbstractArray, idx::AbstractArray)
-        dst = scatter(op, src, idx)
         $pullback(Δ) = (NO_FIELDS, NO_FIELDS, ∇scatter_src(op, Δ, dst, src, idx), DoesNotExist())
-        dst, $pullback
+        scatter(op, src, idx), $pullback
     end
 end
 
-∇scatter_src!(op::typeof(mean), Δ, dst, idx) = divide_by_counts!(∇src_init!(Δ, idx), idx, size(dst, 2))
-∇scatter_src(op::typeof(mean), Δ, dst, idx) = divide_by_counts!(∇src_init!(Δ, idx), idx, size(dst, 2))
+
+∇scatter_src!(::typeof(mean), Δ, dst, idx) = divide_by_counts!(∇src_init!(Δ, idx), idx, size(dst, 2))
+∇scatter_src(::typeof(mean), Δ, dst, idx) = divide_by_counts!(∇src_init!(Δ, idx), idx, size(dst, 2))
 
 function ChainRulesCore.rrule(::typeof(scatter!), op::typeof(mean), dst::AbstractArray, src::AbstractArray, idx::AbstractArray)
-    dst = scatter!(op, copy(dst), src, idx)
-    scatter!_mean_pullback(Δ) = (NO_FIELDS, NO_FIELDS, Δ, ∇scatter_src!(op, Δ, dst, idx), DoesNotExist())
-    dst, scatter!_mean_pullback
+    scatter!_mean_pullback(Δ) = (NO_FIELDS, NO_FIELDS, ∇scatter_dst!(op, Δ), ∇scatter_src!(op, Δ, dst, idx), DoesNotExist())
+    scatter!(op, copy(dst), src, idx), scatter!_mean_pullback
 end
 
 function ChainRulesCore.rrule(::typeof(scatter), op::typeof(mean), src::AbstractArray, idx::AbstractArray)
-    dst = scatter(op, src, idx)
     scatter_mean_pullback(Δ) = (NO_FIELDS, NO_FIELDS, ∇scatter_src(op, Δ, dst, idx), DoesNotExist())
-    dst, scatter_mean_pullback
+    scatter(op, src, idx), scatter_mean_pullback
 end
