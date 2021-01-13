@@ -161,17 +161,20 @@ opname(op::typeof(*)) = :mul
 opname(op::typeof(/)) = :div
 
 #∇scatter_dst!()
-∇scatter_src_init!(Δ, idx) = gather(Δ, idx)
-∇scatter_src_init(Δ, idx) = gather(zero(Δ)+Δ, idx)
-∇scatter_src!(op::typeof(+), Δ, dst, idx) = ∇scatter_src_init!(Δ, idx)
-∇scatter_src!(op::typeof(-), Δ, dst, idx) = -∇scatter_src_init!(Δ, idx)
-∇scatter_src(op::typeof(+), Δ, idx) = ∇scatter_src_init(Δ, idx)
-∇scatter_src(op::typeof(-), Δ, idx) = -∇scatter_src_init(Δ, idx)
+
+modify_src(::typeof(+), X) = X
+modify_src(::typeof(-), X) = -X
+
+∇src_init!(Δ, idx) = gather(Δ, idx)
+∇src_init(Δ, idx) = gather(zero(Δ)+Δ, idx)
+
+∇scatter_src!(op::Union{typeof(+),typeof(-)}, Δ, idx) = modify_src(op, ∇src_init!(Δ, idx))
+∇scatter_src(op::Union{typeof(+),typeof(-)}, Δ, idx) = modify_src(op, ∇src_init!(Δ, idx))
 
 for op in [+, -]
     pullback = Symbol(:scatter!_, opname(op), :_pullback)
     @eval function ChainRulesCore.rrule(::typeof(scatter!), op::typeof($op), dst::AbstractArray, src::AbstractArray, idx::AbstractArray)
-        $pullback(Δ) = (NO_FIELDS, NO_FIELDS, Δ, ∇scatter_src!(op, Δ, dst, idx), DoesNotExist())
+        $pullback(Δ) = (NO_FIELDS, NO_FIELDS, Δ, ∇scatter_src!(op, Δ, idx), DoesNotExist())
         scatter!(op, copy(dst), src, idx), $pullback
     end
 
@@ -183,46 +186,59 @@ for op in [+, -]
 end
 
 
-∇scatter_src!(op::typeof(*), Δ, dst, idx) = gather(dst, idx) .* ∇scatter_src_init!(Δ, idx)
-∇scatter_src!(op::typeof(/), Δ, dst, idx) = -∇scatter_src!(*, Δ, dst, idx) ./ src.^2
-∇scatter_src(op::typeof(*), Δ, idx) = ∇scatter_src_init(Δ, idx)
-∇scatter_src(op::typeof(/), Δ, idx) = -∇scatter_src(*, Δ, idx) ./ src.^2
+modify_src(::typeof(*), X, Y) = X
+modify_src(::typeof(/), X, Y) = -X ./ Y.^2
 
-for op in [*, /]
-    @eval function ChainRulesCore.rrule(::typeof(scatter!), op::typeof($op), dst::AbstractArray, src::AbstractArray, idx::AbstractArray)
-        scatter!(op, copy(dst), src, idx), function (Δ)
-            Δdst = scatter!(op, Δ .+ zero(dst), src, idx)
-            rev_idx = reverse_indices(idx)
-            Δsrc = ∇scatter_src!(op, Δ, dst, idx)
-            @inbounds for ind = CartesianIndices(idx)
-                inds = filter(x -> x != ind, rev_idx[idx[ind]])
-                for i = 1:size(src, 1)
-                    Δsrc[i, ind] *= prod(j -> src[i, j], inds)
-                end
-            end
-            (NO_FIELDS, NO_FIELDS, Δdst, Δsrc, DoesNotExist())
+∇src_init!(Δ, dst, idx) = gather(dst, idx) .* ∇src_init!(Δ, idx)
+
+function ∇scatter_src!(op::Union{typeof(*),typeof(/)}, Δ, dst, src, idx)
+    Δsrc = modify_src(op, ∇src_init!(Δ, dst, idx), src)
+    rev_idx = reverse_indices(idx)
+    @inbounds for ind = CartesianIndices(idx)
+        inds = filter(x -> x != ind, rev_idx[idx[ind]])
+        for i = 1:size(src, 1)
+            Δsrc[i, ind] *= prod(j -> src[i, j], inds)
         end
     end
+    Δsrc
+end
 
-    @eval function ChainRulesCore.rrule(::typeof(scatter), op::typeof($op), src::AbstractArray, idx::AbstractArray)
-        scatter(op, src, idx), function (Δ)
-            rev_idx = reverse_indices(idx)
-            Δsrc = ∇scatter_src(op, Δ, idx)
-            @inbounds for ind = CartesianIndices(idx)
-                inds = filter(x -> x != ind, rev_idx[idx[ind]])
-                for i = 1:size(src, 1)
-                    Δsrc[i, ind] = op(Δsrc[i, ind], prod(j -> src[i, j], inds))
-                end
-            end
-            (NO_FIELDS, NO_FIELDS, Δsrc, DoesNotExist())
+function ∇scatter_src(op::Union{typeof(*),typeof(/)}, Δ, src, idx)
+    Δsrc = modify_src(op, ∇src_init(Δ, idx), src)
+    rev_idx = reverse_indices(idx)
+    @inbounds for ind = CartesianIndices(idx)
+        inds = filter(x -> x != ind, rev_idx[idx[ind]])
+        for i = 1:size(src, 1)
+            Δsrc[i, ind] = op(Δsrc[i, ind], prod(j -> src[i, j], inds))
         end
+    end
+    Δsrc
+end
+
+for op in [*, /]
+    pullback = Symbol(:scatter!_, opname(op), :_pullback)
+    @eval function ChainRulesCore.rrule(::typeof(scatter!), op::typeof($op), dst::AbstractArray, src::AbstractArray, idx::AbstractArray)
+        $pullback(Δ) = (NO_FIELDS, NO_FIELDS, scatter!(op, Δ .+ zero(dst), src, idx), ∇scatter_src!(op, Δ, dst, src, idx), DoesNotExist())
+        scatter!(op, copy(dst), src, idx), $pullback
+    end
+
+    pullback = Symbol(:scatter_, opname(op), :_pullback)
+    @eval function ChainRulesCore.rrule(::typeof(scatter), op::typeof($op), src::AbstractArray, idx::AbstractArray)
+        $pullback(Δ) = (NO_FIELDS, NO_FIELDS, ∇scatter_src(op, Δ, src, idx), DoesNotExist())
+        scatter(op, src, idx), $pullback
     end
 end
 
-∇scatter_src!(op::typeof(max), Δ, dst, src, idx) = (src .== gather(dst, idx)) .* ∇scatter_src_init!(Δ, idx)
-∇scatter_src!(op::typeof(min), Δ, dst, src, idx) = (src .== gather(dst, idx)) .* ∇scatter_src_init!(Δ, idx)
-∇scatter_src(op::typeof(max), Δ, dst, src, idx) = (src .== gather(dst, idx)) .* ∇scatter_src_init!(Δ, idx)
-∇scatter_src(op::typeof(min), Δ, dst, src, idx) = (src .== gather(dst, idx)) .* ∇scatter_src_init!(Δ, idx)
+
+modify_src(::Union{typeof(max),typeof(min)}, X, Y) = X .* Y
+
+function ∇scatter_src!(op::Union{typeof(max),typeof(min)}, Δ, dst, src, idx)
+    modify_src(op, (src .== gather(dst, idx)), ∇src_init!(Δ, idx))
+end
+
+function ∇scatter_src(op::Union{typeof(max),typeof(min)}, Δ, dst, src, idx)
+    modify_src(op, (src .== gather(dst, idx)), ∇src_init!(Δ, idx))
+end
 
 for op in [max, min]
     @eval function ChainRulesCore.rrule(::typeof(scatter!), op::typeof($op), dst::AbstractArray, src::AbstractArray, idx::AbstractArray)
@@ -241,8 +257,8 @@ for op in [max, min]
     end
 end
 
-∇scatter_src!(op::typeof(mean), Δ, dst, idx) = divide_by_counts!(∇scatter_src_init!(Δ, idx), idx, size(dst, 2))
-∇scatter_src(op::typeof(mean), Δ, dst, idx) = divide_by_counts!(∇scatter_src_init!(Δ, idx), idx, size(dst, 2))
+∇scatter_src!(op::typeof(mean), Δ, dst, idx) = divide_by_counts!(∇src_init!(Δ, idx), idx, size(dst, 2))
+∇scatter_src(op::typeof(mean), Δ, dst, idx) = divide_by_counts!(∇src_init!(Δ, idx), idx, size(dst, 2))
 
 function ChainRulesCore.rrule(::typeof(scatter!), op::typeof(mean), dst::AbstractArray, src::AbstractArray, idx::AbstractArray)
     dst = scatter!(op, copy(dst), src, idx)
