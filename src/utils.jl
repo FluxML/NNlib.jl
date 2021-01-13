@@ -27,7 +27,7 @@ function _check_output(idx::AbstractArray{<:IntOrTuple}, dst, src, dims)
     idx_dims = size(idx)
     dst_dims = size(dst)
     src_dims = size(src)
-    dst_dims[begin:dims] == src_dims[begin:dims] || throw(ArgumentError("dst and src must have the same dimensions in the first $(dims) dimensions"))
+    dst_dims[1:dims] == src_dims[1:dims] || throw(ArgumentError("dst and src must have the same dimensions in the first $(dims) dimensions"))
     dst_dims[dims+1:end] == idx_dims || throw(ArgumentError("dst must have the same dimensions with idx from $(dims+1)-th"))
 end
 
