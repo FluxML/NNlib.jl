@@ -20,13 +20,13 @@ end
     upsample_bilinear(x::AbstractArray{T,4}, scale::NTuple{2,Real}=(1,1); outsize::Union{Nothing,NTuple{2,Integer}}=nothing)
 
 Upsamples the first 2 dimensions of the array `x` by the upsample factors stored in `scale`,
-using bilinear interpolation. The interpolation is identical to the one used by pytorch.
+using bilinear interpolation.
 
 The size of the output is equal to
 `(scale[1]*S1, scale[2]*S2, S3, S4)`, where `S1, S2, S3, S4 = size(x)`.
 
 Examples:
-```
+```julia
 upsample_bilinear(x, (2, pi)) # real scaling factors are allowed
 upsample_bilinear(x; outsize=(64,64)) # note the semicolon, outsize is a keyword argument
 ```
