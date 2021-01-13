@@ -171,13 +171,13 @@ opname(op::typeof(/)) = :div
 for op in [+, -]
     pullback = Symbol(:scatter!_, opname(op), :_pullback)
     @eval function ChainRulesCore.rrule(::typeof(scatter!), op::typeof($op), dst::AbstractArray, src::AbstractArray, idx::AbstractArray)
-        $pullback(Δ) = (nothing, Δ, ∇scatter_src!(op, Δ, dst, idx), nothing)
+        $pullback(Δ) = (DoesNotExist(), Δ, ∇scatter_src!(op, Δ, dst, idx), DoesNotExist())
         scatter!(op, copy(dst), src, idx), $pullback
     end
 
     pullback = Symbol(:scatter_, opname(op), :_pullback)
     @eval function ChainRulesCore.rrule(::typeof(scatter), op::typeof($op), src::AbstractArray{T}, idx::AbstractArray) where {T<:Real}
-        $pullback(Δ) = (nothing, ∇scatter_src(op, Δ, idx), nothing)
+        $pullback(Δ) = (DoesNotExist(), ∇scatter_src(op, Δ, idx), DoesNotExist())
         scatter(op, src, idx), $pullback
     end
 end
@@ -200,7 +200,7 @@ for op in [*, /]
                     Δsrc[i, ind] *= prod(j -> src[i, j], inds)
                 end
             end
-            (nothing, Δdst, Δsrc, nothing)
+            (DoesNotExist(), Δdst, Δsrc, DoesNotExist())
         end
     end
 
@@ -214,7 +214,7 @@ for op in [*, /]
                     Δsrc[i, ind] = op(Δsrc[i, ind], prod(j -> src[i, j], inds))
                 end
             end
-            (nothing, Δsrc, nothing)
+            (DoesNotExist(), Δsrc, DoesNotExist())
         end
     end
 end
@@ -229,14 +229,14 @@ for op in [max, min]
         m = scatter!(op, copy(dst), src, idx)
         m, function (Δ)
            Δdst = (dst .== m) .* Δ
-           (nothing, Δdst, ∇scatter_src!(op, Δ, dst, src, idx), nothing)
+           (DoesNotExist(), Δdst, ∇scatter_src!(op, Δ, dst, src, idx), DoesNotExist())
         end
     end
 
     pullback = Symbol(:scatter_, Symbol(op), :_pullback)
     @eval function ChainRulesCore.rrule(::typeof(scatter), op::typeof($op), src::AbstractArray, idx::AbstractArray) where {T<:Real}
         dst = scatter(op, src, idx)
-        $pullback(Δ) = (nothing, ∇scatter_src(op, Δ, dst, src, idx), nothing)
+        $pullback(Δ) = (DoesNotExist(), ∇scatter_src(op, Δ, dst, src, idx), DoesNotExist())
         dst, $pullback
     end
 end
@@ -246,12 +246,12 @@ end
 
 function ChainRulesCore.rrule(::typeof(scatter!), op::typeof(mean), dst::AbstractArray, src::AbstractArray, idx::AbstractArray)
     dst = scatter!(op, copy(dst), src, idx)
-    scatter!_mean_pullback(Δ) = (nothing, Δ, ∇scatter_src!(op, Δ, dst, idx), nothing)
+    scatter!_mean_pullback(Δ) = (DoesNotExist(), Δ, ∇scatter_src!(op, Δ, dst, idx), DoesNotExist())
     dst, scatter!_mean_pullback
 end
 
 function ChainRulesCore.rrule(::typeof(scatter), op::typeof(mean), src::AbstractArray, idx::AbstractArray) where {T<:Real}
     dst = scatter(op, src, idx)
-    scatter_mean_pullback(Δ) = (nothing, ∇scatter_src(op, Δ, dst, idx), nothing)
+    scatter_mean_pullback(Δ) = (DoesNotExist(), ∇scatter_src(op, Δ, dst, idx), DoesNotExist())
     dst, scatter_mean_pullback
 end
