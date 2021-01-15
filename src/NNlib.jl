@@ -27,6 +27,7 @@ is_nnpack_available() = false
 end
 
 include("activations.jl")
+include("broadcast.jl") # map!! and friends
 include("softmax.jl")
 include("batched/batchedmul.jl")
 include("gemm.jl")
