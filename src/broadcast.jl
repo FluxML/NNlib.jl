@@ -34,18 +34,22 @@ for (f, ∇f) in [(:σ, :∇σ), (:tanh, :∇tanh), (:relu, :∇relu)]
 
         function ChainRulesCore.rrule(::typeof(map!!), ::typeof($f), x::AbstractArray)
             y = map!!($f, x)
-            map_back(dy) = (NO_FIELDS, NO_FIELDS, $∇f.(y, dy))
+            map_back(dy) = (NO_FIELDS, NO_FIELDS, $∇f(y, dy))
             return y, map_back
         end
 
         function ChainRulesCore.rrule(::typeof(add_map!!), ::typeof($f), x::AbstractArray, b::Bool)
             y = add_map!!($f, x, b)
-            add_map_back(dy) = (NO_FIELDS, NO_FIELDS, $∇f.(y, dy), Zero())
+            add_map_back(dy) = (NO_FIELDS, NO_FIELDS, $∇f(y, dy), Zero())
             return y, add_map_back
         end
         function ChainRulesCore.rrule(::typeof(add_map!!), ::typeof($f), x::AbstractArray, b::AbstractArray)
             y = add_map!!($f, x, b)
-            add_map_back(dy) = (NO_FIELDS, NO_FIELDS, $∇f.(y, dy), sum!(similar(b), dy))
+            function add_map_back(dy)
+                dx = $∇f(y, dy)
+                db = sum!(similar(b), dx)
+                (NO_FIELDS, NO_FIELDS, dx, db)
+            end
             return y, add_map_back
         end
 
@@ -59,6 +63,10 @@ end
 using LoopVectorization
 map!!(f, A::Array{<:LinearAlgebra.BlasReal}) = @avx A .= f.(A)
 add_map!!(f, A::Array{<:LinearAlgebra.BlasReal}, b) = @avx A .= f.(A) .+ b
+
+# ambiguities if you special-case tanh --- so perhaps that should be another layer of dispatch?
+map!!(f::typeof(tanh), A::Array{<:LinearAlgebra.BlasReal}) = @avx A .= tanh_fast.(A)
+add_map!!(f::typeof(tanh), A::Array{<:LinearAlgebra.BlasReal}, b) = @avx A .= tanh_fast.(A) .+ b
 
 ∇σ(y::Array{<:LinearAlgebra.BlasReal}, dy::Array{<:LinearAlgebra.BlasReal}) = @avx dy .* conj.(y .* (1 .- y))
 ∇tanh(y::Array{<:LinearAlgebra.BlasReal}, dy::Array{<:LinearAlgebra.BlasReal}) = @avx dy .* conj.(1 .- y.^2)
@@ -97,15 +105,22 @@ end
 #=
 # Without LV -- memory savings but no huge speedups
 
-julia> using NNlib, Zygote; import NNlib: map!!, add_map!!
+julia> using NNlib, Zygote; import NNlib: map!!, add_map!!, tanh_fast
 
 julia> x100, W100, b100 = randn(100,100), randn(100,100), randn(100);
+
+julia> @btime relu.($x100);
+  10.985 μs (2 allocations: 78.20 KiB)
+
+julia> @btime map!!(relu, x)  setup=(x=copy($x100));
+  9.563 μs (2 allocations: 32 bytes)
 
 julia> @btime gradient(x -> sum(relu.(x)), $x100);
   22.800 μs (4 allocations: 156.41 KiB)
 
 julia> @btime gradient(x -> sum(map!!(relu, x)), $x100); # half the memory
   20.305 μs (4 allocations: 78.23 KiB)
+  37.625 μs (8 allocations: 234.64 KiB) # WTF, now?
 
 julia> @btime tanh.($x100);
   124.317 μs (2 allocations: 78.20 KiB)
@@ -146,26 +161,26 @@ julia> @btime gradient((W,x,b) -> sum(map!!(relu, muladd(W,x,b))), $W100, $x100,
 
 julia> using LoopVectorization, LinearAlgebra
 
-julia> import NNlib: map!!, add_map!!, ∇σ, ∇tanh, ∇relu
+julia> import NNlib: map!!, add_map!!, ∇σ, ∇tanh, ∇relu, tanh_fast
 
 # then load some definitions above!
 
-julia> @btime gradient(x -> sum(tanh.(W * x)), x)  setup=(x=rand(100,100); W=rand(100,100));
+julia> @btime gradient(x -> sum(tanh.($W100 * x)), $x100);
   175.390 μs (16 allocations: 391.44 KiB)
 
-julia> @btime gradient(x -> sum(map!!(tanh, W * x)), x)  setup=(x=rand(100,100); W=rand(100,100));
+julia> @btime gradient(x -> sum(map!!(tanh, $W100 * x)), $x100);
   205.760 μs (29 allocations: 313.98 KiB) --- WTF?
 
-julia> @btime gradient(x -> sum(tanh.(x)), x)  setup=(x=rand(100,100));
+julia> @btime gradient(x -> sum(tanh.(x)), $x100);
   147.240 μs (5 allocations: 156.42 KiB)
 
-julia> @btime gradient(x -> sum(map!!(tanh, x)), x)  setup=(x=rand(100,100));
+julia> @btime gradient(x -> sum(map!!(tanh, x)), $x100);
   78.316 μs (2 allocations: 78.20 KiB)
 
-julia> @btime gradient(x -> sum(relu.(x)), x)  setup=(x=rand(100,100));
+julia> @btime gradient(x -> sum(relu.(x)), $x100);
   22.990 μs (4 allocations: 156.41 KiB)
 
-julia> @btime gradient(x -> sum(map!!(relu, x)), x)  setup=(x=rand(100,100));
+julia> @btime gradient(x -> sum(map!!(relu, x)), $x100);
   20.579 μs (4 allocations: 78.23 KiB)
 
 

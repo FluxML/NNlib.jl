@@ -57,8 +57,10 @@ end
 const sigmoid = σ
 
 ∇σ(y, dy) = @. dy * conj(y * (1 - y)) # gradient, used in map!!(f, xs)
+∇σ!(dx, y, dy) = @. dx = dy * conj(y * (1 - y))
 
 ∇tanh(y, dy) = @. dy * conj(1 - y^2)
+∇tanh!(dx, y, dy) = @. dx = dy * conj(1 - y^2)
 
 """
     hardσ(x) = max(0, min(1, (x + 3) / 6))
@@ -184,6 +186,7 @@ julia> lineplot(relu, -2, 2, height=7)
 relu(x) = ifelse(x<0, zero(x), x)  # faster than max(zero(x), x), still preserves NaN
 
 ∇relu(y, dy) = ifelse.(y .> 0, one(y), zero(y))
+∇relu!(dx, y, dy) = dx .= ifelse.(y .> 0, one(y), zero(y))
 
 """
     leakyrelu(x, a=0.01) = max(a*x, x)
