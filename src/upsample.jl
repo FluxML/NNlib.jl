@@ -1,7 +1,65 @@
-export upsample_bilinear, ∇upsample_bilinear, pixel_shuffle
+export upsample_nearest, ∇upsample_nearest,
+    upsample_bilinear, ∇upsample_bilinear,
+    pixel_shuffle
 
 """
-    upsample_bilinear(x::AbstractArray{<:Number,4}, k::NTuple{2,Int})
+    upsample_nearest(x::AbstractArray{T,N}, scale)
+
+Upsamples by an integer multiple. For `scale::Integer`, this applies to the first
+`N-2` dimensions of `x` (the remainder assumed to be channel & batch dimensions).
+For `scale::Tuple`, the first `length(scale)` dimensions are altered.
+
+See also [`upsample_bilinear`](@ref), for two dimensions of an `N=4` array.
+
+# Example
+```jldoctest
+julia> upsample_nearest([1 2 3; 4 5 6], (2,3))
+4×9 Matrix{Int64}:
+ 1  1  1  2  2  2  3  3  3
+ 1  1  1  2  2  2  3  3  3
+ 4  4  4  5  5  5  6  6  6
+ 4  4  4  5  5  5  6  6  6
+```
+"""
+upsample_nearest(x::AbstractArray, s::Integer) = upsample_nearest(x, ntuple(_->s, ndims(x)-2))
+
+function upsample_nearest(x::AbstractArray{T,N}, scales::NTuple{S, <:Integer}) where {T,N,S}
+    S in 1:N || throw(ArgumentError("can't upsample ndims(x)=$N with scale=$scales"))
+    outsize = ntuple(d -> d<=S ? scales[d] * size(x,d) : size(x,d), N)
+    out = similar(x, T, outsize)
+    writesize = ntuple(N+S) do d
+        d > 2S && return size(x, d-S)
+        isodd(d) ? scales[cld(d,2)] : size(x, cld(d,2))
+    end
+    readsize = ntuple(N+S) do d
+        d > 2S && return size(x, d-S)
+        isodd(d) ? 1 : size(x, cld(d,2))
+    end
+    reshape(out, writesize) .= reshape(x, readsize)
+    out
+end
+
+function ∇upsample_nearest(x::AbstractArray{T,N}, scales::NTuple{S, <:Integer}) where {T,N,S}
+    outsize = ntuple(N) do d
+        d > S && return size(x,d)
+        rem(size(x,d), scales[d]) == 0 || throw(ArgumentError("expected input array evenly divisible by scale=$scales, got size(x)=$(size(x))"))
+        div(size(x,d), scales[d])
+    end
+    tempsize = ntuple(N+S) do d
+        d > 2S && return size(x, d-S)
+        s = scales[cld(d,2)]
+        isodd(d) ? s : div(size(x, cld(d,2)),s)
+    end
+    mid = sum(reshape(x, tempsize), dims=ntuple(d -> 2d-1, S))
+    reshape(mid, outsize)
+end
+
+function ChainRulesCore.rrule(::typeof(upsample_nearest), x::AbstractArray, s::Tuple)
+    Ω = upsample_nearest(x, s)
+    upsample_nearest_pullback(Δ) = (NO_FIELDS, ∇upsample_nearest(Δ, k), DoesNotExist())
+    return Ω, upsample_nearest_pullback
+end
+
 
 Upsamples the first 2 dimensions of the array `x` by the upsample factors stored in `k`,
 using bilinear interpolation. 
