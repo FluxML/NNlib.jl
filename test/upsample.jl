@@ -8,6 +8,7 @@
 
     @test_throws ArgumentError ∇upsample_nearest(y, (2,4))
     @test_throws ArgumentError upsample_nearest(x, (1,2,3,4,5))
+    @test_throws ArgumentError upsample_nearest(upsample_nearest(rand(2,3),4), 5)
 end
 
 @testset "upsample_bilinear 2d" begin

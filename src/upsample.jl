@@ -21,7 +21,10 @@ julia> upsample_nearest([1 2 3; 4 5 6], (2,3))
  4  4  4  5  5  5  6  6  6
 ```
 """
-upsample_nearest(x::AbstractArray, s::Integer) = upsample_nearest(x, ntuple(_->s, ndims(x)-2))
+function upsample_nearest(x::AbstractArray, s::Integer)
+    ndims(x) > 2 || throw(ArgumentError("expected x with at least 3 dimensions"))
+    upsample_nearest(x, ntuple(_->s, ndims(x)-2))
+end
 
 function upsample_nearest(x::AbstractArray{T,N}, scales::NTuple{S, <:Integer}) where {T,N,S}
     S in 1:N || throw(ArgumentError("can't upsample ndims(x)=$N with scale=$scales"))
