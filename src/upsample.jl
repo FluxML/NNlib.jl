@@ -64,6 +64,7 @@ function ChainRulesCore.rrule(::typeof(upsample_nearest), x::AbstractArray, s::T
 end
 
 """
+    upsample_bilinear(x::AbstractArray{<:Number,4}, k::NTuple{2,Int})
 
 Upsamples the first 2 dimensions of the array `x` by the upsample factors stored in `k`,
 using bilinear interpolation. 
