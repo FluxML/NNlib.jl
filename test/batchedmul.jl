@@ -119,6 +119,18 @@ end
     end
 end
 
+@testset "batched_mul: trivial dimensions & unit strides, $T" for T in [ComplexF64, Float64]
+    @testset "$tA(rand$((sA...,2))) ⊠ $tB(rand$((sB...,2)))" for
+    tA in [identity, batched_adjoint, batched_transpose], sA in [(1,1), (1,3), (3,1), (3,3)],
+    tB in [identity, batched_adjoint, batched_transpose], sB in [(1,1), (1,3), (3,1), (3,3)]
+        A = tA(rand(T, sA..., 2))
+        B = tB(rand(T, sB..., 2))
+        size(A,2) == size(B,1) || continue
+        C = cat(A[:,:,1] * B[:,:,1], A[:,:,2] * B[:,:,2]; dims=3)
+        @test A ⊠ B ≈ C
+    end
+end
+
 @testset "BatchedAdjOrTrans interface * $TB" for TB in [Float64, Float32]
     A = randn(7,5,3)
     B = randn(TB, 5,7,3)
