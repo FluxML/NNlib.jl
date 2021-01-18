@@ -64,38 +64,20 @@ function ChainRulesCore.rrule(::typeof(upsample_nearest), x::AbstractArray, s::T
 end
 
 """
-    upsample_bilinear(x::AbstractArray{<:Number,4}, ks::NTuple{2,Int})
-    upsample_bilinear(x::AbstractArray{<:Number,4}, k::Int)
 
-Upsamples the first 2 dimensions of the array `x` by the upsample factors stored in `ks`,
-using bilinear interpolation. One integer is equivalent to `ks = (k,k)`.
+Upsamples the first 2 dimensions of the array `x` by the upsample factors stored in `k`,
+using bilinear interpolation. 
 
-The size of the output is equal to
-`(ks[1]*S1, ks[2]*S2, S3, S4)`, where `S1, S2, S3, S4 = size(x)`.
+The size of the output is equal to 
+`(k[1]*S1, k[2]*S2, S3, S4)`, where `S1, S2, S3, S4 = size(x)`.
 
 The interpolation grid is identical to the one used by `imresize` from `Images.jl`.
 
-Only two-dimensional upsampling is supported, hence "bi-linear".
-See also [`upsample_nearest`](@ref) which allows any dimensions.
-
-# Example
-```jldoctest
-julia> upsample_bilinear(reshape([1 2 3; 4 5 6], 2,3,1,1), (2,4))
-4×12×1×1 Array{Float64, 4}:
-[:, :, 1, 1] =
- 1.0   1.0   1.125  1.375  1.625  1.875  2.125  2.375  2.625  2.875  3.0   3.0
- 1.75  1.75  1.875  2.125  2.375  2.625  2.875  3.125  3.375  3.625  3.75  3.75
- 3.25  3.25  3.375  3.625  3.875  4.125  4.375  4.625  4.875  5.125  5.25  5.25
- 4.0   4.0   4.125  4.375  4.625  4.875  5.125  5.375  5.625  5.875  6.0   6.0
-```
+Currently only 2d upsampling is supported.
 """
-upsample_bilinear(x::AbstractArray{<:Number,4}, k::Int) = upsample_bilinear(x, (k,k))
-
-upsample_bilinear(x::AbstractArray{<:Integer,4}, k::NTuple{2,Int}) = upsample_bilinear(float(x), k)
-
-function upsample_bilinear(x::AbstractArray{<:Number,4}, k::NTuple{2,Int})
+function upsample_bilinear(x::AbstractArray{T,4}, k::NTuple{2,Int}) where T
     # This function is gpu friendly
-
+    
     imgsize = size(x)
     newsize = get_newsize(imgsize, k)
 
@@ -305,67 +287,20 @@ end
 
 """
     pixel_shuffle(x, r)
-
+    
 Pixel shuffling operation. `r` is the upscale factor for shuffling.
 The operation converts an input of size [W,H,r²C,N] to size [rW,rH,C,N]
-
-Used extensively in super-resolution networks to upsample
+Used extensively in super-resolution networks to upsample 
 towards high resolution features.
-Reference : https://arxiv.org/abs/1609.05158
 
-# Example
-```jldoctest
-julia> x = [10i + j + channel/10 for i in 1:2, j in 1:3, channel in 1:4, batch in 1:1]
-2×3×4×1 Array{Float64, 4}:
-[:, :, 1, 1] =
- 11.1  12.1  13.1
- 21.1  22.1  23.1
-
-[:, :, 2, 1] =
- 11.2  12.2  13.2
- 21.2  22.2  23.2
-
-[:, :, 3, 1] =
- 11.3  12.3  13.3
- 21.3  22.3  23.3
-
-[:, :, 4, 1] =
- 11.4  12.4  13.4
- 21.4  22.4  23.4
-
-julia> pixel_shuffle(x, 2)
-4×6×1×1 Array{Float64, 4}:
-[:, :, 1, 1] =
- 11.1  11.3  12.1  12.3  13.1  13.3
- 11.2  11.4  12.2  12.4  13.2  13.4
- 21.1  21.3  22.1  22.3  23.1  23.3
- 21.2  21.4  22.2  22.4  23.2  23.4
-
-julia> y = [i + channel/10 for i in 1:3, channel in 1:6, batch in 1:1]
-3×6×1 Array{Float64, 3}:
-[:, :, 1] =
- 1.1  1.2  1.3  1.4  1.5  1.6
- 2.1  2.2  2.3  2.4  2.5  2.6
- 3.1  3.2  3.3  3.4  3.5  3.6
-
-julia> pixel_shuffle(y, 2)
-6×3×1 Array{Float64, 3}:
-[:, :, 1] =
- 1.1  1.3  1.5
- 1.2  1.4  1.6
- 2.1  2.3  2.5
- 2.2  2.4  2.6
- 3.1  3.3  3.5
- 3.2  3.4  3.6
-
- ```
+Reference : https://arxiv.org/pdf/1609.05158.pdf
 """
 function pixel_shuffle(x::AbstractArray, r::Integer)
-    ndims(x) > 2 || throw(ArgumentError("expected x with at least 3 dimensions"))
+    @assert ndims(x) > 2
     d = ndims(x) - 2
     sizein = size(x)[1:d]
-    cin, n = size(x, d+1), size(x, d+2)
-    cin % r^d == 0 || throw(ArgumentError("expected channel dimension to be divisible by r^d = $(r^d), where d=$d is the number of spatial dimensions. Given r=$r, input size(x) = $(size(x))"))
+    cin, n = size(x, d+1), size(x, d+2) 
+    @assert cin % r^d == 0
     cout = cin ÷ r^d
     # x = reshape(x, sizein..., fill(r, d)..., cout, n) # bug https://github.com/FluxML/Zygote.jl/issues/866
     x = reshape(x, sizein..., ntuple(i->r, d)..., cout, n)
