@@ -10,35 +10,34 @@ given by Zygote. `f` has to be a scalar valued function.
 
 Applies also `ChainRulesTestUtils.rrule_test` if the rrule for `f` is explicitly defined.
 """
-function gradtest(f, xs...; atol=1e-6, rtol=1e-6, fkwargs=NamedTuple(), 
-                    check_rrule=false, 
+function gradtest(f, xs...; atol=1e-6, rtol=1e-6, fkwargs=NamedTuple(),
                     check_rrule=false,
                     check_broadcast=false,
                     skip=false, broken=false)
 
     if check_rrule
         y = f(xs...; fkwargs...)
-        simil(x) = x isa Number ? randn(rng, typeof(x)) : randn!(rng, similar(x)) 
+        simil(x) = x isa Number ? randn(rng, typeof(x)) : randn!(rng, similar(x))
         ȳ =  simil(y)
         xx̄s = [(x, simil(x)) for x in xs]
         rrule_test(f, ȳ, xx̄s...; fkwargs=fkwargs)
     end
-    
+
     if check_broadcast
-        length(fkwargs) > 0 && @warn("CHECK_BROADCAST: dropping keywords args") 
+        length(fkwargs) > 0 && @warn("CHECK_BROADCAST: dropping keywords args")
         h = (xs...) -> sum(sin.(f.(xs...)))
     else
         h = (xs...) -> sum(sin.(f(xs...; fkwargs...)))
     end
 
     y_true = h(xs...)
-    
+
     fdm = central_fdm(5, 1)
-    gs_fd = FiniteDifferences.grad(fdm, h, xs...) 
-    
+    gs_fd = FiniteDifferences.grad(fdm, h, xs...)
+
     y_ad, pull = Zygote.pullback(h, xs...)
     gs_ad = pull(one(y_ad))
-    
+
     @test y_true ≈ y_ad  atol=atol rtol=rtol
     for (g_ad, g_fd) in zip(gs_ad, gs_fd)
         if skip
