@@ -359,5 +359,6 @@ is_strided(A::BatchedTranspose) = is_strided(parent(A))
 
 is_strided(A::LinearAlgebra.Transpose) = is_strided(parent(A))
 is_strided(A::LinearAlgebra.Adjoint) = eltype(A) <: Real && is_strided(parent(A))
+# This needs Compat 3.14, for any Julia < 1.6
 
 are_strided(As...) = mapfoldl(is_strided, &, As; init=true)
