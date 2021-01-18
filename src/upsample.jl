@@ -44,6 +44,8 @@ function upsample_bilinear(x::AbstractArray{T,4}, scale::NTuple{2,Real}=(1,1); o
     return upsample_bilinear_whcn!(y, x)
 end
 
+upsample_bilinear(x, scale::Real; outsize=nothing) = upsample_bilinear(x, (scale,scale); outsize=outsize)
+
 # this is the core function which works on arrays of arbitrary size
 # the implementation is a translation of https://github.com/pytorch/pytorch/blob/master/aten/src/ATen/native/cpu/UpSampleMoreKernel.cpp
 # which implements open-cv style linear interpolation / upsampling
@@ -107,6 +109,8 @@ function ∇upsample_bilinear(Δ::AbstractArray{T,4}, scale::NTuple{2,Real}=(1,1
     dx = zeros(T, out_w, out_h, c, n)
     return ∇upsample_bilinear_whcn!(Δ, dx)
 end
+
+∇upsample_bilinear(Δ, scale::Real; outsize=nothing) = ∇upsample_bilinear(Δ, (scale, scale); outsize=outsize)
 
 function ∇upsample_bilinear_whcn!(Δ::AbstractArray{T,4}, grad_input::AbstractArray{T,4}) where T
     size(grad_input)[3:4] == size(Δ)[3:4] || error("Number of input and output channels and batches must match. Got input $(size(input)) and output $(size(output))")

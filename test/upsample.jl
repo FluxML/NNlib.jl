@@ -4,7 +4,7 @@
     x = cat(x,x; dims=4)
 
     # this output matches the one of pytorch v1.5.0
-    # nn.UpsamplingBilinear2d(scale_factor=(3,2))
+    # nn.UpsamplingBilinear2d(scale_factor=(3,2), align_corners=True)
     # for above x
     y_true = Float32[ 1//1  4//3   5//3   2//1;
                       7//5 26//15 31//15 12//5;
@@ -26,6 +26,15 @@
     o = ones(Float32,6,4,1,1)
     grad_true = Float32[6 6; 6 6][:,:,:,:]
     @test ∇upsample_bilinear(o, (3,2)) ≈ grad_true
+
+    y_true_2 = Rational{Int}[1//1  5//4  6//4  7//4 2//1;
+                             3//2  7//4  8//4  9//4 5//2;
+                             4//2  9//4 10//4 11//4 6//2;
+                             5//2 11//4 12//4 13//4 7//2;
+                             3//1 13//4 14//4 15//4 4//1][:,:,:,:]
+
+     # check for real-valued single-number argument and type stability for rationals
+    upsample_bilinear(x, 2.5) == y_true_2
 
     # this test can be performed again, as soon as the corresponding CUDA functionality is merged
 
