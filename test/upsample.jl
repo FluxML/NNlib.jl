@@ -1,6 +1,6 @@
-@testset "upsample_nearest" begin
+@testset "upsample_nearest, integer scale via reshape" begin
     x = reshape(Float32[1. 2.; 3. 4.], (2,2,1,1))
-    @test upsample_nearest(x, 3)[1,:] == [1,1,1, 2,2,2]
+    @test upsample_nearest(x, (3,3))[1,:] == [1,1,1, 2,2,2]
 
     y = upsample_nearest(x, (2,3))
     @test size(y) == (4,6,1,1)
@@ -8,7 +8,6 @@
 
     @test_throws ArgumentError ∇upsample_nearest(y, (2,4))
     @test_throws ArgumentError upsample_nearest(x, (1,2,3,4,5))
-    @test_throws ArgumentError upsample_nearest(upsample_nearest(rand(2,3),4), 5)
 end
 
 @testset "upsample_bilinear 2d" begin
