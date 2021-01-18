@@ -12,9 +12,10 @@ Applies also `ChainRulesTestUtils.rrule_test` if the rrule for `f` is explicitly
 """
 function gradtest(f, xs...; atol=1e-6, rtol=1e-6, fkwargs=NamedTuple(), 
                     check_rrule=false, 
+                    check_rrule=false,
                     check_broadcast=false,
-                    broken=false)
-    
+                    skip=false, broken=false)
+
     if check_rrule
         y = f(xs...; fkwargs...)
         simil(x) = x isa Number ? randn(rng, typeof(x)) : randn!(rng, similar(x)) 
@@ -40,7 +41,9 @@ function gradtest(f, xs...; atol=1e-6, rtol=1e-6, fkwargs=NamedTuple(),
     
     @test y_true ≈ y_ad  atol=atol rtol=rtol
     for (g_ad, g_fd) in zip(gs_ad, gs_fd)
-        if broken
+        if skip
+            @test_skip g_ad ≈ g_fd   atol=atol rtol=rtol
+        elseif broken
             @test_broken g_ad ≈ g_fd   atol=atol rtol=rtol
         else
             @test g_ad ≈ g_fd   atol=atol rtol=rtol
