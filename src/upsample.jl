@@ -60,7 +60,7 @@ end
 
 function ChainRulesCore.rrule(::typeof(upsample_nearest), x::AbstractArray, s::Tuple)
     Ω = upsample_nearest(x, s)
-    upsample_nearest_pullback(Δ) = (NO_FIELDS, ∇upsample_nearest(Δ, k), DoesNotExist())
+    upsample_nearest_pullback(Δ) = (NO_FIELDS, ∇upsample_nearest(Δ, s), DoesNotExist())
     return Ω, upsample_nearest_pullback
 end
 
