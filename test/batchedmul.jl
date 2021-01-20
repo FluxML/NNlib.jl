@@ -141,12 +141,6 @@ end
         C2 = batched_transpose(permutedims(C, (2,1,3)))
         C3 = batched_adjoint(permutedims(conj(C), (2,1,3)))
         @test C2 == C3 == C
-        C2 .= 22
-        C3 .= 33
-        @test batched_mul!(C2, A, B, α) ≈ α .* C
-        @test C2 ≈ α .* C
-        @test batched_mul!(C3, A, B, α) ≈ α .* C
-        @test C3 ≈ α .* C
         C2 .= D
         C3 .= D
         @test batched_mul!(C2, A, B, α, β) ≈ α .* C .+ β .* D
