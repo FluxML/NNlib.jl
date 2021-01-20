@@ -1,6 +1,7 @@
 using NNlib, Test, LinearAlgebra
 using NNlib: storage_type, storage_typejoin, is_strided,
-    batched_mul!, _unbatch, _copy_if_faster, BatchedAdjoint
+    batched_mul!, _unbatch, _copy_if_faster,
+    BatchedAdjoint, BatchedTranspose
 
 function bmm_test(a,b; transA = false, transB = false)
     bs = size(a,3)
@@ -232,9 +233,14 @@ end
 
 end
 
+FiniteDifferences.to_vec(x::BatchedAdjoint) = FiniteDifferences.to_vec(collect(x))
+FiniteDifferences.to_vec(x::BatchedTranspose) = FiniteDifferences.to_vec(collect(x))
+
 @testset "AutoDiff" begin
   M, P, Q = 13, 7, 11
   B = 3
   gradtest(batched_mul, randn(rng, M, P, B), randn(rng, P, Q, B))
+  gradtest(batched_mul, batched_adjoint(randn(rng, P, M, B)), randn(rng, P, Q, B))
+  gradtest(batched_mul, randn(rng, M, P, B), batched_transpose(randn(rng, Q, P, B)))
 end
 
