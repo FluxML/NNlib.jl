@@ -236,5 +236,7 @@ end
   M, P, Q = 13, 7, 11
   B = 3
   gradtest(batched_mul, randn(rng, M, P, B), randn(rng, P, Q, B))
+  gradtest(batched_mul, batched_adjoint(randn(rng, P, M, B)), randn(rng, P, Q, B))
+  gradtest(batched_mul, randn(rng, M, P, B), batched_transpose(randn(rng, Q, P, B)))
 end
 
