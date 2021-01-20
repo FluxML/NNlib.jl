@@ -103,14 +103,11 @@ function logsoftmax!(out::AbstractArray{T}, x::AbstractArray; dims = 1) where {T
     if all(isfinite, max_)
         out .= x .- max_
     else
-        # @. out = ifelse(isequal(max_,Inf), ifelse(isequal(x,Inf), 0, -Inf), out - log_)
-        @. out = ifelse(isequal(max_,Inf), ifelse(isequal(x,Inf), 0, _lowestlog(T)), x - max_)
+        @. out = ifelse(isequal(max_,Inf), ifelse(isequal(x,Inf), 0, -Inf), x - max_)
     end
     log_ = log.(sum(exp, out; dims = dims))
     out .-= log_
 end
-
-_lowestlog(::Type{T}) where {T} = log(nextfloat(zero(float(T))))
 
 ∇logsoftmax(Δ::AbstractArray{T}, x::AbstractArray, y::AbstractArray{S}; dims = 1) where {T,S} =
     ∇logsoftmax!(similar(y, promote_type(T, S)), Δ, x, y; dims = dims)
