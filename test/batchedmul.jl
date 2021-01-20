@@ -232,6 +232,9 @@ end
 
 end
 
+FiniteDifferences.to_vec(x::BatchedAdjoint) = FiniteDifferences.to_vec(collect(x))
+FiniteDifferences.to_vec(x::BatchedTranspose) = FiniteDifferences.to_vec(collect(x))
+
 @testset "AutoDiff" begin
   M, P, Q = 13, 7, 11
   B = 3
