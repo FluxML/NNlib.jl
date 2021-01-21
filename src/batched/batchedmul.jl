@@ -224,23 +224,16 @@ function _batched_try_gemm!(::Type{DT}, C, A, B, α::Number, β::Number) where {
     alpha, beta = promote(α, β, zero(T))
     alpha isa T && beta isa T || return batched_mul_generic!(C, A, B, α, β)
 
-    are_strided(C, _unbatch(A), _unbatch(B)) || return batched_mul_generic!(C, A, B, α, β)
-
-    if Base.stride(C,1) == 1
-    elseif Base.stride(C,2) == 1
-        @debug "transforming C = A * B into C' = B' * A'" size(C) strides(C)
-        return batched_mul!(batched_adjoint(C), batched_adjoint(B), batched_adjoint(A), α, β)
-    else
-        return batched_mul_generic!(C, A, B, α, β)
-    end
+    are_strided(_unbatch(A), _unbatch(B)) || return batched_mul_generic!(C, A, B, α, β)
+    C isa StridedArray || return batched_mul_generic!(C, A, B, α, β)
 
     blasA, transA = if A isa BatchedAdjoint && T <: Complex
         Base.stride(parent(A),1) == 1 || return batched_mul_generic!(C, A, B, α, β)
         parent(A), 'C'
+    elseif Base.stride(A,2) == 1 && size(A,1) > 1
+        batched_transpose(A), 'T'
     elseif Base.stride(A,1) == 1
         A, 'N'
-    elseif Base.stride(A,2) == 1
-        batched_transpose(A), 'T'
     else
         return batched_mul_generic!(C, A, B, α, β)
     end
@@ -248,10 +241,10 @@ function _batched_try_gemm!(::Type{DT}, C, A, B, α::Number, β::Number) where {
     blasB, transB = if B isa BatchedAdjoint && T <: Complex
         Base.stride(parent(B),1) == 1 || return batched_mul_generic!(C, A, B, α, β)
         parent(B), 'C'
+    elseif Base.stride(B,2) == 1 && size(B,1) > 1
+        batched_transpose(B), 'T'
     elseif Base.stride(B,1) == 1
         B, 'N'
-    elseif Base.stride(B,2) == 1
-        batched_transpose(B), 'T'
     else
         return batched_mul_generic!(C, A, B, α, β)
     end
