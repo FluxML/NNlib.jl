@@ -4,6 +4,8 @@
 using LinearAlgebra
 using LinearAlgebra.BLAS: libblas, BlasInt, @blasfunc
 
+using Compat: get_num_threads, set_num_threads # needs Compat 3.13, for any Julia < 1.6
+
 """
     gemm!()
 
@@ -93,27 +95,31 @@ for (gemm, elt) in gemm_datatype_mappings
             # In some tests, size (20,20,20) is worth splitting between two threads,
             # as is size (32,32,8).
 
-            # TODO fix multithreading problems
-            # if n_threads > 1
-                # Threads.@sync for ks in Iterators.partition(1:size(C, 3), cld(size(C, 3), n_threads))
-                    # Threads.@spawn for k in ks
+            if n_threads > 1
 
-            #             ptrAk = ptrA + (k-1) * strA * sizeof($elt)
-            #             ptrBk = ptrB + (k-1) * strB * sizeof($elt)
-            #             ptrCk = ptrC + (k-1) * strC * sizeof($elt)
+                old_threads = get_num_threads()
+                set_num_threads(1)
+                Threads.@sync for ks in Iterators.partition(1:size(C, 3), cld(size(C, 3), n_threads))
+                    Threads.@spawn for k in ks
 
-            #             ccall((@blasfunc($(gemm)), libblas), Nothing,
-            #                   (Ref{UInt8}, Ref{UInt8}, Ref{BlasInt}, Ref{BlasInt},
-            #                    Ref{BlasInt}, Ref{$elt}, Ptr{$elt}, Ref{BlasInt},
-            #                    Ptr{$elt}, Ref{BlasInt}, Ref{$elt}, Ptr{$elt},
-            #                    Ref{BlasInt}),
-            #                   transA, transB, m, n,
-            #                   ka, alpha, ptrAk, max(1,Base.stride(A,2)),
-            #                   ptrBk, max(1,Base.stride(B,2)), beta, ptrCk,
-            #                   max(1,Base.stride(C,2)))
-            #         end
-            #     end
-            # else # small problem, no threads
+                        ptrAk = ptrA + (k-1) * strA * sizeof($elt)
+                        ptrBk = ptrB + (k-1) * strB * sizeof($elt)
+                        ptrCk = ptrC + (k-1) * strC * sizeof($elt)
+
+                        ccall((@blasfunc($(gemm)), libblas), Nothing,
+                              (Ref{UInt8}, Ref{UInt8}, Ref{BlasInt}, Ref{BlasInt},
+                               Ref{BlasInt}, Ref{$elt}, Ptr{$elt}, Ref{BlasInt},
+                               Ptr{$elt}, Ref{BlasInt}, Ref{$elt}, Ptr{$elt},
+                               Ref{BlasInt}),
+                              transA, transB, m, n,
+                              ka, alpha, ptrAk, max(1,Base.stride(A,2)),
+                              ptrBk, max(1,Base.stride(B,2)), beta, ptrCk,
+                              max(1,Base.stride(C,2)))
+                    end
+                end
+                set_num_threads(old_threads)
+
+            else # small problem, no threads
 
                 for k in 1:size(C, 3)
                     # Identical loop body
@@ -133,7 +139,7 @@ for (gemm, elt) in gemm_datatype_mappings
                           max(1,Base.stride(C,2)))
                 end
 
-            # end
+            end
 
             C
         end
