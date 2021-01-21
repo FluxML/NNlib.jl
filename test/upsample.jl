@@ -23,8 +23,8 @@
     gradtest(x->upsample_bilinear(x, (3, 2)), x, atol=1e-3) # works to higher precision for Float64
 
     # additional grad check, also compliant with pytorch
-    o = ones(Float32,6,4,1,1)
-    grad_true = Float32[6 6; 6 6][:,:,:,:]
+    o = ones(Float32,6,4,2,1)
+    grad_true = 6*ones(Float32,2,2,2,1)
     @test ∇upsample_bilinear(o, (3,2)) ≈ grad_true
 
     y_true_2 = Rational{Int}[1//1  5//4  6//4  7//4 2//1;

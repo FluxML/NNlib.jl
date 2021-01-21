@@ -17,7 +17,7 @@ export upsample_bilinear, ∇upsample_bilinear, pixel_shuffle
 end
 
 """
-    upsample_bilinear(x::AbstractArray{T,4}, scale::NTuple{2,Real}=(1,1); outsize::Union{Nothing,NTuple{2,Integer}}=nothing)
+    upsample_bilinear(x::AbstractArray{T,4}, scale::NTuple{2,Real}=(1,1); size::Union{Nothing,NTuple{2,Integer}}=nothing)
 
 Upsamples the first 2 dimensions of the array `x` by the upsample factors stored in `scale`,
 using bilinear interpolation.
@@ -28,23 +28,23 @@ The size of the output is equal to
 Examples:
 ```julia
 upsample_bilinear(x, (2, pi)) # real scaling factors are allowed
-upsample_bilinear(x; outsize=(64,64)) # note the semicolon, outsize is a keyword argument
+upsample_bilinear(x; size=(64,64)) # note the semicolon, size is a keyword argument
 ```
 Currently only 2d upsampling is supported.
 """
-function upsample_bilinear(x::AbstractArray{T,4}, scale::NTuple{2,Real}=(1,1); outsize::Union{Nothing,NTuple{2,Integer}}=nothing) where T
-    w,h,c,n = size(x)
-    if outsize===nothing
+function upsample_bilinear(x::AbstractArray{T,4}, scale::NTuple{2,Real}=(1,1); size::Union{Nothing,NTuple{2,Integer}}=nothing) where T
+    w,h,c,n = Base.Base.size(x)
+    if size===nothing
         out_w = floor(Int, scale[1]*w)
         out_h = floor(Int, scale[2]*h)
     else
-        out_w, out_h = outsize
+        out_w, out_h = size
     end
     y = Array{T,4}(undef, out_w, out_h, c, n)
     return upsample_bilinear_whcn!(y, x)
 end
 
-upsample_bilinear(x, scale::Real; outsize=nothing) = upsample_bilinear(x, (scale,scale); outsize=outsize)
+upsample_bilinear(x, scale::Real; size=nothing) = upsample_bilinear(x, (scale,scale); size=size)
 
 # this is the core function which works on arrays of arbitrary size
 # the implementation is a translation of https://github.com/pytorch/pytorch/blob/master/aten/src/ATen/native/cpu/UpSampleMoreKernel.cpp
@@ -90,7 +90,7 @@ function upsample_bilinear_whcn!(output::AbstractArray{T,4}, input::AbstractArra
 end
 
 """
-    ∇upsample_bilinear(Δ::AbstractArray{T,4}, scale::NTuple{2,Real}=(1,1); outsize::Union{Nothing,NTuple{2,Integer}}=nothing) where T
+    ∇upsample_bilinear(Δ::AbstractArray{T,4}, scale::NTuple{2,Real}=(1,1); size::Union{Nothing,NTuple{2,Integer}}=nothing) where T
 
 # Arguments
 - `Δ`: incoming gradient array that has been upsampled using the upsample factors in `scale`
@@ -98,19 +98,19 @@ end
 # Outputs
 - `dx`: downsampled version of `Δ`
 """
-function ∇upsample_bilinear(Δ::AbstractArray{T,4}, scale::NTuple{2,Real}=(1,1); outsize::Union{Nothing,NTuple{2,Integer}}=nothing) where T
-    w,h,c,n = size(Δ)
-    if outsize===nothing
+function ∇upsample_bilinear(Δ::AbstractArray{T,4}, scale::NTuple{2,Real}=(1,1); size::Union{Nothing,NTuple{2,Integer}}=nothing) where T
+    w,h,c,n = Base.size(Δ)
+    if size===nothing
         out_w = ceil(Int, w/scale[1])
         out_h = ceil(Int, h/scale[2])
     else
-        out_w, out_h = outsize
+        out_w, out_h = size
     end
     dx = zeros(T, out_w, out_h, c, n)
     return ∇upsample_bilinear_whcn!(Δ, dx)
 end
 
-∇upsample_bilinear(Δ, scale::Real; outsize=nothing) = ∇upsample_bilinear(Δ, (scale, scale); outsize=outsize)
+∇upsample_bilinear(Δ, scale::Real; size=nothing) = ∇upsample_bilinear(Δ, (scale, scale); size=size)
 
 function ∇upsample_bilinear_whcn!(Δ::AbstractArray{T,4}, grad_input::AbstractArray{T,4}) where T
     size(grad_input)[3:4] == size(Δ)[3:4] || error("Number of input and output channels and batches must match. Got input $(size(input)) and output $(size(output))")
@@ -143,10 +143,10 @@ function ∇upsample_bilinear_whcn!(Δ::AbstractArray{T,4}, grad_input::Abstract
     return grad_input
 end
 
-function ChainRulesCore.rrule(::typeof(upsample_bilinear), x, scale; outsize=nothing)
-    Ω = upsample_bilinear(x, scale; outsize=outsize)
+function ChainRulesCore.rrule(::typeof(upsample_bilinear), x, scale; size=nothing)
+    Ω = upsample_bilinear(x, scale; size=size)
     function upsample_bilinear_pullback(Δ)
-        (NO_FIELDS, ∇upsample_bilinear(Δ, scale; outsize=(size(x,1),size(x,2))), DoesNotExist())
+        (NO_FIELDS, ∇upsample_bilinear(Δ, scale; size=(Base.size(x,1),Base.size(x,2))), DoesNotExist())
     end
     return Ω, upsample_bilinear_pullback
 end
