@@ -219,7 +219,7 @@ function ∇upsample_bilinear_whcn!(Δ::AbstractArray{T,4}, grad_input::Abstract
     return grad_input
 end
 
-function ChainRulesCore.rrule(::typeof(upsample_bilinear), x, scale; size=nothing)
+function ChainRulesCore.rrule(::typeof(upsample_bilinear), x, scale=(1,1); size=nothing)
     Ω = upsample_bilinear(x, scale; size=size)
     function upsample_bilinear_pullback(Δ)
         (NO_FIELDS, ∇upsample_bilinear(Δ; size=(Base.size(x,1),Base.size(x,2))), DoesNotExist())
