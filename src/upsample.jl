@@ -34,7 +34,10 @@ Currently only 2d upsampling is supported.
 """
 function upsample_bilinear(x::AbstractArray{T,4}, scale::NTuple{2,Real}=(1,1); size::Union{Nothing,NTuple{2,Integer}}=nothing) where T
     w,h,c,n = Base.Base.size(x)
-    if size===nothing
+    if scale != (1,1) && size !== nothing
+        error("Please provide either scale or size, not both. Got scale=$scale and size=$size.")
+    end
+    if size === nothing
         out_w = floor(Int, scale[1]*w)
         out_h = floor(Int, scale[2]*h)
     else
@@ -100,6 +103,9 @@ end
 """
 function ∇upsample_bilinear(Δ::AbstractArray{T,4}, scale::NTuple{2,Real}=(1,1); size::Union{Nothing,NTuple{2,Integer}}=nothing) where T
     w,h,c,n = Base.size(Δ)
+    if scale != (1,1) && size !== nothing
+        error("Please provide either scale or size, not both. Got scale=$scale and size=$size.")
+    end
     if size===nothing
         out_w = ceil(Int, w/scale[1])
         out_h = ceil(Int, h/scale[2])
