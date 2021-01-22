@@ -222,7 +222,7 @@ end
 function ChainRulesCore.rrule(::typeof(upsample_bilinear), x, scale; size=nothing)
     Ω = upsample_bilinear(x, scale; size=size)
     function upsample_bilinear_pullback(Δ)
-        (NO_FIELDS, ∇upsample_bilinear(Δ, scale; size=(Base.size(x,1),Base.size(x,2))), DoesNotExist())
+        (NO_FIELDS, ∇upsample_bilinear(Δ; size=(Base.size(x,1),Base.size(x,2))), DoesNotExist())
     end
     return Ω, upsample_bilinear_pullback
 end
