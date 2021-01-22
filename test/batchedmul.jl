@@ -1,6 +1,7 @@
 using NNlib, Test, LinearAlgebra
 using NNlib: storage_type, storage_typejoin, is_strided,
-    batched_mul!, _unbatch, _copy_if_faster, BatchedAdjoint
+    batched_mul!, batched_mul_generic!, _unbatch, _copy_if_faster,
+    BatchedAdjoint, BatchedTranspose
 
 function bmm_test(a,b; transA = false, transB = false)
     bs = size(a,3)
@@ -118,6 +119,37 @@ end
     end
 end
 
+@testset "batched_mul: trivial dimensions & unit strides, $T" for T in [Float64, ComplexF64]
+    @testset "$tA(rand$((sA...,2))) ⊠ $tB(rand$((sB...,2)))" for
+    tA in [identity, batched_adjoint, batched_transpose], sA in [(1,1), (1,3), (3,1), (3,3)],
+    tB in [identity, batched_adjoint, batched_transpose], sB in [(1,1), (1,3), (3,1), (3,3)]
+
+        A = tA(rand(T, sA..., 2))
+        B = tB(rand(T, sB..., 2))
+        size(A,2) == size(B,1) || continue
+
+        C = cat(A[:,:,1] * B[:,:,1], A[:,:,2] * B[:,:,2]; dims=3)
+        @test A ⊠ B ≈ C
+
+        # In-place batched_mul!
+        α, β = rand(T), rand(T)
+        D = rand(T, size(C))
+        @test batched_mul!(copy(D), A, B, α, β) ≈ α .* C .+ β .* D
+        @test batched_mul_generic!(copy(D), A, B, α, β) ≈ α .* C .+ β .* D
+
+        # ... and with weird LHS -- all to batched_mul_generic! right now
+        C2 = batched_transpose(permutedims(C, (2,1,3)))
+        C3 = batched_adjoint(permutedims(conj(C), (2,1,3)))
+        @test C2 == C3 == C
+        C2 .= D
+        C3 .= D
+        @test batched_mul!(C2, A, B, α, β) ≈ α .* C .+ β .* D
+        @test C2 ≈ α .* C .+ β .* D
+        @test batched_mul!(C3, A, B, α, β) ≈ α .* C .+ β .* D
+        @test C3 ≈ α .* C .+ β .* D
+    end
+end
+
 @testset "BatchedAdjOrTrans interface * $TB" for TB in [Float64, Float32]
     A = randn(7,5,3)
     B = randn(TB, 5,7,3)
@@ -232,9 +264,14 @@ end
 
 end
 
+FiniteDifferences.to_vec(x::BatchedAdjoint) = FiniteDifferences.to_vec(collect(x))
+FiniteDifferences.to_vec(x::BatchedTranspose) = FiniteDifferences.to_vec(collect(x))
+
 @testset "AutoDiff" begin
   M, P, Q = 13, 7, 11
   B = 3
   gradtest(batched_mul, randn(rng, M, P, B), randn(rng, P, Q, B))
+  gradtest(batched_mul, batched_adjoint(randn(rng, P, M, B)), randn(rng, P, Q, B))
+  gradtest(batched_mul, randn(rng, M, P, B), batched_transpose(randn(rng, Q, P, B)))
 end
 
