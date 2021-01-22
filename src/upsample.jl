@@ -97,7 +97,7 @@ upsample_bilinear(x; size=(64,64)) # note the semicolon, size is a keyword argum
 Currently only 2d upsampling is supported.
 """
 function upsample_bilinear(x::AbstractArray{T,4}, scale::NTuple{2,Real}=(1,1); size::Union{Nothing,NTuple{2,Integer}}=nothing) where T
-    w,h,c,n = Base.Base.size(x)
+    w,h,c,n = Base.size(x)
     if scale != (1,1) && size !== nothing
         error("Please provide either scale or size, not both. Got scale=$scale and size=$size.")
     end
