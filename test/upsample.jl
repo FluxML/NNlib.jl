@@ -36,6 +36,15 @@
      # check for real-valued single-number argument and type stability for rationals
     upsample_bilinear(x, 2.5) == y_true_2
 
+    # check Integer support for forward pass
+    # grads are always assumed to be floats, so no extension there
+    x = UInt8[1 3; 3 5][:,:,:,:]
+    y_true_int = UInt8[1 2 3; 2 3 4; 3 4 5][:,:,:,:]
+    y = upsample_bilinear(x, 1.5)
+
+    @test eltype(y) == UInt8
+    @test y == y_true_int
+
     # this test can be performed again, as soon as the corresponding CUDA functionality is merged
 
     # if CUDA.has_cuda()

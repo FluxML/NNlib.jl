@@ -49,6 +49,12 @@ end
 
 upsample_bilinear(x, scale::Real; size=nothing) = upsample_bilinear(x, (scale,scale); size=size)
 
+function upsample_bilinear(x::AbstractArray{T,4}, scale::NTuple{2,Real}=(1,1); size=nothing) where T<:Integer
+    y = float.(x)
+    res = upsample_bilinear(y, scale; size=size)
+    return round.(T, res)
+end
+
 # this is the core function which works on arrays of arbitrary size
 # the implementation is a translation of https://github.com/pytorch/pytorch/blob/master/aten/src/ATen/native/cpu/UpSampleMoreKernel.cpp
 # which implements open-cv style linear interpolation / upsampling
