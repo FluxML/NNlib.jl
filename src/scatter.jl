@@ -1,5 +1,16 @@
 export scatter!, scatter, ∇scatter_dst!, ∇scatter_src!, ∇scatter_src
 
+## Scatter API
+#   - Scatter:
+#     - scatter(op, src, idx, dims)
+#     - scatter!(op, dst, src, idx, dims)
+#   - Scatter destination backpropagation
+#     - ∇scatter_dst!
+#   - Scatter source backpropagation
+#     - ∇scatter_src
+#     - ∇scatter_src!
+#
+
 """
     scatter!(op, dst, src, idx, dims)
 
@@ -98,7 +109,7 @@ end
 
 
 """
-    scatter(op, src, idx)
+    scatter(op, src, idx, dims)
 
 Scatter operation, which applies specified operation on `src` according to `idx`
 and gives an new array `dst`.
@@ -162,37 +173,19 @@ opname(::typeof(/)) = :div
 
 
 ∇scatter_dst!(op, Δ) = Δ
+∇scatter_dst!(::Union{typeof(max),typeof(min)}, Δ, X) = X .* Δ
 
 modify_src(::typeof(+), X) = X
 modify_src(::typeof(-), X) = -X
+modify_src(::typeof(*), X, Y) = X
+modify_src(::typeof(/), X, Y) = -X ./ Y.^2
 
 ∇src_init!(Δ, idx) = gather(Δ, idx)
+∇src_init!(Δ, dst, idx) = gather(dst, idx) .* ∇src_init!(Δ, idx)
 ∇src_init(Δ, idx) = gather(zero(Δ)+Δ, idx)
 
 ∇scatter_src!(op::Union{typeof(+),typeof(-)}, Δ, idx) = modify_src(op, ∇src_init!(Δ, idx))
 ∇scatter_src(op::Union{typeof(+),typeof(-)}, Δ, idx) = modify_src(op, ∇src_init!(Δ, idx))
-
-for op in [+, -]
-    pullback = Symbol(:scatter!_, opname(op), :_pullback)
-    @eval function ChainRulesCore.rrule(::typeof(scatter!), op::typeof($op), dst::AbstractArray, src::AbstractArray, idx::AbstractArray)
-        $pullback(Δ) = (NO_FIELDS, NO_FIELDS, ∇scatter_dst!(op, Δ), ∇scatter_src!(op, Δ, idx), DoesNotExist())
-        scatter!(op, copy(dst), src, idx), $pullback
-    end
-
-    pullback = Symbol(:scatter_, opname(op), :_pullback)
-    @eval function ChainRulesCore.rrule(::typeof(scatter), op::typeof($op), src::AbstractArray, idx::AbstractArray)
-        $pullback(Δ) = (NO_FIELDS, NO_FIELDS, ∇scatter_src(op, Δ, idx), DoesNotExist())
-        scatter(op, src, idx), $pullback
-    end
-end
-
-
-∇scatter_dst!(op::Union{typeof(*),typeof(/)}, Δ, dst, src, idx) = scatter!(op, Δ .+ zero(dst), src, idx)
-
-modify_src(::typeof(*), X, Y) = X
-modify_src(::typeof(/), X, Y) = -X ./ Y.^2
-
-∇src_init!(Δ, dst, idx) = gather(dst, idx) .* ∇src_init!(Δ, idx)
 
 function ∇scatter_src!(op::Union{typeof(*),typeof(/)}, Δ, dst, src, idx)
     Δsrc = modify_src(op, ∇src_init!(Δ, dst, idx), src)
@@ -218,10 +211,37 @@ function ∇scatter_src(op::Union{typeof(*),typeof(/)}, Δ, src, idx)
     Δsrc
 end
 
+∇scatter_src!(::Union{typeof(max),typeof(min)}, Δ, X) = X .* ∇src_init!(Δ, idx)
+∇scatter_src(::Union{typeof(max),typeof(min)}, Δ, X) = X .* ∇src_init!(Δ, idx)
+
+function ∇scatter_src!(::typeof(mean), Δ, dst, idx)
+    divide_by_counts!(∇src_init!(Δ, idx), idx, size(dst, 2))
+end
+
+function ∇scatter_src(::typeof(mean), Δ, dst, idx)
+    divide_by_counts!(∇src_init!(Δ, idx), idx, size(dst, 2))
+end
+
+
+
+for op in [+, -]
+    pullback = Symbol(:scatter!_, opname(op), :_pullback)
+    @eval function ChainRulesCore.rrule(::typeof(scatter!), op::typeof($op), dst::AbstractArray, src::AbstractArray, idx::AbstractArray)
+        $pullback(Δ) = (NO_FIELDS, NO_FIELDS, ∇scatter_dst!(op, Δ), ∇scatter_src!(op, Δ, idx), DoesNotExist())
+        scatter!(op, copy(dst), src, idx), $pullback
+    end
+
+    pullback = Symbol(:scatter_, opname(op), :_pullback)
+    @eval function ChainRulesCore.rrule(::typeof(scatter), op::typeof($op), src::AbstractArray, idx::AbstractArray)
+        $pullback(Δ) = (NO_FIELDS, NO_FIELDS, ∇scatter_src(op, Δ, idx), DoesNotExist())
+        scatter(op, src, idx), $pullback
+    end
+end
+
 for op in [*, /]
     pullback = Symbol(:scatter!_, opname(op), :_pullback)
     @eval function ChainRulesCore.rrule(::typeof(scatter!), op::typeof($op), dst::AbstractArray, src::AbstractArray, idx::AbstractArray)
-        $pullback(Δ) = (NO_FIELDS, NO_FIELDS, ∇scatter_dst!(op, Δ, dst, src, idx), ∇scatter_src!(op, Δ, dst, src, idx), DoesNotExist())
+        $pullback(Δ) = (NO_FIELDS, NO_FIELDS, ∇scatter_dst!(op, Δ), ∇scatter_src!(op, Δ, dst, src, idx), DoesNotExist())
         scatter!(op, copy(dst), src, idx), $pullback
     end
 
@@ -232,38 +252,23 @@ for op in [*, /]
     end
 end
 
-
-∇scatter_dst!(::Union{typeof(max),typeof(min)}, Δ, X) = X .* Δ
-
-modify_src(::Union{typeof(max),typeof(min)}, X, Y) = X .* Y
-
-function ∇scatter_src!(op::Union{typeof(max),typeof(min)}, Δ, dst, src, idx)
-    modify_src(op, (src .== gather(dst, idx)), ∇src_init!(Δ, idx))
-end
-
-function ∇scatter_src(op::Union{typeof(max),typeof(min)}, Δ, dst, src, idx)
-    modify_src(op, (src .== gather(dst, idx)), ∇src_init!(Δ, idx))
-end
-
 for op in [max, min]
     pullback = Symbol(:scatter!_, Symbol(op), :_pullback)
     @eval function ChainRulesCore.rrule(::typeof(scatter!), op::typeof($op), dst::AbstractArray, src::AbstractArray, idx::AbstractArray)
         m = scatter!(op, copy(dst), src, idx)
-        X = (dst .== m)
-        $pullback(Δ) = (NO_FIELDS, NO_FIELDS, ∇scatter_dst!(op, Δ, X), ∇scatter_src!(op, Δ, dst, src, idx), DoesNotExist())
+        Y = (dst .== m)
+        X = (src .== gather(dst, idx))
+        $pullback(Δ) = (NO_FIELDS, NO_FIELDS, ∇scatter_dst!(op, Δ, Y), ∇scatter_src!(op, Δ, X), DoesNotExist())
         m, $pullback
     end
 
     pullback = Symbol(:scatter_, Symbol(op), :_pullback)
     @eval function ChainRulesCore.rrule(::typeof(scatter), op::typeof($op), src::AbstractArray, idx::AbstractArray)
-        $pullback(Δ) = (NO_FIELDS, NO_FIELDS, ∇scatter_src(op, Δ, dst, src, idx), DoesNotExist())
+        X = (src .== gather(dst, idx))
+        $pullback(Δ) = (NO_FIELDS, NO_FIELDS, ∇scatter_src(op, Δ, X), DoesNotExist())
         scatter(op, src, idx), $pullback
     end
 end
-
-
-∇scatter_src!(::typeof(mean), Δ, dst, idx) = divide_by_counts!(∇src_init!(Δ, idx), idx, size(dst, 2))
-∇scatter_src(::typeof(mean), Δ, dst, idx) = divide_by_counts!(∇src_init!(Δ, idx), idx, size(dst, 2))
 
 function ChainRulesCore.rrule(::typeof(scatter!), op::typeof(mean), dst::AbstractArray, src::AbstractArray, idx::AbstractArray)
     scatter!_mean_pullback(Δ) = (NO_FIELDS, NO_FIELDS, ∇scatter_dst!(op, Δ), ∇scatter_src!(op, Δ, dst, idx), DoesNotExist())
