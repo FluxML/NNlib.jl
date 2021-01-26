@@ -163,21 +163,21 @@ function upsample_bilinear_whcn!(output::AbstractArray{T,4}, input::AbstractArra
 end
 
 """
-    ∇upsample_bilinear(Δ::AbstractArray{T,4}, scale::NTuple{2,Real}=(1,1); size::Union{Nothing,NTuple{2,Integer}}=nothing) where T
+    ∇upsample_bilinear(Δ::AbstractArray{T,4}; size::Union{Nothing,NTuple{2,Integer}}=nothing) where T
 
 # Arguments
-- `Δ`: incoming gradient array that has been upsampled using the upsample factors in `scale`
+- `Δ`: Incoming gradient array, backpropagated from downstream layers
+- `size`: Lateral (W,H) size of the image upsampled in the first place
 
 # Outputs
-- `dx`: downsampled version of `Δ`
+- `dx`: Downsampled version of `Δ`
 """
 function ∇upsample_bilinear(Δ::AbstractArray{T,4}; size::NTuple{2,Integer}) where T
+    _, _, c, n = Base.size(Δ)
     out_w, out_h = size
-    end
     dx = zeros(T, out_w, out_h, c, n)
     return ∇upsample_bilinear_whcn!(Δ, dx)
 end
-
 
 function ∇upsample_bilinear_whcn!(Δ::AbstractArray{T,4}, grad_input::AbstractArray{T,4}) where T
     size(grad_input)[3:4] == size(Δ)[3:4] || error("Number of input and output channels and batches must match. Got input $(size(input)) and output $(size(output))")
