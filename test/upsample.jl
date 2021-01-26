@@ -39,7 +39,7 @@ end
     # additional grad check, also compliant with pytorch
     o = ones(Float32,6,4,2,1)
     grad_true = 6*ones(Float32,2,2,2,1)
-    @test ∇upsample_bilinear(o, (3,2)) ≈ grad_true
+    @test ∇upsample_bilinear(o; size = (2,2)) ≈ grad_true
 
     y_true_2 = Rational{Int}[1//1  5//4  6//4  7//4 2//1;
                              3//2  7//4  8//4  9//4 5//2;

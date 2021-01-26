@@ -171,22 +171,13 @@ end
 # Outputs
 - `dx`: downsampled version of `Δ`
 """
-function ∇upsample_bilinear(Δ::AbstractArray{T,4}, scale::NTuple{2,Real}=(1,1); size::Union{Nothing,NTuple{2,Integer}}=nothing) where T
-    w,h,c,n = Base.size(Δ)
-    if scale != (1,1) && size !== nothing
-        error("Please provide either scale or size, not both. Got scale=$scale and size=$size.")
-    end
-    if size===nothing
-        out_w = ceil(Int, w/scale[1])
-        out_h = ceil(Int, h/scale[2])
-    else
-        out_w, out_h = size
+function ∇upsample_bilinear(Δ::AbstractArray{T,4}; size::NTuple{2,Integer}) where T
+    out_w, out_h = size
     end
     dx = zeros(T, out_w, out_h, c, n)
     return ∇upsample_bilinear_whcn!(Δ, dx)
 end
 
-∇upsample_bilinear(Δ, scale::Real; size=nothing) = ∇upsample_bilinear(Δ, (scale, scale); size=size)
 
 function ∇upsample_bilinear_whcn!(Δ::AbstractArray{T,4}, grad_input::AbstractArray{T,4}) where T
     size(grad_input)[3:4] == size(Δ)[3:4] || error("Number of input and output channels and batches must match. Got input $(size(input)) and output $(size(output))")
