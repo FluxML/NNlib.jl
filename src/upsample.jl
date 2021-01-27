@@ -108,7 +108,7 @@ function upsample_bilinear(x::AbstractArray{T,4}, scale::NTuple{2,Real}=(1,1); s
         out_w, out_h = size
     end
     y = Array{T,4}(undef, out_w, out_h, c, n)
-    return upsample_bilinear_whcn!(y, x)
+    return upsample_bilinear_whcn_kernel!(y, x)
 end
 
 upsample_bilinear(x, scale::Real; size=nothing) = upsample_bilinear(x, (scale,scale); size=size)
@@ -128,7 +128,7 @@ end
 # - RGB types could be supported via reinterpreting
 # - integer types need to be converted to Float and back
 # - rationals work, but are slow
-function upsample_bilinear_whcn!(output::AbstractArray{T,4}, input::AbstractArray{T,4}) where T
+function upsample_bilinear_whcn_kernel!(output::AbstractArray{T,4}, input::AbstractArray{T,4}) where T
     if size(input) == size(output)
         return input
     end
@@ -176,12 +176,16 @@ function ∇upsample_bilinear(Δ::AbstractArray{T,4}; size::NTuple{2,Integer}) w
     _, _, c, n = Base.size(Δ)
     out_w, out_h = size
     dx = zeros(T, out_w, out_h, c, n)
-    return ∇upsample_bilinear_whcn!(Δ, dx)
+    return ∇upsample_bilinear_whcn_kernel!(dx, Δ)
 end
 
-function ∇upsample_bilinear_whcn!(Δ::AbstractArray{T,4}, grad_input::AbstractArray{T,4}) where T
-    size(grad_input)[3:4] == size(Δ)[3:4] || error("Number of input and output channels and batches must match. Got input $(size(input)) and output $(size(output))")
-    in_w, in_h, channels, batches = size(grad_input)
+function ∇upsample_bilinear_whcn_kernel!(dx::AbstractArray{T,4}, Δ::AbstractArray{T,4}) where T
+    if size(dx) == size(Δ)
+        return Δ
+    end
+    
+    size(dx)[3:4] == size(Δ)[3:4] || error("Number of input and output channels and batches must match. Got input $(size(input)) and output $(size(output))")
+    in_w, in_h, channels, batches = size(dx)
 
     # treat batch and channel dimension as one for better parallelization granularity
     channels *= batches
@@ -200,14 +204,14 @@ function ∇upsample_bilinear_whcn!(Δ::AbstractArray{T,4}, grad_input::Abstract
                 iw0, iw1, w0lambda, w1lambda = compute_source_index_and_lambda(width_scale, ow, in_w, out_w)
                 output_offset = c * output_slice_size + oh * out_w + ow + 1
                 Δ_value = Δ[output_offset]
-                grad_input[idx(c, ih0, iw0)] += h0lambda * w0lambda * Δ_value # i00
-                grad_input[idx(c, ih0, iw1)] += h0lambda * w1lambda * Δ_value # i01
-                grad_input[idx(c, ih1, iw0)] += h1lambda * w0lambda * Δ_value # i10
-                grad_input[idx(c, ih1, iw1)] += h1lambda * w1lambda * Δ_value # i11
+                dx[idx(c, ih0, iw0)] += h0lambda * w0lambda * Δ_value # i00
+                dx[idx(c, ih0, iw1)] += h0lambda * w1lambda * Δ_value # i01
+                dx[idx(c, ih1, iw0)] += h1lambda * w0lambda * Δ_value # i10
+                dx[idx(c, ih1, iw1)] += h1lambda * w1lambda * Δ_value # i11
             end
         end
     end
-    return grad_input
+    return dx
 end
 
 function ChainRulesCore.rrule(::typeof(upsample_bilinear), x, scale=(1,1); size=nothing)
