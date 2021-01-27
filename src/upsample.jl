@@ -107,8 +107,8 @@ function upsample_bilinear(x::AbstractArray{T,4}, scale::NTuple{2,Real}=(1,1); s
     else
         out_w, out_h = size
     end
-    y = Array{T,4}(undef, out_w, out_h, c, n)
-    return upsample_bilinear_whcn_kernel!(y, x)
+    y = similar(x, T, out_w, out_h, c, n)
+    return upsample_bilinear!(y, x)
 end
 
 upsample_bilinear(x, scale::Real; size=nothing) = upsample_bilinear(x, (scale,scale); size=size)
@@ -118,6 +118,8 @@ function upsample_bilinear(x::AbstractArray{T,4}, scale::NTuple{2,Real}=(1,1); s
     res = upsample_bilinear(y, scale; size=size)
     return round.(T, res)
 end
+
+upsample_bilinear!(y::AbstractArray{<:Any,4}, x::AbstractArray{<:Any,4}) = upsample_bilinear_whcn_kernel!(y,x)
 
 # this is the core function which works on arrays of arbitrary size
 # the implementation is a translation of https://github.com/pytorch/pytorch/blob/master/aten/src/ATen/native/cpu/UpSampleMoreKernel.cpp
@@ -175,15 +177,17 @@ end
 function ∇upsample_bilinear(Δ::AbstractArray{T,4}; size::NTuple{2,Integer}) where T
     _, _, c, n = Base.size(Δ)
     out_w, out_h = size
-    dx = zeros(T, out_w, out_h, c, n)
-    return ∇upsample_bilinear_whcn_kernel!(dx, Δ)
+    dx = zero(similar(Δ, T, out_w, out_h, c, n))
+    return ∇upsample_bilinear!(dx, Δ)
 end
+
+∇upsample_bilinear!(dx::AbstractArray{<:Any,4}, Δ::AbstractArray{<:Any,4}) = ∇upsample_bilinear_whcn_kernel!(dx, Δ)
 
 function ∇upsample_bilinear_whcn_kernel!(dx::AbstractArray{T,4}, Δ::AbstractArray{T,4}) where T
     if size(dx) == size(Δ)
         return Δ
     end
-    
+
     size(dx)[3:4] == size(Δ)[3:4] || error("Number of input and output channels and batches must match. Got input $(size(input)) and output $(size(output))")
     in_w, in_h, channels, batches = size(dx)
 
