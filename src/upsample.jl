@@ -107,8 +107,11 @@ function upsample_bilinear(x::AbstractArray{T,4}, scale::NTuple{2,Real}=(1,1); s
     else
         out_w, out_h = size
     end
+    if (w,h) == (out_w, out_h)
+        return x
+    end
     y = similar(x, T, out_w, out_h, c, n)
-    return upsample_bilinear!(y, x)
+    return upsample_bilinear_whcn!(y, x)
 end
 
 upsample_bilinear(x, scale::Real; size=nothing) = upsample_bilinear(x, (scale,scale); size=size)
@@ -119,8 +122,6 @@ function upsample_bilinear(x::AbstractArray{T,4}, scale::NTuple{2,Real}=(1,1); s
     return round.(T, res)
 end
 
-upsample_bilinear!(y::AbstractArray{<:Any,4}, x::AbstractArray{<:Any,4}) = upsample_bilinear_whcn_kernel!(y,x)
-
 # this is the core function which works on arrays of arbitrary size
 # the implementation is a translation of https://github.com/pytorch/pytorch/blob/master/aten/src/ATen/native/cpu/UpSampleMoreKernel.cpp
 # which implements open-cv style linear interpolation / upsampling
@@ -130,10 +131,7 @@ upsample_bilinear!(y::AbstractArray{<:Any,4}, x::AbstractArray{<:Any,4}) = upsam
 # - RGB types could be supported via reinterpreting
 # - integer types need to be converted to Float and back
 # - rationals work, but are slow
-function upsample_bilinear_whcn_kernel!(output::AbstractArray{T,4}, input::AbstractArray{T,4}) where T
-    if size(input) == size(output)
-        return input
-    end
+function upsample_bilinear_whcn!(output::AbstractArray{T,4}, input::AbstractArray{T,4}) where T
     size(input)[3:4] == size(output)[3:4] || error("Number of input and output channels and batches must match. Got input $(size(input)) and output $(size(output))")
     in_w, in_h, channels, batches = size(input)
     # treat batch and channel dimension as one for better parallelization granularity
@@ -175,19 +173,16 @@ end
 - `dx`: Downsampled version of `Δ`
 """
 function ∇upsample_bilinear(Δ::AbstractArray{T,4}; size::NTuple{2,Integer}) where T
-    _, _, c, n = Base.size(Δ)
+    w, h, c, n = Base.size(Δ)
     out_w, out_h = size
-    dx = zero(similar(Δ, T, out_w, out_h, c, n))
-    return ∇upsample_bilinear!(dx, Δ)
-end
-
-∇upsample_bilinear!(dx::AbstractArray{<:Any,4}, Δ::AbstractArray{<:Any,4}) = ∇upsample_bilinear_whcn_kernel!(dx, Δ)
-
-function ∇upsample_bilinear_whcn_kernel!(dx::AbstractArray{T,4}, Δ::AbstractArray{T,4}) where T
-    if size(dx) == size(Δ)
+    if (w,h) == (out_w, out_h)
         return Δ
     end
+    dx = zero(similar(Δ, T, out_w, out_h, c, n))
+    return ∇upsample_bilinear_whcn!(dx, Δ)
+end
 
+function ∇upsample_bilinear_whcn!(dx::AbstractArray{T,4}, Δ::AbstractArray{T,4}) where T
     size(dx)[3:4] == size(Δ)[3:4] || error("Number of input and output channels and batches must match. Got input $(size(input)) and output $(size(output))")
     in_w, in_h, channels, batches = size(dx)
 
