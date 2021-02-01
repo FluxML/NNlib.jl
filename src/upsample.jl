@@ -89,12 +89,13 @@ using bilinear interpolation.
 The size of the output is equal to
 `(scale[1]*S1, scale[2]*S2, S3, S4)`, where `S1, S2, S3, S4 = size(x)`.
 
+As an alternative to using `scale`, the resulting image `size` can be directly specified with a keyword argument.
+
 Examples:
 ```julia
 upsample_bilinear(x, (2, pi)) # real scaling factors are allowed
-upsample_bilinear(x; size=(64,64)) # note the semicolon, size is a keyword argument
+upsample_bilinear(x; size=(64,64)) # specify ouput size
 ```
-Currently only 2d upsampling is supported.
 """
 function upsample_bilinear(x::AbstractArray{T,4}, scale::NTuple{2,Real}=(1,1); size::Union{Nothing,NTuple{2,Integer}}=nothing) where T
     w,h,c,n = Base.size(x)
@@ -163,7 +164,7 @@ function upsample_bilinear_whcn!(output::AbstractArray{T,4}, input::AbstractArra
 end
 
 """
-    ∇upsample_bilinear(Δ::AbstractArray{T,4}; size::Union{Nothing,NTuple{2,Integer}}=nothing) where T
+    ∇upsample_bilinear(Δ::AbstractArray{T,4}; size::NTuple{2,Integer}) where T
 
 # Arguments
 - `Δ`: Incoming gradient array, backpropagated from downstream layers
