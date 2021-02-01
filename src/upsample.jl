@@ -81,15 +81,15 @@ end
 end
 
 """
-    upsample_bilinear(x::AbstractArray{T,4}, scale::NTuple{2,Real}=(1,1); size::Union{Nothing,NTuple{2,Integer}}=nothing)
+    upsample_bilinear(x::AbstractArray{T,4}, scale::NTuple{2,Real})
+    upsample_bilinear(x::AbstractArray{T,4}; size::NTuple{2,Integer})
 
 Upsamples the first 2 dimensions of the array `x` by the upsample factors stored in `scale`,
-using bilinear interpolation.
+using bilinear interpolation. As an alternative to using `scale`, the resulting image `size`
+can be directly specified with a keyword argument.
 
 The size of the output is equal to
 `(scale[1]*S1, scale[2]*S2, S3, S4)`, where `S1, S2, S3, S4 = size(x)`.
-
-As an alternative to using `scale`, the resulting image `size` can be directly specified with a keyword argument.
 
 Examples:
 ```julia
@@ -97,29 +97,25 @@ upsample_bilinear(x, (2, pi)) # real scaling factors are allowed
 upsample_bilinear(x; size=(64,64)) # specify ouput size
 ```
 """
-function upsample_bilinear(x::AbstractArray{T,4}, scale::NTuple{2,Real}=(1,1); size::Union{Nothing,NTuple{2,Integer}}=nothing) where T
+function upsample_bilinear(x::AbstractArray{<:Any,4}, scale::NTuple{2,Real})
+    outsize = ntuple(i -> floor(Int, scale[i] * Base.size(x, i)), 2)
+    return upsample_bilinear(x; size=outsize)
+end
+
+upsample_bilinear(x, scale::Real) = upsample_bilinear(x, (scale,scale))
+
+function upsample_bilinear(x::AbstractArray{T,4}; size::NTuple{2,Integer}) where T
     w,h,c,n = Base.size(x)
-    if scale != (1,1) && size !== nothing
-        error("Please provide either scale or size, not both. Got scale=$scale and size=$size.")
-    end
-    if size === nothing
-        out_w = floor(Int, scale[1]*w)
-        out_h = floor(Int, scale[2]*h)
-    else
-        out_w, out_h = size
-    end
-    if (w,h) == (out_w, out_h)
+    if (w,h) == size
         return x
     end
-    y = similar(x, T, out_w, out_h, c, n)
+    y = similar(x, T, size..., c, n)
     return upsample_bilinear_whcn!(y, x)
 end
 
-upsample_bilinear(x, scale::Real; size=nothing) = upsample_bilinear(x, (scale,scale); size=size)
-
-function upsample_bilinear(x::AbstractArray{T,4}, scale::NTuple{2,Real}=(1,1); size=nothing) where T<:Integer
+function upsample_bilinear(x::AbstractArray{T,4}; size::NTuple{2,Integer}) where T<:Integer
     y = float.(x)
-    res = upsample_bilinear(y, scale; size=size)
+    res = upsample_bilinear(y; size=size)
     return round.(T, res)
 end
 
@@ -214,8 +210,8 @@ function ∇upsample_bilinear_whcn!(dx::AbstractArray{T,4}, Δ::AbstractArray{T,
     return dx
 end
 
-function ChainRulesCore.rrule(::typeof(upsample_bilinear), x, scale=(1,1); size=nothing)
-    Ω = upsample_bilinear(x, scale; size=size)
+function ChainRulesCore.rrule(::typeof(upsample_bilinear), x; size)
+    Ω = upsample_bilinear(x; size=size)
     function upsample_bilinear_pullback(Δ)
         (NO_FIELDS, ∇upsample_bilinear(Δ; size=(Base.size(x,1),Base.size(x,2))), DoesNotExist())
     end
