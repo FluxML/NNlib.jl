@@ -51,11 +51,12 @@ softmax!(x; dims = 1) = softmax!(x, x; dims = dims)
 
 function softmax!(out::AbstractArray{T}, x::AbstractArray; dims = 1) where {T}
     max_ = maximum(x; dims = dims)
-    out .= exp.(x .- max_)
-    if !all(isfinite, max_)
-        @. out = ifelse(isequal(max_,Inf), ifelse(isequal(x,Inf), 1, 0), out)
+    if all(isfinite, max_)
+        out .= exp.(x .- max_)
+    else
+        @. out = ifelse(isequal(max_,Inf), ifelse(isequal(x,Inf), 1, 0), exp(x - max_))
     end
-    out ./= sum(out; dims = dims)
+    out ./= sum(out; dims = dims)  # could re-use max_ when dims != (:) and eltype(x) == T.
 end
 
 ∇softmax(Δ::AbstractArray{T}, x::AbstractArray, y::AbstractArray{S}; dims = 1) where {T,S} = 
