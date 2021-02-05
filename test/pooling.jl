@@ -319,7 +319,7 @@ end
 # test "true" strided case, see https://github.com/FluxML/NNlib.jl/issues/205
 
 
-# obtained with 
+# obtained with
 # using FiniteDifferences
 maxpool_answer_nature = Dict(
     "rank1" => Dict(
@@ -327,62 +327,62 @@ maxpool_answer_nature = Dict(
         "k2s1p0" => (size = (2,),
             stride = 1,
             pad = 0,
-    
-            x = reshape([ 
+
+            x = reshape([
                 0.0299635,  0.233456,  0.596161,   0.161514,  0.0094027
             ], 5, 1, 1), # width, channel, batch_size
-    
+
             dx_maxpool = reshape([
                  0.0, 1.0, 2.0, 1.0, 0.0
             ], 5, 1, 1),
-            
+
             dx_meanpool = reshape([
                  0.5, 1.0, 1.0, 1.0, 0.5
             ], 5, 1, 1),),
         "k2s1p1" => (size = (2,),
             stride = 1,
             pad = 1,
-            
-            x = reshape([ 
+
+            x = reshape([
                 0.0299635,  0.233456,  0.596161,   0.161514,  0.0094027
             ], 5, 1, 1),
-    
+
             dx_maxpool = reshape([
                  1.0, 1.0, 2.0, 1.0, 1.0
             ], 5, 1, 1),
-            
+
             dx_meanpool = reshape([
                  1.0, 1.0, 1.0, 1.0, 1.0
             ], 5, 1, 1),),
         "k3s1p1" => (size = (3,),
             stride = 1,
             pad = 1,
-    
-            x = reshape([ 
+
+            x = reshape([
                 0.0299635,  0.233456,  0.596161,   0.161514,  0.0094027
             ], 5, 1, 1),
-    
+
             dx_maxpool = reshape([
                  0.0, 1.0, 3.0, 1.0, 0.0
             ], 5, 1, 1),
-            
+
             dx_meanpool = reshape([
                  0.6666666666, 1.0, 1.0, 1.0, 0.6666666666
             ], 5, 1, 1),),
         "k3s2p1" => (size = (3,),
             stride = 2,
             pad = 1,
-    
-            x = reshape([ 
+
+            x = reshape([
                 0.0299635,  0.233456,  0.596161,   0.161514,  0.0094027
             ], 5, 1, 1),
-    
+
             dx_maxpool = reshape([
                  0.0, 1.0, 1.0, 1.0, 0.0
             ], 5, 1, 1),
-            
+
             dx_meanpool = reshape([
-                 0.333333333, 
+                 0.333333333,
                  0.666666666,
                  0.333333333,
                  0.666666666,
@@ -395,7 +395,7 @@ maxpool_answer_nature = Dict(
             stride = 1,
             pad = 0,
 
-            x = reshape([ 
+            x = reshape([
                 0.0299635  0.233456  0.596161   0.161514  0.0094027
                 0.389984   0.235158  0.579525   0.301893  0.561358
                 0.0830242  0.483759  0.914904   0.253871  0.820061
@@ -408,9 +408,9 @@ maxpool_answer_nature = Dict(
                 1.0  0.0  0.0  0.0  1.0
                 0.0  1.0  4.0  0.0  2.0
                 0.0  1.0  0.0  2.0  0.0
-                0.0  2.0  0.0  0.0  0.0  
+                0.0  2.0  0.0  0.0  0.0
             ], 5, 5, 1, 1),
-            
+
             dx_meanpool = reshape([
                 0.25  0.5  0.5  0.5  0.25
                 0.5   1.0  1.0  1.0  0.5
@@ -421,8 +421,8 @@ maxpool_answer_nature = Dict(
         "k2s1p1" => (size = (2, 2),
             stride = 1,
             pad = 1,
-            
-            x = reshape([ 
+
+            x = reshape([
                 0.0299635  0.233456  0.596161   0.161514  0.0094027
                 0.389984   0.235158  0.579525   0.301893  0.561358
                 0.0830242  0.483759  0.914904   0.253871  0.820061
@@ -437,7 +437,7 @@ maxpool_answer_nature = Dict(
                 1.0  1.0  0.0  2.0  0.0
                 2.0  4.0  1.0  0.0  3.0
             ], 5, 5, 1, 1),
-            
+
             dx_meanpool = reshape([
                 1.0  1.0  1.0  1.0  1.0
                 1.0  1.0  1.0  1.0  1.0
@@ -449,7 +449,7 @@ maxpool_answer_nature = Dict(
             stride = 1,
             pad = 1,
 
-            x = reshape([ 
+            x = reshape([
                 0.0299635  0.233456  0.596161   0.161514  0.0094027
                 0.389984   0.235158  0.579525   0.301893  0.561358
                 0.0830242  0.483759  0.914904   0.253871  0.820061
@@ -464,7 +464,7 @@ maxpool_answer_nature = Dict(
                 0.0  1.0  0.0  3.0  0.0
                 0.0  3.0  0.0  0.0  0.0
             ], 5, 5, 1, 1),
-            
+
             dx_meanpool = reshape([
                 0.444444  0.666667  0.666667  0.666667  0.444444
                 0.666667  1.0       1.0       1.0       0.666667
@@ -476,7 +476,7 @@ maxpool_answer_nature = Dict(
             stride = 2,
             pad = 1,
 
-            x = reshape([ 
+            x = reshape([
                 0.0299635  0.233456  0.596161   0.161514  0.0094027
                 0.389984   0.235158  0.579525   0.301893  0.561358
                 0.0830242  0.483759  0.914904   0.253871  0.820061
@@ -491,7 +491,7 @@ maxpool_answer_nature = Dict(
                 0.0  1.0  0.0  2.0  0.0
                 0.0  1.0  0.0  0.0  0.0
             ], 5, 5, 1, 1),
-            
+
             dx_meanpool = reshape([
                 0.111111  0.222222  0.111111  0.222222  0.111111
                 0.222222  0.444444  0.222222  0.444444  0.222222
@@ -505,7 +505,7 @@ maxpool_answer_nature = Dict(
         "k2s1p0" => (size = (2, 2, 2),
             stride = 1,
             pad = 0,
-    
+
             x = reshape(cat([
                     0.82584   0.416818  0.92668   0.471931
                     0.798798  0.131608  0.344556  0.79681
@@ -524,7 +524,7 @@ maxpool_answer_nature = Dict(
                     0.640221  0.28811   0.129229  0.97571
                     0.953795  0.1316    0.94538   0.705337
                 ],dims=3), 4,4,3,1,1),
-    
+
             dx_maxpool = reshape(cat([
                      1.0  0.0  2.0  0.0
                      1.0  0.0  0.0  0.0
@@ -543,7 +543,7 @@ maxpool_answer_nature = Dict(
                      0.0  0.0  0.0  2.0
                      1.0  0.0  1.0  0.0
                 ],dims=3), 4,4,3,1,1),
-            
+
             dx_meanpool = reshape(cat([
                      0.125  0.25  0.25  0.125
                      0.25   0.5   0.5   0.25
@@ -565,7 +565,7 @@ maxpool_answer_nature = Dict(
         "k2s1p1" => (size = (2, 2, 2),
             stride = 1,
             pad = 1,
-            
+
             x = reshape(cat([
                     0.82584   0.416818  0.92668   0.471931
                     0.798798  0.131608  0.344556  0.79681
@@ -584,7 +584,7 @@ maxpool_answer_nature = Dict(
                     0.640221  0.28811   0.129229  0.97571
                     0.953795  0.1316    0.94538   0.705337
                 ],dims=3), 4,4,3,1,1),
-    
+
             dx_maxpool = reshape(cat([
                      8.0  0.0  8.0  2.0
                      4.0  0.0  1.0  4.0
@@ -603,7 +603,7 @@ maxpool_answer_nature = Dict(
                      3.0  0.0  0.0  8.0
                      8.0  0.0  6.0  1.0
                 ],dims=3), 4,4,3,1,1),
-            
+
             dx_meanpool = reshape(cat([
                      1.0  1.0  1.0  1.0
                      1.0  1.0  1.0  1.0
@@ -625,7 +625,7 @@ maxpool_answer_nature = Dict(
         "k3s1p1" => (size = (3, 3, 2),
             stride = 1,
             pad = 1,
-    
+
             x = reshape(cat([
                     0.82584   0.416818  0.92668   0.471931
                     0.798798  0.131608  0.344556  0.79681
@@ -644,7 +644,7 @@ maxpool_answer_nature = Dict(
                     0.640221  0.28811   0.129229  0.97571
                     0.953795  0.1316    0.94538   0.705337
                 ],dims=3), 4,4,3,1,1),
-    
+
             dx_maxpool = reshape(cat([
                      4.0  0.0  12.0  0.0
                      3.0  0.0   0.0  2.0
@@ -663,7 +663,7 @@ maxpool_answer_nature = Dict(
                      0.0  0.0  0.0  12.0
                      8.0  0.0  0.0   0.0
                 ],dims=3), 4,4,3,1,1),
-            
+
             dx_meanpool = reshape(cat([
                      0.444444  0.666667  0.666667  0.444444
                      0.666667  1.0       1.0       0.666667
@@ -685,7 +685,7 @@ maxpool_answer_nature = Dict(
         "k3s2p1" => (size = (3, 3, 2),
             stride = 2,
             pad = 1,
-    
+
             x = reshape(cat([
                     0.82584   0.416818  0.92668   0.471931
                     0.798798  0.131608  0.344556  0.79681
@@ -704,7 +704,7 @@ maxpool_answer_nature = Dict(
                     0.640221  0.28811   0.129229  0.97571
                     0.953795  0.1316    0.94538   0.705337
                 ],dims=3), 4,4,3,1,1),
-    
+
             dx_maxpool = reshape(cat([
                      1.0  0.0  1.0  0.0
                      1.0  0.0  0.0  1.0
@@ -723,7 +723,7 @@ maxpool_answer_nature = Dict(
                      0.0  0.0  0.0  1.0
                      1.0  0.0  0.0  0.0
                 ],dims=3), 4,4,3,1,1),
-            
+
             dx_meanpool = reshape(cat([
                      0.0555556  0.111111  0.0555556  0.0555556
                      0.111111   0.222222  0.111111   0.111111
@@ -750,7 +750,7 @@ maxpool_answer_nature = Dict(
     # issue #205
     function check(config, T)
         # CHECK DEFAULT
-        pdims = PoolDims(config.x, config.size; stride=config.stride, padding=config.pad)        
+        pdims = PoolDims(config.x, config.size; stride=config.stride, padding=config.pad)
         x = T.(config.x)
         y_maxpool = NNlib.maxpool(x, pdims)
         y_meanpool = NNlib.meanpool(x, pdims)
