@@ -25,7 +25,7 @@ etc...
 
 See also [`logsoftmax`](@ref).
 
-** Usage Examples**
+# Examples
 
 ```jldoctest
 julia> softmax([1, 2, 3])
@@ -49,9 +49,14 @@ softmax(x; dims = 1) = softmax!(similar(x, (float ∘ eltype)(x)), x; dims = dim
 
 softmax!(x; dims = 1) = softmax!(x, x; dims = dims)
 
-function softmax!(out::O, x::T; dims = 1) where {O<:AbstractArray,T<:AbstractArray}
-    out .= exp.(x .- maximum(x; dims = dims))
-    out ./= sum(out; dims = dims)
+function softmax!(out::AbstractArray{T}, x::AbstractArray; dims = 1) where {T}
+    max_ = maximum(x; dims = dims)
+    if all(isfinite, max_)
+        out .= exp.(x .- max_)
+    else
+        @. out = ifelse(isequal(max_,Inf), ifelse(isequal(x,Inf), 1, 0), exp(x - max_))
+    end
+    out ./= sum(out; dims = dims)  # could re-use max_ when dims != (:) and eltype(x) == T.
 end
 
 ∇softmax(Δ::AbstractArray{T}, x::AbstractArray, y::AbstractArray{S}; dims = 1) where {T,S} = 
@@ -94,14 +99,18 @@ logsoftmax(x; dims = 1) = logsoftmax!(similar(x, (float ∘ eltype)(x)), x; dims
 
 logsoftmax!(x; dims = 1) = logsoftmax!(x, x; dims = dims)
 
-function logsoftmax!(out::O, x::T; dims = 1) where {O<:AbstractArray,T<:AbstractArray}
-    out .= x .- maximum(x; dims = dims)
-    # out .-= log.(sum(exp.(out); dims = dims))  # WARN: this will decrease performance.
+function logsoftmax!(out::AbstractArray{T}, x::AbstractArray; dims = 1) where {T}
+    max_ = maximum(x; dims = dims)
+    if all(isfinite, max_)
+        out .= x .- max_
+    else
+        @. out = ifelse(isequal(max_,Inf), ifelse(isequal(x,Inf), 0, -Inf), x - max_)
+    end
     log_ = log.(sum(exp, out; dims = dims))
     out .-= log_
 end
 
-∇logsoftmax(Δ::AbstractArray{T}, x::AbstractArray, y::AbstractArray{S}; dims = 1) where {T,S} = 
+∇logsoftmax(Δ::AbstractArray{T}, x::AbstractArray, y::AbstractArray{S}; dims = 1) where {T,S} =
     ∇logsoftmax!(similar(y, promote_type(T, S)), Δ, x, y; dims = dims)
     
 # Old 2-arg version recomputing forward

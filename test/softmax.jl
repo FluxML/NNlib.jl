@@ -58,6 +58,21 @@ end
     @test ∇softmax(ones(size(xs)), xs, y) ≈ zeros(size(xs)) atol = 1e-6
 end
 
+@testset "softmax with Inf, NaN" begin
+    @test softmax(Float32[1 2; 3 Inf]) ≈    Float32[0.11920292 0.0; 0.880797 1.0]
+    @test softmax(Float32[1 -Inf; 3 Inf]) ≈ Float32[0.11920292 0.0; 0.880797 1.0]
+    @test softmax(Float32[1 Inf; 3 Inf]) ≈  Float32[0.11920292 0.5; 0.880797 0.5]
+
+    @test softmax(Float32[1 2; 3 NaN]) ≈    Float32[0.11920292 NaN; 0.880797 NaN] nans=true
+    @test softmax(Float32[1 2; 3 Inf]; dims=2) ≈ Float32[0.26894143 0.7310586; 0.0 1.0]
+    @test softmax(Float32[1 2; 3 Inf]; dims=(:)) ≈ Float32[0.0 0.0; 0.0 1.0]
+    @test softmax(Float32[1 2; 3 Inf]; dims=(1,2)) ≈ Float32[0.0 0.0; 0.0 1.0]
+
+    @test exp.(logsoftmax(Float32[1 2; 3 Inf])) ≈ softmax(Float32[1 2; 3 Inf])
+    @test exp.(logsoftmax(Float32[1 -Inf; 3 Inf])) ≈ softmax(Float32[1 -Inf; 3 Inf])
+    @test exp.(logsoftmax(Float32[1 Inf; 3 Inf])) ≈ softmax(Float32[1 Inf; 3 Inf])
+end
+
 @testset "mutating softmax" begin
     map([
         Float64[1 2 3; 5 6 7],
