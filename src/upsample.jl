@@ -3,16 +3,19 @@ export upsample_nearest, ∇upsample_nearest,
     pixel_shuffle
 
 """
-    upsample_nearest(x::AbstractArray, scale::NTuple{S,Int})
+    upsample_nearest(x, scale::NTuple{S,Int})
+    upsample_nearest(x; size::NTuple{S,Int})
 
-Upsamples by integer multiples along the first `S` dimensions.
+Upsamples the array `x` by integer multiples along the first `S` dimensions.
 Subsequent dimensions of `x` are not altered.
+
+Either the `scale` factors or the final output `size` can be specified. 
 
 See also [`upsample_bilinear`](@ref), for two dimensions of an `N=4` array.
 
 # Example
 ```jldoctest
-julia> upsample_nearest([1 2 3; 4 5 6], (2,3))
+julia> upsample_nearest([1 2 3; 4 5 6], (2, 3))
 4×9 Array{$Int,2}:
  1  1  1  2  2  2  3  3  3
  1  1  1  2  2  2  3  3  3
@@ -27,6 +30,12 @@ julia> upsample_nearest([1 2 3; 4 5 6], (2,))
  4  5  6
 ```
 """
+function upsample_nearest(x::AbstractArray; size::NTuple{S,Int}) where S
+    xsize = Base.size(x)[1:S]
+    all(size .% xsize .== 0) || throw(ArgumentError("expected output size divisible by input size"))
+    return upsample_nearest(x, size .÷ xsize)
+end
+
 function upsample_nearest(x::AbstractArray{T,N}, scales::NTuple{S, <:Integer}) where {T,N,S}
     S in 1:N || throw(ArgumentError("can't upsample ndims(x)=$N with scale=$scales"))
     outsize = ntuple(d -> d<=S ? scales[d] * size(x,d) : size(x,d), N)
