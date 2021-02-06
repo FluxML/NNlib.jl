@@ -288,7 +288,7 @@ julia> x = [10i + j + channel/10 for i in 1:2, j in 1:3, channel in 1:4, batch i
  11.4  12.4  13.4
  21.4  22.4  23.4
 
-julia> pixel_shuffle(x, 2)
+julia> pixel_shuffle(x, 2)  # 4 channels used up as 2x upscaling of image dimensions
 4×6×1×1 Array{Float64,4}:
 [:, :, 1, 1] =
  11.1  11.3  12.1  12.3  13.1  13.3
@@ -303,7 +303,7 @@ julia> y = [i + channel/10 for i in 1:3, channel in 1:6, batch in 1:1]
  2.1  2.2  2.3  2.4  2.5  2.6
  3.1  3.2  3.3  3.4  3.5  3.6
 
-julia> pixel_shuffle(y, 2)
+julia> pixel_shuffle(y, 2)  # 1D image, with 6 channels reduced to 3
 6×3×1 Array{Float64,3}:
 [:, :, 1] =
  1.1  1.3  1.5
