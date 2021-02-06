@@ -22,12 +22,18 @@ julia> upsample_nearest([1 2 3; 4 5 6], (2, 3))
  4  4  4  5  5  5  6  6  6
  4  4  4  5  5  5  6  6  6
 
+julia> ans == upsample_nearest([1 2 3; 4 5 6]; size=(4, 9))  # equivalent
+true
+
 julia> upsample_nearest([1 2 3; 4 5 6], (2,))
 4×3 Array{$Int,1}:
  1  2  3
  1  2  3
  4  5  6
  4  5  6
+
+julia> ans == upsample_nearest([1 2 3; 4 5 6], size=(4,))
+true
 ```
 """
 function upsample_nearest(x::AbstractArray; size::NTuple{S,Int}) where S
