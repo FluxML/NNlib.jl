@@ -5,11 +5,16 @@
     y = upsample_nearest(x, (2,3))
     @test size(y) == (4,6,1,1)
     ∇upsample_nearest(y, (2,3)) == [6 12; 18 24]
+    
+    gradtest(x -> upsample_nearest(x, (2,3)), rand(2,2,1,1))
 
-    gradtest(x -> upsample_nearest(x, (2,3)), rand(2,2,1,1), check_rrule=false)
+    y2 = upsample_nearest(x, size=(4,6))
+    @test y ≈ y2
+    gradtest(x -> upsample_nearest(x, size=(4,6)), rand(2,2,1,1))
 
     @test_throws ArgumentError ∇upsample_nearest(y, (2,4))
     @test_throws ArgumentError upsample_nearest(x, (1,2,3,4,5))
+    @test_throws ArgumentError upsample_nearest(x, size=(3,4))
 end
 
 @testset "upsample_bilinear 2d" begin
