@@ -123,7 +123,8 @@ julia> upsample_bilinear(x, (2, 3))
  3.0  3.25  3.5  3.75  4.0  4.25  4.5  4.75  5.0
  4.0  4.25  4.5  4.75  5.0  5.25  5.5  5.75  6.0
 
-julia> ans == upsample_bilinear(x; size=(4, 12))  # specify ouput size instead
+julia> ans == upsample_bilinear(x; size=(4, 9))  # specify ouput size instead
+true
 
 julia> upsample_bilinear(x, (2.5, 3.5))  # non-integer scaling factors are allowed
 5×10×1×1 Array{Float32,4}:
