@@ -261,11 +261,12 @@ end
     pixel_shuffle(x, r::Integer)
 
 Pixel shuffling operation, upscaling by a factor `r`.
-The operation converts an input of size [W,H,r²C,N] to size [rW,rH,C,N].
 
-Used extensively in super-resolution networks to upsample
-towards high resolution features.
+For 4-arrays representing a `N` images, the operation converts input of size `(W,H,r^2*C,N)`
+to output of size `(r*W,r*H,C,N)`. For `D`-dimensional data, expects `ndims(x) == D+2`
+with channel and batch dimensions, and divides the number of channels by `r^D`.
 
+Used in super-resolution networks to upsample towards high resolution features.
 Reference: Shi et. al., "Real-Time Single Image and Video Super-Resolution ...", CVPR 2016, https://arxiv.org/abs/1609.05158
 
 # Examples
