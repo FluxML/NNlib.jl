@@ -262,8 +262,8 @@ end
 
 Pixel shuffling operation, upscaling by a factor `r`.
 
-For 4-arrays representing a `N` images, the operation converts input of size `(W,H,r^2*C,N)`
-to output of size `(r*W,r*H,C,N)`. For `D`-dimensional data, expects `ndims(x) == D+2`
+For 4-arrays representing `N` images, the operation converts input `size(x) == (W, H, r^2*C, N)`
+to output of size `(r*W, r*H, C, N)`. For `D`-dimensional data, it expects `ndims(x) == D+2`
 with channel and batch dimensions, and divides the number of channels by `r^D`.
 
 Used in super-resolution networks to upsample towards high resolution features.
@@ -321,10 +321,11 @@ function pixel_shuffle(x::AbstractArray, r::Integer)
     d = ndims(x) - 2
     sizein = size(x)[1:d]
     cin, n = size(x, d+1), size(x, d+2)
-    cin % r^d == 0 || throw(ArgumentError("expected channel dimension to be divisible by r^d = $(r^d), where d=$d is the number of spatial dimensions. Given r=$r, input size(x) = $(size(x))"))
+    cin % r^d == 0 || throw(ArgumentError("expected channel dimension to be divisible by r^d = $(
+        r^d), where d=$d is the number of spatial dimensions. Given r=$r, input size(x) = $(size(x))"))
     cout = cin ÷ r^d
     x = reshape(x, sizein..., ntuple(i->r, d)..., cout, n)
-    perm = [d+1:2d 1:d]' |> vec  # = [d+1, 1, d+2, 2, ..., 2d, d]
+    perm = hcat(d+1:2d, 1:d) |> transpose |> vec  # = [d+1, 1, d+2, 2, ..., 2d, d]
     x = permutedims(x, (perm..., 2d+1, 2d+2))
     return reshape(x, map(s -> s*r, sizein)..., cout, n)
 end
