@@ -103,37 +103,18 @@ idx = [1 2 3 4;
       4 2 1 3;
       3 5 5 3]
 
-∇y_mul = [4. 4. 16. 4. 4.; 4. 4. 16. 4. 4.]
-∇y_div = [.25 .25 .0625 .25 .25; .25 .25 .0625 .25 .25]
-∇u_mean = cat([.5 .5 .25; .5 .5 .25], [.5 .5 .5; .5 .5 .5],
-              [.25 .5 .5; .25 .5 .5], [.5 .25 .25; .5 .25 .25], dims=3)
-
 @testset "∇scatter" begin
-    @test Zygote.gradient(x -> sum(scatter!(+, x, src, idx, dims=1)), dst) == (ones(2, 5),)
-    @test Zygote.gradient(x -> sum(scatter!(+, copy(dst), x, idx, dims=1)), src) == (ones(2, 3, 4),)
-    @test Zygote.gradient(x -> sum(scatter!(+, copy(dst), src, x, dims=1)), idx) == (nothing,)
+    test_rrule(scatter!, +, dst, src, idx ⊢ nothing, 1 ⊢ nothing)
 
-    @test Zygote.gradient(x -> sum(scatter!(-, x, src, idx, dims=1)), dst) == (ones(2, 5),)
-    @test Zygote.gradient(x -> sum(scatter!(-, copy(dst), x, idx, dims=1)), src) == (-ones(2, 3, 4),)
-    @test Zygote.gradient(x -> sum(scatter!(-, copy(dst), src, x, dims=1)), idx) == (nothing,)
+    test_rrule(scatter!, -, dst, src, idx ⊢ nothing, 1 ⊢ nothing)
 
-    @test Zygote.gradient(x -> sum(scatter!(max, x, src, idx, dims=1)), dst) == (ones(2, 5),)
-    @test Zygote.gradient(x -> sum(scatter!(max, copy(dst), x, idx, dims=1)), src) == (zeros(2, 3, 4),)
-    @test Zygote.gradient(x -> sum(scatter!(max, copy(dst), src, x, dims=1)), idx) == (nothing,)
+    test_rrule(scatter!, max ⊢ nothing, dst, src, idx ⊢ nothing, 1 ⊢ nothing)
 
-    @test Zygote.gradient(x -> sum(scatter!(min, x, src, idx, dims=1)), dst) == (zeros(2, 5),)
-    @test Zygote.gradient(x -> sum(scatter!(min, copy(dst), x, idx, dims=1)), src) == (ones(2, 3, 4),)
-    @test Zygote.gradient(x -> sum(scatter!(min, copy(dst), src, x, dims=1)), idx) == (nothing,)
+    test_rrule(scatter!, min ⊢ nothing, dst, src, idx ⊢ nothing, 1 ⊢ nothing)
 
-    @test Zygote.gradient(x -> sum(scatter!(*, x, src, idx, dims=1)), dst) == (∇y_mul,)
-    @test Zygote.gradient(x -> sum(scatter!(*, copy(dst), x, idx, dims=1)), src) == (2048*gather(dst, idx),)
-    @test Zygote.gradient(x -> sum(scatter!(*, copy(dst), src, x, dims=1)), idx) == (nothing,)
+    test_rrule(scatter!, *, dst, src, idx ⊢ nothing, 1 ⊢ nothing)
 
-    @test Zygote.gradient(x -> sum(scatter!(/, x, src, idx, dims=1)), dst) == (∇y_div,)
-    @test Zygote.gradient(x -> sum(scatter!(/, copy(dst), x, idx, dims=1)), src) == (-gather(dst, idx)/8192,)
-    @test Zygote.gradient(x -> sum(scatter!(/, copy(dst), src, x, dims=1)), idx) == (nothing,)
+    test_rrule(scatter!, /, dst, src, idx ⊢ nothing, 1 ⊢ nothing)
 
-    @test Zygote.gradient(x -> sum(scatter!(mean, x, src, idx, dims=1)), dst) == (ones(2, 5),)
-    @test Zygote.gradient(x -> sum(scatter!(mean, copy(dst), x, idx, dims=1)), src) == (∇u_mean,)
-    @test Zygote.gradient(x -> sum(scatter!(mean, copy(dst), src, x, dims=1)), idx) == (nothing,)
+    test_rrule(scatter!, mean ⊢ nothing, dst, src, idx ⊢ nothing, 1 ⊢ nothing)
 end
