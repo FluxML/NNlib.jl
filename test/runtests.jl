@@ -34,6 +34,10 @@ end
     include("pooling.jl")
 end
 
+@testset "Padding" begin
+    include("padding.jl")
+end
+
 @testset "Softmax" begin
     include("softmax.jl")
 end

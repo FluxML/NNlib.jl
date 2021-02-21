@@ -31,6 +31,7 @@ include("gemm.jl")
 include("conv.jl")
 include("conv_bias_act.jl")
 include("pooling.jl")
+include("padding.jl")
 include("upsample.jl")
 
 ## Include implementations
