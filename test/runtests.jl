@@ -41,12 +41,15 @@ end
 @testset "Upsampling" begin
     include("upsample.jl")
 end
+
 @testset "Scatter" begin
     include("scatter.jl")
 end
+
 @testset "Gather" begin
     include("gather.jl")
 end
+
 @testset "Utilities" begin
     include("utils.jl")
 end

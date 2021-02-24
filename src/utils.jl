@@ -16,21 +16,6 @@ function least_dims(idxs::AbstractArray{<:Tuple})
     Tuple(maximum(xs) for xs in zip(idxs...))
 end
 
-_check_input(idx::AbstractArray{<:Integer}, arr) = checkbounds(arr, minimum(idx):maximum(idx))
-
-function _check_input(idx::AbstractArray{<:Tuple}, arr)
-    pairs = map(xs -> Base.OneTo(maximum(xs)), zip(idx...))
-    checkbounds(arr, pairs...)
-end
-
-function _check_output(idx::AbstractArray{<:IntOrTuple}, dst, src, dims)
-    idx_dims = size(idx)
-    dst_dims = size(dst)
-    src_dims = size(src)
-    dst_dims[1:dims] == src_dims[1:dims] || throw(ArgumentError("dst and src must have the same dimensions in the first $(dims) dimensions"))
-    dst_dims[dims+1:end] == idx_dims || throw(ArgumentError("dst must have the same dimensions with idx from $(dims+1)-th"))
-end
-
 function reverse_indices(X::Array{T}) where T
     Y = Dict{T,Vector{CartesianIndex}}()
     @inbounds for (ind, val) = pairs(X)
