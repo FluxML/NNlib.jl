@@ -11,6 +11,14 @@ export scatter!, scatter, ∇scatter_dst!, ∇scatter_src!, ∇scatter_src
 #     - ∇scatter_src!
 #
 
+_check_input(idx::AbstractArray{<:Integer}, arr) = checkbounds(arr, minimum(idx):maximum(idx))
+
+function _check_input(idx::AbstractArray{<:Tuple}, arr)
+    pairs = map(xs -> Base.OneTo(maximum(xs)), zip(idx...))
+    checkbounds(arr, pairs...)
+end
+
+
 """
     scatter!(op, dst, src, idx, dims)
 
@@ -57,11 +65,11 @@ end
 end
 
 function scatter_vec!(op, dst::AbstractArray{T}, src::AbstractArray{T}, idx::AbstractArray{<:IntOrTuple},
-                      dims::Integer) where {T<:Real}
-    colons = Base.ntuple(_->Colon(), dims)
+        dims::Val{S}) where {T<:Real,S}
+    colons = Base.ntuple(_->Colon(), S)
     @simd for k in CartesianIndices(idx)
         dst_v = view(dst, colons..., idx[k]...)
-        src_v = view(src, k)
+        src_v = view(src, colons..., k)
         @inbounds dst_v .= (op).(dst_v, src_v)
     end
     dst
