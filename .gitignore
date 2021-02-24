@@ -10,5 +10,4 @@
 deps/usr
 deps.jl
 *.log
-.vscode
-Manifest.toml
+# Manifest.toml
