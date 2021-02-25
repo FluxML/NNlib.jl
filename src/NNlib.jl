@@ -34,7 +34,6 @@ include("conv_bias_act.jl")
 include("pooling.jl")
 include("upsample.jl")
 include("utils.jl")
-include("gather.jl")
 include("scatter.jl")
 
 ## Include implementations
