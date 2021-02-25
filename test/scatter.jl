@@ -168,6 +168,10 @@ types = [UInt8, UInt16, UInt32, UInt64, UInt128,
             end
         end
     end
+
+    @test_throws ArgumentError scatter!(+, dsts[0], srcs[(1, true)], idxs[:int], dims=1)
+    idx = [1 2 3 4; 4 2 1 3; 6 7 8 9]
+    @test_throws BoundsError scatter!(+, dsts[1], srcs[(1, true)], idx, dims=1)
 end
 
 dst = [3. 3. 4. 4. 5.;

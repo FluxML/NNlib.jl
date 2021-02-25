@@ -18,6 +18,13 @@ function _check_input(idx::AbstractArray{<:Tuple}, arr)
     checkbounds(arr, pairs...)
 end
 
+function _check_output(idx::AbstractArray{<:IntOrTuple}, dst, src, dims)
+    idx_dims = size(idx)
+    dst_dims = size(dst)
+    src_dims = size(src)
+    dst_dims[1:dims] == src_dims[1:dims] || throw(ArgumentError("dst and src must have the same dimensions in the first $(dims) dimensions"))
+end
+
 
 """
     scatter!(op, dst, src, idx, dims)
@@ -46,7 +53,7 @@ Examples for dims are lists here:
 """
 function scatter!(op, dst::AbstractArray{T}, src::AbstractArray{T}, idx::AbstractArray{<:IntOrTuple};
                   dims::Integer=1) where {T<:Real}
-    # @boundscheck _check_output(idx, dst)
+    @boundscheck _check_output(idx, dst, src, dims)
     @boundscheck _check_input(idx, src)
     if dims > 0
         scatter_vec!(op, dst, src, idx, Val(dims))
