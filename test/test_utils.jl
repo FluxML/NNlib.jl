@@ -19,8 +19,8 @@ function gradtest(f, xs...; atol=1e-6, rtol=1e-6, fkwargs=NamedTuple(),
         y = f(xs...; fkwargs...)
         simil(x) = x isa Number ? randn(rng, typeof(x)) : randn!(rng, similar(x))
         ȳ =  simil(y)
-        xx̄s = [(x, simil(x)) for x in xs]
-        rrule_test(f, ȳ, xx̄s...; fkwargs=fkwargs)
+        xx̄s = [x ⊢ simil(x) for x in xs]
+        rrule_test(f, xx̄s...; fkwargs=fkwargs, output_tangent=ȳ)
     end
 
     if check_broadcast

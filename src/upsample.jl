@@ -73,7 +73,7 @@ function ∇upsample_nearest(x::AbstractArray{T,N}, scales::NTuple{S, <:Integer}
     reshape(mid, outsize)
 end
 
-function ChainRulesCore.rrule(::typeof(upsample_nearest), x::AbstractArray, s::Tuple)
+function rrule(::typeof(upsample_nearest), x::AbstractArray, s::Tuple)
     Ω = upsample_nearest(x, s)
     upsample_nearest_pullback(Δ) = (NO_FIELDS, ∇upsample_nearest(Δ, s), DoesNotExist())
     return Ω, upsample_nearest_pullback
@@ -249,7 +249,7 @@ function ∇upsample_bilinear_whcn!(dx::AbstractArray{T,4}, Δ::AbstractArray{T,
     return dx
 end
 
-function ChainRulesCore.rrule(::typeof(upsample_bilinear), x; size)
+function rrule(::typeof(upsample_bilinear), x; size)
     Ω = upsample_bilinear(x; size=size)
     function upsample_bilinear_pullback(Δ)
         (NO_FIELDS, ∇upsample_bilinear(Δ; size=(Base.size(x,1),Base.size(x,2))))

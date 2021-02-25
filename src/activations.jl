@@ -256,8 +256,8 @@ for (f, df) in UNARY_ACTS
     @eval @scalar_rule($f(x), $df)
 
     pullback = Symbol(:broadcasted_, f, :_pullback)
-    @eval function ChainRulesCore.rrule(::typeof(broadcasted),
-                                        ::typeof($f), x::Numeric)
+    @eval function rrule(::typeof(broadcasted),
+                         ::typeof($f), x::Numeric)
         Ω = $f.(x)
         function $pullback(Δ) 
             NO_FIELDS, NO_FIELDS, @.(Δ * $df)
@@ -275,9 +275,9 @@ for (f, df1, df2) in BINARY_ACTS
     @eval @scalar_rule($f(x1, x2), ($df1, $df2))
 
     pullback = Symbol(:broadcasted_, f, :_pullback)
-    @eval function ChainRulesCore.rrule(::typeof(broadcasted),
-                                        ::typeof($f), 
-                                        x1::Numeric, x2::Numeric)
+    @eval function rrule(::typeof(broadcasted),
+                         ::typeof($f), 
+                         x1::Numeric, x2::Numeric)
         Ω = $f.(x1, x2)
         function $pullback(Δ) 
             NO_FIELDS, NO_FIELDS, @.(Δ * $df1), @.(Δ * $df2)

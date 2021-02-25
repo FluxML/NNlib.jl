@@ -171,7 +171,7 @@ end
 for pool in [:maxpool, :meanpool]
     ∇pool = Symbol(:∇, pool)
     pullback = Symbol(pool, :_pullback)
-    @eval function ChainRulesCore.rrule(::typeof($pool), x, pdims::PoolDims; kw...)
+    @eval function rrule(::typeof($pool), x, pdims::PoolDims; kw...)
         Ω = $pool(x, pdims; kw...)
         $pullback(Δ) = (NO_FIELDS, $∇pool(Δ, Ω, x, pdims; kw...), DoesNotExist())
         return Ω, $pullback

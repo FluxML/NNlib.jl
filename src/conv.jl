@@ -211,11 +211,7 @@ for front_name in (:conv, :∇conv_data, :∇conv_filter,
 end
 
 for Dims in [:DenseConvDims, :DepthwiseConvDims, :PoolDims]
-    pullback = Symbol(Dims, :_pullback)
-    @eval function ChainRulesCore.rrule(::Type{$Dims}, args...; kwargs...)
-        $pullback(Δ) = (NO_FIELDS, ntuple(_ -> DoesNotExist(), length(args))...)
-        return $Dims(args...; kwargs...), $pullback
-    end
+    @eval @non_differentiable $Dims(::Any...)
 end
 
 colmajor(x) = (is_strided(x) && Base.stride(x, 1) == 1) ? x : collect(x)
@@ -224,7 +220,7 @@ for conv in [:conv, :depthwiseconv]
     local ∇conv_data, ∇conv_filter = Symbol.(:∇, conv, [:_data, :_filter])
     conv_pullback, ∇conv_data_pullback = Symbol.([conv, ∇conv_data], :_pullback)
 
-    @eval function ChainRulesCore.rrule(::typeof($conv), x, w, cdims; kw...)
+    @eval function rrule(::typeof($conv), x, w, cdims; kw...)
         function $conv_pullback(Δ)
             Δ = colmajor(Δ)
             return (
@@ -237,7 +233,7 @@ for conv in [:conv, :depthwiseconv]
         return $conv(x, w, cdims; kw...), $conv_pullback
     end
 
-    @eval function ChainRulesCore.rrule(::typeof($∇conv_data), x, w, cdims; kw...)
+    @eval function rrule(::typeof($∇conv_data), x, w, cdims; kw...)
         function $∇conv_data_pullback(Δ)
             Δ = colmajor(Δ)
             return (
