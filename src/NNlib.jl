@@ -3,6 +3,7 @@ module NNlib
 using Pkg
 using Requires
 using ChainRulesCore
+import ChainRulesCore: rrule
 using Base.Broadcast: broadcasted
 
 const Numeric = Union{AbstractArray{<:T}, T} where {T<:Number}
