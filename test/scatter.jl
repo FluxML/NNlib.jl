@@ -173,26 +173,3 @@ types = [UInt8, UInt16, UInt32, UInt64, UInt128,
     idx = [1 2 3 4; 4 2 1 3; 6 7 8 9]
     @test_throws BoundsError scatter!(+, dsts[1], srcs[(1, true)], idx, dims=1)
 end
-
-dst = [3. 3. 4. 4. 5.;
-      5. 5. 6. 6. 7.]
-src = 2*ones(2, 3, 4)
-idx = [1 2 3 4;
-      4 2 1 3;
-      3 5 5 3]
-
-@testset "∇scatter" begin
-    test_rrule(scatter!, +, dst, src, idx ⊢ nothing, 1 ⊢ nothing)
-
-    test_rrule(scatter!, -, dst, src, idx ⊢ nothing, 1 ⊢ nothing)
-
-    test_rrule(scatter!, max ⊢ nothing, dst, src, idx ⊢ nothing, 1 ⊢ nothing)
-
-    test_rrule(scatter!, min ⊢ nothing, dst, src, idx ⊢ nothing, 1 ⊢ nothing)
-
-    test_rrule(scatter!, *, dst, src, idx ⊢ nothing, 1 ⊢ nothing)
-
-    test_rrule(scatter!, /, dst, src, idx ⊢ nothing, 1 ⊢ nothing)
-
-    test_rrule(scatter!, mean ⊢ nothing, dst, src, idx ⊢ nothing, 1 ⊢ nothing)
-end
