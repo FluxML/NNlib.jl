@@ -73,25 +73,25 @@ types = [UInt8, UInt16, UInt32, UInt64, UInt128,
             @testset "+" begin
                 for idx = values(idxs), dims = [0, 1]
                     mutated = true
-                    @test scatter!(+, T.(copy(dsts[dims])), T.(srcs[(dims, mutated)]), idx, dims=dims) == T.(res[(+, dims, mutated)])
-                    @test scatter!(+, T.(copy(dsts[dims])), srcs[(dims, mutated)], idx, dims=dims) == PT.(res[(+, dims, mutated)])
-                    @test scatter!(+, copy(dsts[dims]), T.(srcs[(dims, mutated)]), idx, dims=dims) == PT.(res[(+, dims, mutated)])
+                    @test scatter!(+, T.(copy(dsts[dims])), T.(srcs[(dims, mutated)]), idx) == T.(res[(+, dims, mutated)])
+                    @test scatter!(+, T.(copy(dsts[dims])), srcs[(dims, mutated)], idx) == PT.(res[(+, dims, mutated)])
+                    @test scatter!(+, copy(dsts[dims]), T.(srcs[(dims, mutated)]), idx) == PT.(res[(+, dims, mutated)])
 
                     mutated = false
-                    @test scatter(+, T.(srcs[(dims, mutated)]), idx, dims=dims) == T.(res[(+, dims, mutated)])
+                    @test scatter(+, T.(srcs[(dims, mutated)]), idx) == T.(res[(+, dims, mutated)])
                 end
             end
 
             @testset "-" begin
                 for idx = values(idxs), dims = [0, 1]
                     mutated = true
-                    @test scatter!(-, T.(copy(dsts[dims])), T.(srcs[(dims, mutated)]), idx, dims=dims) == T.(res[(-, dims, mutated)])
-                    @test scatter!(-, T.(copy(dsts[dims])), srcs[(dims, mutated)], idx, dims=dims) == PT.(res[(-, dims, mutated)])
-                    @test scatter!(-, copy(dsts[dims]), T.(srcs[(dims, mutated)]), idx, dims=dims) == PT.(res[(-, dims, mutated)])
+                    @test scatter!(-, T.(copy(dsts[dims])), T.(srcs[(dims, mutated)]), idx) == T.(res[(-, dims, mutated)])
+                    @test scatter!(-, T.(copy(dsts[dims])), srcs[(dims, mutated)], idx) == PT.(res[(-, dims, mutated)])
+                    @test scatter!(-, copy(dsts[dims]), T.(srcs[(dims, mutated)]), idx) == PT.(res[(-, dims, mutated)])
 
                     mutated = false
                     if !(T in [UInt8, UInt16, UInt32, UInt64, UInt128])
-                        @test scatter(-, T.(srcs[(dims, mutated)]), idx, dims=dims) == T.(res[(-, dims, mutated)])
+                        @test scatter(-, T.(srcs[(dims, mutated)]), idx) == T.(res[(-, dims, mutated)])
                     end
                 end
             end
@@ -99,13 +99,13 @@ types = [UInt8, UInt16, UInt32, UInt64, UInt128,
             @testset "max" begin
                 for idx = values(idxs), dims = [0, 1]
                     mutated = true
-                    @test scatter!(max, T.(copy(dsts[dims])), T.(srcs[(dims, mutated)]), idx, dims=dims) == T.(res[(max, dims, mutated)])
-                    @test scatter!(max, T.(copy(dsts[dims])), srcs[(dims, mutated)], idx, dims=dims) == PT.(res[(max, dims, mutated)])
-                    @test scatter!(max, copy(dsts[dims]), T.(srcs[(dims, mutated)]), idx, dims=dims) == PT.(res[(max, dims, mutated)])
+                    @test scatter!(max, T.(copy(dsts[dims])), T.(srcs[(dims, mutated)]), idx) == T.(res[(max, dims, mutated)])
+                    @test scatter!(max, T.(copy(dsts[dims])), srcs[(dims, mutated)], idx) == PT.(res[(max, dims, mutated)])
+                    @test scatter!(max, copy(dsts[dims]), T.(srcs[(dims, mutated)]), idx) == PT.(res[(max, dims, mutated)])
 
                     mutated = false
                     if !(T in [BigInt])
-                        @test scatter(max, T.(srcs[(dims, mutated)]), idx, dims=dims) == T.(res[(max, dims, mutated)])
+                        @test scatter(max, T.(srcs[(dims, mutated)]), idx) == T.(res[(max, dims, mutated)])
                     end
                 end
             end
@@ -113,13 +113,13 @@ types = [UInt8, UInt16, UInt32, UInt64, UInt128,
             @testset "min" begin
                 for idx = values(idxs), dims = [0, 1]
                     mutated = true
-                    @test scatter!(min, T.(copy(dsts[dims])), T.(srcs[(dims, mutated)]), idx, dims=dims) == T.(res[(min, dims, mutated)])
-                    @test scatter!(min, T.(copy(dsts[dims])), srcs[(dims, mutated)], idx, dims=dims) == PT.(res[(min, dims, mutated)])
-                    @test scatter!(min, copy(dsts[dims]), T.(srcs[(dims, mutated)]), idx, dims=dims) == PT.(res[(min, dims, mutated)])
+                    @test scatter!(min, T.(copy(dsts[dims])), T.(srcs[(dims, mutated)]), idx) == T.(res[(min, dims, mutated)])
+                    @test scatter!(min, T.(copy(dsts[dims])), srcs[(dims, mutated)], idx) == PT.(res[(min, dims, mutated)])
+                    @test scatter!(min, copy(dsts[dims]), T.(srcs[(dims, mutated)]), idx) == PT.(res[(min, dims, mutated)])
 
                     mutated = false
                     if !(T in [BigInt])
-                        @test scatter(min, T.(srcs[(dims, mutated)]), idx, dims=dims) == T.(res[(min, dims, mutated)])
+                        @test scatter(min, T.(srcs[(dims, mutated)]), idx) == T.(res[(min, dims, mutated)])
                     end
                 end
             end
@@ -127,13 +127,13 @@ types = [UInt8, UInt16, UInt32, UInt64, UInt128,
             @testset "*" begin
                 for idx = values(idxs), dims = [0, 1]
                     mutated = true
-                    @test scatter!(*, T.(copy(dsts[dims])), T.(srcs[(dims, mutated)]), idx, dims=dims) == T.(res[(*, dims, mutated)])
-                    @test scatter!(*, T.(copy(dsts[dims])), srcs[(dims, mutated)], idx, dims=dims) == PT.(res[(*, dims, mutated)])
-                    @test scatter!(*, copy(dsts[dims]), T.(srcs[(dims, mutated)]), idx, dims=dims) == PT.(res[(*, dims, mutated)])
+                    @test scatter!(*, T.(copy(dsts[dims])), T.(srcs[(dims, mutated)]), idx) == T.(res[(*, dims, mutated)])
+                    @test scatter!(*, T.(copy(dsts[dims])), srcs[(dims, mutated)], idx) == PT.(res[(*, dims, mutated)])
+                    @test scatter!(*, copy(dsts[dims]), T.(srcs[(dims, mutated)]), idx) == PT.(res[(*, dims, mutated)])
 
                     mutated = false
                     if !(T in [UInt8, Int8])
-                        @test scatter(*, T.(srcs[(dims, mutated)]), idx, dims=dims) == T.(res[(*, dims, mutated)])
+                        @test scatter(*, T.(srcs[(dims, mutated)]), idx) == T.(res[(*, dims, mutated)])
                     end
                 end
             end
@@ -146,30 +146,30 @@ types = [UInt8, UInt16, UInt32, UInt64, UInt128,
             @testset "/" begin
                 for idx = values(idxs), dims = [0, 1]
                     mutated = true
-                    @test scatter!(/, T.(copy(dsts[dims])), T.(srcs[(dims, mutated)].*2), idx, dims=dims) == T.(res[(/, dims, mutated)])
-                    @test scatter!(/, T.(copy(dsts[dims])), srcs[(dims, mutated)].*2, idx, dims=dims) == PT.(res[(/, dims, mutated)])
-                    @test scatter!(/, copy(dsts[dims]), T.(srcs[(dims, mutated)].*2), idx, dims=dims) == PT.(res[(/, dims, mutated)])
+                    @test scatter!(/, T.(copy(dsts[dims])), T.(srcs[(dims, mutated)].*2), idx) == T.(res[(/, dims, mutated)])
+                    @test scatter!(/, T.(copy(dsts[dims])), srcs[(dims, mutated)].*2, idx) == PT.(res[(/, dims, mutated)])
+                    @test scatter!(/, copy(dsts[dims]), T.(srcs[(dims, mutated)].*2), idx) == PT.(res[(/, dims, mutated)])
 
                     mutated = false
-                    @test scatter(/, T.(srcs[(dims, mutated)]), idx, dims=dims) == T.(res[(/, dims, mutated)])
+                    @test scatter(/, T.(srcs[(dims, mutated)]), idx) == T.(res[(/, dims, mutated)])
                 end
             end
 
             @testset "mean" begin
                 for idx = values(idxs), dims = [0, 1]
                     mutated = true
-                    @test scatter!(mean, T.(copy(dsts[dims])), T.(srcs[(dims, mutated)]), idx, dims=dims) == T.(res[(mean, dims, mutated)])
-                    @test scatter!(mean, T.(copy(dsts[dims])), srcs[(dims, mutated)], idx, dims=dims) == PT.(res[(mean, dims, mutated)])
-                    @test scatter!(mean, copy(dsts[dims]), T.(srcs[(dims, mutated)]), idx, dims=dims) == PT.(res[(mean, dims, mutated)])
+                    @test scatter!(mean, T.(copy(dsts[dims])), T.(srcs[(dims, mutated)]), idx) == T.(res[(mean, dims, mutated)])
+                    @test scatter!(mean, T.(copy(dsts[dims])), srcs[(dims, mutated)], idx) == PT.(res[(mean, dims, mutated)])
+                    @test scatter!(mean, copy(dsts[dims]), T.(srcs[(dims, mutated)]), idx) == PT.(res[(mean, dims, mutated)])
 
                     mutated = false
-                    @test scatter(mean, T.(srcs[(dims, mutated)]), idx, dims=dims) == T.(res[(mean, dims, mutated)])
+                    @test scatter(mean, T.(srcs[(dims, mutated)]), idx) == T.(res[(mean, dims, mutated)])
                 end
             end
         end
     end
 
-    @test_throws ArgumentError scatter!(+, dsts[0], srcs[(1, true)], idxs[:int], dims=1)
+    @test_throws AssertionError scatter!(+, dsts[0], srcs[(1, true)], idxs[:int])
     idx = [1 2 3 4; 4 2 1 3; 6 7 8 9]
-    @test_throws BoundsError scatter!(+, dsts[1], srcs[(1, true)], idx, dims=1)
+    @test_throws BoundsError scatter!(+, dsts[1], srcs[(1, true)], idx)
 end

@@ -6,14 +6,15 @@ Safely divide `x` by `y`. If `y` is zero, return `x` directly.
 safe_div(x, y) = ifelse(iszero(y), x, x/y)
 
 """
-    least_dims(idxs)
+    maximum_dims(dims)
 
-Compute the least dimensions, of which array can be accessed by the indices `idxs`.
+Return the maximum value for each dimension. An array of dimensions `dims` is accepted.
+The maximum of each dimension in the element is computed.
 """
-least_dims(idxs::AbstractArray{<:Integer}) = (maximum(idxs), )
+maximum_dims(dims::AbstractArray{<:Integer}) = (maximum(dims), )
 
-function least_dims(idxs::AbstractArray{<:Tuple})
-    Tuple(maximum(xs) for xs in zip(idxs...))
+function maximum_dims(dims::AbstractArray{<:Tuple})
+    Tuple(maximum(xs) for xs in zip(dims...))
 end
 
 function reverse_indices(X::Array{T}) where T
