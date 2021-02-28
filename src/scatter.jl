@@ -78,10 +78,10 @@ end
 function scatter!(op, dst::AbstractArray{Tdst}, src::AbstractArray{Tsrc}, idx::AbstractArray{<:IntOrTuple},
                   dims::Val{N}) where {Tdst<:Real,Tsrc<:Real,N}
     colons = Base.ntuple(_->Colon(), N)
-    for k in CartesianIndices(idx)
+    @simd for k in CartesianIndices(idx)
         dst_v = view(dst, colons..., idx[k]...)
         src_v = view(src, colons..., k)
-        dst_v .= (op).(dst_v, src_v)
+        @inbounds dst_v .= (op).(dst_v, src_v)
     end
     dst
 end
