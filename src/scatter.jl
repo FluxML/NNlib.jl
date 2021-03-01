@@ -58,8 +58,8 @@ function scatter!(op,
                   src::AbstractArray{Tsrc,Nsrc},
                   idx::AbstractArray{<:Integer,Nidx}) where {Tdst,Tsrc,Ndst,Nsrc,Nidx}
     dims = _check_dims(Ndst, Nsrc, 1, Nidx)
-    @boundscheck _check_output(idx, dst, src, dims)
-    @boundscheck _check_input(idx, src)
+    _check_output(idx, dst, src, dims)
+    _check_input(idx, src)
     scatter!(op, dst, src, idx, Val(dims))
 end
 
@@ -68,8 +68,8 @@ function scatter!(op,
                   src::AbstractArray{Tsrc,Nsrc},
                   idx::AbstractArray{NTuple{N,Int},Nidx}) where {Tdst,Tsrc,Ndst,Nsrc,N,Nidx}
     dims = _check_dims(Ndst, Nsrc, N, Nidx)
-    @boundscheck _check_output(idx, dst, src, dims)
-    @boundscheck _check_input(idx, src)
+    _check_output(idx, dst, src, dims)
+    _check_input(idx, src)
     scatter!(op, dst, src, idx, Val(dims))
 end
 
