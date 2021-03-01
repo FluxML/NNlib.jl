@@ -53,6 +53,7 @@ function pad_idx(pad, dims, N)
   is = zip( (2 .* dims) .- 1, (2 .* dims))
 end
 
+gen_pad(pad::Int, dims, N) = gen_pad(ntuple(_ -> pad, length(dims)), dims, N)
 function gen_pad(pad::NTuple{P,Int}, dims::NTuple{D,Int}, N) where {D,P}
   if P == 2N
     return pad
