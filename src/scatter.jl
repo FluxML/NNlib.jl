@@ -12,10 +12,10 @@ export scatter!, scatter
 #
 
 function _check_dims(Ndst, Nsrc, N, Nidx)
-    @assert Ndst - N == Nsrc - Nidx
+    @assert Ndst - N == Nsrc - Nidx "Incompatible input shapes of (dst, src, idx) = ($Ndst, $Nsrc, $Nidx)."
     dims = Ndst - N
     if dims < 0
-        throw(ArgumentError("dims must be non-negative but got dims=$dims"))
+        throw(ArgumentError("dims must be non-negative but got dims=$dims."))
     end
     return dims
 end
