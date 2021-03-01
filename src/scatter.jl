@@ -56,7 +56,7 @@ corresponding to the index of `dst`. The value of `idx` can be `Int` or `Tuple` 
 function scatter!(op,
                   dst::AbstractArray{Tdst,Ndst},
                   src::AbstractArray{Tsrc,Nsrc},
-                  idx::AbstractArray{<:Integer,Nidx}) where {Tdst<:Real,Tsrc<:Real,Ndst,Nsrc,Nidx}
+                  idx::AbstractArray{<:Integer,Nidx}) where {Tdst,Tsrc,Ndst,Nsrc,Nidx}
     dims = _check_dims(Ndst, Nsrc, 1, Nidx)
     @boundscheck _check_output(idx, dst, src, dims)
     @boundscheck _check_input(idx, src)
@@ -67,7 +67,7 @@ end
 function scatter!(op,
                   dst::AbstractArray{Tdst,Ndst},
                   src::AbstractArray{Tsrc,Nsrc},
-                  idx::AbstractArray{NTuple{N,Int},Nidx}) where {Tdst<:Real,Tsrc<:Real,Ndst,Nsrc,N,Nidx}
+                  idx::AbstractArray{NTuple{N,Int},Nidx}) where {Tdst,Tsrc,Ndst,Nsrc,N,Nidx}
     dims = _check_dims(Ndst, Nsrc, N, Nidx)
     @boundscheck _check_output(idx, dst, src, dims)
     @boundscheck _check_input(idx, src)
@@ -76,7 +76,7 @@ function scatter!(op,
 end
 
 function scatter!(op, dst::AbstractArray{Tdst}, src::AbstractArray{Tsrc}, idx::AbstractArray{<:IntOrTuple},
-                  dims::Val{N}) where {Tdst<:Real,Tsrc<:Real,N}
+                  dims::Val{N}) where {Tdst,Tsrc,N}
     colons = Base.ntuple(_->Colon(), N)
     @simd for k in CartesianIndices(idx)
         dst_v = view(dst, colons..., idx[k]...)
@@ -107,7 +107,7 @@ corresponding to the index of `dst`. The value of `idx` can be `Int` or `Tuple` 
 function scatter!(op::typeof(mean),
                   dst::AbstractArray{Tdst,Ndst},
                   src::AbstractArray{Tsrc,Nsrc},
-                  idx::AbstractArray{<:Integer,Nidx}) where {Tdst<:Real,Tsrc<:Real,Ndst,Nsrc,Nidx}
+                  idx::AbstractArray{<:Integer,Nidx}) where {Tdst,Tsrc,Ndst,Nsrc,Nidx}
     Ns = scatter!(+, zero(dst), one.(src), idx)
     dst_ = scatter!(+, zero(dst), src, idx)
     dst .+= safe_div.(dst_, Ns)
@@ -117,7 +117,7 @@ end
 function scatter!(op::typeof(mean),
                   dst::AbstractArray{Tdst,Ndst},
                   src::AbstractArray{Tsrc,Nsrc},
-                  idx::AbstractArray{NTuple{N,Int},Nidx}) where {Tdst<:Real,Tsrc<:Real,Ndst,Nsrc,N,Nidx}
+                  idx::AbstractArray{NTuple{N,Int},Nidx}) where {Tdst,Tsrc,Ndst,Nsrc,N,Nidx}
     Ns = scatter!(+, zero(dst), one.(src), idx)
     dst_ = scatter!(+, zero(dst), src, idx)
     dst .+= safe_div.(dst_, Ns)
@@ -146,7 +146,7 @@ function scatter end
 for op in [+, -]
     @eval function scatter(op::typeof($op),
                            src::AbstractArray{T,Nsrc},
-                           idx::AbstractArray{<:IntOrTuple,Nidx}) where {T<:Real,Nsrc,Nidx}
+                           idx::AbstractArray{<:IntOrTuple,Nidx}) where {T,Nsrc,Nidx}
         dims = Nsrc - Nidx
         dst = zeros(T, size(src)[1:dims]..., maximum_dims(idx)...)
         scatter!(op, dst, src, idx)
@@ -156,7 +156,7 @@ end
 for op in [*, /]
     @eval function scatter(op::typeof($op),
                            src::AbstractArray{T,Nsrc},
-                           idx::AbstractArray{<:IntOrTuple,Nidx}) where {T<:Real,Nsrc,Nidx}
+                           idx::AbstractArray{<:IntOrTuple,Nidx}) where {T,Nsrc,Nidx}
         dims = Nsrc - Nidx
         dst = ones(T, size(src)[1:dims]..., maximum_dims(idx)...)
         scatter!(op, dst, src, idx)
@@ -165,7 +165,7 @@ end
 
 function scatter(op::typeof(max),
                  src::AbstractArray{T,Nsrc},
-                 idx::AbstractArray{<:IntOrTuple,Nidx}) where {T<:Real,Nsrc,Nidx}
+                 idx::AbstractArray{<:IntOrTuple,Nidx}) where {T,Nsrc,Nidx}
     dims = Nsrc - Nidx
     dst = fill(typemin(T), size(src)[1:dims]..., maximum_dims(idx)...)
     scatter!(op, dst, src, idx)
@@ -173,7 +173,7 @@ end
 
 function scatter(op::typeof(min),
                  src::AbstractArray{T,Nsrc},
-                 idx::AbstractArray{<:IntOrTuple,Nidx}) where {T<:Real,Nsrc,Nidx}
+                 idx::AbstractArray{<:IntOrTuple,Nidx}) where {T,Nsrc,Nidx}
     dims = Nsrc - Nidx
     dst = fill(typemax(T), size(src)[1:dims]..., maximum_dims(idx)...)
     scatter!(op, dst, src, idx)
@@ -181,7 +181,7 @@ end
 
 function scatter(op::typeof(mean),
                  src::AbstractArray{T,Nsrc},
-                 idx::AbstractArray{<:IntOrTuple,Nidx}) where {T<:Real,Nsrc,Nidx}
+                 idx::AbstractArray{<:IntOrTuple,Nidx}) where {T,Nsrc,Nidx}
     FT = float(T)
     dims = Nsrc - Nidx
     dst = zeros(FT, size(src)[1:dims]..., maximum_dims(idx)...)
