@@ -146,7 +146,9 @@ for op in [+, -]
                            src::AbstractArray{T,Nsrc},
                            idx::AbstractArray{<:IntOrTuple,Nidx}) where {T,Nsrc,Nidx}
         dims = Nsrc - Nidx
-        dst = zeros(T, size(src)[1:dims]..., maximum_dims(idx)...)
+        dstsize = (size(src)[1:dims]..., maximum_dims(idx)...)
+        dst = similar(src, T, dstsize)
+        fill!(dst, Base.reduce_empty(+, T))
         scatter!(op, dst, src, idx)
     end
 end
@@ -156,7 +158,9 @@ for op in [*, /]
                            src::AbstractArray{T,Nsrc},
                            idx::AbstractArray{<:IntOrTuple,Nidx}) where {T,Nsrc,Nidx}
         dims = Nsrc - Nidx
-        dst = ones(T, size(src)[1:dims]..., maximum_dims(idx)...)
+        dstsize = (size(src)[1:dims]..., maximum_dims(idx)...)
+        dst = similar(src, T, dstsize)
+        fill!(dst, Base.reduce_empty(*, T))
         scatter!(op, dst, src, idx)
     end
 end
@@ -165,7 +169,9 @@ function scatter(op::typeof(max),
                  src::AbstractArray{T,Nsrc},
                  idx::AbstractArray{<:IntOrTuple,Nidx}) where {T,Nsrc,Nidx}
     dims = Nsrc - Nidx
-    dst = fill(typemin(T), size(src)[1:dims]..., maximum_dims(idx)...)
+    dstsize = (size(src)[1:dims]..., maximum_dims(idx)...)
+    dst = similar(src, T, dstsize)
+    fill!(dst, typemin(T))
     scatter!(op, dst, src, idx)
 end
 
@@ -173,7 +179,9 @@ function scatter(op::typeof(min),
                  src::AbstractArray{T,Nsrc},
                  idx::AbstractArray{<:IntOrTuple,Nidx}) where {T,Nsrc,Nidx}
     dims = Nsrc - Nidx
-    dst = fill(typemax(T), size(src)[1:dims]..., maximum_dims(idx)...)
+    dstsize = (size(src)[1:dims]..., maximum_dims(idx)...)
+    dst = similar(src, T, dstsize)
+    fill!(dst, typemax(T))
     scatter!(op, dst, src, idx)
 end
 
@@ -182,6 +190,8 @@ function scatter(op::typeof(mean),
                  idx::AbstractArray{<:IntOrTuple,Nidx}) where {T,Nsrc,Nidx}
     FT = float(T)
     dims = Nsrc - Nidx
-    dst = zeros(FT, size(src)[1:dims]..., maximum_dims(idx)...)
+    dstsize = (size(src)[1:dims]..., maximum_dims(idx)...)
+    dst = similar(src, T, dstsize)
+    fill!(dst, Base.reduce_empty(+, FT))
     scatter!(op, dst, src, idx)
 end
