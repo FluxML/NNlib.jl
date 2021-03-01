@@ -1,14 +1,10 @@
 name: CI
+
 # env:
 #   JULIA_NUM_THREADS: 2
-on:
-  pull_request:
-    branches:
-      - master
-  push:
-    branches:
-      - master
-    tags: '*'
+
+on: [push, pull_request]
+
 jobs:
   test:
     name: Julia ${{ matrix.version }} - ${{ matrix.os }} - ${{ matrix.julia-threads }} thread(s) - ${{ github.event_name }} 
