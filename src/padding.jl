@@ -55,6 +55,7 @@ end
 
 gen_pad(pad::Int, dims, N) = gen_pad(ntuple(_ -> pad, length(dims)), dims, N)
 gen_pad(pad::Int, dims::Colon, N) = ntuple(_ -> pad, 2N)
+gen_pad(pad, dims::Colon, N) = gen_pad(pad, ntuple(identity, N), N)
 function gen_pad(pad::NTuple{P,Int}, dims::NTuple{D,Int}, N) where {D,P}
   if P == 2N
     return pad
@@ -68,8 +69,9 @@ function gen_pad(pad::NTuple{P,Int}, dims::NTuple{D,Int}, N) where {D,P}
   elseif P == 2D
     is = pad_idx(pad, dims, N)
     ps = zeros(Int, 2N)
-    for (i,x) in enumerate(is)
-      ps[collect(x)] .= pad[collect(x)]
+    for x in is
+      i = collect(x)
+      @views ps[i] .= pad[i]
     end
     ntuple(i -> ps[i], 2N)
   else
