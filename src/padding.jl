@@ -29,17 +29,24 @@ defaults to the first `ndims(x)-2` dimension
 See also [`pad_reflect`](@ref) and [`pad_repeat`](@ref).
 
 ```jldoctest
-julia> pad_constant(reshape(1:4, 2, 2), (1, 2, 3, 4), 8)
+
+julia> r = reshape(1:4, 2, 2)
+2×2 reshape(::UnitRange{Int64}, 2, 2) with eltype Int64:
+ 1  3
+ 2  4
+
+julia> pad_constant(r, (1, 2, 3, 4), 8)
 5×9 Matrix{Int64}:
  8  8  8  8  8  8  8  8  8
  8  8  8  1  3  8  8  8  8
  8  8  8  2  4  8  8  8  8
  8  8  8  8  8  8  8  8  8
  8  8  8  8  8  8  8  8  8
-````
+```
 """
-function pad_constant(x::AbstractArray, pad::NTuple{M,Int}, val = 0; 
-                    dims = 1:M÷2) where M
+function pad_constant(x::AbstractArray, pad::NTuple{M,Int},
+                      val = 0; 
+                      dims = 1:M÷2) where M
   length(dims) == M ÷ 2 ||
     throw(ArgumentError("The number of dims should be equal to the number of padding dimensions"))
   outsize, center = pad_outsize_and_center(size(x), pad, dims)
@@ -72,8 +79,9 @@ function pad_outsize_and_center(sz::NTuple{N,Int}, pad, dims) where {N}
   return outsize, center
 end
 
-function rrule(::typeof(pad_constant), x::AbstractArray, pad::NTuple{M,Int}, val=0; 
-              dims=1:M÷2) where M
+function rrule(::typeof(pad_constant), x::AbstractArray,
+               pad::NTuple{M,Int}, val=0; 
+               dims=1:M÷2) where M
   szx = size(x)
   y = pad_constant(x, pad, val; dims=dims)
   
@@ -106,7 +114,14 @@ defaults to the first `ndims(x)-2` dimensions
 See also [`pad_reflect`](@ref) and [`pad_constant`](@ref).
 
 ```jldoctest
-julia> pad_repeat(reshape(1:9, 3, 3), (1,2,3,4))
+
+julia> r = reshape(1:9, 3, 3)
+3×3 reshape(::UnitRange{Int64}, 3, 3) with eltype Int64:
+ 1  4  7
+ 2  5  8
+ 3  6  9
+
+julia> pad_repeat(r, (1,2,3,4))
 6×10 Matrix{Int64}:
  1  1  1  1  4  7  7  7  7  7
  1  1  1  1  4  7  7  7  7  7
@@ -162,7 +177,14 @@ defaults to the first `ndims(x)-2` dimensions
 See also [`pad_repeat`](@ref) and [`pad_constant`](@ref).
 
 ```jldoctest
-julia> pad_reflect(reshape(1:9, 3, 3), (1,2,1,2))
+
+julia> r = reshape(1:9, 3, 3)
+3×3 reshape(::UnitRange{Int64}, 3, 3) with eltype Int64:
+ 1  4  7
+ 2  5  8
+ 3  6  9
+
+julia> pad_reflect(r, (1,2,1,2))
 6×6 Matrix{Int64}:
  5  2  5  8  5  2
  4  1  4  7  4  1
@@ -173,7 +195,7 @@ julia> pad_reflect(reshape(1:9, 3, 3), (1,2,1,2))
 ```
 """
 function pad_reflect(x::AbstractArray, pad::NTuple{M,Int}; 
-                    dims=1:M÷2) where M
+                     dims=1:M÷2) where M
   length(dims) == M ÷ 2 ||
     throw(ArgumentError("The number of dims should be equal to the number of padding dimensions"))
   for (i, d) in enumerate(dims)
@@ -183,7 +205,7 @@ function pad_reflect(x::AbstractArray, pad::NTuple{M,Int};
 end
 
 function pad_reflect(x::AbstractArray{F,N}, pad::NTuple{2,Int}; 
-                    dims::Int = 1) where {F,N}
+                     dims::Int = 1) where {F,N}
   lpad, rpad = pad
   
   n = size(x, dims)
