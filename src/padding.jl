@@ -69,7 +69,7 @@ function gen_pad(pad::NTuple{P,Int}, dims::NTuple{D,Int}, N) where {D,P}
     is = pad_idx(pad, dims, N)
     ps = zeros(Int, 2N)
     for (i,x) in enumerate(is)
-      ps[collect(x)] .= pad[[i, i+1]]
+      ps[collect(x)] .= pad[collect(x)]
     end
     ntuple(i -> ps[i], 2N)
   else

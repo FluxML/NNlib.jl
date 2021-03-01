@@ -1,6 +1,17 @@
 @testset "padding constant" begin
   x = rand(2, 2, 2)  
-  
+
+  p = NNlib.gen_pad((1,2,3,4,5,6), (1,2,3), 4)
+  @test p == (1, 2, 3, 4, 5, 6, 0, 0)
+
+  @test_throws ArgumentError NNlib.gen_pad((1,2,3,4,5,), (1,2,3), 4)
+
+  p = NNlib.gen_pad((1,3), (1,3), 4)
+  @test (1, 1, 0, 0, 3, 3, 0, 0)
+
+  p = NNlib.gen_pad(1, (1,2,3), 4)
+  @test (1, 1, 1, 1, 1, 1, 0, 0)
+
   y = @inferred pad_constant(x, (3, 2, 4, 5))
   @test size(y) == (7, 11, 2)
   @test y[4:5, 5:6, :] ≈ x
