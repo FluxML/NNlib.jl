@@ -71,6 +71,8 @@ function gen_pad(pad::NTuple{P,Int}, dims::NTuple{D,Int}, N) where {D,P}
       ps[collect(x)] .= pad[[i, i+1]]
     end
     ntuple(i -> ps[i], 2N)
+  else
+    throw(ArgumentError("Passed padding $pad and dims $dims could not be parsed."))
   end
 end
 
