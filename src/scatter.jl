@@ -60,8 +60,7 @@ function scatter!(op,
     dims = _check_dims(Ndst, Nsrc, 1, Nidx)
     @boundscheck _check_output(idx, dst, src, dims)
     @boundscheck _check_input(idx, src)
-    T = promote_type(Tdst, Tsrc)
-    scatter!(op, T.(dst), src, idx, Val(dims))
+    scatter!(op, dst, src, idx, Val(dims))
 end
 
 function scatter!(op,
@@ -71,8 +70,7 @@ function scatter!(op,
     dims = _check_dims(Ndst, Nsrc, N, Nidx)
     @boundscheck _check_output(idx, dst, src, dims)
     @boundscheck _check_input(idx, src)
-    T = promote_type(Tdst, Tsrc)
-    scatter!(op, T.(dst), src, idx, Val(dims))
+    scatter!(op, dst, src, idx, Val(dims))
 end
 
 function scatter!(op, dst::AbstractArray{Tdst}, src::AbstractArray{Tsrc}, idx::AbstractArray{<:IntOrTuple},

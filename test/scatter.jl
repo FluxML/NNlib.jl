@@ -146,9 +146,9 @@ types = [UInt8, UInt16, UInt32, UInt64, UInt128,
             @testset "/" begin
                 for idx = values(idxs), dims = [0, 1]
                     mutated = true
-                    @test scatter!(/, T.(copy(dsts[dims])), T.(srcs[(dims, mutated)].*2), idx) == T.(res[(/, dims, mutated)])
-                    @test scatter!(/, T.(copy(dsts[dims])), srcs[(dims, mutated)].*2, idx) == PT.(res[(/, dims, mutated)])
-                    @test scatter!(/, copy(dsts[dims]), T.(srcs[(dims, mutated)].*2), idx) == PT.(res[(/, dims, mutated)])
+                    @test scatter!(/, T.(dsts[dims]), T.(srcs[(dims, mutated)].*2), idx) == T.(res[(/, dims, mutated)])
+                    @test scatter!(/, T.(dsts[dims]), srcs[(dims, mutated)].*2, idx) == PT.(res[(/, dims, mutated)])
+                    @test scatter!(/, T.(dsts[dims]), T.(srcs[(dims, mutated)].*2), idx) == PT.(res[(/, dims, mutated)])
 
                     mutated = false
                     @test scatter(/, T.(srcs[(dims, mutated)]), idx) == T.(res[(/, dims, mutated)])
@@ -158,8 +158,8 @@ types = [UInt8, UInt16, UInt32, UInt64, UInt128,
             @testset "mean" begin
                 for idx = values(idxs), dims = [0, 1]
                     mutated = true
-                    @test scatter!(mean, T.(copy(dsts[dims])), T.(srcs[(dims, mutated)]), idx) == T.(res[(mean, dims, mutated)])
-                    @test scatter!(mean, T.(copy(dsts[dims])), srcs[(dims, mutated)], idx) == PT.(res[(mean, dims, mutated)])
+                    @test scatter!(mean, T.(dsts[dims]), T.(srcs[(dims, mutated)]), idx) == T.(res[(mean, dims, mutated)])
+                    @test scatter!(mean, T.(dsts[dims]), srcs[(dims, mutated)], idx) == PT.(res[(mean, dims, mutated)])
                     @test scatter!(mean, copy(dsts[dims]), T.(srcs[(dims, mutated)]), idx) == PT.(res[(mean, dims, mutated)])
 
                     mutated = false
