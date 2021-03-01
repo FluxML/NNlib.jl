@@ -183,5 +183,5 @@ function scatter(op::typeof(mean),
     FT = float(T)
     dims = Nsrc - Nidx
     dst = zeros(FT, size(src)[1:dims]..., maximum_dims(idx)...)
-    scatter!(op, dst, FT.(src), idx)
+    scatter!(op, dst, src, idx)
 end
