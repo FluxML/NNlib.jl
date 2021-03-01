@@ -45,7 +45,7 @@ julia> pad_constant(r, (1, 2, 3, 4), 8)
 ```
 """
 pad_constant(x::AbstractArray{T,N}, pad::Int, val = 0; dims = :) where {T,N} =
-  pad_constant(x, ntuple(_ -> pad, 2N), val)
+  pad_constant(x, gen_pad(pad, dims, N), val)
 pad_constant(x::AbstractArray{T,N}, pad::Tuple, val = 0; dims = :) where {T,N} =
   pad_constant(x, gen_pad(pad, dims, N), val)
 
@@ -54,6 +54,7 @@ function pad_idx(pad, dims, N)
 end
 
 gen_pad(pad::Int, dims, N) = gen_pad(ntuple(_ -> pad, length(dims)), dims, N)
+gen_pad(pad::Int, dims::Colon, N) = ntuple(_ -> pad, 2N)
 function gen_pad(pad::NTuple{P,Int}, dims::NTuple{D,Int}, N) where {D,P}
   if P == 2N
     return pad
