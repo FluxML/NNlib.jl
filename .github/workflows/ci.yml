@@ -25,7 +25,7 @@ jobs:
         arch:
           - x64
         julia-threads:
-          - "1"
+          - '1'
 
         include:
           - os: windows-latest
@@ -45,7 +45,7 @@ jobs:
       - uses: actions/checkout@v2
       - uses: julia-actions/setup-julia@v1
         ## `allow-failure` not available yet https://github.com/actions/toolkit/issues/399
-        continue-on-error: ${{ matrix.julia-version == 'nightly' }}
+        #continue-on-error: ${{ matrix.julia-version == 'nightly' }}
         with:
           version: ${{ matrix.version }}
           arch: ${{ matrix.arch }}
@@ -64,25 +64,33 @@ jobs:
         # continue-on-error: ${{ matrix.julia-version == 'nightly' }}
       - uses: julia-actions/julia-runtest@v1
         # continue-on-error: ${{ matrix.julia-version == 'nightly' }}
+      - uses: julia-actions/julia-processcoverage@v1
+        # continue-on-error: ${{ matrix.julia-version == 'nightly' }}
       - uses: codecov/codecov-action@v1
         # continue-on-error: ${{ matrix.version == 'nightly' }}
         with:
           file: lcov.info
 
-  # docs:
-  #   name: Documentation
-  #   runs-on: ubuntu-latest
-  #   steps:
-  #     - uses: actions/checkout@v2
-  #     - uses: julia-actions/setup-julia@v1
-  #       with:
-  #         version: '1'
-  #     - run: |
-  #         julia --project=docs -e '
-  #           using Pkg
-  #           Pkg.develop(PackageSpec(path=pwd()))
-  #           Pkg.instantiate()'
-  #     - run: julia --project=docs docs/make.jl
-  #       env:
-  #         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-  #         DOCUMENTER_KEY: ${{ secrets.DOCUMENTER_KEY }}
+  docs:
+    name: Documentation
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - uses: julia-actions/setup-julia@v1
+        with:
+          version: '1'
+      - run: |
+          julia --project=docs -e '
+            using Pkg
+            Pkg.develop(PackageSpec(path=pwd()))
+            Pkg.instantiate()'
+      - run: |
+          julia --project=docs -e '
+            using Documenter: DocMeta, doctest
+            using NNlib
+            DocMeta.setdocmeta!(NNlib, :DocTestSetup, :(using NNlib); recursive=true)
+            doctest(NNlib)'
+      - run: julia --project=docs docs/make.jl
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          DOCUMENTER_KEY: ${{ secrets.DOCUMENTER_KEY }}
