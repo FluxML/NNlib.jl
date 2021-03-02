@@ -20,19 +20,8 @@ function _check_dims(Ndst, Nsrc, N, Nidx)
     return dims
 end
 
-_check_input(idx::AbstractArray{<:Integer}, arr) = checkbounds(arr, minimum(idx):maximum(idx))
-
-function _check_input(idx::AbstractArray{<:Tuple}, arr)
-    pairs = map(xs -> Base.OneTo(maximum(xs)), zip(idx...))
-    checkbounds(arr, pairs...)
-end
-
-function _check_output(idx::AbstractArray{<:IntOrTuple}, arr, src, dims)
-    pre_dims = axes(src)[1:dims]
-    post_dims = Base.OneTo.(maximum_dims(idx))
-    checkbounds(arr, pre_dims..., post_dims...)
-end
-
+typelength(::Type{<:Number}) = 1
+typelength(::Type{<:NTuple{M}}) where M = M
 
 """
     scatter!(op, dst, src, idx)
@@ -56,20 +45,9 @@ corresponding to the index of `dst`. The value of `idx` can be `Int` or `Tuple` 
 function scatter!(op,
                   dst::AbstractArray{Tdst,Ndst},
                   src::AbstractArray{Tsrc,Nsrc},
-                  idx::AbstractArray{<:Integer,Nidx}) where {Tdst,Tsrc,Ndst,Nsrc,Nidx}
-    dims = _check_dims(Ndst, Nsrc, 1, Nidx)
-    _check_output(idx, dst, src, dims)
-    _check_input(idx, src)
-    scatter!(op, dst, src, idx, Val(dims))
-end
-
-function scatter!(op,
-                  dst::AbstractArray{Tdst,Ndst},
-                  src::AbstractArray{Tsrc,Nsrc},
-                  idx::AbstractArray{NTuple{N,Int},Nidx}) where {Tdst,Tsrc,Ndst,Nsrc,N,Nidx}
-    dims = _check_dims(Ndst, Nsrc, N, Nidx)
-    _check_output(idx, dst, src, dims)
-    _check_input(idx, src)
+                  idx::AbstractArray{Tidx,Nidx}) where {Tdst,Tsrc,Tidx<:IntOrTuple,Ndst,Nsrc,Nidx}
+    M = typelength(Tidx)
+    dims = _check_dims(Ndst, Nsrc, M, Nidx)
     scatter!(op, dst, src, idx, Val(dims))
 end
 
@@ -105,17 +83,7 @@ corresponding to the index of `dst`. The value of `idx` can be `Int` or `Tuple` 
 function scatter!(op::typeof(mean),
                   dst::AbstractArray{Tdst,Ndst},
                   src::AbstractArray{Tsrc,Nsrc},
-                  idx::AbstractArray{<:Integer,Nidx}) where {Tdst,Tsrc,Ndst,Nsrc,Nidx}
-    Ns = scatter!(+, zero(dst), one.(src), idx)
-    dst_ = scatter!(+, zero(dst), src, idx)
-    dst .+= safe_div.(dst_, Ns)
-    return dst
-end
-
-function scatter!(op::typeof(mean),
-                  dst::AbstractArray{Tdst,Ndst},
-                  src::AbstractArray{Tsrc,Nsrc},
-                  idx::AbstractArray{NTuple{N,Int},Nidx}) where {Tdst,Tsrc,Ndst,Nsrc,N,Nidx}
+                  idx::AbstractArray{<:IntOrTuple,Nidx}) where {Tdst,Tsrc,Ndst,Nsrc,Nidx}
     Ns = scatter!(+, zero(dst), one.(src), idx)
     dst_ = scatter!(+, zero(dst), src, idx)
     dst .+= safe_div.(dst_, Ns)
