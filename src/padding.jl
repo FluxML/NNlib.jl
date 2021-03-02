@@ -53,29 +53,46 @@ function pad_idx(pad, dims, N)
   is = zip( (2 .* dims) .- 1, (2 .* dims))
 end
 
+@inline tuplejoin(x) = x
+@inline tuplejoin(x, y) = (x..., y...)
+@inline tuplejoin(x, y, z...) = tuplejoin(tuplejoin(x, y), z...)
+
+function pad_zeros_tuple(pad::NTuple{L,Int}, N) where L
+  ntuple(2N) do i
+    if i <= L
+      pad[i]
+    else
+      0
+    end
+  end
+end
+
 gen_pad(pad::Int, dims, N) = gen_pad(ntuple(_ -> pad, length(dims)), dims, N)
 gen_pad(pad::Int, dims::Colon, N) = ntuple(_ -> pad, 2N)
 gen_pad(pad, dims::Colon, N) = gen_pad(pad, ntuple(identity, N), N)
 function gen_pad(pad::NTuple{P,Int}, dims::NTuple{D,Int}, N) where {D,P}
   if P == 2N
     return pad
-  elseif P == D
-    is = pad_idx(pad, dims, N)
-    ps = zeros(Int, 2N)
-    for (p,i) in zip(pad, is)
-      ps[collect(i)] .= p
-    end
-    ntuple(i -> ps[i], 2N)
-  elseif P == 2D
-    is = pad_idx(pad, dims, N)
-    ps = zeros(Int, 2N)
-    for x in is
-      i = collect(x)
-      @views ps[i] .= pad[i]
-    end
-    ntuple(i -> ps[i], 2N)
+  # elseif P == D
+  #   is = pad_idx(pad, dims, N)
+  #   ps = zeros(Int, 2N)
+  #   for (p,i) in zip(pad, is)
+  #     ps[collect(i)] .= p
+  #   end
+  #   ntuple(i -> ps[i], 2N)
+  # elseif P == 2D
+  #   is = pad_idx(pad, dims, N)
+  #   ps = zeros(Int32, 2N)
+  #   for (i,x) in zip(Iterators.partition(1:P, 2), is)
+  #     # @show pad
+  #     # x = collect(x)
+  #     # @show x, i
+  #     @views ps[collect(x)] .= pad[i]
+  #   end
+  #   ntuple(i -> ps[i], 2N)
   else
-    throw(ArgumentError("Passed padding $pad and dims $dims could not be parsed."))
+    pad_zeros_tuple(pad, N)
+    # throw(ArgumentError("Passed padding $pad and dims $dims could not be parsed."))
   end
 end
 
