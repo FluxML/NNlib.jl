@@ -53,7 +53,7 @@ end
 
 function scatter!(op, dst::AbstractArray{Tdst}, src::AbstractArray{Tsrc}, idx::AbstractArray{<:IntOrTuple},
                   dims::Val{N}) where {Tdst,Tsrc,N}
-    colons = Base.ntuple(_->Colon(), N)
+    colons = Base.ntuple(_->Colon(), dims)
     for k in CartesianIndices(idx)
         dst_v = view(dst, colons..., idx[k]...)
         src_v = view(src, colons..., k)
