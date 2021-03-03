@@ -71,7 +71,7 @@ gen_pad(pad::Int, dims, N) = gen_pad(ntuple(_ -> pad, length(dims)), dims, N)
 gen_pad(pad::Int, dims::Colon, N) = ntuple(_ -> pad, 2N)
 gen_pad(pad, dims::Colon, N) = gen_pad(pad, ntuple(identity, N), N)
 function gen_pad(pad::NTuple{L,Int}, dims::NTuple{D,Int}, N) where {L,D}
-  ntuple(Val(N)) do d
+  ntuple(N) do d
    if d in dims
      if L == D
        ix = findfirst(==(d), dims)
@@ -91,10 +91,10 @@ end
 
 
 # Expects length(pad) == 2M
-function pad_constant(x::AbstractArray{T,M}, pad::NTuple{N,Int}, val = 0) where {T,M,N}
-  p = pad_zeros_tuple(pad, M)
+function pad_constant(x::AbstractArray{T,M}, pad::NTuple{N,Tuple{Int,Int}}, val = 0) where {T,M,N}
+  # p = pad_zeros_tuple(pad, M)
   # @show pad
-  # p = tuplejoin(pad...)
+  p = pad_zeros_tuple(tuplejoin(pad...), M)
   sz, c = size_and_center(x, p)
   res = fill!(similar(x, sz...), val)
   res[c..., ntuple(_ -> Colon(), Val(M - 2))...] = x
