@@ -7,7 +7,7 @@ export pad_constant, pad_repeat, pad_reflect, pad_zeros
 Pad the array `x` with zeros.
 Equivalent to [`pad_constant`](@ref) with the constant equal to 0. 
 """
-pad_zeros(x::AbstractArray, pad::NTuple{M,Int}; dims = 1:M÷2) where M =
+pad_zeros(x::AbstractArray, pad::NTuple{M,Int}; dims = :) where M =
   pad_constant(x, pad, 0; dims = dims)
 
 """
@@ -111,13 +111,13 @@ function size_and_center(x, pad::NTuple{N,Int}) where N
 end
 
 function rrule(::typeof(pad_constant), x::AbstractArray,
-               pad::NTuple{M,Int}, val = 0; 
-               dims = 1:M÷2) where M
+               pad::NTuple{M,Tuple{Int,Int}}, val = 0; 
+               dims = :) where M
   szx = size(x)
-  y = pad_constant(x, pad, val; dims=dims)
+  y = pad_constant(x, pad, val; dims = dims)
   
   function pad_constant_pullback(Δ)
-    outsize, center = pad_outsize_and_center(szx, pad, dims)
+    outsize, center = size_and_center(x, pad)
     (NO_FIELDS, @thunk(Δ[center...]), DoesNotExist(),
      @thunk(sum(Δ) - sum(Δ[center...])),)
   end
