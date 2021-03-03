@@ -27,20 +27,22 @@ typelength(::Type{<:NTuple{M}}) where M = M
     scatter!(op, dst, src, idx)
 
 Scatter operation, which scatters data in `src` and assigns to `dst` according to `idx`.
-With the data going to the same place, specified operation is applied on to reduce data.
-For each index `k` in `idx`, accumulate values in `dst` according to
+With the data going to the same place, specified aggregate operation is applied on to reduce
+data. For each index `k` in `idx`, accumulate values in `dst` according to
 
-    dst[idx[k]...] = (op).(dst[idx[k]...], src[k...])
+    dst[:, ..., idx[k]...] = (op).(dst[:, ..., idx[k]...], src[:, ..., k...])
 
 # Arguments
-- `op`: operations to be applied on `dst` and `src`, e.g. `+`, `-`, `*`, `/`, `max` and `min`.
+- `op`: operations to be applied on `dst` and `src`, e.g. `+`, `-`, `*`, `/`, `max`, `min`
+and `mean`.
 - `dst`: the destination for `src` to aggregate to. This argument will be mutated.
 - `src`: the source data for aggregating.
 - `idx`: the mapping for aggregation from source (index) to destination (value).
-The index of `idx` is corresponding to the index of `src` and the value of `idx` is
-corresponding to the index of `dst`. The value of `idx` can be `Int` or `Tuple` type.
-
-    dst[:, ..., idx[k]...] = (op).(dst[:, ..., idx[k]...], src[:, ..., k...])
+The index of `idx` is corresponding to the index of `src` and the dimensions of `idx` must
+aligned with the last few dimensions of `src`. The value of `idx` is corresponding to the
+index of `dst` and the value of `idx` must indicate the last few dimensions of `dst`.
+Once the dimensions match, arrays are aligned automatically. The value of `idx` can be
+`Int` or `Tuple` type.
 """
 function scatter!(op,
                   dst::AbstractArray{Tdst,Ndst},
@@ -62,24 +64,6 @@ function scatter!(op, dst::AbstractArray{Tdst}, src::AbstractArray{Tsrc}, idx::A
     dst
 end
 
-"""
-    scatter!(mean, dst, src, idx)
-
-Scatter mean operation, which scatters data in `src` and assigns to `dst` according to `idx`.
-With the data going to the same place, mean is applied on to reduce data.
-For each index `k` in `idx`, accumulate values in `dst` according to
-
-    dst[idx[k]...] = dst[idx[k]...] + mean.(src[k...])
-
-# Arguments
-- `dst`: the destination for `src` to aggregate to. This argument will be mutated.
-- `src`: the source data for aggregating.
-- `idx`: the mapping for aggregation from source (index) to destination (value).
-The index of `idx` is corresponding to the index of `src` and the value of `idx` is
-corresponding to the index of `dst`. The value of `idx` can be `Int` or `Tuple` type.
-
-    dst[:, ..., idx[k]...] = (op).(dst[:, ..., idx[k]...], src[:, ..., k...])
-"""
 function scatter!(op::typeof(mean),
                   dst::AbstractArray{Tdst,Ndst},
                   src::AbstractArray{Tsrc,Nsrc},
@@ -98,7 +82,7 @@ Scatter operation, which applies specified operation on `src` according to `idx`
 and gives an new array `dst`.
 For each index `k` in `idx`, accumulate values in `dst` according to
 
-    dst[idx[k]...] = (op).(src[k...])
+    dst[:, ..., idx[k]...] = (op).(src[:, ..., k...])
 
 # Arguments
 - `op`: operations to be applied on `dst` and `src`, e.g. `+`, `-`, `*`, `/`, `max` and `min`.
