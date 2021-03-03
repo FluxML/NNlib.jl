@@ -21,7 +21,7 @@
   @test pad_constant(x, (3, 2, 4)) ≈ pad_zeros(x, (3, 2, 4))
   @test pad_zeros(x, 2) ≈ pad_zeros(x, (2,2)) 
   
-  y = pad_constant(x, (3, 2, 4, 5), 1.2, dims=(1,3))
+  y = pad_constant(x, (3, 2, 4, 5), 1.2, dims = (1,3))
   @test size(y) == (7, 2, 11)
   @test y[3:4, 1:2, 6:7] ≈ x
   y[3:4, 1:2, 6:7] .= 1.2

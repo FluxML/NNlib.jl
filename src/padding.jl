@@ -7,7 +7,7 @@ export pad_constant, pad_repeat, pad_reflect, pad_zeros
 Pad the array `x` with zeros.
 Equivalent to [`pad_constant`](@ref) with the constant equal to 0. 
 """
-pad_zeros(x::AbstractArray, pad::NTuple{M,Int}; dims = :) where M =
+pad_zeros(x::AbstractArray, pad; dims = :) where M =
   pad_constant(x, pad, 0; dims = dims)
 
 """
@@ -86,14 +86,12 @@ function gen_pad(pad::NTuple{L,Int}, dims::NTuple{D,Int}, N) where {L,D}
      (0,0)
    end
 
-  end # |> x -> tuplejoin(x...)
+  end
 end
 
 
 # Expects length(pad) == 2M
 function pad_constant(x::AbstractArray{T,M}, pad::NTuple{N,Tuple{Int,Int}}, val = 0) where {T,M,N}
-  # p = pad_zeros_tuple(pad, M)
-  # @show pad
   p = pad_zeros_tuple(tuplejoin(pad...), M)
   sz, c = size_and_center(x, p)
   res = fill!(similar(x, sz...), val)
@@ -101,7 +99,6 @@ function pad_constant(x::AbstractArray{T,M}, pad::NTuple{N,Tuple{Int,Int}}, val 
   res
 end
 
-# pad = (l, r, t, b)
 function size_and_center(x, pad::NTuple{N,Int}) where N
   ds = 1:2:N
   dst = ntuple(i -> ds[i], N÷2)
@@ -110,18 +107,14 @@ function size_and_center(x, pad::NTuple{N,Int}) where N
   sz, center
 end
 
-function rrule(::typeof(pad_constant), x::AbstractArray,
-               pad::NTuple{M,Tuple{Int,Int}}, val = 0; 
-               dims = :) where M
-  szx = size(x)
+function rrule(::typeof(pad_constant), x::AbstractArray{T,N},
+               pad, val; dims = :) where {T,N}
   y = pad_constant(x, pad, val; dims = dims)
-  
   function pad_constant_pullback(Δ)
-    outsize, center = size_and_center(x, pad)
-    (NO_FIELDS, @thunk(Δ[center...]), DoesNotExist(),
-     @thunk(sum(Δ) - sum(Δ[center...])),)
+    p = gen_pad(pad, dims, N)
+    outsize, center = size_and_center(x, p)
+    (NO_FIELDS, @thunk(Δ[center...]), DoesNotExist(), DoesNotExist(),)
   end
-  
   return y, pad_constant_pullback
 end
 
@@ -253,5 +246,3 @@ pad_repeat(x::AbstractArray{F,N}, pad::Int; dims=1:N-2) where {F,N} =
   pad_repeat(x, ntuple(_ -> pad, 2length(dims)); dims = dims)
 pad_reflect(x::AbstractArray{F,N}, pad::Int; dims=1:N-2) where {F,N} =
   pad_reflect(x, ntuple(_ -> pad, 2length(dims)); dims = dims)
-pad_zeros(x::AbstractArray{F,N}, pad::Int; dims=1:N-2) where {F,N} =
-  pad_zeros(x, ntuple(_ -> pad, 2length(dims)); dims = dims)
