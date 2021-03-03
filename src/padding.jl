@@ -70,37 +70,34 @@ end
 gen_pad(pad::Int, dims, N) = gen_pad(ntuple(_ -> pad, length(dims)), dims, N)
 gen_pad(pad::Int, dims::Colon, N) = ntuple(_ -> pad, 2N)
 gen_pad(pad, dims::Colon, N) = gen_pad(pad, ntuple(identity, N), N)
-function gen_pad(pad::NTuple{P,Int}, dims::NTuple{D,Int}, N) where {D,P}
-  if P == 2N
-    return pad
-  # elseif P == D
-  #   is = pad_idx(pad, dims, N)
-  #   ps = zeros(Int, 2N)
-  #   for (p,i) in zip(pad, is)
-  #     ps[collect(i)] .= p
-  #   end
-  #   ntuple(i -> ps[i], 2N)
-  # elseif P == 2D
-  #   is = pad_idx(pad, dims, N)
-  #   ps = zeros(Int32, 2N)
-  #   for (i,x) in zip(Iterators.partition(1:P, 2), is)
-  #     # @show pad
-  #     # x = collect(x)
-  #     # @show x, i
-  #     @views ps[collect(x)] .= pad[i]
-  #   end
-  #   ntuple(i -> ps[i], 2N)
-  else
-    pad_zeros_tuple(pad, N)
-    # throw(ArgumentError("Passed padding $pad and dims $dims could not be parsed."))
-  end
+function gen_pad(pad::NTuple{L,Int}, dims::NTuple{D,Int}, N) where {L,D}
+  ntuple(Val(N)) do d
+   if d in dims
+     if L == D
+       ix = findfirst(==(d), dims)
+       (pad[ix], pad[ix])
+     elseif L == 2D
+       ix = findfirst(==(d), dims)
+       (pad[2ix - 1], pad[2ix])
+     else
+       throw(ArgumentError("Could not parse padding $pad and dims $dims"))
+     end
+   else
+     (0,0)
+   end
+
+  end # |> x -> tuplejoin(x...)
 end
 
+
 # Expects length(pad) == 2M
-function pad_constant(x::AbstractArray{T,M}, pad::NTuple{N,Int}, val = 0) where {T,M, N}
-  sz, c = size_and_center(x, pad)
+function pad_constant(x::AbstractArray{T,M}, pad::NTuple{N,Int}, val = 0) where {T,M,N}
+  p = pad_zeros_tuple(pad, M)
+  # @show pad
+  # p = tuplejoin(pad...)
+  sz, c = size_and_center(x, p)
   res = fill!(similar(x, sz...), val)
-  res[c..., ntuple(_ -> Colon(), M - 2)...] = x
+  res[c..., ntuple(_ -> Colon(), Val(M - 2))...] = x
   res
 end
 
