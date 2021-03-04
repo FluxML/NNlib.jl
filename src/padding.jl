@@ -7,7 +7,7 @@ export pad_constant, pad_repeat, pad_reflect, pad_zeros
 Pad the array `x` with zeros.
 Equivalent to [`pad_constant`](@ref) with the constant equal to 0. 
 """
-pad_zeros(x::AbstractArray, pad; dims = :) where M =
+pad_zeros(x::AbstractArray, pad; dims = :) =
   pad_constant(x, pad, 0; dims = dims)
 
 """
@@ -180,7 +180,6 @@ function pad_repeat(x::AbstractArray{F,N}, pad::NTuple{2,Int};
 
   return cat(xl, x, xr, dims = dims)
 end
-
 
 """
     pad_reflect(x, pad::Tuple; [dims])
