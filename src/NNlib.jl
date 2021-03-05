@@ -7,7 +7,7 @@ import ChainRulesCore: rrule
 using Base.Broadcast: broadcasted
 using Statistics: mean
 
-const IntOrIntTuple = Union{Integer, NTuple{N,Integer} where N}
+const IntOrIntTuple = Union{Integer, NTuple{N,<:Integer} where N}
 const Numeric = Union{AbstractArray{<:T}, T} where {T<:Number}
 
 # Include APIs
