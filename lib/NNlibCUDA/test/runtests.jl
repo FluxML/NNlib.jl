@@ -13,6 +13,8 @@ gpuarrays_root = dirname(dirname(gpuarrays))
 include(joinpath(gpuarrays_root, "test", "testsuite.jl"))
 testf(f, xs...; kwargs...) = TestSuite.compare(f, CuArray, xs...; kwargs...)
 
-include("batchedmul.jl")
-include("upsample.jl")
-include("activations.jl")
+if CUDA.has_cuda()
+    include("activations.jl")
+    include("batchedmul.jl")
+    include("upsample.jl")
+end
