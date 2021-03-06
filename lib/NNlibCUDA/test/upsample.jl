@@ -23,4 +23,14 @@
     o = CUDA.ones(Float32,6,4,2,1)
     grad_true = 6*CUDA.ones(Float32,2,2,2,1)
     @test @allowscalar ∇upsample_bilinear(o; size=(2,2)) ≈ grad_true
+
+    y = upsample_bilinear(x |> cu, (3, 2))
+    @test y isa CuArray
+    @test Array(y) ≈ y_true
+    g_gpu = Zygote.gradient(x -> sum(sin.(upsample_bilinear(x, (3, 2))))
+                            , x |> cu)[1]
+    @test g_gpu isa CuArray
+    g_cpu = Zygote.gradient(x -> sum(sin.(upsample_bilinear(x, (3, 2))))
+                            , x)[1]
+    @test Array(g_cpu) ≈ g_cpu  atol=1e-4
 end

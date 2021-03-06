@@ -1,4 +1,8 @@
 # Activation functions
+
+# Some of activation functions need a wrapper for GPU support
+# https://github.com/JuliaGPU/CuArrays.jl/issues/614
+
 @cufunc softplus(x::Real) = ifelse(x > 0, x + log1p(exp(-x)), log1p(exp(x)))
 
 @cufunc logσ(x::Real) = -softplus(-x)

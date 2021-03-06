@@ -63,20 +63,6 @@ end
 
     @test eltype(y) == UInt8
     @test y == y_true_int
-
-    # this test can be performed again, as soon as the corresponding CUDA functionality is merged
-
-    # if CUDA.has_cuda()
-    #     y = upsample_bilinear(x |> cu, (3, 2))
-    #     @test y isa CuArray
-    #     @test Array(y) ≈ y_true
-    #     g_gpu = Zygote.gradient(x -> sum(sin.(upsample_bilinear(x, (3, 2))))
-    #                             , x |> cu)[1]
-    #     @test g_gpu isa CuArray
-    #     g_cpu = Zygote.gradient(x -> sum(sin.(upsample_bilinear(x, (3, 2))))
-    #                             , x)[1]
-    #     @test Array(g_cpu) ≈ g_cpu  atol=1e-4
-    # end
 end
 
 @testset "pixel_shuffle" begin
