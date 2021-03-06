@@ -1,3 +1,3 @@
-# NNlibCUDA.jl
+# NNlibCUDA
 
 CUDA compatibility for NNlib.jl.
