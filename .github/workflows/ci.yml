@@ -72,35 +72,35 @@ jobs:
         with:
           file: lcov.info
 
-  docs:
-    name: Documentation
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v2
-      - uses: julia-actions/setup-julia@v1
-        with:
-          version: '1'
-      - run: julia --project=docs .ci/develop.jl
-      - run: julia --project=docs docs/make.jl
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          DOCUMENTER_KEY: ${{ secrets.DOCUMENTER_KEY }}
+  # docs:
+  #   name: Documentation
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #     - uses: actions/checkout@v2
+  #     - uses: julia-actions/setup-julia@v1
+  #       with:
+  #         version: '1'
+  #     - run: julia --project=docs .ci/develop.jl
+  #     - run: julia --project=docs docs/make.jl
+  #       env:
+  #         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+  #         DOCUMENTER_KEY: ${{ secrets.DOCUMENTER_KEY }}
   
-  doctests:
-    name: Doctests
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v2
-      - uses: julia-actions/setup-julia@v1
-        with:
-          version: 'nightly'
-      - run: julia --project=docs .ci/develop.jl
-      - run: |
-          julia --project=docs -e '
-            using Documenter: doctest
-            using NNlib
-            using NNlibCUDA
-            DocMeta.setdocmeta!(NNlib, :DocTestSetup, :(using NNlib); recursive=true)
-            DocMeta.setdocmeta!(NNlibCUDA, :DocTestSetup, :(using NNlib, CUDA); recursive=true)
-            doctest(NNlib)
-            doctest(NNlibCUDA)'
+  # doctests:
+  #   name: Doctests
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #     - uses: actions/checkout@v2
+  #     - uses: julia-actions/setup-julia@v1
+  #       with:
+  #         version: 'nightly'
+  #     - run: julia --project=docs .ci/develop.jl
+  #     - run: |
+  #         julia --project=docs -e '
+  #           using Documenter: doctest
+  #           using NNlib
+  #           using NNlibCUDA
+  #           DocMeta.setdocmeta!(NNlib, :DocTestSetup, :(using NNlib); recursive=true)
+  #           DocMeta.setdocmeta!(NNlibCUDA, :DocTestSetup, :(using NNlib, CUDA); recursive=true)
+  #           doctest(NNlib)
+  #           doctest(NNlibCUDA)'
