@@ -15,11 +15,8 @@ NNlib = "0.7"
 julia = "1.5"
 
 [extras]
-Adapt = "79e6a3ab-5dfb-504d-930d-738a2a938a0e"
-FillArrays = "1a297f60-69ca-5386-bcde-b61e274b549b"
-GPUArrays = "0c68f7d7-f131-5f86-a1c3-88cf8149b2d7"
 Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
 Zygote = "e88e6eb3-aa80-5325-afca-941959d7151f"
 
 [targets]
-test = ["Adapt", "FillArrays", "GPUArrays", "Test", "Zygote"]
+test = ["Test", "Zygote"]

@@ -2,7 +2,7 @@
     x = Float32[1 2; 3 4][:,:,:,:]
     x = cat(x,x; dims=3)
     x = cat(x,x; dims=4)
-    x = cu(x)
+    xgpu = cu(x)
   
     y_true = Float32[ 1//1  4//3   5//3   2//1;
             7//5 26//15 31//15 12//5;
@@ -12,25 +12,18 @@
             3//1 10//3  11//3   4//1]
     y_true = cat(y_true,y_true; dims=3)
     y_true = cat(y_true,y_true; dims=4)
-    y_true = cu(y_true)
+    y_true_gpu = cu(y_true)
   
-    @allowscalar y = upsample_bilinear(x, (3,2))
-  
-    @test size(y) == size(y_true)
-    @test eltype(y) == Float32
-    @test y ≈ y_true
-  
-    o = CUDA.ones(Float32,6,4,2,1)
-    grad_true = 6*CUDA.ones(Float32,2,2,2,1)
-    @test @allowscalar ∇upsample_bilinear(o; size=(2,2)) ≈ grad_true
+    @allowscalar begin
+        y = upsample_bilinear(xgpu, (3,2))
+        @test size(y) == size(y_true_gpu)
+        @test eltype(y) == Float32
+        @test collect(y) ≈ collect(y_true_gpu)
+    
+        o = CUDA.ones(Float32,6,4,2,1)
+        grad_true = 6*CUDA.ones(Float32,2,2,2,1)
+        @test @allowscalar ∇upsample_bilinear(o; size=(2,2)) ≈ grad_true
 
-    y = upsample_bilinear(x |> cu, (3, 2))
-    @test y isa CuArray
-    @test Array(y) ≈ y_true
-    g_gpu = Zygote.gradient(x -> sum(sin.(upsample_bilinear(x, (3, 2))))
-                            , x |> cu)[1]
-    @test g_gpu isa CuArray
-    g_cpu = Zygote.gradient(x -> sum(sin.(upsample_bilinear(x, (3, 2))))
-                            , x)[1]
-    @test Array(g_cpu) ≈ g_cpu  atol=1e-4
+        gputest(x -> upsample_bilinear(x, (3, 2)), x)
+    end
 end
