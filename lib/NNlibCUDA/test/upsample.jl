@@ -14,16 +14,14 @@
     y_true = cat(y_true,y_true; dims=4)
     y_true_gpu = cu(y_true)
   
-    @allowscalar begin
-        y = upsample_bilinear(xgpu, (3,2))
-        @test size(y) == size(y_true_gpu)
-        @test eltype(y) == Float32
-        @test collect(y) ≈ collect(y_true_gpu)
-    
-        o = CUDA.ones(Float32,6,4,2,1)
-        grad_true = 6*CUDA.ones(Float32,2,2,2,1)
-        @test @allowscalar ∇upsample_bilinear(o; size=(2,2)) ≈ grad_true
+    y = upsample_bilinear(xgpu, (3,2))
+    @test size(y) == size(y_true_gpu)
+    @test eltype(y) == Float32
+    @test collect(y) ≈ collect(y_true_gpu)
 
-        gputest(x -> upsample_bilinear(x, (3, 2)), x)
-    end
+    o = CUDA.ones(Float32,6,4,2,1)
+    grad_true = 6*CUDA.ones(Float32,2,2,2,1)
+    @test ∇upsample_bilinear(o; size=(2,2)) ≈ grad_true
+
+    gputest(x -> upsample_bilinear(x, (3, 2)), x, atol=1e-5)
 end
