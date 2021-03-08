@@ -1,11 +1,9 @@
 name: CI
 
-on:
-  push:
-    branches:
-      - master
-    tags: '*'
-  pull_request:
+# env:
+#   JULIA_NUM_THREADS: 2
+
+on: [push, pull_request]
 
 jobs:
   test:
