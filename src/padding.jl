@@ -16,9 +16,11 @@ pad_zeros(x::AbstractArray, pad; dims = :) =
 
 Pad the array `x` with the constant value `val`.
 
-`pad` can take a tuple of length equal or double the length of
-`dims`. In case of equal length, it applies uniform padding on both sides
-and for length `2*length(dims)` the padding is applied assymetrically.
+`pad` can be a tuple of integers `(l1, r1, ..., ln, rn)`
+of some length `2n` that specifies the left and right padding size
+for each of the dimensions in `dims`. 
+If supplied with a tuple of length `n`  instead, it applies symmetric padding.
+If `dims` is not given, it defaults to all dimensions.
 
 By default, padding is applied to every dimension.
 
