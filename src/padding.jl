@@ -48,7 +48,6 @@ julia> pad_constant(r, 1, 8)
  8  1  3  8
  8  2  4  8
  8  8  8  8
-```
 
 julia> r = reshape(1:27, 3, 3, 3)
 3×3×3 reshape(::UnitRange{Int64}, 3, 3, 3) with eltype Int64:
@@ -97,6 +96,7 @@ julia> pad_constant(r, (2,1, 3), dims = (1,2)) # padding must always be either t
 ERROR: ArgumentError: Could not parse padding (2, 1, 3) and dims (1, 2)
 Stacktrace:
 [...]
+```
 """
 pad_constant(x::AbstractArray{T,N}, pad::Int, val = 0; dims = :) where {T,N} =
   pad_constant(x, gen_pad(pad, dims isa Colon ? dims : (dims...,), N), val)
