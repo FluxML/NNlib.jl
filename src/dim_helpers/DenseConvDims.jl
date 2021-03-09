@@ -30,8 +30,8 @@ function DenseConvDims(x_size::NTuple{M}, w_size::NTuple{M};
     end
 
     # Ensure groups are valid
-    if x[end-1] % groups != 0
-        throw(DimensionMismatch("Group count should be divisble by input channels ($groups vs. $(x[end-1]))"))
+    if w_size[end-1] % groups != 0 || w_size[end] % groups != 0
+        throw(DimensionMismatch("Group count should be divisble by input and output channels ($groups vs. $(w_size[end-1:end]))"))
     end
     
     # The type parameters are what 
@@ -39,8 +39,8 @@ function DenseConvDims(x_size::NTuple{M}, w_size::NTuple{M};
         M - 2,
         w_size[1:end-2],
         x_size[end-1],
-        groups,
         w_size[end],
+        groups,
         stride,
         padding,
         dilation,
@@ -81,6 +81,7 @@ function check_dims(x::NTuple{M}, w::NTuple{M}, y::NTuple{M}, cdims::DenseConvDi
 
     # Check the groups match
     @assert channels_in(cdims) % groupcount(cdims) == 0 DimensionMismatch("Groups ($(groupcount(cdims))) should be divisble by input channels $(channels_in(cdims))")
+    @assert channels_out(cdims) % groupcount(cdims) == 0 DimensionMismatch("Groups ($(groupcount(cdims))) should be divisble by input channels $(channels_out(cdims))")
 
     # Finally, check that the batch size matches
     @assert x[M] == y[M] DimensionMismatch("Batch size ($(x[M]) vs. $(y[M]))")
