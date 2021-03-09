@@ -7,7 +7,7 @@ export pad_constant, pad_repeat, pad_reflect, pad_zeros
 Pad the array `x` with zeros.
 Equivalent to [`pad_constant`](@ref) with the constant equal to 0. 
 """
-pad_zeros(x::AbstractArray, pad::NTuple{M,Int}; dims = 1:M÷2) where M =
+pad_zeros(x::AbstractArray, pad; dims = :) =
   pad_constant(x, pad, 0; dims = dims)
 
 """
@@ -44,53 +44,77 @@ julia> pad_constant(r, (1, 2, 3, 4), 8)
  8  8  8  8  8  8  8  8  8
 ```
 """
-function pad_constant(x::AbstractArray, pad::NTuple{M,Int},
-                      val = 0; 
-                      dims = 1:M÷2) where M
-  length(dims) == M ÷ 2 ||
-    throw(ArgumentError("The number of dims should be equal to the number of padding dimensions"))
-  outsize, center = pad_outsize_and_center(size(x), pad, dims)
-  y = fill!(similar(x, eltype(x), outsize), val)
-  y[center...] .= x
-  return y
+pad_constant(x::AbstractArray{T,N}, pad::Int, val = 0; dims = :) where {T,N} =
+  pad_constant(x, gen_pad(pad, dims, N), val)
+pad_constant(x::AbstractArray{T,N}, pad::Tuple, val = 0; dims = :) where {T,N} =
+  pad_constant(x, gen_pad(pad, dims, N), val)
+
+function pad_idx(pad, dims, N)
+  is = zip( (2 .* dims) .- 1, (2 .* dims))
 end
 
-function pad_outsize_and_center(sz::NTuple{N,Int}, pad, dims) where {N}
-  leftpad, rightpad = pad[1:2:end], pad[2:2:end]
-  
-  outsize = ntuple(N) do i
-     k = findfirst(==(i), dims)
-     if k === nothing
-       return sz[i]
+@inline tuplejoin(x) = x
+@inline tuplejoin(x, y) = (x..., y...)
+@inline tuplejoin(x, y, z...) = tuplejoin(tuplejoin(x, y), z...)
+
+function pad_zeros_tuple(pad::NTuple{L,Int}, N) where L
+  ntuple(2N) do i
+    if i <= L
+      pad[i]
+    else
+      0
+    end
+  end
+end
+
+gen_pad(pad::Int, dims, N) = gen_pad(ntuple(_ -> pad, length(dims)), dims, N)
+gen_pad(pad::Int, dims::Colon, N) = ntuple(_ -> pad, 2N)
+gen_pad(pad, dims::Colon, N) = gen_pad(pad, ntuple(identity, N), N)
+function gen_pad(pad::NTuple{L,Int}, dims::NTuple{D,Int}, N) where {L,D}
+  ntuple(N) do d
+   if d in dims
+     if L == D
+       ix = findfirst(==(d), dims)
+       (pad[ix], pad[ix])
+     elseif L == 2D
+       ix = findfirst(==(d), dims)
+       (pad[2ix - 1], pad[2ix])
      else
-       return sz[i] + leftpad[k] + rightpad[k]
+       throw(ArgumentError("Could not parse padding $pad and dims $dims"))
      end
-   end::NTuple{N,Int}
-  
-  leftcorner = ones(Int, N)
-  rightcorner = collect(outsize)
-  for (i, d) in enumerate(dims)
-    leftcorner[d] += leftpad[i]
-    rightcorner[d] -= rightpad[i]
+   else
+     (0,0)
+   end
+
   end
-  center = ntuple(N) do i
-    leftcorner[i]:rightcorner[i]
-  end 
-  return outsize, center
 end
 
-function rrule(::typeof(pad_constant), x::AbstractArray,
-               pad::NTuple{M,Int}, val=0; 
-               dims=1:M÷2) where M
-  szx = size(x)
-  y = pad_constant(x, pad, val; dims=dims)
-  
+
+# Expects length(pad) == 2M
+function pad_constant(x::AbstractArray{T,M}, pad::NTuple{N,Tuple{Int,Int}}, val = 0) where {T,M,N}
+  p = pad_zeros_tuple(tuplejoin(reverse.(pad)...), M)
+  sz, c = size_and_center(x, p)
+  res = fill!(similar(x, sz...), val)
+  res[c..., ntuple(_ -> Colon(), Val(M - 2))...] = x
+  res
+end
+
+function size_and_center(x, pad::NTuple{N,Int}) where N
+  ds = 1:2:N
+  dst = ntuple(i -> ds[i], N÷2)
+  sz = map(i -> pad[i] + pad[i+1], dst) .+ size(x)
+  center = broadcast((x,y) -> x .+ y, axes(x), pad[2:2:end]::NTuple{N÷2,Int})
+  sz, center
+end
+
+function rrule(::typeof(pad_constant), x::AbstractArray{T,N},
+               pad, val; dims = :) where {T,N}
+  y = pad_constant(x, pad, val; dims = dims)
   function pad_constant_pullback(Δ)
-    outsize, center = pad_outsize_and_center(szx, pad, dims)
-    (NO_FIELDS, @thunk(Δ[center...]), DoesNotExist(),
-     @thunk(sum(Δ) - sum(Δ[center...])),)
+    p = gen_pad(pad, dims, N)
+    outsize, center = size_and_center(x, p)
+    (NO_FIELDS, @thunk(Δ[center...]), DoesNotExist(), DoesNotExist(),)
   end
-  
   return y, pad_constant_pullback
 end
 
@@ -132,7 +156,7 @@ julia> pad_repeat(r, (1,2,3,4))
 ```
 """
 function pad_repeat(x::AbstractArray, pad::NTuple{M,Int}; 
-                    dims=1:M÷2) where M
+                    dims = 1:M÷2) where M
   length(dims) == M ÷ 2 ||
     throw(ArgumentError("The number of dims should be equal to the number of padding dimensions"))
   for (i, d) in enumerate(dims)
@@ -156,7 +180,6 @@ function pad_repeat(x::AbstractArray{F,N}, pad::NTuple{2,Int};
 
   return cat(xl, x, xr, dims = dims)
 end
-
 
 """
     pad_reflect(x, pad::Tuple; [dims])
@@ -222,7 +245,3 @@ pad_repeat(x::AbstractArray{F,N}, pad::Int; dims=1:N-2) where {F,N} =
   pad_repeat(x, ntuple(_ -> pad, 2length(dims)); dims = dims)
 pad_reflect(x::AbstractArray{F,N}, pad::Int; dims=1:N-2) where {F,N} =
   pad_reflect(x, ntuple(_ -> pad, 2length(dims)); dims = dims)
-pad_zeros(x::AbstractArray{F,N}, pad::Int; dims=1:N-2) where {F,N} =
-  pad_zeros(x, ntuple(_ -> pad, 2length(dims)); dims = dims)
-pad_constant(x::AbstractArray{F,N}, pad::Int, val=0; dims=1:N-2) where {F,N} =
-  pad_constant(x, ntuple(_ -> pad, 2length(dims)), val; dims = dims)
