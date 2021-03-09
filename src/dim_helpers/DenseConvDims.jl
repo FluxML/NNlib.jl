@@ -28,6 +28,11 @@ function DenseConvDims(x_size::NTuple{M}, w_size::NTuple{M};
         ws = w_size[end-1]
         throw(DimensionMismatch("Input channels must match! ($xs vs. $ws)"))
     end
+
+    # Ensure groups are valid
+    if x[end-1] % groups != 0
+        throw(DimensionMismatch("Group count should be divisble by input channels ($groups vs. $(x[end-1]))"))
+    end
     
     # The type parameters are what 
     return DenseConvDims{
