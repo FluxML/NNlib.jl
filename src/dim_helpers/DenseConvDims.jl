@@ -74,6 +74,9 @@ function check_dims(x::NTuple{M}, w::NTuple{M}, y::NTuple{M}, cdims::DenseConvDi
     @assert y[1:M-2] == output_size(cdims) DimensionMismatch("Data output spatial size ($(y[1:M-2]) vs. $(output_size(cdims)))")
     @assert w[1:M-2] == kernel_size(cdims) DimensionMismatch("Kernel spatial size ($(w[1:M-2]) vs. $(kernel_size(cdims)))")
 
+    # Check the groups match
+    @assert channels_in(cdims) % groups(cdims) == 0 DimensionMismatch("Groups ($(groups(cdims))) should be divisble by input channels $(channels_in(cdims))")
+
     # Finally, check that the batch size matches
     @assert x[M] == y[M] DimensionMismatch("Batch size ($(x[M]) vs. $(y[M]))")
 end
