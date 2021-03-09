@@ -22,8 +22,6 @@ for each of the dimensions in `dims`.
 If supplied with a tuple of length `n`  instead, it applies symmetric padding.
 If `dims` is not given, it defaults to all dimensions.
 
-By default, padding is applied to every dimension.
-
 For integer `pad` input instead, it is applied on both sides
 on every dimension in `dims`.
 
