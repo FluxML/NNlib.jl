@@ -29,7 +29,12 @@
   
   @test pad_constant(x, (2,2,2,2), 1.2, dims = (1,3)) ≈
           pad_constant(x, 2, 1.2, dims = (1,3))
-  
+
+  @test pad_constant(x, 1, dims = 1:2) ==
+          pad_constant(x, 1, dims = (1,2))  
+
+  @test size(pad_constant(x, 1, dims = 1)) == (4,2,2)
+
   gradtest(x -> pad_constant(x, 2), rand(2,2,2))
 end
 
