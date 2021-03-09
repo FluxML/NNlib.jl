@@ -14,7 +14,7 @@ input_size(c::DenseConvDims) = c.I
 kernel_size(c::DenseConvDims{N,K,C_in,C_out}) where {N,K,C_in,C_out} = K
 channels_in(c::DenseConvDims{N,K,C_in,C_out}) where {N,K,C_in,C_out} = C_in::Int
 channels_out(c::DenseConvDims{N,K,C_in,C_out}) where {N,K,C_in,C_out} = C_out::Int
-groups(c::DenseConvDims{N,K,C_in,C_out,G}) where {N,K,C_in,C_out,G} = G::Int
+groupcount(c::DenseConvDims{N,K,C_in,C_out,G}) where {N,K,C_in,C_out,G} = G::Int
 
 # Convenience wrapper to create DenseConvDims objects
 function DenseConvDims(x_size::NTuple{M}, w_size::NTuple{M};
@@ -75,7 +75,7 @@ function check_dims(x::NTuple{M}, w::NTuple{M}, y::NTuple{M}, cdims::DenseConvDi
     @assert w[1:M-2] == kernel_size(cdims) DimensionMismatch("Kernel spatial size ($(w[1:M-2]) vs. $(kernel_size(cdims)))")
 
     # Check the groups match
-    @assert channels_in(cdims) % groups(cdims) == 0 DimensionMismatch("Groups ($(groups(cdims))) should be divisble by input channels $(channels_in(cdims))")
+    @assert channels_in(cdims) % groupcount(cdims) == 0 DimensionMismatch("Groups ($(groupcount(cdims))) should be divisble by input channels $(channels_in(cdims))")
 
     # Finally, check that the batch size matches
     @assert x[M] == y[M] DimensionMismatch("Batch size ($(x[M]) vs. $(y[M]))")
