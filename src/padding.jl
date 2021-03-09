@@ -11,20 +11,19 @@ pad_zeros(x::AbstractArray, pad; dims = :) =
   pad_constant(x, pad, 0; dims = dims)
 
 """
-    pad_constant(x, pad::Tuple, val = 0; [dims])
-    pad_constant(x, pad::Int, val = 0; [dims])
+    pad_constant(x, pad::Tuple, val = 0; [dims = :])
+    pad_constant(x, pad::Int, val = 0; [dims = :])
 
 Pad the array `x` with the constant value `val`.
 
-`pad` can a tuple of integers `(l1, r1, ..., ln, rn)`
+`pad` can be a tuple of integers `(l1, r1, ..., ln, rn)`
 of some length `2n` that specifies the left and right padding size
-for each of the dimensions in `dims`. If `dims` is not given, 
-it defaults to the first `n` dimensions.
+for each of the dimensions in `dims`. 
+If supplied with a tuple of length `n`  instead, it applies symmetric padding.
+If `dims` is not given, it defaults to all dimensions.
 
 For integer `pad` input instead, it is applied on both sides
-on every dimension in `dims`. In this case, `dims` 
-defaults to the first `ndims(x)-2` dimension 
-(i.e. excludes the channel and batch dimension).
+on every dimension in `dims`.
 
 See also [`pad_reflect`](@ref) and [`pad_repeat`](@ref).
 
@@ -42,12 +41,67 @@ julia> pad_constant(r, (1, 2, 3, 4), 8)
  8  8  8  2  4  8  8  8  8
  8  8  8  8  8  8  8  8  8
  8  8  8  8  8  8  8  8  8
+
+julia> pad_constant(r, 1, 8)
+5×9 Matrix{Int64}:
+ 8  8  8  8
+ 8  1  3  8
+ 8  2  4  8
+ 8  8  8  8
+
+julia> r = reshape(1:27, 3, 3, 3)
+3×3×3 reshape(::UnitRange{Int64}, 3, 3, 3) with eltype Int64:
+[:, :, 1] =
+ 1  4  7
+ 2  5  8
+ 3  6  9
+
+[:, :, 2] =
+ 10  13  16
+ 11  14  17
+ 12  15  18
+
+[:, :, 3] =
+ 19  22  25
+ 20  23  26
+ 21  24  27
+
+julia> pad_constant(r, (2,1), dims = 1) # assymetric padding
+6×3×3 Array{Int64,3}:
+[:, :, 1] =
+ 0  0  0
+ 0  0  0
+ 1  4  7
+ 2  5  8
+ 3  6  9
+ 0  0  0
+
+[:, :, 2] =
+  0   0   0
+  0   0   0
+ 10  13  16
+ 11  14  17
+ 12  15  18
+  0   0   0
+
+[:, :, 3] =
+  0   0   0
+  0   0   0
+ 19  22  25
+ 20  23  26
+ 21  24  27
+  0   0   0
+
+julia> pad_constant(r, (2,1, 3), dims = (1,2)) # padding must always be either the same length as dims, or double it
+ERROR: ArgumentError: Could not parse padding (2, 1, 3) and dims (1, 2)
+Stacktrace:
+[...]
 ```
 """
 pad_constant(x::AbstractArray{T,N}, pad::Int, val = 0; dims = :) where {T,N} =
-  pad_constant(x, gen_pad(pad, dims, N), val)
+  pad_constant(x, gen_pad(pad, dims isa Colon ? dims : (dims...,), N), val)
 pad_constant(x::AbstractArray{T,N}, pad::Tuple, val = 0; dims = :) where {T,N} =
-  pad_constant(x, gen_pad(pad, dims, N), val)
+  pad_constant(x, gen_pad(pad, dims isa Colon ? dims : (dims...,), N), val)
 
 function pad_idx(pad, dims, N)
   is = zip( (2 .* dims) .- 1, (2 .* dims))
@@ -70,6 +124,7 @@ end
 gen_pad(pad::Int, dims, N) = gen_pad(ntuple(_ -> pad, length(dims)), dims, N)
 gen_pad(pad::Int, dims::Colon, N) = ntuple(_ -> pad, 2N)
 gen_pad(pad, dims::Colon, N) = gen_pad(pad, ntuple(identity, N), N)
+gen_pad(pad::Int, dims::Int, N) = gen_pad((pad,pad), (dims,), N)
 function gen_pad(pad::NTuple{L,Int}, dims::NTuple{D,Int}, N) where {L,D}
   ntuple(N) do d
    if d in dims
