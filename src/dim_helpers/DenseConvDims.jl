@@ -5,7 +5,7 @@ export DenseConvDims
 
 Concrete subclass of `ConvDims` for a normal, dense, conv2d/conv3d.
 """
-struct DenseConvDims{N,K,C_in,C_out,S,P,D,F} <: ConvDims{N,S,P,D,F}
+struct DenseConvDims{N,K,C_in,C_out,G,S,P,D,F} <: ConvDims{N,S,P,D,F}
     I::NTuple{N,Int}
 end
 
@@ -14,10 +14,11 @@ input_size(c::DenseConvDims) = c.I
 kernel_size(c::DenseConvDims{N,K,C_in,C_out}) where {N,K,C_in,C_out} = K
 channels_in(c::DenseConvDims{N,K,C_in,C_out}) where {N,K,C_in,C_out} = C_in::Int
 channels_out(c::DenseConvDims{N,K,C_in,C_out}) where {N,K,C_in,C_out} = C_out::Int
+groups(c::DenseConvDims{N,K,C_in,C_out,G}) where {N,K,C_in,C_out,G} = G::Int
 
 # Convenience wrapper to create DenseConvDims objects
 function DenseConvDims(x_size::NTuple{M}, w_size::NTuple{M};
-                       stride=1, padding=0, dilation=1, flipkernel::Bool=false) where M
+                       stride=1, padding=0, dilation=1, flipkernel::Bool=false, groups = 1) where M
     # Do common parameter validation
     stride, padding, dilation = check_spdf(x_size, w_size, stride, padding, dilation)
 
@@ -33,6 +34,7 @@ function DenseConvDims(x_size::NTuple{M}, w_size::NTuple{M};
         M - 2,
         w_size[1:end-2],
         x_size[end-1],
+        groups,
         w_size[end],
         stride,
         padding,
@@ -56,8 +58,8 @@ end
 # from the original progenitor object that it inherits shapes from.
 function DenseConvDims(c::ConvDims; N=spatial_dims(c), I=input_size(c), K=kernel_size(c),
                        C_in=channels_in(c), C_out=channels_out(c), S=stride(c),
-                       P=padding(c), D=dilation(c), F=flipkernel(c))
-    return DenseConvDims{N, K, C_in, C_out, S, P, D, F}(I)
+                       P=padding(c), D=dilation(c), F=flipkernel(c), G=groups(c))
+    return DenseConvDims{N, K, C_in, C_out, G, S, P, D, F}(I)
 end
 
 function check_dims(x::NTuple{M}, w::NTuple{M}, y::NTuple{M}, cdims::DenseConvDims) where {M}
