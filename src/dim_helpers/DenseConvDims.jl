@@ -30,7 +30,7 @@ function DenseConvDims(x_size::NTuple{M}, w_size::NTuple{M};
     end
 
     # Ensure groups are valid
-    if w_size[end-1] % groups != 0 || w_size[end] % groups != 0
+    if x_size[end-1] % w_size[end-1] != 0 || w_size[end] % groups != 0
         throw(DimensionMismatch("Group count should be divisble by input and output channels ($groups vs. $(w_size[end-1:end]))"))
     end
     
