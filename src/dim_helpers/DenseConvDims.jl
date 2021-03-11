@@ -63,7 +63,7 @@ end
 # from the original progenitor object that it inherits shapes from.
 function DenseConvDims(c::ConvDims; N=spatial_dims(c), I=input_size(c), K=kernel_size(c),
                        C_in=channels_in(c), C_out=channels_out(c), S=stride(c),
-                       P=padding(c), D=dilation(c), F=flipkernel(c), G=groups(c))
+                       P=padding(c), D=dilation(c), F=flipkernel(c), G=groupcount(c))
     return DenseConvDims{N, K, C_in, C_out, G, S, P, D, F}(I)
 end
 
