@@ -19,11 +19,12 @@ groupcount(c::DenseConvDims{N,K,C_in,C_out,G}) where {N,K,C_in,C_out,G} = G::Int
 # Convenience wrapper to create DenseConvDims objects
 function DenseConvDims(x_size::NTuple{M}, w_size::NTuple{M};
                        stride=1, padding=0, dilation=1, flipkernel::Bool=false, groups = 1) where M
+
     # Do common parameter validation
     stride, padding, dilation = check_spdf(x_size, w_size, stride, padding, dilation)
 
     # Ensure channels are equal
-    if x_size[end-1] != w_size[end-1]
+    if x_size[end-1] != w_size[end-1] * groups
         xs = x_size[end-1]
         ws = w_size[end-1]
         throw(DimensionMismatch("Input channels must match! ($xs vs. $ws)"))
@@ -71,7 +72,7 @@ function check_dims(x::NTuple{M}, w::NTuple{M}, y::NTuple{M}, cdims::DenseConvDi
     # First, check that channel counts are all correct:
     @assert x[M-1] == channels_in(cdims) DimensionMismatch("Data input channel count ($(x[M-1]) vs. $(channels_in(cdims)))")
     @assert y[M-1] == channels_out(cdims) DimensionMismatch("Data output channel count ($(y[M-1]) vs. $(channels_out(cdims)))")
-    @assert w[M-1] == channels_in(cdims) DimensionMismatch("Kernel input channel count ($(w[M-1]) vs. $(channels_in(cdims)))")
+    @assert w[M-1] * groupcount(cdims) == channels_in(cdims) DimensionMismatch("Kernel input channel count ($(w[M-1]) vs. $(channels_in(cdims)))")
     @assert w[M] == channels_out(cdims) DimensionMismatch("Kernel output channel count ($(w[M]) vs. $(channels_out(cdims)))")
     
     # Next, check that the spatial dimensions match up
