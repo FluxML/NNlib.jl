@@ -1,6 +1,6 @@
 import Pkg
 
-if VERSION >= v"1.5"
+if VERSION >= v"1.6"
     pkgs = ["NNlib", "NNlibCUDA"]
 else
     pkgs = ["NNlib"]
