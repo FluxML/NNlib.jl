@@ -708,6 +708,6 @@ end
   # if spatial_rank == 3
   #   @test_broken gradtest((y, w) -> sum(∇depthwiseconv_data(y, w, dcdims)), y, w)
   # else
-    gradtest((y, w) -> sum(∇depthwiseconv_data(y, w, dcdims)), y, w)
+  @test_skip gradtest((y, w) -> sum(∇depthwiseconv_data(y, w, dcdims)), y, w)
   # end
 end

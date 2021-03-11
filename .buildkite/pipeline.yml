@@ -9,8 +9,8 @@ steps:
             - src
             - lib
     commands:
-      - julia .ci/develop.jl
-      - julia .ci/test.jl
+      - julia .ci/develop_nnlibcuda.jl
+      - julia .ci/test_nnlibcuda.jl
     agents:
       queue: "juliagpu"
       cuda: "*"

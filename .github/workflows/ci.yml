@@ -93,14 +93,15 @@ jobs:
       - uses: actions/checkout@v2
       - uses: julia-actions/setup-julia@v1
         with:
-          version: 'nightly'
+          version: '1'
       - run: julia --project=docs .ci/develop.jl
       - run: |
           julia --project=docs -e '
             using Documenter
             using NNlib
-            using NNlibCUDA
+            # using NNlibCUDA
             DocMeta.setdocmeta!(NNlib, :DocTestSetup, :(using NNlib); recursive=true)
-            DocMeta.setdocmeta!(NNlibCUDA, :DocTestSetup, :(using NNlib, CUDA); recursive=true)
+            # DocMeta.setdocmeta!(NNlibCUDA, :DocTestSetup, :(using NNlib, CUDA); recursive=true)
             doctest(NNlib)
-            doctest(NNlibCUDA)'
+            # doctest(NNlibCUDA)
+            '
