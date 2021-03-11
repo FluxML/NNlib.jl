@@ -56,22 +56,6 @@ function batched_mul(A::AbstractArray{T1, 3}, B::AbstractArray{T2, 3}) where {T1
     _batched_mul(storage_typejoin(A, B), A, B)
 end
 
-function rrule(::typeof(batched_mul),
-               A::AbstractArray{S,3},
-               B::AbstractArray{T,3},
-              ) where {S,T}
-    
-    function batched_mul_pullback(Δ)
-        return (
-            NO_FIELDS,
-            @thunk(batched_mul(Δ, batched_adjoint(B))),
-            @thunk(batched_mul(batched_adjoint(A), Δ)),
-        )
-    end
-    batched_mul(A, B), batched_mul_pullback
-end
-
-
 const ⊠ = batched_mul
 
 function _batched_mul(::Type, A, B)
@@ -156,6 +140,31 @@ _semi_batched_mul(A::Adjoint{<:Number,<:AbstractMatrix}, B::AbstractArray{<:Any,
 
 _semi_batched_mul(A::Transpose{<:Number,<:AbstractMatrix}, B::AbstractArray{<:Any,3}) =
     batched_mul(batched_transpose(reshape(parent(A), size(parent(A))..., 1)), B)
+
+# Gradient, taking into account that one but not both of A, B might be a matrix:
+
+function rrule(::typeof(batched_mul),
+                A::AbstractArray{S,NA},
+                B::AbstractArray{T,NB},
+            ) where {S,T,NA,NB}
+
+    function batched_mul_pullback(Δ)
+        Athunk = if NA == 3
+            @thunk(batched_mul(Δ, batched_adjoint(B)))
+        elseif NA == 2
+            @assert NB == 3
+            @thunk(dropdims(sum(batched_mul(Δ, batched_adjoint(B)), dims=3), dims=3))
+        end
+        Bthunk = if NB == 3
+            @thunk(batched_mul(Δ, batched_adjoint(B)))
+        elseif NB == 2
+            @assert NA == 3
+            @thunk(dropdims(sum(batched_mul(batched_adjoint(A), Δ), dims=3), dims=3))
+        end
+        return (NO_FIELDS, Athunk, Bthunk)
+    end
+    batched_mul(A, B), batched_mul_pullback
+end
 
 """
     batched_vec(A::Array{T,3}, B::Matrix)
