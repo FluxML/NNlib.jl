@@ -149,17 +149,21 @@ function rrule(::typeof(batched_mul),
             ) where {S,T,NA,NB}
 
     function batched_mul_pullback(Δ)
-        Athunk = if NA == 3
-            @thunk(batched_mul(Δ, batched_adjoint(B)))
-        elseif NA == 2
-            @assert NB == 3
+        Athunk = if NA == 2
+            @assert NB == 3 "can't have both A & B be matrices!"  # thus batched_adjoint(B) is safe
             @thunk(dropdims(sum(batched_mul(Δ, batched_adjoint(B)), dims=3), dims=3))
-        end
-        Bthunk = if NB == 3
+        elseif NA == 3 && size(A,3) == 1
+            @thunk(sum(batched_mul(Δ, batched_adjoint(B)), dims=3))
+        elseif NA == 3
             @thunk(batched_mul(Δ, batched_adjoint(B)))
-        elseif NB == 2
+        end
+        Bthunk = if NB == 2
             @assert NA == 3
             @thunk(dropdims(sum(batched_mul(batched_adjoint(A), Δ), dims=3), dims=3))
+        elseif NB == 3 && size(B,3) == 1
+            @thunk(sum(batched_mul(batched_adjoint(A), Δ), dims=3))
+        elseif NB == 3
+            @thunk(batched_mul(batched_adjoint(A), Δ))
         end
         return (NO_FIELDS, Athunk, Bthunk)
     end
