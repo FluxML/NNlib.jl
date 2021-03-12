@@ -277,19 +277,19 @@ FiniteDifferences.to_vec(x::BatchedTranspose) = FiniteDifferences.to_vec(collect
 
     # One a matrix...
     gradtest(batched_mul, randn(rng, M, P), randn(rng, P, Q, B))
-    gradtest(batched_mul, adjoint(randn(rng, M, P)), randn(rng, P, Q, B))
-    gradtest(batched_mul, randn(rng, M, P), batched_adjoint(randn(rng, P, Q, B)))
+    gradtest(batched_mul, adjoint(randn(rng, P, M)), randn(rng, P, Q, B))
+    gradtest(batched_mul, randn(rng, M, P), batched_adjoint(randn(rng, Q, P, B)))
 
     gradtest(batched_mul, randn(rng, M, P, B), randn(rng, P, Q))
-    gradtest(batched_mul, batched_transpose(randn(rng, M, P, B)), randn(rng, P, Q))
-    gradtest(batched_mul, randn(rng, M, P, B), transpose(randn(rng, P, Q)))
+    gradtest(batched_mul, batched_transpose(randn(rng, P, M, B)), randn(rng, P, Q))
+    gradtest(batched_mul, randn(rng, M, P, B), transpose(randn(rng, Q, P)))
 
     # ... or equivalent to a matrix
     gradtest(batched_mul, randn(rng, M, P, 1), randn(rng, P, Q, B))
-    gradtest(batched_mul, batched_transpose(randn(rng, M, P, 1)), randn(rng, P, Q, B))
-    gradtest(batched_mul, randn(rng, M, P, 1), batched_transpose(randn(rng, P, Q, B)))
+    gradtest(batched_mul, batched_transpose(randn(rng, P, M, 1)), randn(rng, P, Q, B))
+    gradtest(batched_mul, randn(rng, M, P, 1), batched_transpose(randn(rng, Q, P, B)))
 
     gradtest(batched_mul, randn(rng, M, P, B), randn(rng, P, Q, 1))
-    gradtest(batched_mul, batched_adjoint(randn(rng, M, P, B)), randn(rng, P, Q, 1))
-    gradtest(batched_mul, randn(rng, M, P, B), batched_adjoint(randn(rng, P, Q, 1)))
+    gradtest(batched_mul, batched_adjoint(randn(rng, P, M, B)), randn(rng, P, Q, 1))
+    gradtest(batched_mul, randn(rng, M, P, B), batched_adjoint(randn(rng, Q, P, 1)))
 end
