@@ -292,4 +292,10 @@ FiniteDifferences.to_vec(x::BatchedTranspose) = FiniteDifferences.to_vec(collect
     gradtest(batched_mul, randn(rng, M, P, B), randn(rng, P, Q, 1))
     gradtest(batched_mul, batched_adjoint(randn(rng, P, M, B)), randn(rng, P, Q, 1))
     gradtest(batched_mul, randn(rng, M, P, B), batched_adjoint(randn(rng, Q, P, 1)))
+
+    # batched_vec
+    gradtest(batched_vec, randn(rng, M, P, B), randn(rng, P, B))
+    gradtest(batched_vec, randn(rng, M, P, B), transpose(randn(rng, B, P)))
+
+    gradtest(batched_vec, randn(rng, M, P, B), randn(rng, P))
 end
