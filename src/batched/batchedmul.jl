@@ -88,6 +88,28 @@ function _copy_if_faster(X::BatchedAdjoint{<:Complex})
     X
 end
 
+# Gradient, allowing that size(A,3)==1 means it's "broadcasted" out to size(B,3)
+
+function rrule(::typeof(batched_mul),
+        A::AbstractArray{S,3},
+        B::AbstractArray{T,3},
+    ) where {S,T,NA,NB}
+
+    function batched_mul_pullback(Δ)
+        Athunk = if size(A,3) == 1
+            @thunk(sum(batched_mul(Δ, batched_adjoint(B)), dims=3))
+        else
+            @thunk(batched_mul(Δ, batched_adjoint(B)))
+        end
+        Bthunk = if size(B,3) == 1
+            @thunk(sum(batched_mul(batched_adjoint(A), Δ), dims=3))
+        else
+            @thunk(batched_mul(batched_adjoint(A), Δ))
+        end
+        return (NO_FIELDS, Athunk, Bthunk)
+    end
+    batched_mul(A, B), batched_mul_pullback
+end
 
 """
     batched_mul(A::Array{T,3}, B::Matrix)
@@ -140,35 +162,6 @@ _semi_batched_mul(A::Adjoint{<:Number,<:AbstractMatrix}, B::AbstractArray{<:Any,
 
 _semi_batched_mul(A::Transpose{<:Number,<:AbstractMatrix}, B::AbstractArray{<:Any,3}) =
     batched_mul(batched_transpose(reshape(parent(A), size(parent(A))..., 1)), B)
-
-# Gradient, taking into account that one but not both of A, B might be a matrix:
-
-function rrule(::typeof(batched_mul),
-                A::AbstractArray{S,NA},
-                B::AbstractArray{T,NB},
-            ) where {S,T,NA,NB}
-
-    function batched_mul_pullback(Δ)
-        Athunk = if NA == 2
-            @assert NB == 3 "can't have both A & B be matrices!"  # thus batched_adjoint(B) is safe
-            @thunk(dropdims(sum(batched_mul(Δ, batched_adjoint(B)), dims=3), dims=3))
-        elseif NA == 3 && size(A,3) == 1
-            @thunk(sum(batched_mul(Δ, batched_adjoint(B)), dims=3))
-        elseif NA == 3
-            @thunk(batched_mul(Δ, batched_adjoint(B)))
-        end
-        Bthunk = if NB == 2
-            @assert NA == 3
-            @thunk(dropdims(sum(batched_mul(batched_adjoint(A), Δ), dims=3), dims=3))
-        elseif NB == 3 && size(B,3) == 1
-            @thunk(sum(batched_mul(batched_adjoint(A), Δ), dims=3))
-        elseif NB == 3
-            @thunk(batched_mul(batched_adjoint(A), Δ))
-        end
-        return (NO_FIELDS, Athunk, Bthunk)
-    end
-    batched_mul(A, B), batched_mul_pullback
-end
 
 """
     batched_vec(A::Array{T,3}, B::Matrix)

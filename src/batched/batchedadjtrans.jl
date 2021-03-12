@@ -50,15 +50,6 @@ batched_transpose(A::BatchedAdjoint{<:Complex}) = BatchedAdjoint(BatchedTranspos
 BatchedAdjoint(A) = BatchedAdjoint{Base.promote_op(adjoint,eltype(A)),typeof(A)}(A)
 BatchedTranspose(A) = BatchedTranspose{Base.promote_op(transpose,eltype(A)),typeof(A)}(A)
 
-# Action on matrices -- needed in gradient of 3-array ⊠ matrix
-batched_transpose(A::AbstractMatrix) = batched_transpose(reshape(A, size(A)..., 1))
-batched_transpose(A::Transpose{<:Number,<:AbstractMatrix}) = reshape(parent(A), size(parent(A))..., 1)
-batched_transpose(A::Adjoint{<:Real,<:AbstractMatrix}) = reshape(parent(A), size(parent(A))..., 1)
-
-batched_adjoint(A::AbstractMatrix) = batched_adjoint(reshape(A, size(A)..., 1))
-batched_adjoint(A::Transpose{<:Real,<:AbstractMatrix}) = reshape(parent(A), size(parent(A))..., 1)
-batched_adjoint(A::Adjoint{<:Number,<:AbstractMatrix}) = reshape(parent(A), size(parent(A))..., 1)
-
 const BatchedAdjOrTrans{T, S} = Union{BatchedTranspose{T, S}, BatchedAdjoint{T, S}}
 
 LinearAlgebra.wrapperop(A::BatchedAdjoint) = batched_adjoint
