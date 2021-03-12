@@ -7,7 +7,7 @@ import ChainRulesCore: rrule
 using Base.Broadcast: broadcasted
 using Statistics: mean
 
-const IntOrTuple = Union{Integer,Tuple}
+const IntOrIntTuple = Union{Integer, NTuple{N,<:Integer} where N}
 const Numeric = Union{AbstractArray{<:T}, T} where {T<:Number}
 
 # Include APIs
@@ -35,8 +35,9 @@ include("conv_bias_act.jl")
 include("pooling.jl")
 include("padding.jl")
 include("upsample.jl")
-include("utils.jl")
+include("gather.jl")
 include("scatter.jl")
+include("utils.jl")
 
 ## Include implementations
 include("impl/padding_edges.jl")

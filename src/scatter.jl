@@ -47,13 +47,13 @@ Once the dimensions match, arrays are aligned automatically. The value of `idx` 
 function scatter!(op,
                   dst::AbstractArray{Tdst,Ndst},
                   src::AbstractArray{Tsrc,Nsrc},
-                  idx::AbstractArray{Tidx,Nidx}) where {Tdst,Tsrc,Tidx<:IntOrTuple,Ndst,Nsrc,Nidx}
+                  idx::AbstractArray{Tidx,Nidx}) where {Tdst,Tsrc,Tidx<:IntOrIntTuple,Ndst,Nsrc,Nidx}
     M = typelength(Tidx)
     dims = _check_dims(Ndst, Nsrc, M, Nidx)
     scatter!(op, dst, src, idx, Val(dims))
 end
 
-function scatter!(op, dst::AbstractArray{Tdst}, src::AbstractArray{Tsrc}, idx::AbstractArray{<:IntOrTuple},
+function scatter!(op, dst::AbstractArray{Tdst}, src::AbstractArray{Tsrc}, idx::AbstractArray{<:IntOrIntTuple},
                   dims::Val{N}) where {Tdst,Tsrc,N}
     colons = Base.ntuple(_->Colon(), dims)
     for k in CartesianIndices(idx)
@@ -67,7 +67,7 @@ end
 function scatter!(op::typeof(mean),
                   dst::AbstractArray{Tdst,Ndst},
                   src::AbstractArray{Tsrc,Nsrc},
-                  idx::AbstractArray{<:IntOrTuple,Nidx}) where {Tdst,Tsrc,Ndst,Nsrc,Nidx}
+                  idx::AbstractArray{<:IntOrIntTuple,Nidx}) where {Tdst,Tsrc,Ndst,Nsrc,Nidx}
     Ns = scatter!(+, zero(dst), one.(src), idx)
     dst_ = scatter!(+, zero(dst), src, idx)
     dst .+= safe_div.(dst_, Ns)
@@ -96,7 +96,7 @@ function scatter end
 for op in [+, -]
     @eval function scatter(op::typeof($op),
                            src::AbstractArray{T,Nsrc},
-                           idx::AbstractArray{<:IntOrTuple,Nidx}) where {T,Nsrc,Nidx}
+                           idx::AbstractArray{<:IntOrIntTuple,Nidx}) where {T,Nsrc,Nidx}
         dims = Nsrc - Nidx
         dstsize = (size(src)[1:dims]..., maximum_dims(idx)...)
         dst = similar(src, T, dstsize)
@@ -108,7 +108,7 @@ end
 for op in [*, /]
     @eval function scatter(op::typeof($op),
                            src::AbstractArray{T,Nsrc},
-                           idx::AbstractArray{<:IntOrTuple,Nidx}) where {T,Nsrc,Nidx}
+                           idx::AbstractArray{<:IntOrIntTuple,Nidx}) where {T,Nsrc,Nidx}
         dims = Nsrc - Nidx
         dstsize = (size(src)[1:dims]..., maximum_dims(idx)...)
         dst = similar(src, T, dstsize)
@@ -119,7 +119,7 @@ end
 
 function scatter(op::typeof(max),
                  src::AbstractArray{T,Nsrc},
-                 idx::AbstractArray{<:IntOrTuple,Nidx}) where {T,Nsrc,Nidx}
+                 idx::AbstractArray{<:IntOrIntTuple,Nidx}) where {T,Nsrc,Nidx}
     dims = Nsrc - Nidx
     dstsize = (size(src)[1:dims]..., maximum_dims(idx)...)
     dst = similar(src, T, dstsize)
@@ -129,7 +129,7 @@ end
 
 function scatter(op::typeof(min),
                  src::AbstractArray{T,Nsrc},
-                 idx::AbstractArray{<:IntOrTuple,Nidx}) where {T,Nsrc,Nidx}
+                 idx::AbstractArray{<:IntOrIntTuple,Nidx}) where {T,Nsrc,Nidx}
     dims = Nsrc - Nidx
     dstsize = (size(src)[1:dims]..., maximum_dims(idx)...)
     dst = similar(src, T, dstsize)
@@ -139,7 +139,7 @@ end
 
 function scatter(op::typeof(mean),
                  src::AbstractArray{T,Nsrc},
-                 idx::AbstractArray{<:IntOrTuple,Nidx}) where {T,Nsrc,Nidx}
+                 idx::AbstractArray{<:IntOrIntTuple,Nidx}) where {T,Nsrc,Nidx}
     FT = float(T)
     dims = Nsrc - Nidx
     dstsize = (size(src)[1:dims]..., maximum_dims(idx)...)

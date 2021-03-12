@@ -44,6 +44,10 @@ end
     include("upsample.jl")
 end
 
+@testset "Gather" begin
+    include("gather.jl")
+end
+
 @testset "Scatter" begin
     include("scatter.jl")
 end
@@ -51,3 +55,4 @@ end
 @testset "Utilities" begin
     include("utils.jl")
 end
+
