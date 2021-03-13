@@ -152,20 +152,14 @@ for front_name in (:conv, :∇conv_data, :∇conv_filter,
                     cdims_ = insert_singleton_spatial_dimension(cdims, $(5 - N))
                     x_cs = Iterators.partition(1:size(x_, $N), channels_in(cdims) ÷ groupcount(cdims))
                     w_cs = Iterators.partition(1:size(w_, $N + 1), channels_out(cdims) ÷ groupcount(cdims))
-                    @show size(x_), size(w_), size(y_)
                     for (xc, wc) in zip(x_cs, w_cs)
                       yix = ntuple(i -> i == $N ? wc : Colon(), $(N + 1))
                       wix = ntuple(i -> i == $N + 1 ? wc : Colon(), $N + 1)
                       xix = ntuple(i -> i == $N ? xc : Colon(), $N + 1)
-                      @show xix, wix, yix
                       y_chunk = @view y_[yix...]
                       x_chunk = @view x_[xix...]
                       w_chunk = @view w_[wix...]
-                      @show size(x_chunk), size(w_chunk), size(y_chunk)
-                      # $(Symbol("$(front_name)$(backend)!"))(y_chunk, x_chunk, w_chunk, cdims_; kwargs...)
                       ynew = $(Symbol("$(front_name)$(backend)"))(x_chunk, w_chunk, cdims_; kwargs...)
-                      # @show size(ynew)
-                      return ynew
                       y_chunk .= ynew
                     end
                     # We explicitly return `y` here, because the backend call
