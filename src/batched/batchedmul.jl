@@ -56,22 +56,6 @@ function batched_mul(A::AbstractArray{T1, 3}, B::AbstractArray{T2, 3}) where {T1
     _batched_mul(storage_typejoin(A, B), A, B)
 end
 
-function rrule(::typeof(batched_mul),
-               A::AbstractArray{S,3},
-               B::AbstractArray{T,3},
-              ) where {S,T}
-    
-    function batched_mul_pullback(Δ)
-        return (
-            NO_FIELDS,
-            @thunk(batched_mul(Δ, batched_adjoint(B))),
-            @thunk(batched_mul(batched_adjoint(A), Δ)),
-        )
-    end
-    batched_mul(A, B), batched_mul_pullback
-end
-
-
 const ⊠ = batched_mul
 
 function _batched_mul(::Type, A, B)
@@ -104,6 +88,24 @@ function _copy_if_faster(X::BatchedAdjoint{<:Complex})
     X
 end
 
+# Gradient, allowing that size(A,3)==1 means it's "broadcasted" out to size(B,3)
+
+function rrule(::typeof(batched_mul), A::AbstractArray{<:Any,3}, B::AbstractArray{<:Any,3})
+    function batched_mul_pullback(Δ)
+        Athunk = if size(A,3) == 1
+            @thunk(sum(batched_mul(Δ, batched_adjoint(B)), dims=3))
+        else
+            @thunk(batched_mul(Δ, batched_adjoint(B)))
+        end
+        Bthunk = if size(B,3) == 1
+            @thunk(sum(batched_mul(batched_adjoint(A), Δ), dims=3))
+        else
+            @thunk(batched_mul(batched_adjoint(A), Δ))
+        end
+        return (NO_FIELDS, Athunk, Bthunk)
+    end
+    batched_mul(A, B), batched_mul_pullback
+end
 
 """
     batched_mul(A::Array{T,3}, B::Matrix)

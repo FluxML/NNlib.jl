@@ -27,7 +27,7 @@ struct BatchedTranspose{T, S} <: AbstractArray{T, 3}
 end
 
 @doc _batched_doc
-batched_transpose(A::AbstractArray{T}) where T = BatchedTranspose(A)
+batched_transpose(A::AbstractArray{T, 3}) where T = BatchedTranspose(A)
 batched_transpose(A::BatchedTranspose) = A.parent
 
 @doc _batched_doc
@@ -49,7 +49,6 @@ batched_transpose(A::BatchedAdjoint{<:Complex}) = BatchedAdjoint(BatchedTranspos
 
 BatchedAdjoint(A) = BatchedAdjoint{Base.promote_op(adjoint,eltype(A)),typeof(A)}(A)
 BatchedTranspose(A) = BatchedTranspose{Base.promote_op(transpose,eltype(A)),typeof(A)}(A)
-
 
 const BatchedAdjOrTrans{T, S} = Union{BatchedTranspose{T, S}, BatchedAdjoint{T, S}}
 
