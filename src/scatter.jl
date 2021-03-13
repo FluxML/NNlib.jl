@@ -155,3 +155,93 @@ function scatter(op::typeof(mean),
     fill!(dst, Base.reduce_empty(+, FT))
     scatter!(op, dst, src, idx)
 end
+
+## Gradients
+
+opname(::typeof(+)) = :add
+opname(::typeof(-)) = :sub
+opname(::typeof(*)) = :mul
+opname(::typeof(/)) = :div
+
+
+∇scatter_dst!(op, Δ, dst, y) = Δ
+
+# function ∇scatter_dst!(op::Union{typeof(max),typeof(min)}, Δ, dst, y)
+#     mask_y = (dst .== op.(dst, y))
+#     mask_y .* Δ
+# end
+
+modify_src(::typeof(+), X) = X
+modify_src(::typeof(-), X) = -X
+modify_src(::typeof(*), X, Y) = X
+modify_src(::typeof(/), X, Y) = -X ./ Y.^2
+
+∇src_init!(Δ, idx) = gather(Δ, idx)
+∇src_init!(Δ, dst, idx) = gather(dst, idx) .* ∇src_init!(Δ, idx)
+∇src_init(Δ, idx) = gather(Δ, idx)
+
+∇scatter_src!(op::Union{typeof(+),typeof(-)}, Δ, dst, src, idx) = modify_src(op, ∇src_init!(Δ, idx))
+∇scatter_src(op::Union{typeof(+),typeof(-)}, Δ, dst, src, idx) = modify_src(op, ∇src_init(Δ, idx))
+
+function ∇scatter_src!(op::Union{typeof(*),typeof(/)}, Δ, dst,
+                       src::AbstractArray{Tsrc,Nsrc}, 
+                       idx::AbstractArray{Tidx,Nidx}) where {Tsrc,Tidx,Nsrc,Nidx}
+    dims = Nsrc - Nidx
+    Δsrc = modify_src(op, ∇src_init!(Δ, dst, idx), src)
+    rev_idx = reverse_indices(idx)
+    for k = CartesianIndices(idx)
+        inds = filter(x -> x != k, rev_idx[idx[k]])
+        for i = CartesianIndices(axes(src)[1:dims])
+            Δsrc[i, k] *= prod(j -> src[i, j], inds)
+        end
+    end
+    Δsrc
+end
+
+function ∇scatter_src(op::Union{typeof(*),typeof(/)}, Δ, dst,
+                      src::AbstractArray{Tsrc,Nsrc}, 
+                      idx::AbstractArray{Tidx,Nidx}) where {Tsrc,Tidx,Nsrc,Nidx}
+    dims = Nsrc - Nidx
+    Δsrc = modify_src(op, ∇src_init(Δ, idx), src)
+    rev_idx = reverse_indices(idx)
+    for k = CartesianIndices(idx)
+        inds = filter(x -> x != k, rev_idx[idx[k]])
+        for i = CartesianIndices(axes(src)[1:dims])
+            Δsrc[i, k] = op(Δsrc[i, k], prod(j -> src[i, j], inds))
+        end
+    end
+    Δsrc
+end
+
+# ∇scatter_src!(op::Union{typeof(max),typeof(min)}, Δ, dst, src, idx) = (src .== op.(src, gather(dst, idx))) .* ∇src_init!(Δ, idx)
+# ∇scatter_src(op::Union{typeof(max),typeof(min)}, Δ, dst, src, idx) = (src .== op.(src, gather(dst, idx))) .* ∇src_init(Δ, idx)
+
+∇scatter_src!(::typeof(mean), Δ, idx, dims) = divide_by_counts!(∇src_init!(Δ, idx), idx, dims)
+∇scatter_src(::typeof(mean), Δ, idx, dims) = divide_by_counts!(∇src_init(Δ, idx), idx, dims)
+
+
+function rrule(::typeof(scatter!), op, dst::AbstractArray, src::AbstractArray, idx::AbstractArray)
+    y = scatter!(op, copy(dst), src, idx)
+    scatter!_pullback(Δ) = (NO_FIELDS, NO_FIELDS, ∇scatter_dst!(op, Δ, dst, y), ∇scatter_src!(op, Δ, dst, src, idx), DoesNotExist())
+    y, scatter!_pullback
+end
+
+function rrule(::typeof(scatter), op, src::AbstractArray, idx::AbstractArray)
+    y = scatter(op, src, idx)
+    scatter_pullback(Δ) = (NO_FIELDS, NO_FIELDS, ∇scatter_src(op, Δ, y, src, idx), DoesNotExist())
+    y, scatter_pullback
+end
+
+function rrule(::typeof(scatter!), op::typeof(mean), dst::AbstractArray, src::AbstractArray{Tsrc,Nsrc}, idx::AbstractArray{Tidx,Nidx}) where {Tsrc,Tidx,Nsrc,Nidx}
+    dims = Nsrc - Nidx
+    y = scatter!(op, copy(dst), src, idx)
+    scatter!_pullback(Δ) = (NO_FIELDS, NO_FIELDS, ∇scatter_dst!(op, Δ, dst, y), ∇scatter_src!(op, Δ, idx, dims), DoesNotExist())
+    y, scatter!_pullback
+end
+
+function rrule(::typeof(scatter), op::typeof(mean), src::AbstractArray{Tsrc,Nsrc}, idx::AbstractArray{Tidx,Nidx}) where {Tsrc,Tidx,Nsrc,Nidx}
+    dims = Nsrc - Nidx
+    y = scatter(op, src, idx)
+    scatter_pullback(Δ) = (NO_FIELDS, NO_FIELDS, ∇scatter_src(op, Δ, idx, dims), DoesNotExist())
+    y, scatter_pullback
+end
