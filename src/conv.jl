@@ -150,21 +150,25 @@ for front_name in (:conv, :∇conv_data, :∇conv_filter,
                     x_ = insert_singleton_spatial_dimension(x, $(5 - N))
                     w_ = insert_singleton_spatial_dimension(w, $(5 - N))
                     cdims_ = insert_singleton_spatial_dimension(cdims, $(5 - N))
-                    x_cs = Iterators.partition(1:size(x_, $N), channels_in(cdims) ÷ groupcount(cdims))
-                    w_cs = Iterators.partition(1:size(w_, $N + 1), channels_out(cdims) ÷ groupcount(cdims))
-                    for (xc, wc) in zip(x_cs, w_cs)
-                      yix = ntuple(i -> i == $N ? wc : Colon(), $(N + 1))
-                      wix = ntuple(i -> i == $N + 1 ? wc : Colon(), $N + 1)
-                      xix = ntuple(i -> i == $N ? xc : Colon(), $N + 1)
+                    x_cs = Iterators.partition(1:size(x_, $N), channels_in(cdims_) ÷ groupcount(cdims_))
+                    w_cs = Iterators.partition(1:size(w_, $N + 1), channels_out(cdims_) ÷ groupcount(cdims_))
+                    t = Threads.@spawn for (xc, wc) in zip(x_cs, w_cs)
+                      yix = ntuple(i -> i == $N ? wc : Colon(), 5)
+                      wix = ntuple(i -> i == $N + 1 ? wc : Colon(), 5)
+                      xix = ntuple(i -> i == $N ? xc : Colon(), 5)
                       y_chunk = @view y_[yix...]
                       x_chunk = @view x_[xix...]
                       w_chunk = @view w_[wix...]
-                      ynew = $(Symbol("$(front_name)$(backend)"))(x_chunk, w_chunk, cdims_; kwargs...)
+
+                      # This is wasteful because it allocates twice the needed memory, but does the correct thing
+                      # Julia complains writing to the same memory buffer doing the non-allocating version
+                      ynew = $(Symbol("$(front_name)$(backend)"))(x_chunk, w_chunk)
                       y_chunk .= ynew
                     end
                     # We explicitly return `y` here, because the backend call
                     # itself may return a reshaped view, which we don't want.
                     # $(Symbol("$(front_name)$(backend)!"))(y_, x_, w_, cdims_; kwargs...)
+                    Threads.wait(t)
                     return y
                 end
             end
