@@ -42,6 +42,7 @@
 
   gradtest(x -> pad_constant(x, 2), rand(2,2,2))
   gradtest(x -> pad_constant(x, (2, 1, 1, 2)), rand(2,2))
+  gradtest(x -> pad_constant(x, (2, 1,)), rand(2))
 end
 
 @testset "padding repeat" begin
