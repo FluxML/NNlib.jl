@@ -16,16 +16,16 @@ pad_zeros(x::AbstractArray, pad; dims = :) =
 
 Pad the array `x` with the constant value `val`.
 
-`pad` can be a tuple of integers `(l1, r1, ..., ln, rn)`
-of some length `2n` that specifies the left and right padding size
-for each of the dimensions in `dims`. 
-If supplied with a tuple of length `n`  instead, it applies symmetric padding.
+`pad` can be a tuple of integers.
+If it is of some length `2 * length(dims)` that specifies the left and right padding size
+for each of the dimensions in `dims` as `(l1, r1, ..., ln, rn)`. 
+If supplied with a tuple of length `length(dims)` instead, it applies symmetric padding.
 If `dims` is not given, it defaults to all dimensions.
 
-For integer `pad` input instead, it is applied on both sides
+For integer `pad` input, it is applied on both sides
 on every dimension in `dims`.
 
-See also [`pad_reflect`](@ref) and [`pad_repeat`](@ref).
+See also [`pad_zeros`](@ref), [`pad_reflect`](@ref) and [`pad_repeat`](@ref).
 
 ```jldoctest
 
