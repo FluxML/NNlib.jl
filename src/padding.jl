@@ -137,7 +137,6 @@ end
 
 # Expects length(pad) == 2M
 function pad_constant(x::AbstractArray{T,M}, pad::NTuple{N,Tuple{Int,Int}}, val = 0) where {T,M,N}
-  # p = pad_zeros_tuple(tuplejoin(reverse.(pad)...), M)
   sz, c = size_and_center(x, pad)
   res = fill!(similar(x, sz...), val)
   res[c...] = x
