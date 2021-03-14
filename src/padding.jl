@@ -111,18 +111,8 @@ end
 @inline tuplejoin(x, y) = (x..., y...)
 @inline tuplejoin(x, y, z...) = tuplejoin(tuplejoin(x, y), z...)
 
-function pad_zeros_tuple(pad::NTuple{L,Int}, N) where L
-  ntuple(2N) do i
-    if i <= L
-      pad[i]
-    else
-      0
-    end
-  end
-end
-
 gen_pad(pad::Int, dims, N) = gen_pad(ntuple(_ -> pad, length(dims)), dims, N)
-gen_pad(pad::Int, dims::Colon, N) = ntuple(_ -> pad, 2N)
+gen_pad(pad::Int, dims::Colon, N) = ntuple(_ -> (pad, pad), N)
 gen_pad(pad, dims::Colon, N) = gen_pad(pad, ntuple(identity, N), N)
 gen_pad(pad::Int, dims::Int, N) = gen_pad((pad,pad), (dims,), N)
 function gen_pad(pad::NTuple{L,Int}, dims::NTuple{D,Int}, N) where {L,D}
@@ -147,18 +137,15 @@ end
 
 # Expects length(pad) == 2M
 function pad_constant(x::AbstractArray{T,M}, pad::NTuple{N,Tuple{Int,Int}}, val = 0) where {T,M,N}
-  p = pad_zeros_tuple(tuplejoin(reverse.(pad)...), M)
-  sz, c = size_and_center(x, p)
+  sz, c = size_and_center(x, pad)
   res = fill!(similar(x, sz...), val)
-  res[c..., ntuple(_ -> Colon(), Val(M - 2))...] = x
+  res[c...] = x
   res
 end
 
-function size_and_center(x, pad::NTuple{N,Int}) where N
-  ds = 1:2:N
-  dst = ntuple(i -> ds[i], N÷2)
-  sz = map(i -> pad[i] + pad[i+1], dst) .+ size(x)
-  center = broadcast((x,y) -> x .+ y, axes(x), pad[2:2:end]::NTuple{N÷2,Int})
+function size_and_center(x, pad::NTuple{N,NTuple{2, Int}}) where N
+  sz = ntuple(i -> pad[i][1] + pad[i][2], N) .+ size(x)
+  center = broadcast((x,y) -> x .+ y, axes(x), ntuple(i -> pad[i][1], N))
   sz, center
 end
 

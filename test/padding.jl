@@ -12,6 +12,9 @@
   p = NNlib.gen_pad(1, (1,2,3), 4)
   @test p == ((1, 1), (1, 1), (1, 1), (0, 0))
 
+  p = NNlib.gen_pad(3, :, 2)
+  @test p == ((3, 3), (3, 3))
+
   y = pad_constant(x, (3, 2, 4))
   @test size(y) == (8, 6, 10)
   @test y[4:5, 3:4, 5:6] ≈ x
@@ -35,7 +38,11 @@
 
   @test size(pad_constant(x, 1, dims = 1)) == (4,2,2)
 
+  @test all(pad_zeros(randn(2), (1, 2))[[1, 4, 5]] .== 0)
+
   gradtest(x -> pad_constant(x, 2), rand(2,2,2))
+  gradtest(x -> pad_constant(x, (2, 1, 1, 2)), rand(2,2))
+  gradtest(x -> pad_constant(x, (2, 1,)), rand(2))
 end
 
 @testset "padding repeat" begin
