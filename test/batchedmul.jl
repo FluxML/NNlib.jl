@@ -119,16 +119,19 @@ end
     end
 end
 
+perm_12(A) = PermutedDimsArray(A, (2,1,3))
+perm_23(A) = PermutedDimsArray(A, (1,3,2))
+
 @testset "batched_mul: trivial dimensions & unit strides, $T" for T in [Float64, ComplexF64]
-    @testset "$tA(rand$((sA...,2))) ⊠ $tB(rand$((sB...,2)))" for
-    tA in [identity, batched_adjoint, batched_transpose], sA in [(1,1), (1,3), (3,1), (3,3)],
-    tB in [identity, batched_adjoint, batched_transpose], sB in [(1,1), (1,3), (3,1), (3,3)]
+    @testset "$tA(rand$((sA...,3))) ⊠ $tB(rand$((sB...,3)))" for
+    tA in [identity, batched_adjoint, batched_transpose, perm_12, perm_23], sA in [(1,1), (1,3), (3,1), (3,3)],
+    tB in [identity, batched_adjoint, batched_transpose, perm_12, perm_23], sB in [(1,1), (1,3), (3,1), (3,3)]
 
-        A = tA(rand(T, sA..., 2))
-        B = tB(rand(T, sB..., 2))
-        size(A,2) == size(B,1) || continue
+        A = tA(rand(T, sA..., 3))
+        B = tB(rand(T, sB..., 3))
+        size(A,2) == size(B,1) && size(A,3) == size(B,3) == 3 || continue
 
-        C = cat(A[:,:,1] * B[:,:,1], A[:,:,2] * B[:,:,2]; dims=3)
+        C = cat(A[:,:,1] * B[:,:,1], A[:,:,2] * B[:,:,2], A[:,:,3] * B[:,:,3]; dims=3)
         @test A ⊠ B ≈ C
         @test_logs min_level=Logging.Debug A ⊠ B
 
