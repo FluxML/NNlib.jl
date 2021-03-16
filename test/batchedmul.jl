@@ -1,4 +1,4 @@
-using NNlib, Test, LinearAlgebra
+using NNlib, Test, LinearAlgebra, Logging
 using NNlib: storage_type, storage_typejoin, is_strided,
     batched_mul!, batched_mul_generic!, _unbatch, _copy_if_faster,
     BatchedAdjoint, BatchedTranspose
@@ -130,6 +130,7 @@ end
 
         C = cat(A[:,:,1] * B[:,:,1], A[:,:,2] * B[:,:,2]; dims=3)
         @test A ⊠ B ≈ C
+        @test_logs min_level=Logging.Debug A ⊠ B
 
         # In-place batched_mul!
         α, β = rand(T), rand(T)
