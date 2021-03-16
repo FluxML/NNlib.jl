@@ -92,15 +92,13 @@ end
 
 function rrule(::typeof(batched_mul), A::AbstractArray{<:Any,3}, B::AbstractArray{<:Any,3})
     function batched_mul_pullback(Δ)
-        Athunk = if size(A,3) == 1
-            @thunk(sum(batched_mul(Δ, batched_adjoint(B)), dims=3))
-        else
-            @thunk(batched_mul(Δ, batched_adjoint(B)))
+        Athunk = @thunk begin
+            tmp = batched_mul(Δ, batched_adjoint(B))
+            size(A,3) == 1 ? sum(tmp, dims=3) : tmp
         end
-        Bthunk = if size(B,3) == 1
-            @thunk(sum(batched_mul(batched_adjoint(A), Δ), dims=3))
-        else
-            @thunk(batched_mul(batched_adjoint(A), Δ))
+        Bthunk = @thunk begin
+            tmp = batched_mul(batched_adjoint(A), Δ)
+            size(B,3) == 1 ? sum(tmp, dims=3) : tmp
         end
         return (NO_FIELDS, Athunk, Bthunk)
     end
