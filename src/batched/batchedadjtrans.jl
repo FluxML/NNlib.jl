@@ -1,6 +1,7 @@
 using LinearAlgebra
 
 import Base: -
+import Adapt: adapt_structure, adapt
 
 _batched_doc = """
     batched_transpose(A::AbstractArray{T,3})
@@ -100,3 +101,6 @@ function rrule(::typeof(batched_adjoint), A::AbstractArray{<:Any,3})
     b_adjoint_back(Δ) = (NO_FIELDS, batched_adjoint(Δ))
     batched_adjoint(A), b_adjoint_back
 end
+
+adapt_structure(to, x::BatchedAdjoint) = BatchedAdjoint(adapt(to, parent(x)))
+adapt_structure(to, x::BatchedTranspose) = BatchedTranspose(adapt(to, parent(x)))
