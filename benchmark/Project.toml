@@ -1,0 +1,5 @@
+[deps]
+ArgParse = "c7e460c6-2fb9-53a9-8c5b-16f535851c63"
+BenchmarkTools = "6e4b80f9-dd63-53aa-95a3-0cdb28fa8baf"
+NNlib = "872c559c-99b0-510c-b3b7-b6c96a88d5cd"
+PkgBenchmark = "32113eaa-f34f-5b0d-bd6c-c81e245fc73d"
