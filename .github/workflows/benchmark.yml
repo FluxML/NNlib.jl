@@ -1,0 +1,20 @@
+name: Benchmark
+on:
+  - pull_request
+jobs:
+  benchmark:
+    name: Benchmark
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - uses: julia-actions/setup-julia@v1
+        with:
+          version: '1.5'
+      - run: git fetch origin '+refs/heads/master:refs/remotes/origin/master'
+      - run: git branch master origin/master
+      - run: |
+          julia --project=benchmark -e '
+            using Pkg
+            Pkg.develop(PackageSpec(path=pwd()))
+            Pkg.instantiate()'
+      - run: julia --project=benchmark benchmark/runbenchmarks.jl

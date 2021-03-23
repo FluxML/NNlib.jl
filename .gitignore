@@ -11,3 +11,4 @@ deps/usr
 deps.jl
 *.log
 ./Manifest.toml
+benchmark/*.json
