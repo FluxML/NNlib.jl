@@ -145,36 +145,23 @@ for front_name in (:conv, :∇conv_data, :∇conv_filter,
                                 y::AbstractArray{yT,$N}, x::AbstractArray{xT,$N},
                                 w::AbstractArray{wT,$N}, cdims::ConvDims;
                                 kwargs...) where {yT, xT, wT}
+                    $(Symbol("$(front_name)$(backend)!"))(
+                        insert_singleton_spatial_dimension(y, $(5 - N)),
+                        insert_singleton_spatial_dimension(x, $(5 - N)),
+                        insert_singleton_spatial_dimension(w, $(5 - N)),
+                        insert_singleton_spatial_dimension(cdims, $(5 - N));
+                        kwargs...
+                    )
 
-                    y_ = insert_singleton_spatial_dimension(y, $(5 - N))
-                    x_ = insert_singleton_spatial_dimension(x, $(5 - N))
-                    w_ = insert_singleton_spatial_dimension(w, $(5 - N))
-                    cdims_ = insert_singleton_spatial_dimension(cdims, $(5 - N))
-                    x_cs = Iterators.partition(1:size(x_, $N), channels_in(cdims_) ÷ groupcount(cdims_))
-                    w_cs = Iterators.partition(1:size(w_, $N + 1), channels_out(cdims_) ÷ groupcount(cdims_))
-                    t = Threads.@spawn for (xc, wc) in zip(x_cs, w_cs)
-                      yix = ntuple(i -> i == $N ? wc : Colon(), 5)
-                      wix = ntuple(i -> i == $N + 1 ? wc : Colon(), 5)
-                      xix = ntuple(i -> i == $N ? xc : Colon(), 5)
-                      y_chunk = @view y_[yix...]
-                      x_chunk = @view x_[xix...]
-                      w_chunk = @view w_[wix...]
-
-                      # This is wasteful because it allocates twice the needed memory, but does the correct thing
-                      # Julia complains writing to the same memory buffer doing the non-allocating version
-                      ynew = $(Symbol("$(front_name)$(backend)"))(x_chunk, w_chunk)
-                      y_chunk .= ynew
-                    end
                     # We explicitly return `y` here, because the backend call
                     # itself may return a reshaped view, which we don't want.
-                    # $(Symbol("$(front_name)$(backend)!"))(y_, x_, w_, cdims_; kwargs...)
-                    Threads.wait(t)
                     return y
                 end
             end
         end
     end
 end
+
 #######################################
 
 
@@ -202,7 +189,17 @@ for (front_name, backend) in (
         function $(Symbol("$(front_name)!"))(
                         out::AbstractArray{T,5}, in1::AbstractArray{T,5},
                         in2::AbstractArray{T,5}, cdims::ConvDims; kwargs...) where {T <: $G}
-            $(Symbol("$(front_name)_$(backend)!"))(out, in1, in2, cdims; kwargs...)
+            x_cs = Iterators.partition(1:size(in1, 4),
+                                       channels_in(cdims) ÷ groupcount(cdims))
+            w_cs = Iterators.partition(1:size(in2, 5),
+                                       channels_out(cdims) ÷ groupcount(cdims))
+            cdims2 = DenseConvDims(cdims, G = 1, C_in = channels_in(cdims) ÷ groupcount(cdims), C_out = channels_out(cdims) ÷ groupcount(cdims))
+            for (xc, wc) in zip(x_cs, w_cs)
+              x = @view in1[ntuple(i -> i == 4 ? xc : Colon(), 5)...]
+              w = @view in2[ntuple(i -> i == 5 ? wc : Colon(), 5)...]
+              y = @view out[ntuple(i -> i == 4 ? wc : Colon(), 5)...]
+              $(Symbol("$(front_name)_$(backend)!"))(y, x, w, cdims2; kwargs...)
+            end
         end
     end
 end
