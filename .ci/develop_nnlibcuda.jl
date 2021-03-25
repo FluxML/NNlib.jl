@@ -14,5 +14,6 @@ Pkg.add(url="https://github.com/JuliaGPU/GPUCompiler.jl.git", rev="master")
 Pkg.add(url="https://github.com/JuliaGPU/GPUArrays.jl.git", rev="master")
 Pkg.add(url="https://github.com/maleadt/LLVM.jl.git", rev="master")
 Pkg.add(url="https://github.com/JuliaGPU/CUDA.jl.git", rev="master")
+Pkg.add(url="https://github.com/FluxML/Zygote.jl.git", rev="cl/cufunc")
 
 Pkg.precompile()
