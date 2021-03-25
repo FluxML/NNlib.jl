@@ -10,4 +10,4 @@
 deps/usr
 deps.jl
 *.log
-./Manifest.toml
+/Manifest.toml

@@ -2,7 +2,7 @@ module NNlibCUDA
 
 using NNlib
 using CUDA
-using CUDA: @cufunc
+# using CUDA: @cufunc # doesn't exist anymore in CUDA
 using Random, Statistics
 
 include("upsample.jl")
