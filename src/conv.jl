@@ -188,12 +188,12 @@ for (front_name, backend) in (
         # im2col-accelerated function forwarding definition
         function $(Symbol("$(front_name)!"))(
                         out::AbstractArray{T,5}, in1::AbstractArray{T,5},
-                        in2::AbstractArray{T,5}, cdims::ConvDims; kwargs...) where {T <: $G}
+                        in2::AbstractArray{T,5}, cdims::C; kwargs...) where {T <: $G, C <: ConvDims}
             x_cs = Iterators.partition(1:size(in1, 4),
                                        channels_in(cdims) ÷ groupcount(cdims))
             w_cs = Iterators.partition(1:size(in2, 5),
                                        channels_out(cdims) ÷ groupcount(cdims))
-            cdims2 = DenseConvDims(cdims,
+            cdims2 = eval(nameof(C))(cdims,
                                    G = 1,
                                    C_in = channels_in(cdims) ÷ groupcount(cdims),
                                    C_out = channels_out(cdims) ÷ groupcount(cdims))
