@@ -197,11 +197,11 @@ for (front_name, backend) in (
                                    G = 1,
                                    C_in = channels_in(cdims) ÷ groupcount(cdims),
                                    C_out = channels_out(cdims) ÷ groupcount(cdims))
-            Threads.@sync Threads.@spawn for (xc, wc) in zip(x_cs, w_cs)
+            Threads.@sync for (xc, wc) in zip(x_cs, w_cs)
               x = @view in1[ntuple(i -> i == 4 ? xc : Colon(), 5)...]
               w = @view in2[ntuple(i -> i == 5 ? wc : Colon(), 5)...]
               y = @view out[ntuple(i -> i == 4 ? wc : Colon(), 5)...]
-              $(Symbol("$(front_name)_$(backend)!"))(y, x, w, cdims2; kwargs...)
+              Threads.@spawn $(Symbol("$(front_name)_$(backend)!"))(y, x, w, cdims2; kwargs...)
             end
         end
     end
