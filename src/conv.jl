@@ -203,6 +203,7 @@ for (front_name, backend) in (
               y = @view out[ntuple(i -> i == 4 ? wc : Colon(), 5)...]
               Threads.@spawn $(Symbol("$(front_name)_$(backend)!"))(y, x, w, cdims2; kwargs...)
             end
+           return out
         end
     end
 end
