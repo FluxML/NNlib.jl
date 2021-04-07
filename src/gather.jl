@@ -20,20 +20,21 @@ or multiple `dst` columns.
 
 See [`gather`](@ref) for an allocating version.
 """
+gather!(dst::AbstractArray, src::AbstractArray, idx::AbstractArray{<:IntOrIntTuple}) = gather!(dst, src, CartesianIndex.(idx))
+
 function gather!(dst::AbstractArray{Tdst,Ndst}, 
                  src::AbstractArray{Tsrc,Nsrc}, 
-                 idx::AbstractArray{Tidx, Nidx}) where 
-                    {Tdst, Tsrc, Ndst, Nsrc, Nidx, Tidx <: IntOrIntTuple}
+                 idx::AbstractArray{CartesianIndex{M},Nidx}) where 
+                    {Tdst, Tsrc, Ndst, Nsrc, M, Nidx}
 
-    M = typelength(Tidx)
-    d = Ndst - Nidx 
+    d = Ndst - Nidx
     d == Nsrc - M || throw(ArgumentError("Incompatible input shapes."))
     size(dst)[1:d] == size(src)[1:d] || throw(ArgumentError("Incompatible input shapes."))
     size(dst)[d+1:end] == size(idx) || throw(ArgumentError("Incompatible input shapes."))
 
     colons = ntuple(i -> Colon(), d)
     for k in CartesianIndices(idx)
-        view(dst, colons..., k) .= view(src, colons..., idx[k]...)
+        view(dst, colons..., k) .= view(src, colons..., idx[k])
     end
     return dst
 end
