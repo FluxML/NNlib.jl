@@ -1,3 +1,6 @@
+typelength(::Type{<:Number}) = 1
+typelength(::Type{<:NTuple{M}}) where M = M
+
 """
     gather!(dst, src, idx)
 

@@ -18,9 +18,6 @@ function _check_dims(Ndst, Nsrc, N, Nidx)
     return dims
 end
 
-typelength(::Type{<:Number}) = 1
-typelength(::Type{<:NTuple{M}}) where M = M
-
 """
     scatter!(op, dst, src, idx)
 
@@ -42,20 +39,17 @@ index of `dst` and the value of `idx` must indicate the last few dimensions of `
 Once the dimensions match, arrays are aligned automatically. The value of `idx` can be
 `Int` or `Tuple` type.
 """
+scatter!(op, dst::AbstractArray, src::AbstractArray, idx::AbstractArray{<:IntOrIntTuple}) =
+    scatter!(op, dst, src, CartesianIndex.(idx))
+
 function scatter!(op,
                   dst::AbstractArray{Tdst,Ndst},
-                  src::AbstractArray{Tsrc,Nsrc},
-                  idx::AbstractArray{Tidx,Nidx}) where {Tdst,Tsrc,Tidx<:IntOrIntTuple,Ndst,Nsrc,Nidx}
-    M = typelength(Tidx)
+                  src::AbstractArray{Tsrc,Nsrc}, 
+                  idx::AbstractArray{CartesianIndex{M},Nidx}) where {Tdst,Ndst,Tsrc,Nsrc,M,Nidx}
     dims = _check_dims(Ndst, Nsrc, M, Nidx)
-    scatter!(op, dst, src, idx, Val(dims))
-end
-
-function scatter!(op, dst::AbstractArray{Tdst}, src::AbstractArray{Tsrc}, idx::AbstractArray{<:IntOrIntTuple},
-                  dims::Val{N}) where {Tdst,Tsrc,N}
     colons = Base.ntuple(_->Colon(), dims)
     for k in CartesianIndices(idx)
-        dst_v = view(dst, colons..., idx[k]...)
+        dst_v = view(dst, colons..., idx[k])
         src_v = view(src, colons..., k)
         dst_v .= (op).(dst_v, src_v)
     end
