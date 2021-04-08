@@ -1,3 +1,5 @@
+using NNlib: scatter, scatter!
+
 dsts = Dict(
     0 => [3, 4, 5, 6, 7],
     1 => [3 3 4 4 5;

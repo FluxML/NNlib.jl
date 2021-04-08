@@ -1,4 +1,4 @@
-export gather, gather!
+# export gather, gather!
 
 """
     gather!(dst, src, idx)
