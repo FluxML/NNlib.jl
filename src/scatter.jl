@@ -1,5 +1,3 @@
-# export scatter!, scatter # Leave unexported as it conflicts with Plots.scatter
-
 ## Scatter API
 #   - Scatter:
 #     - scatter(op, src, idx)
