@@ -1,3 +1,5 @@
+using NNlib: gather, gather!
+
 @testset "gather scalar index" begin 
     T = Float32
     

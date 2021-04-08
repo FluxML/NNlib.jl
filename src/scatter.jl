@@ -1,5 +1,3 @@
-export scatter!, scatter
-
 ## Scatter API
 #   - Scatter:
 #     - scatter(op, src, idx)
