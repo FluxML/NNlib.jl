@@ -1,5 +1,3 @@
-# export gather, gather!
-
 """
     gather!(dst, src, idx)
 
