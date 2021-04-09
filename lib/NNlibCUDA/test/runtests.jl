@@ -8,7 +8,7 @@ CUDA.allowscalar(false)
 
 include("test_utils.jl")
 
-if CUDA.has_cuda()
+if CUDA.functional()
     include("activations.jl")
     include("batchedmul.jl")
     include("upsample.jl")
@@ -16,4 +16,6 @@ if CUDA.has_cuda()
     include("pooling.jl")
     include("softmax.jl")
     include("batchnorm.jl")
+else
+    @warn "needs working CUDA installation to perform tests"
 end
