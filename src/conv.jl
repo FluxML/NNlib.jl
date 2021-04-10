@@ -175,9 +175,6 @@ for (front_name, backend) in (
         :conv                   => :im2col,
         :∇conv_data             => :im2col,
         :∇conv_filter           => :im2col,
-        :depthwiseconv          => :im2col,
-        :∇depthwiseconv_data    => :im2col,
-        :∇depthwiseconv_filter  => :im2col,
     )
 
     # These are the GEMM types we will accelerate with `im2col`
@@ -204,6 +201,27 @@ for (front_name, backend) in (
               Threads.@spawn $(Symbol("$(front_name)_$(backend)!"))(y, x, w, cdims2; kwargs...)
             end
            return out
+        end
+    end
+end
+
+for (front_name, backend) in (
+        # This maps from public, front-facing name, to internal backend name
+        :depthwiseconv          => :im2col,
+        :∇depthwiseconv_data    => :im2col,
+        :∇depthwiseconv_filter  => :im2col,
+    )
+
+    # These are the GEMM types we will accelerate with `im2col`
+    G = Union{[x[2] for x in gemm_datatype_mappings]...}
+
+    # We only define 3d conv primitives, we reshape lower down to get 1d and 2d convolution
+    @eval begin
+        # im2col-accelerated function forwarding definition
+        function $(Symbol("$(front_name)!"))(
+                        out::AbstractArray{T,5}, in1::AbstractArray{T,5},
+                        in2::AbstractArray{T,5}, cdims::C; kwargs...) where {T <: $G, C <: ConvDims}
+            $(Symbol("$(front_name)_$(backend)!"))(out, in1, in2, cdims; kwargs...)
         end
     end
 end
