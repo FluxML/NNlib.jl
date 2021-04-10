@@ -2,7 +2,6 @@ module NNlibCUDA
 
 using NNlib
 using CUDA
-using CUDA: @cufunc
 using Random, Statistics
 
 include("upsample.jl")
