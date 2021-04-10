@@ -20,34 +20,9 @@ or multiple `dst` columns.
 
 See [`gather`](@ref) for an allocating version.
 """
-function gather!(dst::AbstractArray{Tdst,Ndst}, 
-                 src::AbstractArray{Tsrc,Nsrc}, 
-                 idx::AbstractArray{Tidx,Nidx}) where {Tdst, Tsrc, Tidx<:IntOrIntTuple, Ndst, Nsrc, Nidx}
-
-    M = typelength(Tidx)
-    d = Ndst - Nidx
-    d == Nsrc - M || throw(ArgumentError("Incompatible input shapes."))
-    size(dst)[1:d] == size(src)[1:d] || throw(ArgumentError("Incompatible input shapes."))
-    size(dst)[d+1:end] == size(idx) || throw(ArgumentError("Incompatible input shapes."))
-
-    colons = ntuple(i -> Colon(), d)
-    for k in CartesianIndices(idx)
-        _view(dst, colons, k) .= _view(src, colons, idx, k)
-    end
-    return dst
-end
-
-function gather!(dst::AbstractArray{Tdst,Ndst}, 
-                 src::AbstractArray{Tsrc,Nsrc}, 
-                 idx::AbstractArray{CartesianIndex{M},Nidx}) where 
-                    {Tdst, Tsrc, Ndst, Nsrc, M, Nidx}
-
-    d = Ndst - Nidx
-    d == Nsrc - M || throw(ArgumentError("Incompatible input shapes."))
-    size(dst)[1:d] == size(src)[1:d] || throw(ArgumentError("Incompatible input shapes."))
-    size(dst)[d+1:end] == size(idx) || throw(ArgumentError("Incompatible input shapes."))
-
-    colons = ntuple(i -> Colon(), d)
+function gather!(dst::AbstractArray, src::AbstractArray, idx::AbstractArray)
+    dims = _check_dims(src, dst, idx)
+    colons = ntuple(i -> Colon(), dims)
     for k in CartesianIndices(idx)
         _view(dst, colons, k) .= _view(src, colons, idx, k)
     end

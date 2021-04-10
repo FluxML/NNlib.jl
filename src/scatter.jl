@@ -12,12 +12,27 @@
 typelength(::Type{<:Number}) = 1
 typelength(::Type{<:NTuple{M}}) where M = M
 
-function _check_dims(Ndst, Nsrc, N, Nidx)
-    @assert Ndst - N == Nsrc - Nidx "Incompatible input shapes of (dst, src, idx) = ($Ndst, $Nsrc, $Nidx)."
-    dims = Ndst - N
-    if dims < 0
-        throw(ArgumentError("dims must be non-negative but got dims=$dims."))
-    end
+function _check_dims(X::AbstractArray{Tx,Nx}, 
+                     Y::AbstractArray{Ty,Ny},
+                     idx::AbstractArray{Tidx,Nidx}) where 
+                     {Tx,Ty,Tidx<:IntOrIntTuple,Nx,Ny,Nidx}
+    M = typelength(Tidx)
+    @assert Nx - M == Ny - Nidx "Incompatible input shapes of (X, Y, idx) = ($Nx, $Ny, $Nidx)."
+    dims = Nx - M
+    dims < 0 && throw(ArgumentError("dims must be non-negative but got dims=$dims."))
+    size(X)[1:dims] == size(Y)[1:dims] || throw(ArgumentError("Incompatible input shapes."))
+    size(Y)[dims+1:end] == size(idx) || throw(ArgumentError("Incompatible input shapes."))
+    return dims
+end
+
+function _check_dims(X::AbstractArray{Tx,Nx}, 
+                     Y::AbstractArray{Ty,Ny},
+                     idx::AbstractArray{CartesianIndex{M},Nidx}) where {Tx,Ty,Nx,Ny,M,Nidx}
+    @assert Nx - M == Ny - Nidx "Incompatible input shapes of (dst, src, idx) = ($Nx, $Ny, $Nidx)."
+    dims = Nx - M
+    dims < 0 && throw(ArgumentError("dims must be non-negative but got dims=$dims."))
+    size(X)[1:dims] == size(Y)[1:dims] || throw(ArgumentError("Incompatible input shapes."))
+    size(Y)[dims+1:end] == size(idx) || throw(ArgumentError("Incompatible input shapes."))
     return dims
 end
 
@@ -46,12 +61,8 @@ index of `dst` and the value of `idx` must indicate the last few dimensions of `
 Once the dimensions match, arrays are aligned automatically. The value of `idx` can be
 `Int` or `Tuple` type.
 """
-function scatter!(op,
-                dst::AbstractArray{Tdst,Ndst},
-                src::AbstractArray{Tsrc,Nsrc},
-                idx::AbstractArray{Tidx,Nidx}) where {Tdst,Tsrc,Tidx<:IntOrIntTuple,Ndst,Nsrc,Nidx}
-    M = typelength(Tidx)
-    dims = _check_dims(Ndst, Nsrc, M, Nidx)
+function scatter!(op, dst::AbstractArray, src::AbstractArray, idx::AbstractArray)
+    dims = _check_dims(dst, src, idx)
     colons = Base.ntuple(_->Colon(), dims)
     for k in CartesianIndices(idx)
         dst_v = _view(dst, colons, idx, k)
@@ -61,24 +72,7 @@ function scatter!(op,
     dst
 end
 
-function scatter!(op,
-                  dst::AbstractArray{Tdst,Ndst},
-                  src::AbstractArray{Tsrc,Nsrc}, 
-                  idx::AbstractArray{CartesianIndex{M},Nidx}) where {Tdst,Ndst,Tsrc,Nsrc,M,Nidx}
-    dims = _check_dims(Ndst, Nsrc, M, Nidx)
-    colons = Base.ntuple(_->Colon(), dims)
-    for k in CartesianIndices(idx)
-        dst_v = _view(dst, colons, idx, k)
-        src_v = _view(src, colons, k)
-        dst_v .= (op).(dst_v, src_v)
-    end
-    dst
-end
-
-function scatter!(op::typeof(mean),
-                  dst::AbstractArray{Tdst,Ndst},
-                  src::AbstractArray{Tsrc,Nsrc},
-                  idx::AbstractArray{<:IntOrIntTuple,Nidx}) where {Tdst,Tsrc,Ndst,Nsrc,Nidx}
+function scatter!(op::typeof(mean), dst::AbstractArray, src::AbstractArray, idx::AbstractArray)
     Ns = scatter!(+, zero(dst), one.(src), idx)
     dst_ = scatter!(+, zero(dst), src, idx)
     dst .+= safe_div.(dst_, Ns)
