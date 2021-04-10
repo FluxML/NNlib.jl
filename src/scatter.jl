@@ -14,12 +14,10 @@ typelength(::Type{<:NTuple{M}}) where M = M
 
 function _check_dims(X::AbstractArray{Tx,Nx}, 
                      Y::AbstractArray{Ty,Ny},
-                     idx::AbstractArray{Tidx,Nidx}) where 
+                     idx::AbstractArray{Tidx,Nidx}) where
                      {Tx,Ty,Tidx<:IntOrIntTuple,Nx,Ny,Nidx}
     M = typelength(Tidx)
-    @assert Nx - M == Ny - Nidx "Incompatible input shapes of (X, Y, idx) = ($Nx, $Ny, $Nidx)."
-    dims = Nx - M
-    dims < 0 && throw(ArgumentError("dims must be non-negative but got dims=$dims."))
+    dims = _check_dims(Nx, Ny, M, Nidx)
     size(X)[1:dims] == size(Y)[1:dims] || throw(ArgumentError("Incompatible input shapes."))
     size(Y)[dims+1:end] == size(idx) || throw(ArgumentError("Incompatible input shapes."))
     return dims
@@ -28,11 +26,16 @@ end
 function _check_dims(X::AbstractArray{Tx,Nx}, 
                      Y::AbstractArray{Ty,Ny},
                      idx::AbstractArray{CartesianIndex{M},Nidx}) where {Tx,Ty,Nx,Ny,M,Nidx}
+    dims = _check_dims(Nx, Ny, M, Nidx)
+    size(X)[1:dims] == size(Y)[1:dims] || throw(ArgumentError("Incompatible input shapes."))
+    size(Y)[dims+1:end] == size(idx) || throw(ArgumentError("Incompatible input shapes."))
+    return dims
+end
+
+function _check_dims(Nx, Ny, M, Nidx)
     @assert Nx - M == Ny - Nidx "Incompatible input shapes of (dst, src, idx) = ($Nx, $Ny, $Nidx)."
     dims = Nx - M
     dims < 0 && throw(ArgumentError("dims must be non-negative but got dims=$dims."))
-    size(X)[1:dims] == size(Y)[1:dims] || throw(ArgumentError("Incompatible input shapes."))
-    size(Y)[dims+1:end] == size(idx) || throw(ArgumentError("Incompatible input shapes."))
     return dims
 end
 
