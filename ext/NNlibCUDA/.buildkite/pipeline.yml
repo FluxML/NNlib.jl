@@ -1,8 +1,8 @@
 steps:
-  - label: "GPU v1.6-nightly"       # change to "v1" when 1.6 is out
+  - label: "GPU integration with julia v1.6"
     plugins:
       - JuliaCI/julia#v1:
-          version: "1.6"      # change to "1" when 1.6 is out 
+          version: "1.6" 
       - JuliaCI/julia-test#v1: ~
     agents:
       queue: "juliagpu"
