@@ -11,11 +11,14 @@ Statistics = "10745b16-79ce-11e8-11f9-7d13ad32a3b2"
 
 [compat]
 CUDA = "3"
+NNlib = "0.7"
 julia = "1.6"
 
 [extras]
+CUDA = "052768ef-5323-5732-b1bb-66c8b64840ba"
 ForwardDiff = "f6369f11-7733-5829-9624-2563aa707210"
 Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
+Zygote = "e88e6eb3-aa80-5325-afca-941959d7151f"
 
 [targets]
-test = ["ForwardDiff", "Test"]
+test = ["CUDA", "ForwardDiff", "Test", "Zygote"]
