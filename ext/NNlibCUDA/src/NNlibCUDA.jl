@@ -4,6 +4,9 @@ using NNlib
 using CUDA
 using Random, Statistics
 
+const IntOrIntTuple = Union{Integer, NTuple{N,<:Integer} where N}
+const MAX_THREADS = 1024
+
 include("upsample.jl")
 include("activations.jl")
 include("batchedmul.jl")
