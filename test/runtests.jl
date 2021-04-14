@@ -70,5 +70,5 @@ if VERSION >= v"1.6" && CUDA.functional()
         @info "Skipping CUDA tests, set NNLIB_TEST_CUDA=true to run them"
     end
 else
-    @info "Insufficient version or CUDA not found: Skipping CUDA tests"
+    @info "Insufficient version or CUDA not found; Skipping CUDA tests"
 end
