@@ -56,3 +56,15 @@ end
     include("utils.jl")
 end
 
+using CUDA
+
+if VERSION >= v"1.6" && CUDA.functional()
+    import Pkg
+    Pkg.develop(url = "https://github.com/FluxML/NNlibCUDA.jl")
+    using NNlibCUDA
+    @testset "CUDA" begin
+        Pkg.test("NNlibCUDA")
+    end
+else
+    @info "Insufficient version or CUDA not found: Skipping CUDA tests"
+end
