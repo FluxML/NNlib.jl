@@ -12,7 +12,4 @@ Return the maximum value for each dimension. An array of dimensions `dims` is ac
 The maximum of each dimension in the element is computed.
 """
 maximum_dims(dims::AbstractArray{<:Integer}) = (maximum(dims), )
-
-function maximum_dims(dims::AbstractArray{<:Tuple})
-    Tuple(maximum(xs) for xs in zip(dims...))
-end
+maximum_dims(dims::AbstractArray{NTuple{N, T}}) where {N,T} = Tuple(maximum(x->x[i], dims) for i = 1:N)
