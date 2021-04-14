@@ -5,11 +5,11 @@ using CUDA
 using Random, Statistics
 
 const IntOrIntTuple = Union{Integer, NTuple{N,<:Integer} where N}
-const MAX_THREADS = 1024
 
 include("upsample.jl")
 include("activations.jl")
 include("batchedmul.jl")
+include("scatter.jl")
 include("cudnn/cudnn.jl")
 include("cudnn/conv.jl")
 include("cudnn/pooling.jl")
