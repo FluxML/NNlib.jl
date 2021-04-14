@@ -19,7 +19,7 @@ for op in [+, -, *, /, max, min, &, |]
         return nothing
     end
 
-    @eval function NNlib.scatter!(op::typeof($(op)), dst::CuArray{Tdst}, src::CuArray{Tsrc}, idx::CuArray{<:IntOrIntTuple}, dims::Val{N}) where {Tdst,Tsrc,N}
+    @eval function NNlib.scatter!(op::typeof($(op)), dst::AnyCuArray{Tdst}, src::AnyCuArray{Tsrc}, idx::AnyCuArray{<:IntOrIntTuple}, dims::Val{N}) where {Tdst,Tsrc,N}
         args = if N == 0
             max_idx = length(idx)
             op, dst, src, idx
@@ -32,7 +32,7 @@ for op in [+, -, *, /, max, min, &, |]
 
         kernel = @cuda launch=false scatter_kernel!(args...)
         config = launch_configuration(kernel.fun; max_threads=256)
-        threads = Base.min(max_idx, config.threads)
+        threads = min(max_idx, config.threads)
         blocks = ceil(Int, max_idx / threads)
         kernel(args...; threads=threads, blocks=blocks)
         return dst
