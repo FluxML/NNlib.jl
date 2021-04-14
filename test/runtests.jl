@@ -59,7 +59,7 @@ end
 using CUDA
 
 if VERSION >= v"1.6" && CUDA.functional()
-    if ENV["NNLIB_TEST_CUDA"] == "true"
+    if get(ENV, "NNLIB_TEST_CUDA", "false") == "true"
         import Pkg
         Pkg.develop(url = "https://github.com/FluxML/NNlibCUDA.jl")
         using NNlibCUDA
