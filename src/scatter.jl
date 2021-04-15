@@ -102,55 +102,55 @@ function scatter end
 
 for op in [+, -]
     @eval function scatter(op::typeof($op),
-                           src::AbstractArray{T,Nsrc},
-                           idx::AbstractArray{<:IntOrIntTuple,Nidx}) where {T,Nsrc,Nidx}
+                           src::AbstractArray{Tsrc,Nsrc},
+                           idx::AbstractArray{Tidx,Nidx}) where {Tsrc,Tidx,Nsrc,Nidx}
         dims = Nsrc - Nidx
         dstsize = (size(src)[1:dims]..., maximum_dims(idx)...)
-        dst = similar(src, T, dstsize)
-        fill!(dst, Base.reduce_empty(+, T))
+        dst = similar(src, Tsrc, dstsize)
+        fill!(dst, Base.reduce_empty(+, Tsrc))
         scatter!(op, dst, src, idx)
     end
 end
 
 for op in [*, /]
     @eval function scatter(op::typeof($op),
-                           src::AbstractArray{T,Nsrc},
-                           idx::AbstractArray{<:IntOrIntTuple,Nidx}) where {T,Nsrc,Nidx}
+                           src::AbstractArray{Tsrc,Nsrc},
+                           idx::AbstractArray{Tidx,Nidx}) where {Tsrc,Tidx,Nsrc,Nidx}
         dims = Nsrc - Nidx
         dstsize = (size(src)[1:dims]..., maximum_dims(idx)...)
-        dst = similar(src, T, dstsize)
-        fill!(dst, Base.reduce_empty(*, T))
+        dst = similar(src, Tsrc, dstsize)
+        fill!(dst, Base.reduce_empty(*, Tsrc))
         scatter!(op, dst, src, idx)
     end
 end
 
 function scatter(op::typeof(max),
-                 src::AbstractArray{T,Nsrc},
-                 idx::AbstractArray{<:IntOrIntTuple,Nidx}) where {T,Nsrc,Nidx}
+                 src::AbstractArray{Tsrc,Nsrc},
+                 idx::AbstractArray{Tidx,Nidx}) where {Tsrc,Tidx,Nsrc,Nidx}
     dims = Nsrc - Nidx
     dstsize = (size(src)[1:dims]..., maximum_dims(idx)...)
-    dst = similar(src, T, dstsize)
-    fill!(dst, typemin(T))
+    dst = similar(src, Tsrc, dstsize)
+    fill!(dst, typemin(Tsrc))
     scatter!(op, dst, src, idx)
 end
 
 function scatter(op::typeof(min),
-                 src::AbstractArray{T,Nsrc},
-                 idx::AbstractArray{<:IntOrIntTuple,Nidx}) where {T,Nsrc,Nidx}
+                 src::AbstractArray{Tsrc,Nsrc},
+                 idx::AbstractArray{Tidx,Nidx}) where {Tsrc,Tidx,Nsrc,Nidx}
     dims = Nsrc - Nidx
     dstsize = (size(src)[1:dims]..., maximum_dims(idx)...)
-    dst = similar(src, T, dstsize)
-    fill!(dst, typemax(T))
+    dst = similar(src, Tsrc, dstsize)
+    fill!(dst, typemax(Tsrc))
     scatter!(op, dst, src, idx)
 end
 
 function scatter(op::typeof(mean),
-                 src::AbstractArray{T,Nsrc},
-                 idx::AbstractArray{<:IntOrIntTuple,Nidx}) where {T,Nsrc,Nidx}
-    FT = float(T)
+                 src::AbstractArray{Tsrc,Nsrc},
+                 idx::AbstractArray{Tidx,Nidx}) where {Tsrc,Tidx,Nsrc,Nidx}
+    FT = float(Tsrc)
     dims = Nsrc - Nidx
     dstsize = (size(src)[1:dims]..., maximum_dims(idx)...)
-    dst = similar(src, T, dstsize)
+    dst = similar(src, Tsrc, dstsize)
     fill!(dst, Base.reduce_empty(+, FT))
     scatter!(op, dst, src, idx)
 end
