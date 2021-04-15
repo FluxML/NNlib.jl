@@ -55,7 +55,7 @@ See [`gather!`](@ref) for an in-place version.
 """
 function gather(src::AbstractArray{Tsrc, Nsrc}, 
                 idx::AbstractArray{Tidx, Nidx}) where 
-                    {Tsrc, Nsrc, Nidx, Tidx<:IntOrIntTuple}
+                    {Tsrc, Nsrc, Nidx, Tidx}
 
     M = typelength(Tidx) 
     dstsize = (size(src)[1:Nsrc-M]..., size(idx)...)

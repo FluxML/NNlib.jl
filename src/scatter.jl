@@ -11,6 +11,7 @@
 
 typelength(::Type{<:Number}) = 1
 typelength(::Type{<:NTuple{M}}) where M = M
+typelength(::Type{CartesianIndex{M}}) where M = M
 
 function _check_dims(X::AbstractArray{Tx,Nx}, 
                      Y::AbstractArray{Ty,Ny},
