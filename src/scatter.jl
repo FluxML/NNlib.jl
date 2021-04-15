@@ -39,9 +39,8 @@ function _check_dims(Nx, Ny, M, Nidx)
     return dims
 end
 
-_view(X, colons, idx::AbstractArray{CartesianIndex}, k::CartesianIndex) = view(X, colons..., idx[k])
-_view(X, colons, idx, k::CartesianIndex) = view(X, colons..., idx[k]...)
-_view(X, colons, k::CartesianIndex) = view(X, colons..., k)
+_view(X, colons, k) = view(X, colons..., k...)
+_view(X, colons, k::Union{Integer, CartesianIndex}) = view(X, colons..., k)
 
 """
     scatter!(op, dst, src, idx)
@@ -68,7 +67,7 @@ function scatter!(op, dst::AbstractArray, src::AbstractArray, idx::AbstractArray
     dims = _check_dims(dst, src, idx)
     colons = Base.ntuple(_->Colon(), dims)
     for k in CartesianIndices(idx)
-        dst_v = _view(dst, colons, idx, k)
+        dst_v = _view(dst, colons, idx[k])
         src_v = _view(src, colons, k)
         dst_v .= (op).(dst_v, src_v)
     end

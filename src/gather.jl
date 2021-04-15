@@ -24,7 +24,7 @@ function gather!(dst::AbstractArray, src::AbstractArray, idx::AbstractArray)
     dims = _check_dims(src, dst, idx)
     colons = ntuple(i -> Colon(), dims)
     for k in CartesianIndices(idx)
-        _view(dst, colons, k) .= _view(src, colons, idx, k)
+        _view(dst, colons, k) .= _view(src, colons, idx[k])
     end
     return dst
 end
