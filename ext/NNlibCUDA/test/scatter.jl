@@ -62,9 +62,7 @@ res = Dict(
                             4. 4. 6. 5. 5.]),
 )
 
-types = [CuArray{UInt32}, CuArray{UInt64},
-         CuArray{Int32}, CuArray{Int64},
-         CuArray{Float32}, CuArray{Float64}]
+types = [CuArray{Int32}, CuArray{Int64}, CuArray{Float32}, CuArray{Float64}]
 
 
 @testset "scatter" begin
@@ -76,7 +74,7 @@ types = [CuArray{UInt32}, CuArray{UInt64},
                     @test NNlib.scatter!(+, T(dsts[dims]), T(srcs[(dims, mutated)]), idx) == T(res[(+, dims, mutated)])
 
                     mutated = false
-                    # @test scatter(+, srcs[(dims, mutated)], idx) == T(res[(+, dims, mutated)])
+                    @test NNlib.scatter(+, T(srcs[(dims, mutated)]), idx) == T(res[(+, dims, mutated)])
                 end
             end
 
@@ -86,7 +84,7 @@ types = [CuArray{UInt32}, CuArray{UInt64},
                     @test NNlib.scatter!(-, T(dsts[dims]), T(srcs[(dims, mutated)]), idx) == T(res[(-, dims, mutated)])
 
                     mutated = false
-                    # @test scatter(-, srcs[(dims, mutated)], idx) == T(res[(-, dims, mutated)])
+                    @test NNlib.scatter(-, T(srcs[(dims, mutated)]), idx) == T(res[(-, dims, mutated)])
                 end
             end
 
@@ -96,7 +94,7 @@ types = [CuArray{UInt32}, CuArray{UInt64},
                     @test NNlib.scatter!(max, T(dsts[dims]), T(srcs[(dims, mutated)]), idx) == T(res[(max, dims, mutated)])
 
                     mutated = false
-                    # @test scatter(max, srcs[(dims, mutated)], idx) == T(res[(max, dims, mutated)])
+                    @test NNlib.scatter(max, T(srcs[(dims, mutated)]), idx) == T(res[(max, dims, mutated)])
                 end
             end
 
@@ -106,7 +104,7 @@ types = [CuArray{UInt32}, CuArray{UInt64},
                     @test NNlib.scatter!(min, T(dsts[dims]), T(srcs[(dims, mutated)]), idx) == T(res[(min, dims, mutated)])
 
                     mutated = false
-                    # @test scatter(min, srcs[(dims, mutated)], idx) == T(res[(min, dims, mutated)])
+                    @test NNlib.scatter(min, T(srcs[(dims, mutated)]), idx) == T(res[(min, dims, mutated)])
                 end
             end
         end
@@ -121,7 +119,7 @@ types = [CuArray{UInt32}, CuArray{UInt64},
                     @test NNlib.scatter!(*, T(dsts[dims]), T(srcs[(dims, mutated)]), idx) == T(res[(*, dims, mutated)])
 
                     mutated = false
-                    # @test scatter(*, srcs[(dims, mutated)], idx) == T(res[(*, dims, mutated)])
+                    @test NNlib.scatter(*, T(srcs[(dims, mutated)]), idx) == T(res[(*, dims, mutated)])
                 end
             end
 
@@ -131,7 +129,7 @@ types = [CuArray{UInt32}, CuArray{UInt64},
                     @test NNlib.scatter!(/, T(dsts[dims]), T(srcs[(dims, mutated)].*2), idx) == T(res[(/, dims, mutated)])
 
                     mutated = false
-                    # @test scatter(/, srcs[(dims, mutated)], idx) == T(res[(/, dims, mutated)])
+                    @test NNlib.scatter(/, T(srcs[(dims, mutated)].*2), idx) == T(res[(/, dims, mutated)])
                 end
             end
 
@@ -141,7 +139,7 @@ types = [CuArray{UInt32}, CuArray{UInt64},
                     @test NNlib.scatter!(mean, T(dsts[dims]), T(srcs[(dims, mutated)]), idx) == T(res[(mean, dims, mutated)])
 
                     mutated = false
-                    # @test scatter(mean, srcs[(dims, mutated)], idx) == T(res[(mean, dims, mutated)])
+                    @test NNlib.scatter(mean, T(srcs[(dims, mutated)]), idx) == T(res[(mean, dims, mutated)])
                 end
             end
         end
