@@ -34,7 +34,7 @@ function NNlib.scatter!(op, dst::AnyCuArray{Tdst}, src::AnyCuArray{Tsrc}, idx::A
     kernel = @cuda launch=false scatter_kernel!(args...)
     config = launch_configuration(kernel.fun; max_threads=256)
     threads = min(max_idx, config.threads)
-    blocks = ceil(Int, max_idx / threads)
+    blocks = cld(max_idx, threads)
     kernel(args...; threads=threads, blocks=blocks)
     return dst
 end
