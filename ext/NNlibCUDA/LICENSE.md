@@ -1,4 +1,4 @@
-The Flux.jl package is licensed under the MIT "Expat" License:
+The NNlibCUDA.jl package is licensed under the MIT "Expat" License:
 
 > Copyright (c) 2021-22: Julia Computing, INc., Dhairya Gandhi and Contributors
 >
