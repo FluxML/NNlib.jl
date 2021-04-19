@@ -1,5 +1,6 @@
 export upsample_nearest, ∇upsample_nearest,
     upsample_bilinear, ∇upsample_bilinear,
+    upsample_trilinear, ∇upsample_trilinear,
     pixel_shuffle
 
 """
@@ -9,7 +10,7 @@ export upsample_nearest, ∇upsample_nearest,
 Upsamples the array `x` by integer multiples along the first `S` dimensions.
 Subsequent dimensions of `x` are not altered.
 
-Either the `scale` factors or the final output `size` can be specified. 
+Either the `scale` factors or the final output `size` can be specified.
 
 See also [`upsample_bilinear`](@ref), for two dimensions of an `N=4` array.
 
@@ -256,6 +257,88 @@ function rrule(::typeof(upsample_bilinear), x; size)
     end
     return Ω, upsample_bilinear_pullback
 end
+
+###########
+# trilinear
+###########
+"""
+    upsample_trilinear(x::AbstractArray{T,5}, scale::NTuple{3,Real})
+    upsample_trilinear(x::AbstractArray{T,5}; size::NTuple{3,Integer})
+
+Upsamples the first 3 dimensions of the array `x` by the upsample factors stored in `scale`,
+using trilinear interpolation. As an alternative to using `scale`, the resulting image `size`
+can be directly specified with a keyword argument.
+
+The size of the output is equal to
+`(scale[1]*S1, scale[2]*S2, scale[3]*S3, S4, S5)`, where `S1, S2, S3, S4, S5 = size(x)`.
+
+# Examples
+
+```julia
+upsample_trilinear(x, (2, 3, 4))
+upsample_trilinear(x; size=(4, 9, 11))  # specify ouput size instead
+upsample_trilinear(x, (2.5, 3.5, pi))  # non-integer scaling factors are allowed
+```
+"""
+function upsample_trilinear(x::AbstractArray{<:Any,5}, scale::NTuple{3,Real})
+    outsize = ntuple(i -> floor(Int, scale[i] * Base.size(x, i)), 3)
+    return upsample_trilinear(x; size=outsize)
+end
+
+upsample_trilinear(x, scale::Real) = upsample_trilinear(x, (scale,scale,scale))
+
+function upsample_trilinear(x::AbstractArray{T,5}; size::NTuple{3,Integer}) where T
+    w,h,d,c,n = Base.size(x)
+    if (w,h,d) == size
+        return x
+    end
+    y = similar(x, T, size..., c, n)
+    return upsample_trilinear_whdcn!(y, x)
+end
+
+function upsample_trilinear(x::AbstractArray{T,5}; size::NTuple{3,Integer}) where T<:Integer
+    y = float.(x)
+    res = upsample_trilinear(y; size=size)
+    return round.(T, res)
+end
+
+# placeholder for CPU implementation
+# which is overloaded in NNlibCUDA
+# I think a CPU implementation doesn't make sense, as it will be way too slow
+# for any meaningful data
+function upsample_trilinear_whdcn! end
+
+"""
+    ∇upsample_trilinear(Δ::AbstractArray{T,5}; size::NTuple{3,Integer}) where T
+
+# Arguments
+- `Δ`: Incoming gradient array, backpropagated from downstream layers
+- `size`: Lateral size & depth (W,H,D) of the image upsampled in the first place
+
+# Outputs
+- `dx`: Downsampled version of `Δ`
+"""
+function ∇upsample_trilinear(Δ::AbstractArray{T,5}; size::NTuple{3,Integer}) where T
+    w, h, d, c, n = Base.size(Δ)
+    out_w, out_h, out_d = size
+    if (w,h,d) == (out_w, out_h, out_d)
+        return Δ
+    end
+    dx = zero(similar(Δ, T, size..., c, n))
+    return ∇upsample_trilinear_whdcn!(dx, Δ)
+end
+
+# placeholder
+function ∇upsample_trilinear_whdcn! end
+
+function rrule(::typeof(upsample_trilinear), x; size)
+    Ω = upsample_trilinear(x; size=size)
+    function upsample_trilinear_pullback(Δ)
+        (NO_FIELDS, ∇upsample_trilinear(Δ; size=(Base.size(x,1), Base.size(x,2), Base.size(x,3))))
+    end
+    return Ω, upsample_trilinear_pullback
+end
+
 
 """
     pixel_shuffle(x, r::Integer)
