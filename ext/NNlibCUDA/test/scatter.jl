@@ -129,7 +129,7 @@ types = [CuArray{Int32}, CuArray{Int64}, CuArray{Float32}, CuArray{Float64}]
                     @test NNlib.scatter!(/, T(copy(dsts[dims])), T(srcs[(dims, mutated)].*2), idx) == T(res[(/, dims, mutated)])
 
                     mutated = false
-                    @test NNlib.scatter(/, T(srcs[(dims, mutated)].*2), idx) == T(res[(/, dims, mutated)])
+                    @test NNlib.scatter(/, T(srcs[(dims, mutated)]), idx) == T(res[(/, dims, mutated)])
                 end
             end
 
