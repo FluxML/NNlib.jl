@@ -20,20 +20,11 @@ or multiple `dst` columns.
 
 See [`gather`](@ref) for an allocating version.
 """
-function gather!(dst::AbstractArray{Tdst,Ndst}, 
-                 src::AbstractArray{Tsrc,Nsrc}, 
-                 idx::AbstractArray{Tidx, Nidx}) where 
-                    {Tdst, Tsrc, Ndst, Nsrc, Nidx, Tidx <: IntOrIntTuple}
-
-    M = typelength(Tidx)
-    d = Ndst - Nidx 
-    d == Nsrc - M || throw(ArgumentError("Incompatible input shapes."))
-    size(dst)[1:d] == size(src)[1:d] || throw(ArgumentError("Incompatible input shapes."))
-    size(dst)[d+1:end] == size(idx) || throw(ArgumentError("Incompatible input shapes."))
-
-    colons = ntuple(i -> Colon(), d)
+function gather!(dst::AbstractArray, src::AbstractArray, idx::AbstractArray)
+    dims = _check_dims(src, dst, idx)
+    colons = ntuple(i -> Colon(), dims)
     for k in CartesianIndices(idx)
-        view(dst, colons..., k) .= view(src, colons..., idx[k]...)
+        _view(dst, colons, k) .= _view(src, colons, idx[k])
     end
     return dst
 end
@@ -64,7 +55,7 @@ See [`gather!`](@ref) for an in-place version.
 """
 function gather(src::AbstractArray{Tsrc, Nsrc}, 
                 idx::AbstractArray{Tidx, Nidx}) where 
-                    {Tsrc, Nsrc, Nidx, Tidx<:IntOrIntTuple}
+                    {Tsrc, Nsrc, Nidx, Tidx}
 
     M = typelength(Tidx) 
     dstsize = (size(src)[1:Nsrc-M]..., size(idx)...)

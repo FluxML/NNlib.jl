@@ -9,17 +9,39 @@
 #     - ∇scatter_src!
 #
 
-function _check_dims(Ndst, Nsrc, N, Nidx)
-    @assert Ndst - N == Nsrc - Nidx "Incompatible input shapes of (dst, src, idx) = ($Ndst, $Nsrc, $Nidx)."
-    dims = Ndst - N
-    if dims < 0
-        throw(ArgumentError("dims must be non-negative but got dims=$dims."))
-    end
+typelength(::Type{<:Number}) = 1
+typelength(::Type{<:NTuple{M}}) where M = M
+typelength(::Type{CartesianIndex{M}}) where M = M
+
+function _check_dims(X::AbstractArray{Tx,Nx}, 
+                     Y::AbstractArray{Ty,Ny},
+                     idx::AbstractArray{Tidx,Nidx}) where
+                     {Tx,Ty,Tidx<:IntOrIntTuple,Nx,Ny,Nidx}
+    M = typelength(Tidx)
+    dims = _check_dims(Nx, Ny, M, Nidx)
+    size(X)[1:dims] == size(Y)[1:dims] || throw(ArgumentError("Incompatible input shapes."))
+    size(Y)[dims+1:end] == size(idx) || throw(ArgumentError("Incompatible input shapes."))
     return dims
 end
 
-typelength(::Type{<:Number}) = 1
-typelength(::Type{<:NTuple{M}}) where M = M
+function _check_dims(X::AbstractArray{Tx,Nx}, 
+                     Y::AbstractArray{Ty,Ny},
+                     idx::AbstractArray{CartesianIndex{M},Nidx}) where {Tx,Ty,Nx,Ny,M,Nidx}
+    dims = _check_dims(Nx, Ny, M, Nidx)
+    size(X)[1:dims] == size(Y)[1:dims] || throw(ArgumentError("Incompatible input shapes."))
+    size(Y)[dims+1:end] == size(idx) || throw(ArgumentError("Incompatible input shapes."))
+    return dims
+end
+
+function _check_dims(Nx, Ny, M, Nidx)
+    @assert Nx - M == Ny - Nidx "Incompatible input shapes of (dst, src, idx) = ($Nx, $Ny, $Nidx)."
+    dims = Nx - M
+    dims < 0 && throw(ArgumentError("dims must be non-negative but got dims=$dims."))
+    return dims
+end
+
+_view(X, colons, k) = view(X, colons..., k...)
+_view(X, colons, k::Union{Integer, CartesianIndex}) = view(X, colons..., k)
 
 """
     scatter!(op, dst, src, idx)
@@ -42,30 +64,18 @@ index of `dst` and the value of `idx` must indicate the last few dimensions of `
 Once the dimensions match, arrays are aligned automatically. The value of `idx` can be
 `Int` or `Tuple` type.
 """
-function scatter!(op,
-                  dst::AbstractArray{Tdst,Ndst},
-                  src::AbstractArray{Tsrc,Nsrc},
-                  idx::AbstractArray{Tidx,Nidx}) where {Tdst,Tsrc,Tidx<:IntOrIntTuple,Ndst,Nsrc,Nidx}
-    M = typelength(Tidx)
-    dims = _check_dims(Ndst, Nsrc, M, Nidx)
-    scatter!(op, dst, src, idx, Val(dims))
-end
-
-function scatter!(op, dst::AbstractArray{Tdst}, src::AbstractArray{Tsrc}, idx::AbstractArray{<:IntOrIntTuple},
-                  dims::Val{N}) where {Tdst,Tsrc,N}
+function scatter!(op, dst::AbstractArray, src::AbstractArray, idx::AbstractArray)
+    dims = _check_dims(dst, src, idx)
     colons = Base.ntuple(_->Colon(), dims)
     for k in CartesianIndices(idx)
-        dst_v = view(dst, colons..., idx[k]...)
-        src_v = view(src, colons..., k)
+        dst_v = _view(dst, colons, idx[k])
+        src_v = _view(src, colons, k)
         dst_v .= (op).(dst_v, src_v)
     end
     dst
 end
 
-function scatter!(op::typeof(mean),
-                  dst::AbstractArray{Tdst,Ndst},
-                  src::AbstractArray{Tsrc,Nsrc},
-                  idx::AbstractArray{<:IntOrIntTuple,Nidx}) where {Tdst,Tsrc,Ndst,Nsrc,Nidx}
+function scatter!(op::typeof(mean), dst::AbstractArray, src::AbstractArray, idx::AbstractArray)
     Ns = scatter!(+, zero(dst), one.(src), idx)
     dst_ = scatter!(+, zero(dst), src, idx)
     dst .+= safe_div.(dst_, Ns)
@@ -93,55 +103,55 @@ function scatter end
 
 for op in [+, -]
     @eval function scatter(op::typeof($op),
-                           src::AbstractArray{T,Nsrc},
-                           idx::AbstractArray{<:IntOrIntTuple,Nidx}) where {T,Nsrc,Nidx}
+                           src::AbstractArray{Tsrc,Nsrc},
+                           idx::AbstractArray{Tidx,Nidx}) where {Tsrc,Tidx,Nsrc,Nidx}
         dims = Nsrc - Nidx
         dstsize = (size(src)[1:dims]..., maximum_dims(idx)...)
-        dst = similar(src, T, dstsize)
-        fill!(dst, Base.reduce_empty(+, T))
+        dst = similar(src, Tsrc, dstsize)
+        fill!(dst, Base.reduce_empty(+, Tsrc))
         scatter!(op, dst, src, idx)
     end
 end
 
 for op in [*, /]
     @eval function scatter(op::typeof($op),
-                           src::AbstractArray{T,Nsrc},
-                           idx::AbstractArray{<:IntOrIntTuple,Nidx}) where {T,Nsrc,Nidx}
+                           src::AbstractArray{Tsrc,Nsrc},
+                           idx::AbstractArray{Tidx,Nidx}) where {Tsrc,Tidx,Nsrc,Nidx}
         dims = Nsrc - Nidx
         dstsize = (size(src)[1:dims]..., maximum_dims(idx)...)
-        dst = similar(src, T, dstsize)
-        fill!(dst, Base.reduce_empty(*, T))
+        dst = similar(src, Tsrc, dstsize)
+        fill!(dst, Base.reduce_empty(*, Tsrc))
         scatter!(op, dst, src, idx)
     end
 end
 
 function scatter(op::typeof(max),
-                 src::AbstractArray{T,Nsrc},
-                 idx::AbstractArray{<:IntOrIntTuple,Nidx}) where {T,Nsrc,Nidx}
+                 src::AbstractArray{Tsrc,Nsrc},
+                 idx::AbstractArray{Tidx,Nidx}) where {Tsrc,Tidx,Nsrc,Nidx}
     dims = Nsrc - Nidx
     dstsize = (size(src)[1:dims]..., maximum_dims(idx)...)
-    dst = similar(src, T, dstsize)
-    fill!(dst, typemin(T))
+    dst = similar(src, Tsrc, dstsize)
+    fill!(dst, typemin(Tsrc))
     scatter!(op, dst, src, idx)
 end
 
 function scatter(op::typeof(min),
-                 src::AbstractArray{T,Nsrc},
-                 idx::AbstractArray{<:IntOrIntTuple,Nidx}) where {T,Nsrc,Nidx}
+                 src::AbstractArray{Tsrc,Nsrc},
+                 idx::AbstractArray{Tidx,Nidx}) where {Tsrc,Tidx,Nsrc,Nidx}
     dims = Nsrc - Nidx
     dstsize = (size(src)[1:dims]..., maximum_dims(idx)...)
-    dst = similar(src, T, dstsize)
-    fill!(dst, typemax(T))
+    dst = similar(src, Tsrc, dstsize)
+    fill!(dst, typemax(Tsrc))
     scatter!(op, dst, src, idx)
 end
 
 function scatter(op::typeof(mean),
-                 src::AbstractArray{T,Nsrc},
-                 idx::AbstractArray{<:IntOrIntTuple,Nidx}) where {T,Nsrc,Nidx}
-    FT = float(T)
+                 src::AbstractArray{Tsrc,Nsrc},
+                 idx::AbstractArray{Tidx,Nidx}) where {Tsrc,Tidx,Nsrc,Nidx}
+    FT = float(Tsrc)
     dims = Nsrc - Nidx
     dstsize = (size(src)[1:dims]..., maximum_dims(idx)...)
-    dst = similar(src, T, dstsize)
+    dst = similar(src, Tsrc, dstsize)
     fill!(dst, Base.reduce_empty(+, FT))
     scatter!(op, dst, src, idx)
 end
