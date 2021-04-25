@@ -124,3 +124,23 @@ end
     @test y isa Array{T,3}
     @test size(y) == (size(src)[1:Nsrc-M]..., size(index)...) 
 end
+
+@testset "gather gradient" begin
+    T = Float64
+    src = T[3, 4, 5, 6, 7]
+    index = [1 2 3 4;
+            4 2 1 3;
+            3 5 5 3]
+    dst = T[3 4 5 6;
+            6 4 3 5;
+            5 7 7 5]
+
+    @testset "∂dst" begin
+        gradtest(xs -> gather!(copy(xs), src, index), dst)
+    end
+
+    @testset "∂src" begin
+        gradtest(xs -> gather!(dst, xs, index), src)
+        gradtest(xs -> gather(xs, index), src)
+    end
+end
