@@ -92,7 +92,8 @@ end
     # grad_true = 8*ones(Float32,4,4,4,1,1)
     # @test ∇upsample_trilinear(o; size=(4,4,4)) ≈ grad_true
 
-    gradtest(x -> upsample_trilinear(x, (2,2,2)), x, atol=1e-3)
+    x = Float64.(x)
+    gradtest(x -> upsample_trilinear(x, (2,2,2)), x)
 end
 
 @testset "pixel_shuffle" begin
