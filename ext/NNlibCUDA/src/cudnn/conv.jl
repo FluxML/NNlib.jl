@@ -26,7 +26,14 @@ fix1d(pdims::PoolDims{1,K,S,P,D}) where {K,S,P,D,F} =
 function cudnnConvolutionDescriptor(cdims::DenseConvDims, x::DenseCuArray{T}) where T
     cdims, x = fix1d(cdims), fix1d(x)
     mode=(NNlib.flipkernel(cdims) ? CUDNN_CROSS_CORRELATION : CUDNN_CONVOLUTION)
-    cudnnConvolutionDescriptor(convdims(nnlibPadding(cdims),size(x),0), convdims(NNlib.stride(cdims),size(x),1), convdims(NNlib.dilation(cdims),size(x),1), mode, cudnnDataType(T), math_mode(), CUDNN_DEFAULT_REORDER, Cint(1))
+    cudnnConvolutionDescriptor(convdims(nnlibPadding(cdims),size(x),0),
+                               convdims(NNlib.stride(cdims),size(x),1),
+                               convdims(NNlib.dilation(cdims),size(x),1),
+                               mode,
+                               cudnnDataType(T),
+                               math_mode(),
+                               CUDNN_DEFAULT_REORDER,
+                               Cint(1))
 end
 
 function conv!(y::DenseCuArray{T}, x::DenseCuArray{T}, w::DenseCuArray{T}, cdims::DenseConvDims;
