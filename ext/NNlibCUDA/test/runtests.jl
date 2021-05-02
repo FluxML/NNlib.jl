@@ -3,6 +3,7 @@ using NNlib
 using Zygote
 using NNlibCUDA
 using ForwardDiff: Dual
+using Statistics: mean
 using CUDA
 CUDA.allowscalar(false)
 
@@ -16,4 +17,5 @@ if CUDA.has_cuda()
     include("pooling.jl")
     include("softmax.jl")
     include("batchnorm.jl")
+    include("scatter.jl")
 end
