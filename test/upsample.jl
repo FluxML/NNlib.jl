@@ -5,7 +5,7 @@
     y = upsample_nearest(x, (2,3))
     @test size(y) == (4,6,1,1)
     ∇upsample_nearest(y, (2,3)) == [6 12; 18 24]
-    
+
     gradtest(x -> upsample_nearest(x, (2,3)), rand(2,2,1,1))
 
     y2 = upsample_nearest(x, size=(4,6))
@@ -63,6 +63,37 @@ end
 
     @test eltype(y) == UInt8
     @test y == y_true_int
+end
+
+@testset "Trilinear upsampling" begin
+    # Layout: WHDCN, where D is depth
+    # we generate data which is constant along W & H and differs in D
+    # then we upsample along all dimensions
+    x = ones(Float32, 3,3,3,1,1)
+    x[:,:,1,:,:] .= 1.
+    x[:,:,2,:,:] .= 2.
+    x[:,:,3,:,:] .= 3.
+
+    y_true = ones(Float32, 5,5,5,1,1)
+    y_true[:,:,1,:,:] .= 1.
+    y_true[:,:,2,:,:] .= 1.5
+    y_true[:,:,3,:,:] .= 2.
+    y_true[:,:,4,:,:] .= 2.5
+    y_true[:,:,5,:,:] .= 3.
+
+    y = upsample_trilinear(x; size=(5,5,5))
+
+    @test size(y) == size(y_true)
+    @test eltype(y) == Float32
+    @test collect(y) ≈ collect(y_true)
+
+    # this test only works when align_corners=false (not present for CPU yet)
+    # o = ones(Float32,8,8,8,1,1)
+    # grad_true = 8*ones(Float32,4,4,4,1,1)
+    # @test ∇upsample_trilinear(o; size=(4,4,4)) ≈ grad_true
+
+    x = Float64.(x)
+    gradtest(x -> upsample_trilinear(x, (2,2,2)), x)
 end
 
 @testset "pixel_shuffle" begin
