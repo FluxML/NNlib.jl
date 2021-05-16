@@ -74,11 +74,10 @@ end
 
 # Gradient
 
-∇gather_dst!(Δ, dst, y) = (dst .!= y) .* Δ
 ∇gather_src!(Δ, src, idx) = scatter!(+, similar(src), Δ, idx)
 
 function rrule(::typeof(gather!), dst::AbstractArray, src::AbstractArray, idx::AbstractArray)
     y = gather!(copy(dst), src, idx)
-    gather!_pullback(Δ) = (NO_FIELDS, ∇gather_dst!(Δ, dst, y), ∇gather_src!(Δ, src, idx), DoesNotExist())
+    gather!_pullback(Δ) = (NO_FIELDS, DoesNotExist(), ∇gather_src!(Δ, src, idx), DoesNotExist())
     y, gather!_pullback
 end

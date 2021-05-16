@@ -135,12 +135,6 @@ end
             6 4 3 5;
             5 7 7 5]
 
-    @testset "∂dst" begin
-        gradtest(xs -> gather!(copy(xs), src, index), dst)
-    end
-
-    @testset "∂src" begin
-        gradtest(xs -> gather!(dst, xs, index), src)
-        gradtest(xs -> gather(xs, index), src)
-    end
+    gradtest(xs -> gather!(dst, xs, index), src)
+    gradtest(xs -> gather(xs, index), src)
 end
