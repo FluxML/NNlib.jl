@@ -74,7 +74,7 @@ end
 
 # Gradient
 
-∇gather_src!(Δ, src, idx) = scatter!(+, similar(src), Δ, idx)
+∇gather_src!(Δ, src, idx) = scatter!(+, fill!(similar(src), 0), Δ, idx)
 
 function rrule(::typeof(gather!), dst::AbstractArray, src::AbstractArray, idx::AbstractArray)
     y = gather!(copy(dst), src, idx)
