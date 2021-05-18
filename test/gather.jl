@@ -125,7 +125,7 @@ end
     @test size(y) == (size(src)[1:Nsrc-M]..., size(index)...) 
 end
 
-@testset "gather gradient" begin
+@testset "gather gradient for scalar index" begin
     T = Float64
     src = T[3, 4, 5, 6, 7]
     index = [1 2 3 4;
@@ -134,6 +134,17 @@ end
     dst = T[3 4 5 6;
             6 4 3 5;
             5 7 7 5]
+
+    gradtest(xs -> gather!(dst, xs, index), src)
+    gradtest(xs -> gather(xs, index), src)
+end
+
+@testset "gather gradient for tuple index" begin
+    T = Float64
+    src = T[3 5 7 
+            4 6 8]
+    index = [(1,1), (1,2), (1,3), (2,1), (2,2), (2,3)]
+    dst = T[3, 5, 7, 4, 6, 8]
 
     gradtest(xs -> gather!(dst, xs, index), src)
     gradtest(xs -> gather(xs, index), src)
