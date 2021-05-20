@@ -19,11 +19,7 @@ using NNlib: DenseConvDims
         b = rand(Float64, fill(1, num_spatial_dims)..., C_in, C_out)
         options = (Dict(), Dict(:dilation => 2), Dict(:flipkernel => true), Dict(:stride => 2), Dict(:padding => 1))
 
-        # @denizyuret: algo option deprecated for nnlib, handling in cudnn
-        # algos = (1, 0, 1, 1,)
-        # for (opts, algo) in zip(options, algos)
-
-        for opts in options  
+        for opts in options
             cdims = DenseConvDims(x, w; opts...)
             y = NNlib.conv(x, w, cdims)
 
@@ -36,7 +32,7 @@ using NNlib: DenseConvDims
             gputest((x, w) -> NNlib.conv(x, w, cdims; alpha=2.0), x, w, checkgrad=false) # TODO
             gputest((y, w) -> NNlib.∇conv_data(y, w, cdims; alpha=2.0), y, w, checkgrad=false) # TODO
             gputest((x, y) -> NNlib.∇conv_filter(x, y, cdims; alpha=2.0), x, y, checkgrad=false) # TODO
-            
+
             gputest((y, x, w) -> NNlib.conv!(copy(y), x, w, cdims; beta=2.0), y, x, w, checkgrad=false) # TODO
             # @test_broken gputest((x, y, w) -> NNlib.∇conv_data!(copy(x), y, w, cdims; beta=2.0), x, y, w, checkgrad=false) #TODO
             gputest((w, x, y) -> NNlib.∇conv_filter!(copy(w), x, y, cdims; beta=2.0), w, x, y, checkgrad=false) # TODO
@@ -56,5 +52,59 @@ using NNlib: DenseConvDims
             return db
         end
         gputest(NNlibCUDA.∇conv_bias!, db, dy, checkgrad=false)
+    end
+end
+
+@testset "grouped convolutions" begin
+    x = randn(Float64, 10, 10, 8, 1)
+    w = randn(Float64, 3, 3, 1, 8)
+    o = randn(Float64, 8, 8, 8, 1)
+    xd = x |> cu
+    wd = w |> cu
+    od = o |> cu
+
+    cdims = DenseConvDims(x, w; groups=8)
+    @test NNlib.conv(x, w, cdims) ≈ collect(NNlib.conv(xd, wd, cdims))
+    @test ∇conv_filter(x, o, cdims) ≈ collect(∇conv_filter(xd, od, cdims))
+    @test ∇conv_data(o, w, cdims) ≈ collect(∇conv_data(od, wd, cdims))
+
+    # Test for agreement between CPU NNlib and CuDNN versions, across a variety of kwargs
+    # TODO test on different number of groups
+    c = 4
+    for num_spatial_dims in (1, 2, 3)
+        # Initialize data we'll run our tests over
+        batch_size = 1
+        x = rand(Float64, fill(8, num_spatial_dims)..., c, batch_size)
+        w = rand(Float64, fill(2, num_spatial_dims)..., 1, c)
+        b = rand(Float64, fill(1, num_spatial_dims)..., c, c)
+        @info size(x), size(w), size(b)
+        options = Dict{Any, Any}.((
+            (), (:dilation => 2), (:flipkernel => true),
+            (:stride => 2), (:padding => 1),
+        ))
+        for opts in options
+            opts[:groups] = c
+            cdims = DenseConvDims(x, w; opts...)
+            y = NNlib.conv(x, w, cdims)
+
+            # Test that basic convolution is equivalent across GPU/CPU
+            gputest((x, w) -> NNlib.conv(x, w, cdims), x, w)
+            gputest((y, w) -> NNlib.∇conv_data(y, w, cdims), y, w)
+            gputest((x, y) -> NNlib.∇conv_filter(x, y, cdims), x, y, checkgrad=false) # TODO fix grad
+
+            # Scaling factors
+            gputest((x, w) -> NNlib.conv(x, w, cdims; alpha=2.0), x, w, checkgrad=false) # TODO
+            gputest((y, w) -> NNlib.∇conv_data(y, w, cdims; alpha=2.0), y, w, checkgrad=false) # TODO
+            gputest((x, y) -> NNlib.∇conv_filter(x, y, cdims; alpha=2.0), x, y, checkgrad=false) # TODO
+
+            gputest((y, x, w) -> NNlib.conv!(copy(y), x, w, cdims; beta=2.0), y, x, w, checkgrad=false) # TODO
+            gputest((w, x, y) -> NNlib.∇conv_filter!(copy(w), x, y, cdims; beta=2.0), w, x, y, checkgrad=false) # TODO
+
+            # Test the compatibility shims
+            cy,cx,cw = CuArray{Float32}.((y,x,w))
+            opts2 = Dict((k==:padding ? :pad : k)=>v for (k,v) in opts)
+            @test NNlib.conv!(similar(cy),cx,cw; opts2...) ≈ NNlib.conv!(similar(cy),cx,cw,cdims)
+            @test NNlib.∇conv_filter!(similar(cw),cy,cx; opts2...) ≈ NNlib.∇conv_filter!(similar(cw),cx,cy,cdims)
+        end
     end
 end

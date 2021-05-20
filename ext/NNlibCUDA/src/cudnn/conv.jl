@@ -5,7 +5,7 @@ import NNlib: stride, padding, dilation, flipkernel, spatial_dims, kernel_size,
     conv!, ∇conv_filter!, ∇conv_data!,
     maxpool!, meanpool!, ∇maxpool!, ∇meanpool!, PoolDims
 
-using CUDA.CUDNN: scalingParameter, CUDNN_CONVOLUTION, convdims, 
+using CUDA.CUDNN: scalingParameter, CUDNN_CONVOLUTION, convdims,
                   cudnnConvolutionDescriptor, cudnnConvolutionBwdDataAlgoPerf,
                   cudnnConvolutionForward!, cudnnConvolutionBwdFilterAlgoPerf,
                   cudnnConvolutionBackwardData, cudnnConvolutionBackwardFilter,
@@ -16,8 +16,8 @@ const CUDNNFloat = Union{Float16,Float32,Float64}
 # Since CUDNN does not support 1D convolution, Conv in Flux will give a CUDNNError if the size is 1-dimensional.
 fix1d(x) = x
 fix1d(x::DenseCuArray{T, 3}) where T = reshape(x, 1, size(x, 1), size(x, 2), size(x, 3))
-fix1d(cdims::DenseConvDims{1,K,C_in,C_out,S,P,D,F}) where {K,C_in,C_out,S,P,D,F} =
-    DenseConvDims{2,(1,K...),C_in,C_out,(1,S...),(0,0,P...),(1,D...),F}((1,cdims.I...))
+fix1d(cdims::DenseConvDims{1,K,C_in,C_out,G,S,P,D,F}) where {K,C_in,C_out,G,S,P,D,F} =
+    DenseConvDims{2,(1,K...),C_in,C_out,G,(1,S...),(0,0,P...),(1,D...),F}((1,cdims.I...))
 fix1d(pdims::PoolDims{1,K,S,P,D}) where {K,S,P,D,F} =
     PoolDims{2,(1,K...),(1,S...),(0,0,P...),(1,D...)}((1,pdims.I...), pdims.C_in)
 
@@ -26,14 +26,16 @@ fix1d(pdims::PoolDims{1,K,S,P,D}) where {K,S,P,D,F} =
 function cudnnConvolutionDescriptor(cdims::DenseConvDims, x::DenseCuArray{T}) where T
     cdims, x = fix1d(cdims), fix1d(x)
     mode=(NNlib.flipkernel(cdims) ? CUDNN_CROSS_CORRELATION : CUDNN_CONVOLUTION)
-    cudnnConvolutionDescriptor(convdims(nnlibPadding(cdims),size(x),0),
-                               convdims(NNlib.stride(cdims),size(x),1),
-                               convdims(NNlib.dilation(cdims),size(x),1),
-                               mode,
-                               cudnnDataType(T),
-                               math_mode(),
-                               CUDNN_DEFAULT_REORDER,
-                               Cint(1))
+    cudnnConvolutionDescriptor(
+        convdims(nnlibPadding(cdims),size(x),0),
+        convdims(NNlib.stride(cdims),size(x),1),
+        convdims(NNlib.dilation(cdims),size(x),1),
+        mode,
+        cudnnDataType(T),
+        math_mode(),
+        CUDNN_DEFAULT_REORDER,
+        Cint(NNlib.groupcount(cdims)),
+    )
 end
 
 function conv!(y::DenseCuArray{T}, x::DenseCuArray{T}, w::DenseCuArray{T}, cdims::DenseConvDims;
@@ -48,7 +50,7 @@ function conv!(y::DenseCuArray{T}, x::DenseCuArray{T}, w::DenseCuArray{T}, cdims
     cudnnConvolutionForward!(y, w, x, d; alpha, beta, z=y)
 end
 
-function NNlib.conv_bias_act!(y::DenseCuArray{T}, x::DenseCuArray{T}, w::DenseCuArray{T}, 
+function NNlib.conv_bias_act!(y::DenseCuArray{T}, x::DenseCuArray{T}, w::DenseCuArray{T},
                             cdims::DenseConvDims, bias::DenseCuArray{T}, σ=identity;
                             z::DenseCuArray{T}=y, alpha=1, beta=0, algo=-1) where T<:CUDNNFloat
     if cudnnversion() < v"6"
@@ -56,7 +58,7 @@ function NNlib.conv_bias_act!(y::DenseCuArray{T}, x::DenseCuArray{T}, w::DenseCu
     end
     if algo != -1
         @warn "The algo option has been deprecated, the fastest algo is computed automatically" maxlog=1
-    end    
+    end
     d = cudnnConvolutionDescriptor(cdims, x)
     # only relu and identity are supported by cudnnConvolutionForward!
     activation = (σ == NNlib.relu ? CUDNN_ACTIVATION_RELU : CUDNN_ACTIVATION_IDENTITY)
@@ -74,7 +76,7 @@ function ∇conv_data!(dx::DenseCuArray{T}, dy::DenseCuArray{T}, w::DenseCuArray
     end
     if algo != -1
         @warn "The algo option has been deprecated, the fastest algo is computed automatically" maxlog=1
-    end    
+    end
     alpha, beta = scalingParameter(T,alpha), scalingParameter(T,beta);
     xDesc, yDesc, wDesc = cudnnTensorDescriptor(dx), cudnnTensorDescriptor(dy), cudnnFilterDescriptor(w)
     convDesc = cudnnConvolutionDescriptor(cdims, dx)
@@ -90,7 +92,7 @@ function ∇conv_filter!(dw::DenseCuArray{T}, x::DenseCuArray{T}, dy::DenseCuArr
     end
     if algo != -1
         @warn "The algo option has been deprecated, the fastest algo is computed automatically" maxlog=1
-    end    
+    end
     alpha, beta = scalingParameter(T,alpha), scalingParameter(T,beta);
     xDesc, yDesc, wDesc = cudnnTensorDescriptor(x), cudnnTensorDescriptor(dy), cudnnFilterDescriptor(dw)
     convDesc = cudnnConvolutionDescriptor(cdims, x)
@@ -108,13 +110,13 @@ function ∇conv_bias!(db::DenseCuArray{T}, dy::DenseCuArray{T}; alpha=1, beta=0
 end
 
 # Compatibility shims until users upgrade to new NNlib format
-function conv!(y::DenseCuArray{T}, x::DenseCuArray{T}, w::DenseCuArray{T}; pad=0, stride=1, flipkernel=0, dilation=1, kwargs...) where {T<:CUDNNFloat}
-    cdims = DenseConvDims(x, w; padding=pad, stride=stride, flipkernel=(flipkernel!=0), dilation=dilation)
+function conv!(y::DenseCuArray{T}, x::DenseCuArray{T}, w::DenseCuArray{T}; pad=0, stride=1, flipkernel=0, dilation=1, groups=1, kwargs...) where {T<:CUDNNFloat}
+    cdims = DenseConvDims(x, w; padding=pad, stride=stride, flipkernel=(flipkernel!=0), dilation=dilation, groups)
     return conv!(y, x, w, cdims; kwargs...)
 end
 
-function ∇conv_filter!(dw::DenseCuArray{T}, dy::DenseCuArray{T}, x::DenseCuArray{T}; pad=0, stride=1, flipkernel=0, dilation=1, kwargs...) where {T<:CUDNNFloat}
-    cdims = DenseConvDims(x, dw; padding=pad, stride=stride, flipkernel=(flipkernel!=0), dilation=dilation)
+function ∇conv_filter!(dw::DenseCuArray{T}, dy::DenseCuArray{T}, x::DenseCuArray{T}; pad=0, stride=1, flipkernel=0, dilation=1, groups=1, kwargs...) where {T<:CUDNNFloat}
+    cdims = DenseConvDims(x, dw; padding=pad, stride=stride, flipkernel=(flipkernel!=0), dilation=dilation, groups)
     # NOTE!!!  This compat shim re-arranges the argument order!
     return ∇conv_filter!(dw, x, dy, cdims; kwargs...)
 end
