@@ -10,17 +10,17 @@ given by Zygote. `f` has to be a scalar valued function.
 
 Applies also `ChainRulesTestUtils.test_rrule` if the rrule for `f` is explicitly defined.
 """
-function gradtest(f, xs...; atol=1e-6, rtol=1e-6, fkwargs=NamedTuple(),
-                    check_rrule=false,
-                    check_broadcast=false,
-                    skip=false, broken=false)
+function gradtest(f, xs...; atol = 1e-6, rtol = 1e-6, fkwargs = NamedTuple(),
+                    check_rrule = false,
+                    check_broadcast = false,
+                    skip = false, broken = false)
 
     if check_rrule
         y = f(xs...; fkwargs...)
         simil(x) = x isa Number ? randn(rng, typeof(x)) : randn!(rng, similar(x))
         ȳ =  simil(y)
         xx̄s = [x ⊢ simil(x) for x in xs]
-        test_rrule(f, xx̄s...; fkwargs=fkwargs, output_tangent=ȳ)
+        test_rrule(f, xx̄s...; fkwargs = fkwargs, output_tangent = ȳ)
     end
 
     if check_broadcast
@@ -38,14 +38,14 @@ function gradtest(f, xs...; atol=1e-6, rtol=1e-6, fkwargs=NamedTuple(),
     y_ad, pull = Zygote.pullback(h, xs...)
     gs_ad = pull(one(y_ad))
 
-    @test y_true ≈ y_ad  atol=atol rtol=rtol
+    @test y_true ≈ y_ad  atol = atol rtol = rtol
     for (g_ad, g_fd) in zip(gs_ad, gs_fd)
         if skip
-            @test_skip g_ad ≈ g_fd   atol=atol rtol=rtol
+            @test_skip g_ad ≈ g_fd   atol = atol rtol = rtol
         elseif broken
-            @test_broken g_ad ≈ g_fd   atol=atol rtol=rtol
+            @test_broken g_ad ≈ g_fd   atol = atol rtol = rtol
         else
-            @test g_ad ≈ g_fd   atol=atol rtol=rtol
+            @test g_ad ≈ g_fd   atol = atol rtol = rtol
         end
     end
     return true

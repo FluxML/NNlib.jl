@@ -51,11 +51,11 @@ export conv, conv!, ∇conv_data, ∇conv_data!, ∇conv_filter, ∇conv_filter!
 Apply convolution filter `w` to input `x`. `x` and `w` are 3d/4d/5d tensors 
 in 1d/2d/3d convolutions respectively. 
 """
-function conv(x, w::AbstractArray{T, N}; stride=1, pad=0, dilation=1, flipped=false) where {T, N}
+function conv(x, w::AbstractArray{T, N}; stride=1, pad=0, dilation=1, flipped=false, groups = 1) where {T, N}
     stride = expand(Val(N-2), stride)
     pad = expand(Val(N-2), pad)
     dilation = expand(Val(N-2), dilation)
-    cdims = DenseConvDims(x, w; stride=stride, padding=pad, dilation=dilation, flipkernel=flipped)
+    cdims = DenseConvDims(x, w; stride=stride, padding=pad, dilation=dilation, flipkernel=flipped, groups = groups)
     return conv(x, w, cdims)
 end
 
@@ -86,8 +86,8 @@ for backend in (Symbol(), :_direct, :_im2col, :_nnpack)
             function $(Symbol("$(name)$(backend)"))(
                             x::AbstractArray{xT,N}, w::AbstractArray{wT,N},
                             cdims::ConvDims; kwargs...) where {xT, wT, N}
-                y = similar(x, promote_type(xT, wT), output_size(cdims)...,
-                               channels_out(cdims), size(x,N))
+                y = zero.(similar(x, promote_type(xT, wT), output_size(cdims)...,
+                               channels_out(cdims), size(x,N)))
                 return $(Symbol("$(name)$(backend)!"))(y, x, w, cdims; kwargs...)
             end
         end
@@ -97,9 +97,10 @@ for backend in (Symbol(), :_direct, :_im2col, :_nnpack)
         @eval begin
             function $(Symbol("$(name)$(backend)"))(
                             dy::AbstractArray{yT,N}, w::AbstractArray{wT,N},
-                            cdims::ConvDims; kwargs...) where {yT, wT, N}
+                            cdims::C; kwargs...) where {yT, wT, N, C <: ConvDims}
                 dx = similar(dy, input_size(cdims)..., channels_in(cdims),
                                                         size(dy, N))
+
                 return $(Symbol("$(name)$(backend)!"))(dx, dy, w, cdims; kwargs...)
             end
         end
@@ -111,8 +112,9 @@ for backend in (Symbol(), :_direct, :_im2col, :_nnpack)
         function $(Symbol("∇conv_filter$(backend)"))(
                         x::AbstractArray{xT,N}, dy::AbstractArray{yT,N},
                         cdims::ConvDims; kwargs...) where {xT, yT, N}
-            dw = similar(dy, kernel_size(cdims)..., channels_in(cdims),
+            dw = similar(dy, kernel_size(cdims)..., channels_in(cdims) ÷ groupcount(cdims),
                                                     channels_out(cdims))
+
             return $(Symbol("∇conv_filter$(backend)!"))(dw, x, dy, cdims; kwargs...)
         end
     end
@@ -145,6 +147,7 @@ for front_name in (:conv, :∇conv_data, :∇conv_filter,
                                 y::AbstractArray{yT,$N}, x::AbstractArray{xT,$N},
                                 w::AbstractArray{wT,$N}, cdims::ConvDims;
                                 kwargs...) where {yT, xT, wT}
+
                     $(Symbol("$(front_name)$(backend)!"))(
                         insert_singleton_spatial_dimension(y, $(5 - N)),
                         insert_singleton_spatial_dimension(x, $(5 - N)),
@@ -161,6 +164,7 @@ for front_name in (:conv, :∇conv_data, :∇conv_filter,
         end
     end
 end
+
 #######################################
 
 
@@ -172,8 +176,96 @@ end
 for (front_name, backend) in (
         # This maps from public, front-facing name, to internal backend name
         :conv                   => :im2col,
-        :∇conv_data             => :im2col,
-        :∇conv_filter           => :im2col,
+        # :∇conv_data             => :im2col,
+        # :∇conv_filter           => :im2col,
+    )
+
+    # These are the GEMM types we will accelerate with `im2col`
+    G = Union{[x[2] for x in gemm_datatype_mappings]...}
+
+    # We only define 3d conv primitives, we reshape lower down to get 1d and 2d convolution
+    @eval begin
+        # im2col-accelerated function forwarding definition
+        function $(Symbol("$(front_name)!"))(
+                        out::AbstractArray{T,5}, in1::AbstractArray{T,5},
+                        in2::AbstractArray{T,5}, cdims::C; kwargs...) where {T <: $G, C <: ConvDims}
+
+            x_cs = Iterators.partition(1:size(in1, 4),
+                                       channels_in(cdims) ÷ groupcount(cdims))
+            w_cs = Iterators.partition(1:size(in2, 5),
+                                       channels_out(cdims) ÷ groupcount(cdims))
+            cdims2 = eval(nameof(C))(cdims,
+                                   G = 1,
+                                   C_in = channels_in(cdims) ÷ groupcount(cdims),
+                                   C_out = channels_out(cdims) ÷ groupcount(cdims))
+            
+            Threads.@sync for (xc, wc) in zip(x_cs, w_cs)
+              x = @view in1[ntuple(i -> i == 4 ? xc : Colon(), 5)...]
+              w = @view in2[ntuple(i -> i == 5 ? wc : Colon(), 5)...]
+              y = @view out[ntuple(i -> i == 4 ? wc : Colon(), 5)...]
+              Threads.@spawn $(Symbol("$(front_name)_$(backend)!"))(y, x, w, cdims2; kwargs...)
+            end
+
+           return out
+        end
+    end
+end
+
+const G = Union{[x[2] for x in gemm_datatype_mappings]...}
+# im2col-accelerated function forwarding definition
+function ∇conv_data!(
+                out::AbstractArray{T,5}, in1::AbstractArray{T,5},
+                in2::AbstractArray{T,5}, cdims::C; kwargs...) where {T <: G, C <: ConvDims}
+
+    dx_cs = Iterators.partition(1:size(out, 4),
+                           channels_in(cdims) ÷ groupcount(cdims))
+    w_cs = Iterators.partition(1:size(in2, 5),
+                           channels_out(cdims) ÷ groupcount(cdims))
+    dy_cs = Iterators.partition(1:size(in1, 4),
+                           channels_out(cdims) ÷ groupcount(cdims))
+    cdims2 = eval(nameof(C))(cdims,
+                             G = 1,
+                             C_in = channels_in(cdims) ÷ groupcount(cdims),
+                             C_out = channels_out(cdims) ÷ groupcount(cdims))
+
+    Threads.@sync for (xc, yc, wc) in zip(dx_cs, dy_cs, w_cs)
+      dxv = @view out[ntuple(i -> i == 4 ? xc : Colon(), 5)...]
+      dyv = @view in1[ntuple(i -> i == 4 ? yc : Colon(), 5)...]
+      wv = @view in2[ntuple(i -> i == 5  ? wc : Colon(), 5)...]
+      Threads.@spawn ∇conv_data_im2col!(dxv, dyv, wv, cdims2; kwargs...)
+    end
+
+   return out
+end
+
+function ∇conv_filter!(
+                out::AbstractArray{T,5}, in1::AbstractArray{T,5},
+                in2::AbstractArray{T,5}, cdims::C; kwargs...) where {T <: G, C <: ConvDims}
+
+    dw_cs = Iterators.partition(1:size(out, 5),
+                           channels_out(cdims) ÷ groupcount(cdims))
+    dy_cs = Iterators.partition(1:size(in2, 4),
+                           channels_out(cdims) ÷ groupcount(cdims))
+    x_cs = Iterators.partition(1:size(in1, 4),
+                           channels_in(cdims) ÷ groupcount(cdims))
+    cdims2 = eval(nameof(C))(cdims,
+                             G = 1,
+                             C_in = channels_in(cdims) ÷ groupcount(cdims),
+                             C_out = channels_out(cdims) ÷ groupcount(cdims))
+
+    Threads.@sync for (wc, xc, yc) in zip(dw_cs, x_cs, dy_cs)
+      x = @view in1[ntuple(i -> i == 4 ? xc : Colon(), 5)...]
+      dy = @view in2[ntuple(i -> i == 4 ? yc : Colon(), 5)...]
+      dw = @view out[ntuple(i -> i == 5 ? yc : Colon(), 5)...]
+      Threads.@spawn ∇conv_filter_im2col!(dw, x, dy, cdims2; kwargs...)
+    end
+
+   return out
+end
+
+
+for (front_name, backend) in (
+        # This maps from public, front-facing name, to internal backend name
         :depthwiseconv          => :im2col,
         :∇depthwiseconv_data    => :im2col,
         :∇depthwiseconv_filter  => :im2col,
@@ -187,7 +279,7 @@ for (front_name, backend) in (
         # im2col-accelerated function forwarding definition
         function $(Symbol("$(front_name)!"))(
                         out::AbstractArray{T,5}, in1::AbstractArray{T,5},
-                        in2::AbstractArray{T,5}, cdims::ConvDims; kwargs...) where {T <: $G}
+                        in2::AbstractArray{T,5}, cdims::C; kwargs...) where {T <: $G, C <: ConvDims}
             $(Symbol("$(front_name)_$(backend)!"))(out, in1, in2, cdims; kwargs...)
         end
     end
@@ -223,6 +315,11 @@ for conv in [:conv, :depthwiseconv]
     @eval function rrule(::typeof($conv), x, w, cdims; kw...)
         function $conv_pullback(Δ)
             Δ = colmajor(Δ)
+            cdims2 = DenseConvDims(cdims,
+                                   G = 1,
+                                   C_in = channels_in(cdims) ÷ groupcount(cdims),
+                                   C_out = channels_out(cdims) ÷ groupcount(cdims))
+
             return (
                 NO_FIELDS,
                 @thunk($∇conv_data(Δ, w, cdims, kw...)),
