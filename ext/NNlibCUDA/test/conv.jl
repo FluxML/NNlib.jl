@@ -19,6 +19,10 @@ using NNlib: DenseConvDims
         b = rand(Float64, fill(1, num_spatial_dims)..., C_in, C_out)
         options = (Dict(), Dict(:dilation => 2), Dict(:flipkernel => true), Dict(:stride => 2), Dict(:padding => 1))
 
+        # @denizyuret: algo option deprecated for nnlib, handling in cudnn
+        # algos = (1, 0, 1, 1,)
+        # for (opts, algo) in zip(options, algos
+
         for opts in options
             cdims = DenseConvDims(x, w; opts...)
             y = NNlib.conv(x, w, cdims)

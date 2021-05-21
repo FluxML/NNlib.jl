@@ -17,4 +17,4 @@ include("cudnn/softmax.jl")
 include("cudnn/activations.jl")
 include("cudnn/batchnorm.jl")
 
-end
+end # module
