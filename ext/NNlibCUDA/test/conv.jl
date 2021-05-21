@@ -63,9 +63,7 @@ end
     x = randn(Float64, 10, 10, 8, 1)
     w = randn(Float64, 3, 3, 1, 8)
     o = randn(Float64, 8, 8, 8, 1)
-    xd = x |> cu
-    wd = w |> cu
-    od = o |> cu
+    xd, wd, od = cu(x), cu(w), cu(o)
 
     cdims = DenseConvDims(x, w; groups=8)
     @test NNlib.conv(x, w, cdims) ≈ collect(NNlib.conv(xd, wd, cdims))
