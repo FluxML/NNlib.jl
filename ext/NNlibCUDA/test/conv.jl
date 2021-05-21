@@ -68,22 +68,18 @@ end
     @test ∇conv_filter(x, o, cdims) ≈ collect(∇conv_filter(xd, od, cdims))
     @test ∇conv_data(o, w, cdims) ≈ collect(∇conv_data(od, wd, cdims))
 
-    # Test for agreement between CPU NNlib and CuDNN versions, across a variety of kwargs
-    # TODO test on different number of groups
-    c = 4
-    for num_spatial_dims in (1, 2, 3)
-        # Initialize data we'll run our tests over
-        batch_size = 1
+    c = 8
+    batch_size = 1
+    options = Dict{Any, Any}.((
+        (), (:dilation => 2), (:flipkernel => true), (:stride => 2),
+        (:padding => 1),
+    ))
+    for group in (2, 4, 8), num_spatial_dims in (1, 2, 3)
         x = rand(Float64, fill(8, num_spatial_dims)..., c, batch_size)
-        w = rand(Float64, fill(2, num_spatial_dims)..., 1, c)
-        b = rand(Float64, fill(1, num_spatial_dims)..., c, c)
-        @info size(x), size(w), size(b)
-        options = Dict{Any, Any}.((
-            (), (:dilation => 2), (:flipkernel => true),
-            (:stride => 2), (:padding => 1),
-        ))
+        w = rand(Float64, fill(2, num_spatial_dims)..., c ÷ group, c)
+
         for opts in options
-            opts[:groups] = c
+            opts[:groups] = group
             cdims = DenseConvDims(x, w; opts...)
             y = NNlib.conv(x, w, cdims)
 
