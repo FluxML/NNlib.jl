@@ -84,77 +84,37 @@ end
 
 
 """
-    scatter(op, src, idx)
+    scatter(op, src, idx; [init])
 
-Scatter operation, which applies specified operation on `src` according to `idx`
-and gives an new array `dst`.
-For each index `k` in `idx`, accumulate values in `dst` according to
+Scatter operation allocating a destination array `dst` and 
+calling `scatter!(op, dst, src, idx)` on it.
 
-    dst[:, ..., idx[k]...] = (op).(src[:, ..., k...])
+If `init` is provided it is used to initialized the content of `dst`,
+otherwise tries to guess it from the reduction operator `op`
+(e.g. `init = 0` for `op = +`). 
 
-# Arguments
-- `op`: operations to be applied on `dst` and `src`, e.g. `+`, `-`, `*`, `/`, `max` and `min`.
-- `src`: the source data for aggregating.
-- `idx`: the mapping for aggregation from source (index) to destination (value).
-The index of `idx` is corresponding to the index of `src` and the value of `idx` is
-corresponding to the index of `dst`. The value of `idx` can be `Int` or `Tuple` type.
+See [`scatter!`](@ref) for the details.
 """
-function scatter end
-
-for op in [+, -]
-    @eval function scatter(op::typeof($op),
-                           src::AbstractArray{Tsrc,Nsrc},
-                           idx::AbstractArray{Tidx,Nidx}) where {Tsrc,Tidx,Nsrc,Nidx}
-        dims = Nsrc - Nidx
-        dstsize = (size(src)[1:dims]..., maximum_dims(idx)...)
-        dst = similar(src, Tsrc, dstsize)
-        fill!(dst, Base.reduce_empty(+, Tsrc))
-        scatter!(op, dst, src, idx)
-    end
-end
-
-for op in [*, /]
-    @eval function scatter(op::typeof($op),
-                           src::AbstractArray{Tsrc,Nsrc},
-                           idx::AbstractArray{Tidx,Nidx}) where {Tsrc,Tidx,Nsrc,Nidx}
-        dims = Nsrc - Nidx
-        dstsize = (size(src)[1:dims]..., maximum_dims(idx)...)
-        dst = similar(src, Tsrc, dstsize)
-        fill!(dst, Base.reduce_empty(*, Tsrc))
-        scatter!(op, dst, src, idx)
-    end
-end
-
-function scatter(op::typeof(max),
-                 src::AbstractArray{Tsrc,Nsrc},
-                 idx::AbstractArray{Tidx,Nidx}) where {Tsrc,Tidx,Nsrc,Nidx}
+function scatter(op,
+                src::AbstractArray{Tsrc,Nsrc},
+                idx::AbstractArray{Tidx,Nidx};
+                init = nothing) where {Tsrc,Tidx,Nsrc,Nidx}
+    
     dims = Nsrc - Nidx
     dstsize = (size(src)[1:dims]..., maximum_dims(idx)...)
     dst = similar(src, Tsrc, dstsize)
-    fill!(dst, typemin(Tsrc))
+    xinit = isnothing(init) ? scatter_empty(op, Tsrc) : init 
+    fill!(dst, xinit)
     scatter!(op, dst, src, idx)
 end
 
-function scatter(op::typeof(min),
-                 src::AbstractArray{Tsrc,Nsrc},
-                 idx::AbstractArray{Tidx,Nidx}) where {Tsrc,Tidx,Nsrc,Nidx}
-    dims = Nsrc - Nidx
-    dstsize = (size(src)[1:dims]..., maximum_dims(idx)...)
-    dst = similar(src, Tsrc, dstsize)
-    fill!(dst, typemax(Tsrc))
-    scatter!(op, dst, src, idx)
-end
+scatter_empty(op, T) = Base.reduce_empty(op, T)
+scatter_empty(op::typeof(-), T) = zero(T)
+scatter_empty(op::typeof(/), T) = one(T)
+scatter_empty(op::typeof(min), T) = typemax(T)
+scatter_empty(op::typeof(max), T) = typemin(T)
+scatter_empty(op::typeof(mean), T) = zero(T)
 
-function scatter(op::typeof(mean),
-                 src::AbstractArray{Tsrc,Nsrc},
-                 idx::AbstractArray{Tidx,Nidx}) where {Tsrc,Tidx,Nsrc,Nidx}
-    FT = float(Tsrc)
-    dims = Nsrc - Nidx
-    dstsize = (size(src)[1:dims]..., maximum_dims(idx)...)
-    dst = similar(src, Tsrc, dstsize)
-    fill!(dst, Base.reduce_empty(+, FT))
-    scatter!(op, dst, src, idx)
-end
 
 ## Gradients
 
@@ -222,26 +182,26 @@ end
 
 function rrule(::typeof(scatter!), op, dst::AbstractArray, src::AbstractArray, idx::AbstractArray)
     y = scatter!(op, copy(dst), src, idx)
-    scatter!_pullback(Δ) = (NO_FIELDS, NO_FIELDS, ∇scatter_dst!(op, Δ, dst, y), ∇scatter_src!(op, Δ, dst, src, idx), DoesNotExist())
+    scatter!_pullback(Δ) = (NO_FIELDS, NO_FIELDS, ∇scatter_dst!(op, Δ, dst, y), ∇scatter_src!(op, Δ, dst, src, idx), NoTangent())
     y, scatter!_pullback
 end
 
 function rrule(::typeof(scatter), op, src::AbstractArray, idx::AbstractArray)
     y = scatter(op, src, idx)
-    scatter_pullback(Δ) = (NO_FIELDS, NO_FIELDS, ∇scatter_src(op, Δ, y, src, idx), DoesNotExist())
+    scatter_pullback(Δ) = (NO_FIELDS, NO_FIELDS, ∇scatter_src(op, Δ, y, src, idx), NoTangent())
     y, scatter_pullback
 end
 
 function rrule(::typeof(scatter!), op::typeof(mean), dst::AbstractArray, src::AbstractArray{Tsrc,Nsrc}, idx::AbstractArray{Tidx,Nidx}) where {Tsrc,Tidx,Nsrc,Nidx}
     dims = Nsrc - Nidx
     y = scatter!(op, copy(dst), src, idx)
-    scatter!_pullback(Δ) = (NO_FIELDS, NO_FIELDS, ∇scatter_dst!(op, Δ, dst, y), ∇scatter_src!(op, Δ, idx, dims), DoesNotExist())
+    scatter!_pullback(Δ) = (NO_FIELDS, NO_FIELDS, ∇scatter_dst!(op, Δ, dst, y), ∇scatter_src!(op, Δ, idx, dims), NoTangent())
     y, scatter!_pullback
 end
 
 function rrule(::typeof(scatter), op::typeof(mean), src::AbstractArray{Tsrc,Nsrc}, idx::AbstractArray{Tidx,Nidx}) where {Tsrc,Tidx,Nsrc,Nidx}
     dims = Nsrc - Nidx
     y = scatter(op, src, idx)
-    scatter_pullback(Δ) = (NO_FIELDS, NO_FIELDS, ∇scatter_src(op, Δ, idx, dims), DoesNotExist())
+    scatter_pullback(Δ) = (NO_FIELDS, NO_FIELDS, ∇scatter_src(op, Δ, idx, dims), NoTangent())
     y, scatter_pullback
 end

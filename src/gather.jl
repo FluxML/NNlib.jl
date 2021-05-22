@@ -79,6 +79,6 @@ end
 function rrule(::typeof(gather!), dst::AbstractArray, src::AbstractArray, idx::AbstractArray)
     y = gather!(copy(dst), src, idx)
     src_size = size(src)
-    gather!_pullback(Δ) = (NO_FIELDS, DoesNotExist(), ∇gather_src(Δ, src_size, idx), DoesNotExist())
+    gather!_pullback(Δ) = (NO_FIELDS, NoTangent(), ∇gather_src(Δ, src_size, idx), NoTangent())
     y, gather!_pullback
 end
