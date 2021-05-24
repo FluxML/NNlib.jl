@@ -12,7 +12,7 @@ Applies also `ChainRulesTestUtils.test_rrule` if the rrule for `f` is explicitly
 """
 function gradtest(f, xs...; atol=1e-6, rtol=1e-6, fkwargs=NamedTuple(),
                     check_rrule=false,
-                    fdm=:forward, 
+                    fdm=:central, 
                     check_broadcast=false,
                     skip=false, broken=false)
 
