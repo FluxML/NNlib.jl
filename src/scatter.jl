@@ -85,9 +85,9 @@ end
 Scatter operation allocating a destination array `dst` and 
 calling `scatter!(op, dst, src, idx)` on it.
 
-If `init` is provided it is used to initialized the content of `dst`,
-otherwise tries to guess it from the reduction operator `op`
-(e.g. `init = 0` for `op = +`). 
+If `init` is provided, it is used to initialize the content of `dst`.
+Otherwise, the init values is inferred from the reduction operator `op`
+for some common operators (e.g. `init = 0` for `op = +`). 
 
 See [`scatter!`](@ref) for the details.
 """
