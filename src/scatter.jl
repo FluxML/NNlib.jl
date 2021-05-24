@@ -19,18 +19,8 @@ dimensionality of the scattered objects.
 """
 function scatter_dims(X::AbstractArray{Tx,Nx}, 
                      Y::AbstractArray{Ty,Ny},
-                     idx::AbstractArray{Tidx,Nidx}) where
-                     {Tx,Ty,Tidx<:IntOrIntTuple,Nx,Ny,Nidx}
+                     idx::AbstractArray{Tidx,Nidx}) where {Tx,Ty,Tidx,Nx,Ny,Nidx}
     M = typelength(Tidx)
-    dims = scatter_dims(Nx, Ny, M, Nidx)
-    size(X)[1:dims] == size(Y)[1:dims] || throw(ArgumentError("Incompatible input shapes."))
-    size(Y)[dims+1:end] == size(idx) || throw(ArgumentError("Incompatible input shapes."))
-    return dims
-end
-
-function scatter_dims(X::AbstractArray{Tx,Nx}, 
-                     Y::AbstractArray{Ty,Ny},
-                     idx::AbstractArray{CartesianIndex{M},Nidx}) where {Tx,Ty,Nx,Ny,M,Nidx}
     dims = scatter_dims(Nx, Ny, M, Nidx)
     size(X)[1:dims] == size(Y)[1:dims] || throw(ArgumentError("Incompatible input shapes."))
     size(Y)[dims+1:end] == size(idx) || throw(ArgumentError("Incompatible input shapes."))
