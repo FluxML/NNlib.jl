@@ -17,7 +17,20 @@
     @test_throws ArgumentError upsample_nearest(x, size=(3,4))
 end
 
-@testset "upsample_bilinear 2d" begin
+@testset "Linear upsampling (1D)" begin
+    x = Float64[1,2,3,4]
+    x = hcat(x,x,x)[:,:,:]
+
+    y = collect(1:1//3:4)
+    y = hcat(y,y,y)[:,:,:]
+    yF64 = Float64.(y)
+
+    @test y ≈ upsample_linear(x, 2.5)
+    @test y ≈ upsample_linear(x; size=10)
+    gradtest(x->upsample_linear(x, 2.5), x)
+end
+
+@testset "Bilinear upsampling (2D)" begin
     x = Float32[1 2; 3 4][:,:,:,:]
     x = cat(x,x; dims=3)
     x = cat(x,x; dims=4)
@@ -65,7 +78,7 @@ end
     @test y == y_true_int
 end
 
-@testset "Trilinear upsampling" begin
+@testset "Trilinear upsampling (3D)" begin
     # Layout: WHDCN, where D is depth
     # we generate data which is constant along W & H and differs in D
     # then we upsample along all dimensions
