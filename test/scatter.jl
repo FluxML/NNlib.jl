@@ -182,29 +182,23 @@ end
 
 @testset "∇scatter" begin
     T = Float64
+    fdm(op) = op == min ? :backward : :forward
+    # fdm(op) = :forward
+
     @testset "∂dst" begin
-        for op in (+, -, *, /)
-            # TODO: get max, min pass tests
-            gradtest(xs -> scatter!(op, copy(xs), srcs[(0, true)], idxs[:int]), T.(dsts[0]))
-            gradtest(xs -> scatter!(op, copy(xs), srcs[(1, true)], idxs[:int]), T.(dsts[1]))
+        for op in (+, -, *, /, mean, max, min)
+            gradtest(xs -> scatter!(op, copy(xs), srcs[(0, true)], idxs[:int]), T.(dsts[0]), fdm=fdm(op))
+            gradtest(xs -> scatter!(op, copy(xs), srcs[(1, true)], idxs[:int]), T.(dsts[1]), fdm=fdm(op))
         end
-        gradtest(xs -> scatter!(mean, copy(xs), srcs[(0, true)], idxs[:int]), T.(dsts[0]))
-        gradtest(xs -> scatter!(mean, copy(xs), srcs[(1, true)], idxs[:int]), T.(dsts[1]))
     end
 
     @testset "∂src" begin
-        for op in (+, -, *, /)
-            # TODO: get max, min pass tests
-            gradtest(xs -> scatter!(op, T.(dsts[0]), xs, idxs[:int]), T.(srcs[(0, true)]))
-            gradtest(xs -> scatter!(op, T.(dsts[1]), xs, idxs[:int]), T.(srcs[(1, true)]))
+        for op in (+, -, *, /, mean, max, min)
+            gradtest(xs -> scatter!(op, T.(dsts[0]), xs, idxs[:int]), T.(srcs[(0, true)]), fdm=fdm(op))
+            gradtest(xs -> scatter!(op, T.(dsts[1]), xs, idxs[:int]), T.(srcs[(1, true)]), fdm=fdm(op))
 
-            gradtest(xs -> scatter(op, xs, idxs[:int]), T.(srcs[(0, false)]))
-            gradtest(xs -> scatter(op, xs, idxs[:int]), T.(srcs[(1, false)]))
+            gradtest(xs -> scatter(op, xs, idxs[:int]), T.(srcs[(0, false)]), fdm=fdm(op))
+            gradtest(xs -> scatter(op, xs, idxs[:int]), T.(srcs[(1, false)]), fdm=fdm(op))
         end
-        gradtest(xs -> scatter!(mean, T.(dsts[0]), xs, idxs[:int]), T.(srcs[(0, true)]))
-        gradtest(xs -> scatter!(mean, T.(dsts[1]), xs, idxs[:int]), T.(srcs[(1, true)]))
-
-        gradtest(xs -> scatter(mean, xs, idxs[:int]), T.(srcs[(0, false)]))
-        gradtest(xs -> scatter(mean, xs, idxs[:int]), T.(srcs[(1, false)]))
     end
 end
