@@ -13,27 +13,31 @@ typelength(::Type{<:Number}) = 1
 typelength(::Type{<:NTuple{M}}) where M = M
 typelength(::Type{CartesianIndex{M}}) where M = M
 
-function _check_dims(X::AbstractArray{Tx,Nx}, 
+"""
+Performs dimensional consistency checks and return the 
+dimensionality of the scattered objects.
+"""
+function scatter_dims(X::AbstractArray{Tx,Nx}, 
                      Y::AbstractArray{Ty,Ny},
                      idx::AbstractArray{Tidx,Nidx}) where
                      {Tx,Ty,Tidx<:IntOrIntTuple,Nx,Ny,Nidx}
     M = typelength(Tidx)
-    dims = _check_dims(Nx, Ny, M, Nidx)
+    dims = scatter_dims(Nx, Ny, M, Nidx)
     size(X)[1:dims] == size(Y)[1:dims] || throw(ArgumentError("Incompatible input shapes."))
     size(Y)[dims+1:end] == size(idx) || throw(ArgumentError("Incompatible input shapes."))
     return dims
 end
 
-function _check_dims(X::AbstractArray{Tx,Nx}, 
+function scatter_dims(X::AbstractArray{Tx,Nx}, 
                      Y::AbstractArray{Ty,Ny},
                      idx::AbstractArray{CartesianIndex{M},Nidx}) where {Tx,Ty,Nx,Ny,M,Nidx}
-    dims = _check_dims(Nx, Ny, M, Nidx)
+    dims = scatter_dims(Nx, Ny, M, Nidx)
     size(X)[1:dims] == size(Y)[1:dims] || throw(ArgumentError("Incompatible input shapes."))
     size(Y)[dims+1:end] == size(idx) || throw(ArgumentError("Incompatible input shapes."))
     return dims
 end
 
-function _check_dims(Nx, Ny, M, Nidx)
+function scatter_dims(Nx, Ny, M, Nidx)
     @assert Nx - M == Ny - Nidx "Incompatible input shapes of (dst, src, idx) = ($Nx, $Ny, $Nidx)."
     dims = Nx - M
     dims < 0 && throw(ArgumentError("dims must be non-negative but got dims=$dims."))
@@ -61,7 +65,7 @@ For each index `k` in `idx`, accumulates values in `dst` according to
          The `idx` array can contain either integers or tuples.
 """
 function scatter!(op, dst::AbstractArray, src::AbstractArray, idx::AbstractArray)
-    dims = _check_dims(dst, src, idx)
+    dims = scatter_dims(dst, src, idx)
     colons = Base.ntuple(_->Colon(), dims)
     for k in CartesianIndices(idx)
         dst_v = _view(dst, colons, idx[k])
