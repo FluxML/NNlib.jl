@@ -18,4 +18,5 @@ if CUDA.has_cuda()
     include("softmax.jl")
     include("batchnorm.jl")
     include("scatter.jl")
+    include("gather.jl")
 end
