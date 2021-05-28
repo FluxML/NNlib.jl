@@ -76,7 +76,7 @@ end
 
 function rrule(::typeof(upsample_nearest), x::AbstractArray, s::Tuple)
     Ω = upsample_nearest(x, s)
-    upsample_nearest_pullback(Δ) = (NO_FIELDS, ∇upsample_nearest(Δ, s), DoesNotExist())
+    upsample_nearest_pullback(Δ) = (NO_FIELDS, ∇upsample_nearest(Δ, s), NoTangent())
     return Ω, upsample_nearest_pullback
 end
 

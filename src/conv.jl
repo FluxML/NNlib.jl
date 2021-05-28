@@ -227,7 +227,7 @@ for conv in [:conv, :depthwiseconv]
                 NO_FIELDS,
                 @thunk($∇conv_data(Δ, w, cdims, kw...)),
                 @thunk($∇conv_filter(x, Δ, cdims, kw...)),
-                DoesNotExist(),
+                NoTangent(),
             )
         end
         return $conv(x, w, cdims; kw...), $conv_pullback
@@ -240,7 +240,7 @@ for conv in [:conv, :depthwiseconv]
                 NO_FIELDS,
                 @thunk($conv(Δ, w, cdims, kw...)),
                 @thunk($∇conv_filter(Δ, x, cdims, kw...)),
-                DoesNotExist(),
+                NoTangent(),
             )
         end
         return $∇conv_data(x, w, cdims; kw...), $∇conv_data_pullback

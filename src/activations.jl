@@ -268,7 +268,7 @@ end
 
 
 BINARY_ACTS = [ # f, df1, df2
-    (:elu, :(deriv_elu(Ω, x2)), :(DoesNotExist())), # TODO use real deriv instead of DNE
+    (:elu, :(deriv_elu(Ω, x2)), :(NoTangent())), # TODO use real deriv instead of DNE
     ]
 
 for (f, df1, df2) in BINARY_ACTS

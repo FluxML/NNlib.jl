@@ -2,10 +2,11 @@ using NNlib, Test, Statistics, Random
 using ChainRulesCore, ChainRulesTestUtils
 using Base.Broadcast: broadcasted
 import FiniteDifferences
-using FiniteDifferences: FiniteDifferenceMethod, central_fdm
 import Zygote
 using Zygote: gradient
 using StableRNGs
+using CUDA
+
 
 const rng = StableRNG(123)
 
@@ -56,7 +57,6 @@ end
     include("utils.jl")
 end
 
-using CUDA
 
 if VERSION >= v"1.6" && CUDA.functional()
     if get(ENV, "NNLIB_TEST_CUDA", "false") == "true"
