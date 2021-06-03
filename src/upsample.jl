@@ -77,7 +77,7 @@ end
 
 function rrule(::typeof(upsample_nearest), x::AbstractArray, s::Tuple)
     Ω = upsample_nearest(x, s)
-    upsample_nearest_pullback(Δ) = (NO_FIELDS, ∇upsample_nearest(Δ, s), NoTangent())
+    upsample_nearest_pullback(Δ) = (NoTangent(), ∇upsample_nearest(Δ, s), NoTangent())
     return Ω, upsample_nearest_pullback
 end
 
@@ -203,7 +203,7 @@ end
 function rrule(::typeof(upsample_linear), x; size)
     Ω = upsample_linear(x; size=size)
     function upsample_linear_pullback(Δ)
-        (NO_FIELDS, ∇upsample_linear(Δ; size=Base.size(x,1)))
+        (NoTangent(), ∇upsample_linear(Δ; size=Base.size(x,1)))
     end
     return Ω, upsample_linear_pullback
 end
@@ -368,7 +368,7 @@ end
 function rrule(::typeof(upsample_bilinear), x; size)
     Ω = upsample_bilinear(x; size=size)
     function upsample_bilinear_pullback(Δ)
-        (NO_FIELDS, ∇upsample_bilinear(Δ; size=(Base.size(x,1),Base.size(x,2))))
+        (NoTangent(), ∇upsample_bilinear(Δ; size=(Base.size(x,1),Base.size(x,2))))
     end
     return Ω, upsample_bilinear_pullback
 end
@@ -518,7 +518,7 @@ end
 function rrule(::typeof(upsample_trilinear), x; size)
     Ω = upsample_trilinear(x; size=size)
     function upsample_trilinear_pullback(Δ)
-        (NO_FIELDS, ∇upsample_trilinear(Δ; size=(Base.size(x,1), Base.size(x,2), Base.size(x,3))))
+        (NoTangent(), ∇upsample_trilinear(Δ; size=(Base.size(x,1), Base.size(x,2), Base.size(x,3))))
     end
     return Ω, upsample_trilinear_pullback
 end
