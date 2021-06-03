@@ -94,11 +94,11 @@ Base.unsafe_convert(::Type{Ptr{T}}, A::BatchedAdjOrTrans{T}) where {T} =
 
 # Gradients
 function rrule(::typeof(batched_transpose), A::AbstractArray{<:Any,3})
-    b_transpose_back(Δ) = (NO_FIELDS, batched_transpose(Δ))
+    b_transpose_back(Δ) = (NoTangent(), batched_transpose(Δ))
     batched_transpose(A), b_transpose_back
 end
 function rrule(::typeof(batched_adjoint), A::AbstractArray{<:Any,3})
-    b_adjoint_back(Δ) = (NO_FIELDS, batched_adjoint(Δ))
+    b_adjoint_back(Δ) = (NoTangent(), batched_adjoint(Δ))
     batched_adjoint(A), b_adjoint_back
 end
 

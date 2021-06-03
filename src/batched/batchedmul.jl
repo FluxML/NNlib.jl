@@ -100,7 +100,7 @@ function rrule(::typeof(batched_mul), A::AbstractArray{<:Any,3}, B::AbstractArra
             tmp = batched_mul(batched_adjoint(A), Δ)
             size(B,3) == 1 ? sum(tmp, dims=3) : tmp
         end
-        return (NO_FIELDS, Athunk, Bthunk)
+        return (NoTangent(), Athunk, Bthunk)
     end
     batched_mul(A, B), batched_mul_pullback
 end

@@ -260,7 +260,7 @@ for (f, df) in UNARY_ACTS
                          ::typeof($f), x::Numeric)
         Ω = $f.(x)
         function $pullback(Δ) 
-            NO_FIELDS, NO_FIELDS, @.(Δ * $df)
+            NoTangent(), NoTangent(), @.(Δ * $df)
         end
         return Ω, $pullback
     end
@@ -280,7 +280,7 @@ for (f, df1, df2) in BINARY_ACTS
                          x1::Numeric, x2::Numeric)
         Ω = $f.(x1, x2)
         function $pullback(Δ) 
-            NO_FIELDS, NO_FIELDS, @.(Δ * $df1), @.(Δ * $df2)
+            NoTangent(), NoTangent(), @.(Δ * $df1), @.(Δ * $df2)
         end
         return Ω, $pullback
     end

@@ -224,7 +224,7 @@ for conv in [:conv, :depthwiseconv]
         function $conv_pullback(Δ)
             Δ = colmajor(Δ)
             return (
-                NO_FIELDS,
+                NoTangent(),
                 @thunk($∇conv_data(Δ, w, cdims, kw...)),
                 @thunk($∇conv_filter(x, Δ, cdims, kw...)),
                 NoTangent(),
@@ -237,7 +237,7 @@ for conv in [:conv, :depthwiseconv]
         function $∇conv_data_pullback(Δ)
             Δ = colmajor(Δ)
             return (
-                NO_FIELDS,
+                NoTangent(),
                 @thunk($conv(Δ, w, cdims, kw...)),
                 @thunk($∇conv_filter(Δ, x, cdims, kw...)),
                 NoTangent(),
