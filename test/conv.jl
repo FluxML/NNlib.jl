@@ -1,6 +1,7 @@
 using NNlib, Test
 using NNlib: input_size, kernel_size, channels_in, channels_out, channel_multiplier,
-             stride, padding, dilation, flipkernel, output_size
+             stride, padding, dilation, flipkernel, output_size,
+             groupcount
 
 @testset "ConvDims" begin
     for T in (DenseConvDims, DepthwiseConvDims)
@@ -358,6 +359,10 @@ conv_answer_dict = Dict(
     end
 end
 
+@testset "Grouped Convolutions" begin
+
+end
+
 if get(ENV, "NNLIB_TEST_FUZZING", "false") == "true"
     # @info("Skipping Convolutional fuzzing tests, set NNLIB_TEST_FUZZING=true to run them")
     @testset "fuzzing" begin
@@ -646,6 +651,16 @@ if get(ENV,"NNLIB_TEST_FUZZING","false") == "true"
     end
 else
     @info "Skipping Depthwise Convolutional fuzzing tests, set NNLIB_TEST_FUZZING=true to run them"
+end
+
+@testset "Grouped Convolutions" begin
+   x′ = rand(Float32, 28, 28, 100, 2)
+   w′ = rand(Float32, 3, 3, 20, 15)
+
+   @test_throws DimensionMismatch DenseConvDims(x′, w′)
+   cdims = DenseConvDims(x′, w′, groups = 5)
+
+   @test groupcount(cdims) == 5
 end
 
 
