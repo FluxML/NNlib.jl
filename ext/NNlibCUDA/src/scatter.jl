@@ -21,7 +21,7 @@ function scatter_kernel!(op, dst, src, idx, max_idx, max_dims_idx, dims_size)
 end
 
 function NNlib.scatter!(op, dst::AnyCuArray, src::AnyCuArray, idx::AnyCuArray)
-    dims = NNlib._check_dims(dst, src, idx)
+    dims = NNlib.scatter_dims(dst, src, idx)
     args = if dims == 0
         max_idx = length(idx)
         op, dst, src, idx

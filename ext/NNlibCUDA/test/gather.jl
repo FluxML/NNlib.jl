@@ -14,7 +14,7 @@
     y = NNlib.gather(src, index)
     @test y isa CuArray{Float32,2}
     @test size(y) == size(index)
-    gputest(src -> NNlib.gather(src, index), src, checkgrad=false)
+    gputest(src -> NNlib.gather(src, index), src, checkgrad=true)
     @test NNlib.gather!(CUDA.zeros(T, size(index)...), src, index) == output
     @test_throws ArgumentError NNlib.gather!(zeros(T, 3, 5), src, index)
 
@@ -30,7 +30,7 @@
     y = NNlib.gather(src, index)
     @test y isa CuArray{Float32,3}
     @test size(y) == size(index)
-    gputest(src -> NNlib.gather(src, index), src, checkgrad=false)
+    gputest(src -> NNlib.gather(src, index), src, checkgrad=true)
 
 
     ## 2d src, 2d index of ints -> 3d output
@@ -56,5 +56,5 @@
     Nsrc = ndims(src)
     @test y isa CuArray{Float32,3}
     @test size(y) == (size(src)[1:Nsrc-M]..., size(index)...) 
-    gputest(src -> NNlib.gather(src, index), src, checkgrad=false)
+    gputest(src -> NNlib.gather(src, index), src, checkgrad=true)
 end
