@@ -195,7 +195,7 @@ softsign(x) = x / (1 + abs(x))
 
 See [Deep Sparse Rectifier Neural Networks](http://proceedings.mlr.press/v15/glorot11a/glorot11a.pdf).
 """
-softplus(x) = ifelse(x > 0, x + log1p(exp(-x)), log1p(exp(x)))
+softplus(x) = log1p(exp(-abs(x))) + max(x, 0)
 
 """
     logcosh(x)
@@ -250,6 +250,7 @@ UNARY_ACTS = [ # f, df
     (:selu,         :(deriv_selu(Ω))),
     (:σ,            :(conj(Ω * (1 - Ω)))),
     (:elu,          :(deriv_elu(Ω))),
+    (:softplus,     :(σ(x))),
     ]
 
 for (f, df) in UNARY_ACTS
