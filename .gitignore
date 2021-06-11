@@ -10,5 +10,6 @@
 deps/usr
 deps.jl
 *.log
+.vscode/
 /Manifest.toml
 lib/NNlibCUDA/Manifest.toml

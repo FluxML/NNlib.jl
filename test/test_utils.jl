@@ -15,13 +15,10 @@ function gradtest(f, xs...; atol=1e-6, rtol=1e-6, fkwargs=NamedTuple(),
                     fdm=:central, 
                     check_broadcast=false,
                     skip=false, broken=false)
-
+    # TODO: revamp when https://github.com/JuliaDiff/ChainRulesTestUtils.jl/pull/166
+    # is merged
     if check_rrule
-        y = f(xs...; fkwargs...)
-        simil(x) = x isa Number ? randn(rng, typeof(x)) : randn!(rng, similar(x))
-        ȳ =  simil(y)
-        xx̄s = [x ⊢ simil(x) for x in xs]
-        test_rrule(f, xx̄s...; fkwargs=fkwargs, output_tangent=ȳ)
+        test_rrule(f, xs...; fkwargs=fkwargs)
     end
 
     if check_broadcast
