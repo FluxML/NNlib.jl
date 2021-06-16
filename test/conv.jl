@@ -359,10 +359,6 @@ conv_answer_dict = Dict(
     end
 end
 
-@testset "Grouped Convolutions" begin
-
-end
-
 if get(ENV, "NNLIB_TEST_FUZZING", "false") == "true"
     # @info("Skipping Convolutional fuzzing tests, set NNLIB_TEST_FUZZING=true to run them")
     @testset "fuzzing" begin
@@ -661,8 +657,15 @@ end
    cdims = DenseConvDims(x′, w′, groups = 5)
 
    @test groupcount(cdims) == 5
-end
 
+   y = conv(x′, w′, cdims)
+
+   ips = Iterators.partition(1:100, 20)
+   ops = Iterators.partition(1:15, 3)
+   for i in ips, o in ops
+      @test conv(x′[:,:,i,:], w′[:,:,:,o]) ≈ y[:,:,o,:]
+   end
+end
 
 @testset "conv_wrapper" begin
     x = rand(10, 10, 3, 10)
