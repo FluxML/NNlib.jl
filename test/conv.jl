@@ -662,8 +662,8 @@ end
 
    ips = Iterators.partition(1:100, 20)
    ops = Iterators.partition(1:15, 3)
-   for i in ips, o in ops
-      @test conv(x′[:,:,i,:], w′[:,:,:,o]) ≈ y[:,:,o,:]
+   for i in 1:5
+      @test conv(x′[:,:,ips[i],:], w′[:,:,:,ops[i]]) ≈ y[:,:,ops[i],:]
    end
 end
 
