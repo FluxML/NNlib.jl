@@ -15,13 +15,17 @@ maximum_dims(dims::AbstractArray{<:Integer}) = (maximum(dims), )
 maximum_dims(dims::AbstractArray{NTuple{N, T}}) where {N,T} = ntuple(i -> maximum(x->x[i], dims), N)
 maximum_dims(dims::AbstractArray{CartesianIndex{N}}) where {N} = ntuple(i -> maximum(x->x[i], dims), N)
 
-function reverse_indices(idx::Array{T}) where T
-    rev = Dict{T,Vector{CartesianIndex}}()
-    for (ind, val) = pairs(idx)
-        rev[val] = get(rev, val, CartesianIndex[])
-        push!(rev[val], ind)
+function reverse_indices!(rev::AbstractArray, idx::AbstractArray)
+    cidx = CartesianIndices(idx)
+    for i = unique(idx)
+        rev[i] = cidx[idx .== i]
     end
     rev
+end
+
+function reverse_indices(idx::AbstractArray)
+    rev = Array{Vector{CartesianIndex}}(undef, maximum_dims(idx)...)
+    return reverse_indices!(rev, idx)
 end
 
 function count_indices(idx::AbstractArray)
