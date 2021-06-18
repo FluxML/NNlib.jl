@@ -15,15 +15,22 @@ maximum_dims(dims::AbstractArray{<:Integer}) = (maximum(dims), )
 maximum_dims(dims::AbstractArray{NTuple{N, T}}) where {N,T} = ntuple(i -> maximum(x->x[i], dims), N)
 maximum_dims(dims::AbstractArray{CartesianIndex{N}}) where {N} = ntuple(i -> maximum(x->x[i], dims), N)
 
-function reverse_indices!(rev::AbstractArray, idx::AbstractArray)
+function reverse_indices!(rev::AbstractArray, idx::AbstractArray{<:Tuple})
     for (ind, val) in pairs(Array(idx))
-        push!(rev[val], ind)
+        push!(rev[val...], ind)
     end
     # if CUDA supports `unique`, a more efficient version:
     # cidx in CartesianIndices(idx)
     # for i = unique(idx)
     #     rev[i] = cidx[idx .== i]
     # end
+    rev
+end
+
+function reverse_indices!(rev::AbstractArray, idx::AbstractArray)
+    for (ind, val) in pairs(Array(idx))
+        push!(rev[val], ind)
+    end
     rev
 end
 
