@@ -4,7 +4,7 @@ function scatter_kernel!(op, dst, src, idx)
     index = threadIdx().x + (blockIdx().x - 1) * blockDim().x
 
     @inbounds if index <= length(idx)
-        @atomic dst[idx[index]...] = op(dst[idx[index]...], src[index])
+        CUDA.@atomic dst[idx[index]...] = op(dst[idx[index]...], src[index])
     end
     return nothing
 end
@@ -15,7 +15,7 @@ function scatter_kernel!(op, dst, src, idx, max_idx, max_dims_idx, dims_size)
     @inbounds if index <= max_idx
         j, k = divrem(index-1, max_dims_idx)
         dims_i = CartesianIndices(dims_size)[k+1]
-        @atomic dst[Tuple(dims_i)..., idx[j+1]...] = op(dst[Tuple(dims_i)..., idx[j+1]...], src[index])
+        CUDA.@atomic dst[Tuple(dims_i)..., idx[j+1]...] = op(dst[Tuple(dims_i)..., idx[j+1]...], src[index])
     end
     return nothing
 end
