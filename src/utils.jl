@@ -34,9 +34,18 @@ function reverse_indices!(rev::AbstractArray, idx::AbstractArray)
     rev
 end
 
-function reverse_indices(idx::AbstractArray)
+"""
+    reverse_indices(idx)
+
+Return the reverse indices of `idx`. The indices of `idx` will be values, and values of `idx` will be index.
+
+# Arguments
+
+- `idx`: The indices to be reversed. Accepts array or cuarray of integer, tuple or `CartesianIndex`.
+"""
+function reverse_indices(idx::AbstractArray{<:Any,N}) where N
     max_dims = maximum_dims(idx)
-    T = CartesianIndex{length(size(idx))}
+    T = CartesianIndex{N}
     rev = Array{Vector{T}}(undef, max_dims...)
     for i in eachindex(rev)
         rev[i] = T[]
