@@ -35,9 +35,11 @@ function reverse_indices!(rev::AbstractArray, idx::AbstractArray)
 end
 
 function reverse_indices(idx::AbstractArray)
-    rev = Array{Vector{CartesianIndex}}(undef, maximum_dims(idx)...)
+    max_dims = maximum_dims(idx)
+    T = CartesianIndex{length(size(idx))}
+    rev = Array{Vector{T}}(undef, max_dims...)
     for i in eachindex(rev)
-        rev[i] = CartesianIndex[]
+        rev[i] = T[]
     end
     return reverse_indices!(rev, idx)
 end

@@ -24,13 +24,16 @@ end
            4 2 1 3;
            3 5 5 3]
     @test NNlib.reverse_indices(idx) == res
+    @test NNlib.reverse_indices(idx) isa typeof(res)
     idx = [(1,) (2,) (3,) (4,);
            (4,) (2,) (1,) (3,);
            (3,) (5,) (5,) (3,)]
     @test NNlib.reverse_indices(idx) == res
+    @test NNlib.reverse_indices(idx) isa typeof(res)
     idx = CartesianIndex.(
         [(1,) (2,) (3,) (4,);
         (4,) (2,) (1,) (3,);
         (3,) (5,) (5,) (3,)])
     @test NNlib.reverse_indices(idx) == res
+    @test NNlib.reverse_indices(idx) isa typeof(res)
 end
