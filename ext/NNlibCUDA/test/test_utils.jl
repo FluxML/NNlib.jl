@@ -1,9 +1,9 @@
-function gputest(f, xs...; checkgrad=true, atol=1e-10)
+function gputest(f, xs...; checkgrad=true, atol=1e-10, kws...)
     cpu_in = xs
     gpu_in = CuArray.(xs)
 
-    cpu_out = f(cpu_in...)
-    gpu_out = f(gpu_in...)
+    cpu_out = f(cpu_in...; kws...)
+    gpu_out = f(gpu_in...; kws...)
     @test collect(cpu_out) ≈ collect(gpu_out)
     
     if checkgrad
