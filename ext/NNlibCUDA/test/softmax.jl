@@ -1,5 +1,5 @@
 @testset "softmax" begin
-    for (sz, dims) in [((5,), :), ((5,), 1), ((5,5), :), ((5,5), 1), ((5,5), 2)]
+    for (sz, dims) in [((5,), :), ((5,), 1), ((5,5), :), ((5,5), 1), ((5,5), 2), ((5,5,5,5), (2,3)), ((5,5,5,5), (2,4))]
         x = randn(Float64, sz)
         y = softmax(x, dims=dims)
         dy = randn(Float64, sz)
