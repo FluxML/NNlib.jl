@@ -8,4 +8,4 @@ This package provides a library of functions useful for neural networks, such as
 
 For use with automatic differentiation, this package defines gradients using [ChainRules.jl](https://github.com/JuliaDiff/ChainRules.jl). These will be seen by various packages including [Zygote.jl](https://github.com/FluxML/Zygote.jl).
 
-To use these functions with [CUDA.jl](https://github.com/JuliaGPU/CUDA.jl) you will need also [NNlibCUDA.jl](https://github.com/FluxML/NNlibCUDA.jl).
+To use these functions with [CUDA.jl](https://github.com/JuliaGPU/CUDA.jl) you will need [NNlibCUDA.jl](https://github.com/FluxML/NNlibCUDA.jl) as well.
