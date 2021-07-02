@@ -34,9 +34,9 @@ version = "0.4.1"
 
 [[CUDA]]
 deps = ["AbstractFFTs", "Adapt", "BFloat16s", "CEnum", "CompilerSupportLibraries_jll", "DataStructures", "ExprTools", "GPUArrays", "GPUCompiler", "LLVM", "LazyArtifacts", "Libdl", "LinearAlgebra", "Logging", "Printf", "Random", "Random123", "RandomNumbers", "Reexport", "Requires", "SparseArrays", "SpecialFunctions", "TimerOutputs"]
-git-tree-sha1 = "82b2811f5888465d96b38c7bb12d8fb9c25838e1"
+git-tree-sha1 = "3e5a6cf59289a60202a0f63fdded29473544d553"
 uuid = "052768ef-5323-5732-b1bb-66c8b64840ba"
-version = "3.3.1"
+version = "3.3.2"
 
 [[ChainRulesCore]]
 deps = ["Compat", "LinearAlgebra", "SparseArrays"]
