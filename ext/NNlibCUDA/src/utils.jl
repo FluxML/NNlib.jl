@@ -19,7 +19,7 @@ function divide_kernel!(xs, counts, max_idx, max_dims_idx, dims_size)
     @inbounds if index <= max_idx
         j, k = divrem(index-1, max_dims_idx)
         dims_i = Tuple(CartesianIndices(dims_size)[k+1])
-        @atomic xs[dims_i..., j+1] = xs[dims_i..., j+1] / counts[j+1]
+        CUDA.@atomic xs[dims_i..., j+1] = xs[dims_i..., j+1] / counts[j+1]
     end
     return nothing
 end
