@@ -8,3 +8,13 @@ steps:
       queue: "juliagpu"
       cuda: "*"
     timeout_in_minutes: 60
+
+  - label: "GPU integration with julia v1.7-nightly"
+    plugins:
+      - JuliaCI/julia#v1:
+          version: "1.7-nightly"
+      - JuliaCI/julia-test#v1: ~
+    agents:
+      queue: "juliagpu"
+      cuda: "*"
+    timeout_in_minutes: 60
