@@ -63,16 +63,6 @@ function gather(src::AbstractArray{Tsrc, Nsrc},
     return gather!(dst, src, idx)
 end
 
-# Simple implementation with getindex for integer array.
-# Perf equivalent to the one above (which can also handle the integer case)
-# leave it here to show the simple connection with getindex.
-function gather(src::AbstractArray{Tsrc, Nsrc}, 
-                idx::AbstractArray{<:Integer}) where {Tsrc, Nsrc}
-    colons = ntuple(i -> Colon(), Nsrc-1)
-    return src[colons..., idx]
-end
-
-# Gradient
 
 ∇gather_src(Δ, src_size, idx) = scatter!(+, fill!(similar(Δ, eltype(Δ), src_size), 0), Δ, idx)
 
