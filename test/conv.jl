@@ -23,7 +23,7 @@ using NNlib: input_size, kernel_size, channels_in, channels_out, channel_multipl
             @test padding(cdims) == (0,0,0,0)
             @test flipkernel(cdims) == false
             @test output_size(cdims) == (5,3)
-
+            @test groupcount(cdims) == 1
             # Special-case channel output tests
             if T == DenseConvDims
                 @test channels_out(cdims) == size(w, 4)
@@ -70,6 +70,21 @@ using NNlib: input_size, kernel_size, channels_in, channels_out, channel_multipl
             end
         end
     end
+end
+
+@testset "DenseConvDims groups" begin
+    x = randn(5,4,9,2)
+    w = randn(1,2,3,15)
+    
+    groups = 2
+    @test_throws DenseConvDims(x, w, groups=groups) DimensionMismatch
+    
+    groups = 3
+    cdims = DenseConvDims(x, w, groups=groups)
+    @test groupcount(cdims) == groups
+    @test channels_in(cdims) == size(x, 3)
+    @test channels_in(cdims) == size(w, 3) * groups
+    @test channels_out(cdims) == size(w, 4) * groups
 end
 
 conv_answer_dict = Dict(

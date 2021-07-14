@@ -33,6 +33,7 @@ stride(c::ConvDims{N,S,P,D,F}) where {N, S, P, D, F} = S
 padding(c::ConvDims{N,S,P,D,F}) where {N, S, P, D, F} = P
 dilation(c::ConvDims{N,S,P,D,F}) where {N, S, P, D, F} = D
 flipkernel(c::ConvDims{N,S,P,D,F}) where {N, S, P, D, F} = F
+groupcount(c::ConvDims) = 1
 
 """
     im2col_dims(c::ConvDims)
@@ -131,5 +132,6 @@ function Base.show(io::IO, cdims::C) where {C <: ConvDims}
     P = padding(cdims)
     D = dilation(cdims)
     F = flipkernel(cdims)
-    print(io, "$(basetype(C)): $I * $K -> $O, stride: $S, pad: $P, dil: $D, flip: $F")
+    G = groupcount(cdims)
+    print(io, "$(basetype(C)): $I * $K -> $O, stride: $S, pad: $P, dil: $D, flip: $F, groups: $G")
 end
