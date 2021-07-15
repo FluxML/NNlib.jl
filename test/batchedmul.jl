@@ -1,4 +1,4 @@
-using NNlib, Test, LinearAlgebra
+using NNlib, Test, LinearAlgebra, Logging
 using NNlib: storage_type, storage_typejoin, is_strided,
     batched_mul!, batched_mul_generic!, _unbatch, _copy_if_faster,
     BatchedAdjoint, BatchedTranspose
@@ -119,17 +119,21 @@ end
     end
 end
 
+perm_12(A) = PermutedDimsArray(A, (2,1,3))
+perm_23(A) = PermutedDimsArray(A, (1,3,2))
+
 @testset "batched_mul: trivial dimensions & unit strides, $T" for T in [Float64, ComplexF64]
-    @testset "$tA(rand$((sA...,2))) ⊠ $tB(rand$((sB...,2)))" for
-    tA in [identity, batched_adjoint, batched_transpose], sA in [(1,1), (1,3), (3,1), (3,3)],
-    tB in [identity, batched_adjoint, batched_transpose], sB in [(1,1), (1,3), (3,1), (3,3)]
+    @testset "$tA(rand$((sA...,3))) ⊠ $tB(rand$((sB...,3)))" for
+    tA in [identity, batched_adjoint, batched_transpose, perm_12, perm_23], sA in [(1,1), (1,3), (3,1), (3,3)],
+    tB in [identity, batched_adjoint, batched_transpose, perm_12, perm_23], sB in [(1,1), (1,3), (3,1), (3,3)]
 
-        A = tA(rand(T, sA..., 2))
-        B = tB(rand(T, sB..., 2))
-        size(A,2) == size(B,1) || continue
+        A = tA(rand(T, sA..., 3))
+        B = tB(rand(T, sB..., 3))
+        size(A,2) == size(B,1) && size(A,3) == size(B,3) == 3 || continue
 
-        C = cat(A[:,:,1] * B[:,:,1], A[:,:,2] * B[:,:,2]; dims=3)
+        C = cat(A[:,:,1] * B[:,:,1], A[:,:,2] * B[:,:,2], A[:,:,3] * B[:,:,3]; dims=3)
         @test A ⊠ B ≈ C
+        @test_logs min_level=Logging.Debug A ⊠ B
 
         # In-place batched_mul!
         α, β = rand(T), rand(T)
@@ -268,10 +272,34 @@ FiniteDifferences.to_vec(x::BatchedAdjoint) = FiniteDifferences.to_vec(collect(x
 FiniteDifferences.to_vec(x::BatchedTranspose) = FiniteDifferences.to_vec(collect(x))
 
 @testset "AutoDiff" begin
-  M, P, Q = 13, 7, 11
-  B = 3
-  gradtest(batched_mul, randn(rng, M, P, B), randn(rng, P, Q, B))
-  gradtest(batched_mul, batched_adjoint(randn(rng, P, M, B)), randn(rng, P, Q, B))
-  gradtest(batched_mul, randn(rng, M, P, B), batched_transpose(randn(rng, Q, P, B)))
-end
+    M, P, Q = 13, 7, 11
+    B = 3
+    # Two 3-arrays
+    gradtest(batched_mul, randn(rng, M, P, B), randn(rng, P, Q, B))
+    gradtest(batched_mul, batched_adjoint(randn(rng, P, M, B)), randn(rng, P, Q, B))
+    gradtest(batched_mul, randn(rng, M, P, B), batched_transpose(randn(rng, Q, P, B)))
 
+    # One a matrix...
+    gradtest(batched_mul, randn(rng, M, P), randn(rng, P, Q, B))
+    gradtest(batched_mul, adjoint(randn(rng, P, M)), randn(rng, P, Q, B))
+    gradtest(batched_mul, randn(rng, M, P), batched_adjoint(randn(rng, Q, P, B)))
+
+    gradtest(batched_mul, randn(rng, M, P, B), randn(rng, P, Q))
+    gradtest(batched_mul, batched_transpose(randn(rng, P, M, B)), randn(rng, P, Q))
+    gradtest(batched_mul, randn(rng, M, P, B), transpose(randn(rng, Q, P)))
+
+    # ... or equivalent to a matrix
+    gradtest(batched_mul, randn(rng, M, P, 1), randn(rng, P, Q, B))
+    gradtest(batched_mul, batched_transpose(randn(rng, P, M, 1)), randn(rng, P, Q, B))
+    gradtest(batched_mul, randn(rng, M, P, 1), batched_transpose(randn(rng, Q, P, B)))
+
+    gradtest(batched_mul, randn(rng, M, P, B), randn(rng, P, Q, 1))
+    gradtest(batched_mul, batched_adjoint(randn(rng, P, M, B)), randn(rng, P, Q, 1))
+    gradtest(batched_mul, randn(rng, M, P, B), batched_adjoint(randn(rng, Q, P, 1)))
+
+    # batched_vec
+    gradtest(batched_vec, randn(rng, M, P, B), randn(rng, P, B))
+    gradtest(batched_vec, randn(rng, M, P, B), transpose(randn(rng, B, P)))
+
+    gradtest(batched_vec, randn(rng, M, P, B), randn(rng, P))
+end

@@ -16,16 +16,16 @@ pad_zeros(x::AbstractArray, pad; dims = :) =
 
 Pad the array `x` with the constant value `val`.
 
-`pad` can take a tuple of length equal or double the length of
-`dims`. In case of equal length, it applies uniform padding on both sides
-and for length `2*length(dims)` the padding is applied assymetrically.
+`pad` can be a tuple of integers.
+If it is of some length `2 * length(dims)` that specifies the left and right padding size
+for each of the dimensions in `dims` as `(l1, r1, ..., ln, rn)`. 
+If supplied with a tuple of length `length(dims)` instead, it applies symmetric padding.
+If `dims` is not given, it defaults to all dimensions.
 
-By default, padding is applied to every dimension.
-
-For integer `pad` input instead, it is applied on both sides
+For integer `pad` input, it is applied on both sides
 on every dimension in `dims`.
 
-See also [`pad_reflect`](@ref) and [`pad_repeat`](@ref).
+See also [`pad_zeros`](@ref), [`pad_reflect`](@ref) and [`pad_repeat`](@ref).
 
 ```jldoctest
 
@@ -111,18 +111,8 @@ end
 @inline tuplejoin(x, y) = (x..., y...)
 @inline tuplejoin(x, y, z...) = tuplejoin(tuplejoin(x, y), z...)
 
-function pad_zeros_tuple(pad::NTuple{L,Int}, N) where L
-  ntuple(2N) do i
-    if i <= L
-      pad[i]
-    else
-      0
-    end
-  end
-end
-
 gen_pad(pad::Int, dims, N) = gen_pad(ntuple(_ -> pad, length(dims)), dims, N)
-gen_pad(pad::Int, dims::Colon, N) = ntuple(_ -> pad, 2N)
+gen_pad(pad::Int, dims::Colon, N) = ntuple(_ -> (pad, pad), N)
 gen_pad(pad, dims::Colon, N) = gen_pad(pad, ntuple(identity, N), N)
 gen_pad(pad::Int, dims::Int, N) = gen_pad((pad,pad), (dims,), N)
 function gen_pad(pad::NTuple{L,Int}, dims::NTuple{D,Int}, N) where {L,D}
@@ -147,18 +137,15 @@ end
 
 # Expects length(pad) == 2M
 function pad_constant(x::AbstractArray{T,M}, pad::NTuple{N,Tuple{Int,Int}}, val = 0) where {T,M,N}
-  p = pad_zeros_tuple(tuplejoin(reverse.(pad)...), M)
-  sz, c = size_and_center(x, p)
+  sz, c = size_and_center(x, pad)
   res = fill!(similar(x, sz...), val)
-  res[c..., ntuple(_ -> Colon(), Val(M - 2))...] = x
+  res[c...] = x
   res
 end
 
-function size_and_center(x, pad::NTuple{N,Int}) where N
-  ds = 1:2:N
-  dst = ntuple(i -> ds[i], N÷2)
-  sz = map(i -> pad[i] + pad[i+1], dst) .+ size(x)
-  center = broadcast((x,y) -> x .+ y, axes(x), pad[2:2:end]::NTuple{N÷2,Int})
+function size_and_center(x, pad::NTuple{N,NTuple{2, Int}}) where N
+  sz = ntuple(i -> pad[i][1] + pad[i][2], N) .+ size(x)
+  center = broadcast((x,y) -> x .+ y, axes(x), ntuple(i -> pad[i][1], N))
   sz, center
 end
 
@@ -168,7 +155,7 @@ function rrule(::typeof(pad_constant), x::AbstractArray{T,N},
   function pad_constant_pullback(Δ)
     p = gen_pad(pad, dims, N)
     outsize, center = size_and_center(x, p)
-    (NO_FIELDS, @thunk(Δ[center...]), DoesNotExist(), DoesNotExist(),)
+    (NoTangent(), @thunk(Δ[center...]), NoTangent(), NoTangent(),)
   end
   return y, pad_constant_pullback
 end

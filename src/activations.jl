@@ -1,6 +1,6 @@
 ## Activation functions
 #
-# Some of activation functions have its wrapper function for GPU in CUDA.jl.
+# Some of activation functions have its wrapper function for GPU in NNlibCUDA.jl.
 # https://github.com/JuliaGPU/CuArrays.jl/issues/614
 
 const ACTIVATIONS = 
@@ -195,7 +195,7 @@ softsign(x) = x / (1 + abs(x))
 
 See [Deep Sparse Rectifier Neural Networks](http://proceedings.mlr.press/v15/glorot11a/glorot11a.pdf).
 """
-softplus(x) = ifelse(x > 0, x + log1p(exp(-x)), log1p(exp(x)))
+softplus(x) = log1p(exp(-abs(x))) + max(x, 0)
 
 """
     logcosh(x)
@@ -250,6 +250,7 @@ UNARY_ACTS = [ # f, df
     (:selu,         :(deriv_selu(Ω))),
     (:σ,            :(conj(Ω * (1 - Ω)))),
     (:elu,          :(deriv_elu(Ω))),
+    (:softplus,     :(σ(x))),
     ]
 
 for (f, df) in UNARY_ACTS
@@ -260,7 +261,7 @@ for (f, df) in UNARY_ACTS
                          ::typeof($f), x::Numeric)
         Ω = $f.(x)
         function $pullback(Δ) 
-            NO_FIELDS, NO_FIELDS, @.(Δ * $df)
+            NoTangent(), NoTangent(), @.(Δ * $df)
         end
         return Ω, $pullback
     end
@@ -268,7 +269,7 @@ end
 
 
 BINARY_ACTS = [ # f, df1, df2
-    (:elu, :(deriv_elu(Ω, x2)), :(DoesNotExist())), # TODO use real deriv instead of DNE
+    (:elu, :(deriv_elu(Ω, x2)), :(NoTangent())), # TODO use real deriv instead of DNE
     ]
 
 for (f, df1, df2) in BINARY_ACTS
@@ -280,7 +281,7 @@ for (f, df1, df2) in BINARY_ACTS
                          x1::Numeric, x2::Numeric)
         Ω = $f.(x1, x2)
         function $pullback(Δ) 
-            NO_FIELDS, NO_FIELDS, @.(Δ * $df1), @.(Δ * $df2)
+            NoTangent(), NoTangent(), @.(Δ * $df1), @.(Δ * $df2)
         end
         return Ω, $pullback
     end

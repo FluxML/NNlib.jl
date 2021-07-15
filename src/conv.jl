@@ -321,10 +321,10 @@ for conv in [:conv, :depthwiseconv]
                                    C_out = channels_out(cdims) ÷ groupcount(cdims))
 
             return (
-                NO_FIELDS,
+                NoTangent(),
                 @thunk($∇conv_data(Δ, w, cdims, kw...)),
                 @thunk($∇conv_filter(x, Δ, cdims, kw...)),
-                DoesNotExist(),
+                NoTangent(),
             )
         end
         return $conv(x, w, cdims; kw...), $conv_pullback
@@ -334,10 +334,10 @@ for conv in [:conv, :depthwiseconv]
         function $∇conv_data_pullback(Δ)
             Δ = colmajor(Δ)
             return (
-                NO_FIELDS,
+                NoTangent(),
                 @thunk($conv(Δ, w, cdims, kw...)),
                 @thunk($∇conv_filter(Δ, x, cdims, kw...)),
-                DoesNotExist(),
+                NoTangent(),
             )
         end
         return $∇conv_data(x, w, cdims; kw...), $∇conv_data_pullback
