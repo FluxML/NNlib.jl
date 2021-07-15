@@ -13,7 +13,7 @@ end
 input_size(c::DenseConvDims) = c.I
 kernel_size(::DenseConvDims{N,K,C_in,C_out}) where {N,K,C_in,C_out} = K
 channels_in(::DenseConvDims{N,K,C_in,C_out}) where {N,K,C_in,C_out} = C_in::Int
-channels_out(::DenseConvDims{N,K,C_in,C_out}) where {N,K,C_in,C_out} = C_out::Int
+channels_out(::DenseConvDims{N,K,C_in,C_out,G}) where {N,K,C_in,C_out,G} = (C_out*G)::Int
 groupcount(::DenseConvDims{N,K,C_in,C_out,G}) where {N,K,C_in,C_out,G} = G::Int
 
 # Convenience wrapper to create DenseConvDims objects
@@ -68,22 +68,21 @@ function DenseConvDims(c::ConvDims; N=spatial_dims(c), I=input_size(c), K=kernel
 end
 
 function check_dims(x::NTuple{M}, w::NTuple{M}, y::NTuple{M}, cdims::DenseConvDims) where {M}
+    g = groupcount(cdims)
+    
     # First, check that channel counts are all correct:
     @assert x[M-1] == channels_in(cdims) DimensionMismatch("Data input channel count ($(x[M-1]) vs. $(channels_in(cdims)))")
     @assert y[M-1] == channels_out(cdims) DimensionMismatch("Data output channel count ($(y[M-1]) vs. $(channels_out(cdims)))")
-    @assert x[1:M-1] ÷ groupcount(cdims) == 0 DimensionMismatch("Data input channel count ($(x[M-1]) vs. $(groupcount(cdims)) groups)")
-    @assert y[1:M-1] ÷ groupcount(cdims) == 0 DimensionMismatch("Data output channel count ($(y[M-1]) vs. $(groupcount(cdims)) groups)")
-    @assert w[M-1] * groupcount(cdims) == channels_in(cdims) DimensionMismatch("Kernel input channel count ($(w[M-1]) vs. $(channels_in(cdims)))")
-    @assert w[M] * groupcount(cdims) == channels_out(cdims) DimensionMismatch("Kernel output channel count ($(w[M]) vs. $(channels_out(cdims)))")
+    @assert x[M-1] % g == 0  DimensionMismatch("Data input channel count ($(x[M-1]) vs. $(groupcount(cdims)) groups)")
+    @assert y[M-1] % g == 0  DimensionMismatch("Data output channel count ($(y[M-1]) vs. $(groupcount(cdims)) groups)")
+    @assert w[M-1] * g == channels_in(cdims) DimensionMismatch("Kernel input channel count ($(w[M-1]) vs. $(channels_in(cdims)))")
+    @assert w[M] * g == channels_out(cdims) DimensionMismatch("Kernel output channel count ($(w[M]) vs. $(channels_out(cdims)))")
 
     # Next, check that the spatial dimensions match up
     @assert x[1:M-2] == input_size(cdims) DimensionMismatch("Data input spatial size ($(x[1:M-2]) vs. $(input_size(cdims)))")
     @assert y[1:M-2] == output_size(cdims) DimensionMismatch("Data output spatial size ($(y[1:M-2]) vs. $(output_size(cdims)))")
     @assert w[1:M-2] == kernel_size(cdims) DimensionMismatch("Kernel spatial size ($(w[1:M-2]) vs. $(kernel_size(cdims)))")
 
-    # First, check that channel counts are all correct:
-    @assert x[M-1] == channels_in(cdims) DimensionMismatch("Data input channel count ($(x[M-1]) vs. $(channels_in(cdims)))")
-    @assert y[M-1] == channels_out(cdims) DimensionMismatch("Data output channel count ($(y[M-1]) vs. $(channels_out(cdims)))")
     # Finally, check that the batch size matches
     @assert x[M] == y[M] DimensionMismatch("Batch size ($(x[M]) vs. $(y[M]))")
 end

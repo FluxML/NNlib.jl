@@ -1,6 +1,6 @@
 using NNlib, Test
 using NNlib: input_size, kernel_size, channels_in, channels_out, channel_multiplier,
-             stride, padding, dilation, flipkernel, output_size
+             stride, padding, dilation, flipkernel, output_size, groupcount
 
 @testset "ConvDims" begin
     for T in (DenseConvDims, DepthwiseConvDims)
@@ -77,7 +77,7 @@ end
     w = randn(1,2,3,15)
     
     groups = 2
-    @test_throws DenseConvDims(x, w, groups=groups) DimensionMismatch
+    @test_throws DimensionMismatch DenseConvDims(x, w, groups=groups)
     
     groups = 3
     cdims = DenseConvDims(x, w, groups=groups)
