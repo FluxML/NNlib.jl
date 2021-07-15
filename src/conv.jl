@@ -173,15 +173,14 @@ end
 # First, we will define mappings from the generic API names to our accelerated backend
 # implementations. For homogeneous-datatype 1, 2 and 3d convolutions, we default to using
 # im2col + GEMM.  Do so in a loop, here:
+
+# These are the GEMM types we will accelerate with `im2col`
+const G = Union{[x[2] for x in gemm_datatype_mappings]...}
+
 for (front_name, backend) in (
         # This maps from public, front-facing name, to internal backend name
         :conv                   => :im2col,
-        # :∇conv_data             => :im2col,
-        # :∇conv_filter           => :im2col,
     )
-
-    # These are the GEMM types we will accelerate with `im2col`
-    G = Union{[x[2] for x in gemm_datatype_mappings]...}
 
     # We only define 3d conv primitives, we reshape lower down to get 1d and 2d convolution
     @eval begin
@@ -211,7 +210,6 @@ for (front_name, backend) in (
     end
 end
 
-const G = Union{[x[2] for x in gemm_datatype_mappings]...}
 # im2col-accelerated function forwarding definition
 function ∇conv_data!(out::AbstractArray{T,5}, in1::AbstractArray{T,5},
                      in2::AbstractArray{T,5}, cdims::C; kwargs...) where {T <: G, C <: ConvDims}
@@ -268,9 +266,6 @@ for (front_name, backend) in (
         :∇depthwiseconv_data    => :im2col,
         :∇depthwiseconv_filter  => :im2col,
     )
-
-    # These are the GEMM types we will accelerate with `im2col`
-    G = Union{[x[2] for x in gemm_datatype_mappings]...}
 
     # We only define 3d conv primitives, we reshape lower down to get 1d and 2d convolution
     @eval begin

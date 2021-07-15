@@ -13,7 +13,7 @@ end
 input_size(c::DenseConvDims) = c.I
 kernel_size(c::DenseConvDims{N,K,C_in,C_out}) where {N,K,C_in,C_out} = K
 channels_in(c::DenseConvDims{N,K,C_in,C_out}) where {N,K,C_in,C_out} = C_in::Int
-channels_out(c::DenseConvDims{N,K,C_in,C_out,G}) where {N,K,C_in,C_out,G} = C_out::Int
+channels_out(c::DenseConvDims{N,K,C_in,C_out,G}) where {N,K,C_in,C_out,G} = (C_out * G)::Int
 groupcount(c::DenseConvDims{N,K,C_in,C_out,G}) where {N,K,C_in,C_out,G} = G::Int
 
 # Convenience wrapper to create DenseConvDims objects
@@ -35,8 +35,6 @@ function DenseConvDims(x_size::NTuple{M}, w_size::NTuple{M};
         throw(DimensionMismatch("Group count should be divisble by input and output channels ($groups vs. $(w_size[end-1:end]))"))
     end
    
-    # Ensure groups make sense
- 
     # The type parameters are what 
     return DenseConvDims{
         M - 2,
@@ -72,7 +70,6 @@ end
 
 function check_dims(x::NTuple{M}, w::NTuple{M}, y::NTuple{M}, cdims::DenseConvDims) where {M}
     # First, check that channel counts are all correct:
-    # @show x, w, y
     @assert x[M-1] * groupcount(cdims) == channels_in(cdims) DimensionMismatch("Data input channel count ($(x[M-1]) vs. $(channels_in(cdims)))")
     @assert y[M-1] == channels_out(cdims) ÷ groupcount(cdims)  DimensionMismatch("Data output channel count ($(y[M-1]) vs. $(channels_out(cdims)))")
     @assert w[M-1] * groupcount(cdims) == channels_in(cdims) DimensionMismatch("Kernel input channel count ($(w[M-1]) vs. $(channels_in(cdims)))")
