@@ -46,7 +46,7 @@ export conv, conv!, ∇conv_data, ∇conv_data!, ∇conv_filter, ∇conv_filter!
 
 ########## STEP 1 ############
 """
-    conv(x, w; stride=1, pad=0, dilation=1, flipped=false)
+    conv(x, w; stride = 1, pad = 0, dilation = 1, flipped = false, groups = 1)
 
 Apply convolution filter `w` to input `x`. `x` and `w` are 3d/4d/5d tensors 
 in 1d/2d/3d convolutions respectively. 
@@ -195,9 +195,9 @@ for (front_name, backend) in (
             w_cs = Iterators.partition(1:size(in2, 5),
                                        channels_out(cdims) ÷ groupcount(cdims))
             cdims2 = basetype(C)(cdims,
-                                   G = 1,
-                                   C_in = channels_in(cdims) ÷ groupcount(cdims),
-                                   C_out = channels_out(cdims) ÷ groupcount(cdims))
+                                 G = 1,
+                                 C_in = channels_in(cdims) ÷ groupcount(cdims),
+                                 C_out = channels_out(cdims) ÷ groupcount(cdims))
             
             Threads.@sync for (xc, wc) in zip(x_cs, w_cs)
               x = @view in1[ntuple(i -> i == 4 ? xc : Colon(), 5)...]
@@ -213,20 +213,19 @@ end
 
 const G = Union{[x[2] for x in gemm_datatype_mappings]...}
 # im2col-accelerated function forwarding definition
-function ∇conv_data!(
-                out::AbstractArray{T,5}, in1::AbstractArray{T,5},
-                in2::AbstractArray{T,5}, cdims::C; kwargs...) where {T <: G, C <: ConvDims}
+function ∇conv_data!(out::AbstractArray{T,5}, in1::AbstractArray{T,5},
+                     in2::AbstractArray{T,5}, cdims::C; kwargs...) where {T <: G, C <: ConvDims}
 
     dx_cs = Iterators.partition(1:size(out, 4),
-                           channels_in(cdims) ÷ groupcount(cdims))
+                                channels_in(cdims) ÷ groupcount(cdims))
     w_cs = Iterators.partition(1:size(in2, 5),
-                           channels_out(cdims) ÷ groupcount(cdims))
+                               channels_out(cdims) ÷ groupcount(cdims))
     dy_cs = Iterators.partition(1:size(in1, 4),
-                           channels_out(cdims) ÷ groupcount(cdims))
+                                channels_out(cdims) ÷ groupcount(cdims))
     cdims2 = basetype(C)(cdims,
-                             G = 1,
-                             C_in = channels_in(cdims) ÷ groupcount(cdims),
-                             C_out = channels_out(cdims) ÷ groupcount(cdims))
+                         G = 1,
+                         C_in = channels_in(cdims) ÷ groupcount(cdims),
+                         C_out = channels_out(cdims) ÷ groupcount(cdims))
 
     Threads.@sync for (xc, yc, wc) in zip(dx_cs, dy_cs, w_cs)
       dxv = @view out[ntuple(i -> i == 4 ? xc : Colon(), 5)...]
@@ -238,20 +237,19 @@ function ∇conv_data!(
    return out
 end
 
-function ∇conv_filter!(
-                out::AbstractArray{T,5}, in1::AbstractArray{T,5},
-                in2::AbstractArray{T,5}, cdims::C; kwargs...) where {T <: G, C <: ConvDims}
+function ∇conv_filter!(out::AbstractArray{T,5}, in1::AbstractArray{T,5},
+                       in2::AbstractArray{T,5}, cdims::C; kwargs...) where {T <: G, C <: ConvDims}
 
     dw_cs = Iterators.partition(1:size(out, 5),
-                           channels_out(cdims) ÷ groupcount(cdims))
+                                channels_out(cdims) ÷ groupcount(cdims))
     dy_cs = Iterators.partition(1:size(in2, 4),
-                           channels_out(cdims) ÷ groupcount(cdims))
+                                channels_out(cdims) ÷ groupcount(cdims))
     x_cs = Iterators.partition(1:size(in1, 4),
-                           channels_in(cdims) ÷ groupcount(cdims))
+                               channels_in(cdims) ÷ groupcount(cdims))
     cdims2 = basetype(C)(cdims,
-                             G = 1,
-                             C_in = channels_in(cdims) ÷ groupcount(cdims),
-                             C_out = channels_out(cdims) ÷ groupcount(cdims))
+                         G = 1,
+                         C_in = channels_in(cdims) ÷ groupcount(cdims),
+                         C_out = channels_out(cdims) ÷ groupcount(cdims))
 
     Threads.@sync for (wc, xc, yc) in zip(dw_cs, x_cs, dy_cs)
       x = @view in1[ntuple(i -> i == 4 ? xc : Colon(), 5)...]
@@ -315,11 +313,6 @@ for conv in [:conv, :depthwiseconv]
     @eval function rrule(::typeof($conv), x, w, cdims; kw...)
         function $conv_pullback(Δ)
             Δ = colmajor(Δ)
-            cdims2 = DenseConvDims(cdims,
-                                   G = 1,
-                                   C_in = channels_in(cdims) ÷ groupcount(cdims),
-                                   C_out = channels_out(cdims) ÷ groupcount(cdims))
-
             return (
                 NoTangent(),
                 @thunk($∇conv_data(Δ, w, cdims, kw...)),
