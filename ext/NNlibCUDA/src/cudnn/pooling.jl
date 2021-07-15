@@ -40,36 +40,28 @@ end
 
 ### Since CUDA.jl does not support 1D pooling, we have to convert to 2d
 
+add1d(x) = reshape(x, 1, size(x)...)
+
 fix_pooldims_1d(pdims::PoolDims{1,K,S,P,D}) where {K,S,P,D} =
         PoolDims{2,(1,K...),(1,S...),(0,0,P...),(1,D...)}((1,pdims.I...), pdims.C_in)
 
 function maxpool!(y::DenseCuArray{T,3}, x::DenseCuArray{T,3}, pdims::PoolDims) where T<:CUDNNFloat
-    y = reshape(y, 1, size(y)...)
-    x = reshape(x, 1, size(x)...)
-    maxpool!(y, x, fix_pooldims_1d(pdims))
+    maxpool!(add1d(y), add1d(x), fix_pooldims_1d(pdims))
+    return y
 end
 
 function meanpool!(y::DenseCuArray{T,3}, x::DenseCuArray{T,3}, pdims::PoolDims) where T<:CUDNNFloat
-    y = reshape(y, 1, size(y)...)
-    x = reshape(x, 1, size(x)...)
-    meanpool!(y, x, fix_pooldims_1d(pdims))
+    meanpool!(add1d(y), add1d(x), fix_pooldims_1d(pdims))
+    return y
 end
 
 function ∇maxpool!(dx::DenseCuArray{T,3}, dy::DenseCuArray{T,3}, y::DenseCuArray{T,3}, x::DenseCuArray{T,3}, pdims::PoolDims) where T<:CUDNNFloat
-    y = reshape(y, 1, size(y)...)
-    x = reshape(x, 1, size(x)...)
-    dy = reshape(dy, 1, size(dy)...)
-    dx = reshape(dx, 1, size(dx)...)
-    ∇maxpool!(dx, dy, y, x, fix_pooldims_1d(pdims))
+    ∇maxpool!(add1d(dx), add1d(dy), add1d(y), add1d(x), fix_pooldims_1d(pdims))
     return dx
 end
 
 function ∇meanpool!(dx::DenseCuArray{T,3}, dy::DenseCuArray{T,3}, y::DenseCuArray{T,3}, x::DenseCuArray{T,3}, pdims::PoolDims) where T<:CUDNNFloat
-    y = reshape(y, 1, size(y)...)
-    x = reshape(x, 1, size(x)...)
-    dy = reshape(dy, 1, size(dy)...)
-    dx = reshape(dx, 1, size(dx)...)
-    ∇meanpool!(dx, dy, y, x, fix_pooldims_1d(pdims))
+    ∇meanpool!(add1d(dx), add1d(dy), add1d(y), add1d(x), fix_pooldims_1d(pdims))
     return dx
 end
 
