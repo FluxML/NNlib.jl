@@ -86,8 +86,8 @@ for backend in (Symbol(), :_direct, :_im2col, :_nnpack)
             function $(Symbol("$(name)$(backend)"))(
                             x::AbstractArray{xT,N}, w::AbstractArray{wT,N},
                             cdims::ConvDims; kwargs...) where {xT, wT, N}
-                y = zero.(similar(x, promote_type(xT, wT), output_size(cdims)...,
-                               channels_out(cdims), size(x,N)))
+                y = similar(x, promote_type(xT, wT), output_size(cdims)...,
+                               channels_out(cdims), size(x,N))
                 return $(Symbol("$(name)$(backend)!"))(y, x, w, cdims; kwargs...)
             end
         end
