@@ -2,13 +2,13 @@ using CUDA.CUDNN: cudnnPoolingMode_t, CUDNN_POOLING_MAX,
                   CUDNN_POOLING_AVERAGE_COUNT_INCLUDE_PADDING,
                   cudnnPoolingForward!, pooldims, cudnnPoolingBackward
           
+import NNlib: maxpool!, ∇maxpool!, meanpool!, ∇meanpool!
 import CUDA.CUDNN: cudnnPoolingDescriptor
 
 function cudnnPoolingDescriptor(pdims::PoolDims, x::DenseCuArray{T}, mode::cudnnPoolingMode_t) where T
-    pdims, x = fix1d(pdims), fix1d(x)
     window, padding, stride = NNlib.kernel_size(pdims), nnlibPadding(pdims), NNlib.stride(pdims)
     nanOpt = CUDNN_NOT_PROPAGATE_NAN
-    cudnnPoolingDescriptor(mode, nanOpt, Cint(max(2,ndims(x)-2)), pooldims(window,size(x)), pooldims(padding,size(x)), pooldims(stride,size(x)))
+    cudnnPoolingDescriptor(mode, nanOpt, Cint(ndims(x)-2), pooldims(window,size(x)), pooldims(padding,size(x)), pooldims(stride,size(x)))
 end
 
 function maxpool!(y::DenseCuArray{T}, x::DenseCuArray{T}, pdims::PoolDims) where T<:CUDNNFloat
@@ -37,20 +37,31 @@ function ∇meanpool!(dx::DenseCuArray{T}, dy::DenseCuArray{T}, y::DenseCuArray{
     return dx
 end
 
-function maxpool!(y::DenseCuArray{T}, x::DenseCuArray{T}, k; pad=map(_->0,k), stride=k) where {T<:CUDNNFloat}
-    pdims = PoolDims(x, k; padding=pad, stride=stride)
-    return maxpool!(y, x, pdims)
+### Since CUDA.jl does not support 1D pooling, we have to convert to 2d
+
+add1d(x) = reshape(x, 1, size(x)...)
+
+fix_pooldims_1d(pdims::PoolDims{1,K,S,P,D}) where {K,S,P,D} =
+        PoolDims{2,(1,K...),(1,S...),(0,0,P...),(1,D...)}((1,pdims.I...), pdims.C_in)
+
+function maxpool!(y::DenseCuArray{T,3}, x::DenseCuArray{T,3}, pdims::PoolDims) where T<:CUDNNFloat
+    maxpool!(add1d(y), add1d(x), fix_pooldims_1d(pdims))
+    return y
 end
 
-function meanpool!(y::DenseCuArray{T}, x::DenseCuArray{T}, k; pad=map(_->0,k), stride=k) where {T<:CUDNNFloat}
-    pdims = PoolDims(x, k; padding=pad, stride=stride)
-    return meanpool!(y, x, pdims)
+function meanpool!(y::DenseCuArray{T,3}, x::DenseCuArray{T,3}, pdims::PoolDims) where T<:CUDNNFloat
+    meanpool!(add1d(y), add1d(x), fix_pooldims_1d(pdims))
+    return y
 end
 
-# Deprecated methods
-function cudnnPoolingForward(y::DenseCuArray{T,N}, x::DenseCuArray{T,N}, pdims::NNlib.PoolDims;
-                             alpha=1, beta=0, mode=CUDNN_POOLING_MAX) where {T,N}
-    # @warn "`cudnnPoolingForward(y,x,d::PoolDims)` is deprecated, please use one of the methods in `@doc cudnnPoolingForward`." maxlog=1
-    cudnnPoolingForward!(y, x; window=NNlib.kernel_size(pdims), padding=nnlibPadding(pdims), stride=NNlib.stride(pdims), mode, alpha, beta)
+function ∇maxpool!(dx::DenseCuArray{T,3}, dy::DenseCuArray{T,3}, y::DenseCuArray{T,3}, x::DenseCuArray{T,3}, pdims::PoolDims) where T<:CUDNNFloat
+    ∇maxpool!(add1d(dx), add1d(dy), add1d(y), add1d(x), fix_pooldims_1d(pdims))
+    return dx
 end
+
+function ∇meanpool!(dx::DenseCuArray{T,3}, dy::DenseCuArray{T,3}, y::DenseCuArray{T,3}, x::DenseCuArray{T,3}, pdims::PoolDims) where T<:CUDNNFloat
+    ∇meanpool!(add1d(dx), add1d(dy), add1d(y), add1d(x), fix_pooldims_1d(pdims))
+    return dx
+end
+
 

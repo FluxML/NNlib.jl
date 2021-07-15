@@ -40,19 +40,13 @@ using NNlib: DenseConvDims
             gputest((y, x, w) -> NNlib.conv!(copy(y), x, w, cdims; beta=2.0), y, x, w, checkgrad=false) # TODO
             # @test_broken gputest((x, y, w) -> NNlib.∇conv_data!(copy(x), y, w, cdims; beta=2.0), x, y, w, checkgrad=false) #TODO
             gputest((w, x, y) -> NNlib.∇conv_filter!(copy(w), x, y, cdims; beta=2.0), w, x, y, checkgrad=false) # TODO
-
-            # Test the compatibility shims
-            cy,cx,cw = CuArray{Float32}.((y,x,w))
-            opts2 = Dict((k==:padding ? :pad : k)=>v for (k,v) in opts)
-            @test NNlib.conv!(similar(cy),cx,cw; opts2...) ≈ NNlib.conv!(similar(cy),cx,cw,cdims)
-            @test NNlib.∇conv_filter!(similar(cw),cy,cx; opts2...) ≈ NNlib.∇conv_filter!(similar(cw),cx,cy,cdims)
         end
 
         # CPU implementation of ∇conv_bias!
         db = zeros(Float64, 1, 1, 3, 1)
         dy = randn(Float64, 8, 8, 3, 1)
         function NNlibCUDA.∇conv_bias!(db, dy)
-            db .= sum(dy, dims=(1:(ndims(dy)-2)))
+            db .= sum(dy, dims=1:(ndims(dy)-2))
             return db
         end
         gputest(NNlibCUDA.∇conv_bias!, db, dy, checkgrad=false)
