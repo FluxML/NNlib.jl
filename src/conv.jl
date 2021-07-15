@@ -199,10 +199,10 @@ for (front_name, backend) in (
                                  C_out = channels_out(cdims) ÷ groupcount(cdims))
             
             Threads.@sync for (xc, wc) in zip(x_cs, w_cs)
-              x = @view in1[ntuple(i -> i == 4 ? xc : Colon(), 5)...]
-              w = @view in2[ntuple(i -> i == 5 ? wc : Colon(), 5)...]
-              y = @view out[ntuple(i -> i == 4 ? wc : Colon(), 5)...]
-              Threads.@spawn $(Symbol("$(front_name)_$(backend)!"))(y, x, w, cdims2; kwargs...)
+                x = @view in1[ntuple(i -> i == 4 ? xc : Colon(), 5)...]
+                w = @view in2[ntuple(i -> i == 5 ? wc : Colon(), 5)...]
+                y = @view out[ntuple(i -> i == 4 ? wc : Colon(), 5)...]
+                Threads.@spawn $(Symbol("$(front_name)_$(backend)!"))(y, x, w, cdims2; kwargs...)
             end
 
            return out
@@ -226,10 +226,10 @@ function ∇conv_data!(out::AbstractArray{T,5}, in1::AbstractArray{T,5},
                          C_out = channels_out(cdims) ÷ groupcount(cdims))
 
     Threads.@sync for (xc, yc, wc) in zip(dx_cs, dy_cs, w_cs)
-      dxv = @view out[ntuple(i -> i == 4 ? xc : Colon(), 5)...]
-      dyv = @view in1[ntuple(i -> i == 4 ? yc : Colon(), 5)...]
-      wv = @view in2[ntuple(i -> i == 5  ? wc : Colon(), 5)...]
-      Threads.@spawn ∇conv_data_im2col!(dxv, dyv, wv, cdims2; kwargs...)
+        dxv = @view out[ntuple(i -> i == 4 ? xc : Colon(), 5)...]
+        dyv = @view in1[ntuple(i -> i == 4 ? yc : Colon(), 5)...]
+        wv = @view in2[ntuple(i -> i == 5  ? wc : Colon(), 5)...]
+        Threads.@spawn ∇conv_data_im2col!(dxv, dyv, wv, cdims2; kwargs...)
     end
 
    return out
@@ -250,10 +250,10 @@ function ∇conv_filter!(out::AbstractArray{T,5}, in1::AbstractArray{T,5},
                          C_out = channels_out(cdims) ÷ groupcount(cdims))
 
     Threads.@sync for (wc, xc, yc) in zip(dw_cs, x_cs, dy_cs)
-      x = @view in1[ntuple(i -> i == 4 ? xc : Colon(), 5)...]
-      dy = @view in2[ntuple(i -> i == 4 ? yc : Colon(), 5)...]
-      dw = @view out[ntuple(i -> i == 5 ? yc : Colon(), 5)...]
-      Threads.@spawn ∇conv_filter_im2col!(dw, x, dy, cdims2; kwargs...)
+        x = @view in1[ntuple(i -> i == 4 ? xc : Colon(), 5)...]
+        dy = @view in2[ntuple(i -> i == 4 ? yc : Colon(), 5)...]
+        dw = @view out[ntuple(i -> i == 5 ? yc : Colon(), 5)...]
+        Threads.@spawn ∇conv_filter_im2col!(dw, x, dy, cdims2; kwargs...)
     end
 
    return out
