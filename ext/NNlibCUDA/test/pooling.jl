@@ -15,11 +15,5 @@
         gputest((dy, y, x) -> ∇maxpool(dy, y, x, pdims), dy, y, x, checkgrad=false)
         gputest(x -> maxpool(x, pdims), x)
         gputest((dy, y, x) -> ∇maxpool(dy, y, x, pdims), dy, y, x, checkgrad=false)
-
-        # Test the compatibility shims for pooling
-        cx,cy,cdy = CuArray{Float32}.((x,y,dy))
-        win,pad=2,1
-        maxpool!(similar(cy), cx, win; pad=pad, stride=win) ≈ maxpool!(similar(cy), cx, PoolDims(cx, win; padding=pad, stride=win))
-        meanpool!(similar(cy), cx, win; pad=pad, stride=win) ≈ meanpool!(similar(cy), cx, PoolDims(cx, win; padding=pad, stride=win))
     end
 end

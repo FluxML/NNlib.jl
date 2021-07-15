@@ -11,7 +11,6 @@ function cudnnPoolingDescriptor(pdims::PoolDims, x::DenseCuArray{T}, mode::cudnn
     cudnnPoolingDescriptor(mode, nanOpt, Cint(ndims(x)-2), pooldims(window,size(x)), pooldims(padding,size(x)), pooldims(stride,size(x)))
 end
 
-
 function maxpool!(y::DenseCuArray{T}, x::DenseCuArray{T}, pdims::PoolDims) where T<:CUDNNFloat
     d = cudnnPoolingDescriptor(pdims, x, CUDNN_POOLING_MAX)
     cudnnPoolingForward!(y, x, d)
