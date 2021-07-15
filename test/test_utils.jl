@@ -10,17 +10,15 @@ given by Zygote. `f` has to be a scalar valued function.
 
 Applies also `ChainRulesTestUtils.test_rrule` if the rrule for `f` is explicitly defined.
 """
-function gradtest(f, xs...; atol = 1e-6, rtol = 1e-6, fkwargs = NamedTuple(),
+function gradtest(f, xs...; atol = 1e-6, rtol = 1e-6, fkwargs=NamedTuple(),
                     check_rrule = false,
+                    fdm = :central, 
                     check_broadcast = false,
                     skip = false, broken = false)
-
+    # TODO: revamp when https://github.com/JuliaDiff/ChainRulesTestUtils.jl/pull/166
+    # is merged
     if check_rrule
-        y = f(xs...; fkwargs...)
-        simil(x) = x isa Number ? randn(rng, typeof(x)) : randn!(rng, similar(x))
-        ȳ =  simil(y)
-        xx̄s = [x ⊢ simil(x) for x in xs]
-        test_rrule(f, xx̄s...; fkwargs = fkwargs, output_tangent = ȳ)
+        test_rrule(f, xs...; fkwargs = fkwargs)
     end
 
     if check_broadcast
@@ -31,9 +29,16 @@ function gradtest(f, xs...; atol = 1e-6, rtol = 1e-6, fkwargs = NamedTuple(),
     end
 
     y_true = h(xs...)
+    if fdm == :central
+        fdm_obj = FiniteDifferences.central_fdm(5, 1)
+    elseif fdm == :forward
+        fdm_obj = FiniteDifferences.forward_fdm(5, 1)
+    elseif fdm == :backward
+        fdm_obj = FiniteDifferences.backward_fdm(5, 1)
+    end
+    # @show fdm fdm_obj
 
-    fdm = central_fdm(5, 1)
-    gs_fd = FiniteDifferences.grad(fdm, h, xs...)
+    gs_fd = FiniteDifferences.grad(fdm_obj, h, xs...)
 
     y_ad, pull = Zygote.pullback(h, xs...)
     gs_ad = pull(one(y_ad))
