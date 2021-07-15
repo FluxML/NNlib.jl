@@ -56,22 +56,6 @@ function batched_mul(A::AbstractArray{T1, 3}, B::AbstractArray{T2, 3}) where {T1
     _batched_mul(storage_typejoin(A, B), A, B)
 end
 
-function rrule(::typeof(batched_mul),
-               A::AbstractArray{S,3},
-               B::AbstractArray{T,3},
-              ) where {S,T}
-    
-    function batched_mul_pullback(Δ)
-        return (
-            NO_FIELDS,
-            @thunk(batched_mul(Δ, batched_adjoint(B))),
-            @thunk(batched_mul(batched_adjoint(A), Δ)),
-        )
-    end
-    batched_mul(A, B), batched_mul_pullback
-end
-
-
 const ⊠ = batched_mul
 
 function _batched_mul(::Type, A, B)
@@ -104,6 +88,22 @@ function _copy_if_faster(X::BatchedAdjoint{<:Complex})
     X
 end
 
+# Gradient, allowing that size(A,3)==1 means it's "broadcasted" out to size(B,3)
+
+function rrule(::typeof(batched_mul), A::AbstractArray{<:Any,3}, B::AbstractArray{<:Any,3})
+    function batched_mul_pullback(Δ)
+        Athunk = @thunk begin
+            tmp = batched_mul(Δ, batched_adjoint(B))
+            size(A,3) == 1 ? sum(tmp, dims=3) : tmp
+        end
+        Bthunk = @thunk begin
+            tmp = batched_mul(batched_adjoint(A), Δ)
+            size(B,3) == 1 ? sum(tmp, dims=3) : tmp
+        end
+        return (NoTangent(), Athunk, Bthunk)
+    end
+    batched_mul(A, B), batched_mul_pullback
+end
 
 """
     batched_mul(A::Array{T,3}, B::Matrix)
@@ -234,6 +234,8 @@ function _batched_try_gemm!(::Type{DT}, C, A, B, α::Number, β::Number) where {
         batched_transpose(A), 'T'
     elseif Base.stride(A,1) == 1
         A, 'N'
+    elseif Base.stride(A,2) == 1  # This is awful, but exhaustively tested. Issues 268, 282.
+        batched_transpose(A), 'T'
     else
         return batched_mul_generic!(C, A, B, α, β)
     end
@@ -245,6 +247,8 @@ function _batched_try_gemm!(::Type{DT}, C, A, B, α::Number, β::Number) where {
         batched_transpose(B), 'T'
     elseif Base.stride(B,1) == 1
         B, 'N'
+    elseif Base.stride(B,2) == 1
+        batched_transpose(B), 'T'
     else
         return batched_mul_generic!(C, A, B, α, β)
     end
@@ -268,7 +272,7 @@ for (TA, fA) in _BATCHED_LIST, (TB, fB) in _BATCHED_LIST
 
         size(A, 3) == size(C, 3) || size(A, 3) == 1 || throw(DimensionMismatch("batch size mismatch: A != C"))
         size(B, 3) == size(C, 3) || size(B, 3) == 1 || throw(DimensionMismatch("batch size mismatch: B != C"))
-        @debug "calling fallback method for batched_mul!" typeof(A) typeof(B) typeof(C)
+        @debug "calling fallback method for batched_mul!" typeof(A) size(A) typeof(B) size(B) typeof(C)
 
         Abase, Bbase = _unbatch(A), _unbatch(B)
         sA, oA = size(A,3) == 1 ? (0,1) : (1,0)

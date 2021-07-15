@@ -1,3 +1,5 @@
+using NNlib: scatter, scatter!
+
 dsts = Dict(
     0 => [3, 4, 5, 6, 7],
     1 => [3 3 4 4 5;
@@ -16,6 +18,10 @@ idxs = Dict(
     :tup => [(1,) (2,) (3,) (4,);
              (4,) (2,) (1,) (3,);
              (3,) (5,) (5,) (3,)],
+    :car => CartesianIndex.(
+            [(1,) (2,) (3,) (4,);
+             (4,) (2,) (1,) (3,);
+             (3,) (5,) (5,) (3,)]),
 )
 res = Dict(
     (+, 0, true) => [5, 6, 9, 8, 9],
@@ -172,4 +178,27 @@ types = [UInt8, UInt16, UInt32, UInt64, UInt128,
     @test_throws AssertionError scatter!(+, dsts[0], srcs[(1, true)], idxs[:int])
     idx = [1 2 3 4; 4 2 1 3; 6 7 8 9]
     @test_throws BoundsError scatter!(+, dsts[1], srcs[(1, true)], idx)
+end
+
+@testset "∇scatter" begin
+    T = Float64
+    fdm(op) = op == min ? :backward : :forward
+    # fdm(op) = :forward
+
+    @testset "∂dst" begin
+        for op in (+, -, *, /, mean, max, min)
+            gradtest(xs -> scatter!(op, copy(xs), srcs[(0, true)], idxs[:int]), T.(dsts[0]), fdm=fdm(op))
+            gradtest(xs -> scatter!(op, copy(xs), srcs[(1, true)], idxs[:int]), T.(dsts[1]), fdm=fdm(op))
+        end
+    end
+
+    @testset "∂src" begin
+        for op in (+, -, *, /, mean, max, min)
+            gradtest(xs -> scatter!(op, T.(dsts[0]), xs, idxs[:int]), T.(srcs[(0, true)]), fdm=fdm(op))
+            gradtest(xs -> scatter!(op, T.(dsts[1]), xs, idxs[:int]), T.(srcs[(1, true)]), fdm=fdm(op))
+
+            gradtest(xs -> scatter(op, xs, idxs[:int]), T.(srcs[(0, false)]), fdm=fdm(op))
+            gradtest(xs -> scatter(op, xs, idxs[:int]), T.(srcs[(1, false)]), fdm=fdm(op))
+        end
+    end
 end
