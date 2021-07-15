@@ -194,7 +194,7 @@ for (front_name, backend) in (
                                        channels_in(cdims) ÷ groupcount(cdims))
             w_cs = Iterators.partition(1:size(in2, 5),
                                        channels_out(cdims) ÷ groupcount(cdims))
-            cdims2 = eval(nameof(C))(cdims,
+            cdims2 = basetype(C)(cdims,
                                    G = 1,
                                    C_in = channels_in(cdims) ÷ groupcount(cdims),
                                    C_out = channels_out(cdims) ÷ groupcount(cdims))
@@ -223,7 +223,7 @@ function ∇conv_data!(
                            channels_out(cdims) ÷ groupcount(cdims))
     dy_cs = Iterators.partition(1:size(in1, 4),
                            channels_out(cdims) ÷ groupcount(cdims))
-    cdims2 = eval(nameof(C))(cdims,
+    cdims2 = basetype(C)(cdims,
                              G = 1,
                              C_in = channels_in(cdims) ÷ groupcount(cdims),
                              C_out = channels_out(cdims) ÷ groupcount(cdims))
@@ -248,7 +248,7 @@ function ∇conv_filter!(
                            channels_out(cdims) ÷ groupcount(cdims))
     x_cs = Iterators.partition(1:size(in1, 4),
                            channels_in(cdims) ÷ groupcount(cdims))
-    cdims2 = eval(nameof(C))(cdims,
+    cdims2 = basetype(C)(cdims,
                              G = 1,
                              C_in = channels_in(cdims) ÷ groupcount(cdims),
                              C_out = channels_out(cdims) ÷ groupcount(cdims))
