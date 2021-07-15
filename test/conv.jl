@@ -659,12 +659,22 @@ end
    @test groupcount(cdims) == 5
 
    y = conv(x′, w′, cdims)
+   _, back = Zygote.pullback((x, w) -> sum(conv(x, w, cdims)), x′, w′)
+   gs_x, gs_w = back(1.f0)
+
 
    ips = Iterators.partition(1:100, 20)
    ops = Iterators.partition(1:15, 3)
    for (i,o) in zip(ips,ops)
+      _, back_reg = Zygote.pullback((x, w) -> sum(conv(x, w)), x′[:,:,i,:], w′[:,:,:,o])
+      gs_x_reg, gs_w_reg = back_reg(1.f0)
       @test conv(x′[:,:,i,:], w′[:,:,:,o]) ≈ y[:,:,o,:]
+      @test gs_x_reg ≈ gs_x[:,:,i,:]
+      @test gs_w_reg ≈ gs_w[:,:,:,o]
    end
+
+   # Currently hangs due to a FiniteDifferences issue
+   @test_skip gradtest((x, w) -> sum(conv(x, w, cdims)), x′, w′)
 end
 
 @testset "conv_wrapper" begin
