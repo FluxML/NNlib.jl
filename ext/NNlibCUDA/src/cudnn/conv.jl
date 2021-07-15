@@ -11,7 +11,6 @@ using CUDA.CUDNN: scalingParameter, CUDNN_CONVOLUTION, convdims,
 const CUDNNFloat = Union{Float16,Float32,Float64}
 
 function cudnnConvolutionDescriptor(cdims::DenseConvDims, x::DenseCuArray{T}) where T
-    # cdims, x = fix1d(cdims), fix1d(x)
     mode=(NNlib.flipkernel(cdims) ? CUDNN_CROSS_CORRELATION : CUDNN_CONVOLUTION)
     cudnnConvolutionDescriptor(convdims(nnlibPadding(cdims),size(x),0),
                                convdims(NNlib.stride(cdims),size(x),1),
