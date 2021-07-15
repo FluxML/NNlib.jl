@@ -13,7 +13,7 @@ end
 input_size(c::DenseConvDims) = c.I
 kernel_size(::DenseConvDims{N,K,C_in,C_out}) where {N,K,C_in,C_out} = K
 channels_in(::DenseConvDims{N,K,C_in,C_out}) where {N,K,C_in,C_out} = C_in::Int
-channels_out(::DenseConvDims{N,K,C_in,C_out,G}) where {N,K,C_in,C_out,G} = (C_out*G)::Int
+channels_out(::DenseConvDims{N,K,C_in,C_out,G}) where {N,K,C_in,C_out,G} = C_out::Int
 groupcount(::DenseConvDims{N,K,C_in,C_out,G}) where {N,K,C_in,C_out,G} = G::Int
 
 # Convenience wrapper to create DenseConvDims objects
@@ -39,7 +39,7 @@ function DenseConvDims(x_size::NTuple{M}, w_size::NTuple{M};
         M - 2,
         w_size[1:end-2],
         x_size[end-1],
-        w_size[end],
+        w_size[end] * groups,
         groups,
         stride,
         padding,
