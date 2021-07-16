@@ -10,15 +10,15 @@ given by Zygote. `f` has to be a scalar valued function.
 
 Applies also `ChainRulesTestUtils.test_rrule` if the rrule for `f` is explicitly defined.
 """
-function gradtest(f, xs...; atol=1e-6, rtol=1e-6, fkwargs=NamedTuple(),
-                    check_rrule=false,
-                    fdm=:central, 
-                    check_broadcast=false,
-                    skip=false, broken=false)
+function gradtest(f, xs...; atol = 1e-6, rtol = 1e-6, fkwargs=NamedTuple(),
+                    check_rrule = false,
+                    fdm = :central, 
+                    check_broadcast = false,
+                    skip = false, broken = false)
     # TODO: revamp when https://github.com/JuliaDiff/ChainRulesTestUtils.jl/pull/166
     # is merged
     if check_rrule
-        test_rrule(f, xs...; fkwargs=fkwargs)
+        test_rrule(f, xs...; fkwargs = fkwargs)
     end
 
     if check_broadcast
@@ -43,14 +43,14 @@ function gradtest(f, xs...; atol=1e-6, rtol=1e-6, fkwargs=NamedTuple(),
     y_ad, pull = Zygote.pullback(h, xs...)
     gs_ad = pull(one(y_ad))
 
-    @test y_true ≈ y_ad  atol=atol rtol=rtol
+    @test y_true ≈ y_ad  atol = atol rtol = rtol
     for (g_ad, g_fd) in zip(gs_ad, gs_fd)
         if skip
-            @test_skip g_ad ≈ g_fd   atol=atol rtol=rtol
+            @test_skip g_ad ≈ g_fd   atol = atol rtol = rtol
         elseif broken
-            @test_broken g_ad ≈ g_fd   atol=atol rtol=rtol
+            @test_broken g_ad ≈ g_fd   atol = atol rtol = rtol
         else
-            @test g_ad ≈ g_fd   atol=atol rtol=rtol
+            @test g_ad ≈ g_fd   atol = atol rtol = rtol
         end
     end
     return true

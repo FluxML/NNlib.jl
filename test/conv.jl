@@ -1,6 +1,7 @@
 using NNlib, Test
 using NNlib: input_size, kernel_size, channels_in, channels_out, channel_multiplier,
-             stride, padding, dilation, flipkernel, output_size
+             stride, padding, dilation, flipkernel, output_size,
+             groupcount
 
 @testset "ConvDims" begin
     for T in (DenseConvDims, DepthwiseConvDims)
@@ -648,6 +649,33 @@ else
     @info "Skipping Depthwise Convolutional fuzzing tests, set NNLIB_TEST_FUZZING=true to run them"
 end
 
+@testset "Grouped Convolutions" begin
+   x′ = rand(Float32, 28, 28, 100, 2)
+   w′ = rand(Float32, 3, 3, 20, 15)
+
+   @test_throws DimensionMismatch DenseConvDims(x′, w′)
+   cdims = DenseConvDims(x′, w′, groups = 5)
+
+   @test groupcount(cdims) == 5
+
+   y = conv(x′, w′, cdims)
+   _, back = Zygote.pullback((x, w) -> sum(conv(x, w, cdims)), x′, w′)
+   gs_x, gs_w = back(1.f0)
+
+
+   ips = Iterators.partition(1:100, 20)
+   ops = Iterators.partition(1:15, 3)
+   for (i,o) in zip(ips,ops)
+      _, back_reg = Zygote.pullback((x, w) -> sum(conv(x, w)), x′[:,:,i,:], w′[:,:,:,o])
+      gs_x_reg, gs_w_reg = back_reg(1.f0)
+      @test conv(x′[:,:,i,:], w′[:,:,:,o]) ≈ y[:,:,o,:]
+      @test gs_x_reg ≈ gs_x[:,:,i,:]
+      @test gs_w_reg ≈ gs_w[:,:,:,o]
+   end
+
+   # Currently hangs due to a FiniteDifferences issue
+   @test_skip gradtest((x, w) -> sum(conv(x, w, cdims)), x′, w′)
+end
 
 @testset "conv_wrapper" begin
     x = rand(10, 10, 3, 10)
