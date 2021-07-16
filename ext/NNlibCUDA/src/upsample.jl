@@ -115,10 +115,10 @@ function ∇upsample_bilinear_whcn_kernel!(n_elem, rheight, rwidth, Δ, dx)
         @inbounds for n in 1:batchsize
             for c in 1:channels
                 val = Δ[iw+1, ih+1, c, n]
-                @atomic dx[ow0, oh0, c, n] += h0lambda * w0lambda * val
-                @atomic dx[ow1, oh0, c, n] += h0lambda * w1lambda * val
-                @atomic dx[ow0, oh1, c, n] += h1lambda * w0lambda * val
-                @atomic dx[ow1, oh1, c, n] += h1lambda * w1lambda * val
+                CUDA.@atomic dx[ow0, oh0, c, n] += h0lambda * w0lambda * val
+                CUDA.@atomic dx[ow1, oh0, c, n] += h0lambda * w1lambda * val
+                CUDA.@atomic dx[ow0, oh1, c, n] += h1lambda * w0lambda * val
+                CUDA.@atomic dx[ow1, oh1, c, n] += h1lambda * w1lambda * val
             end
         end
     end # if

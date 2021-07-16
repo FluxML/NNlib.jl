@@ -1,4 +1,4 @@
-using CUDA.CUDNN: handle, @workspace, cudnnTensorDescriptor, cudnnFilterDescriptor,
+using CUDA.CUDNN: handle, with_workspace, cudnnTensorDescriptor, cudnnFilterDescriptor,
                   cudnnDataType, math_mode, CUDNN_DEFAULT_REORDER, CUDNN_CROSS_CORRELATION,
                   CUDNN_NOT_PROPAGATE_NAN, CUDNN_TENSOR_NCHW, dim4
 
