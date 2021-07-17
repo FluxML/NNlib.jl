@@ -45,7 +45,7 @@ using NNlib: DenseConvDims
         end
     end
 
-    # CPU implementation of ∇conv_bias!
+    ## CPU implementation of ∇conv_bias!
     db = zeros(Float64, 1, 1, 3, 1)
     dy = randn(Float64, 8, 8, 3, 1)
     function NNlibCUDA.∇conv_bias!(db, dy)
