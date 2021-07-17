@@ -9,21 +9,23 @@ using NNlib: DenseConvDims
     @test ∇conv_filter(a, c, cdims) ≈ collect(∇conv_filter(da, dc, cdims))
 
     # Test for agreement between CPU NNlib and CuDNN versions, across a variety of kwargs
-    for num_spatial_dims in (1, 2, 3)
+    options = Dict{Any, Any}.((
+        (), (:dilation => 2), (:flipkernel => true), (:stride => 2),
+        (:padding => 1),
+    ))
+    C_in_ = 3
+    C_out = 4
+    batch_size = 1
+
+    for groups in (1, 2, 4), num_spatial_dims in (1, 2, 3)
+        # Make `C_in = C_out` when using grouped convolution.
+        C_in = groups == 1 ? C_in_ : C_out
         # Initialize data we'll run our tests over
-        C_in = 3
-        C_out = 4
-        batch_size = 1
         x = rand(Float64, fill(8, num_spatial_dims)..., C_in, batch_size)
-        w = rand(Float64, fill(2, num_spatial_dims)..., C_in, C_out)
-        b = rand(Float64, fill(1, num_spatial_dims)..., C_in, C_out)
-        options = (Dict(), Dict(:dilation => 2), Dict(:flipkernel => true), Dict(:stride => 2), Dict(:padding => 1))
+        w = rand(Float64, fill(2, num_spatial_dims)..., C_in ÷ groups, C_out)
 
-        # @denizyuret: algo option deprecated for nnlib, handling in cudnn
-        # algos = (1, 0, 1, 1,)
-        # for (opts, algo) in zip(options, algos)
-
-        for opts in options  
+        for opts in options
+            opts[:groups] = groups
             cdims = DenseConvDims(x, w; opts...)
             y = NNlib.conv(x, w, cdims)
 
@@ -36,19 +38,11 @@ using NNlib: DenseConvDims
             gputest((x, w) -> NNlib.conv(x, w, cdims; alpha=2.0), x, w, checkgrad=false) # TODO
             gputest((y, w) -> NNlib.∇conv_data(y, w, cdims; alpha=2.0), y, w, checkgrad=false) # TODO
             gputest((x, y) -> NNlib.∇conv_filter(x, y, cdims; alpha=2.0), x, y, checkgrad=false) # TODO
-            
+
             gputest((y, x, w) -> NNlib.conv!(copy(y), x, w, cdims; beta=2.0), y, x, w, checkgrad=false) # TODO
             # @test_broken gputest((x, y, w) -> NNlib.∇conv_data!(copy(x), y, w, cdims; beta=2.0), x, y, w, checkgrad=false) #TODO
             gputest((w, x, y) -> NNlib.∇conv_filter!(copy(w), x, y, cdims; beta=2.0), w, x, y, checkgrad=false) # TODO
         end
-
-        # CPU implementation of ∇conv_bias!
-        db = zeros(Float64, 1, 1, 3, 1)
-        dy = randn(Float64, 8, 8, 3, 1)
-        function NNlibCUDA.∇conv_bias!(db, dy)
-            db .= sum(dy, dims=1:(ndims(dy)-2))
-            return db
-        end
-        gputest(NNlibCUDA.∇conv_bias!, db, dy, checkgrad=false)
     end
+
 end
