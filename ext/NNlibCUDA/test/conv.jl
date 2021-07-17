@@ -44,13 +44,4 @@ using NNlib: DenseConvDims
             gputest((w, x, y) -> NNlib.∇conv_filter!(copy(w), x, y, cdims; beta=2.0), w, x, y, checkgrad=false) # TODO
         end
     end
-
-    ## CPU implementation of ∇conv_bias!
-    db = zeros(Float64, 1, 1, 3, 1)
-    dy = randn(Float64, 8, 8, 3, 1)
-    function NNlibCUDA.∇conv_bias!(db, dy)
-        db .= sum(dy, dims = 1:(ndims(dy)-2))
-        return db
-    end
-    gputest(NNlibCUDA.∇conv_bias!, db, dy, checkgrad=false)
 end
