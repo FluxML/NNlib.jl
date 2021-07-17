@@ -44,4 +44,5 @@ using NNlib: DenseConvDims
             gputest((w, x, y) -> NNlib.∇conv_filter!(copy(w), x, y, cdims; beta=2.0), w, x, y, checkgrad=false) # TODO
         end
     end
+
 end
