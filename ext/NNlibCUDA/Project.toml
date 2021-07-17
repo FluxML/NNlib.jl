@@ -1,6 +1,6 @@
 name = "NNlibCUDA"
 uuid = "a00861dc-f156-4864-bf3c-e6376f28a68d"
-version = "0.1.7"
+version = "0.1.8"
 
 [deps]
 CUDA = "052768ef-5323-5732-b1bb-66c8b64840ba"
