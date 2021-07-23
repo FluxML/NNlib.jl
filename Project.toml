@@ -13,7 +13,7 @@ Statistics = "10745b16-79ce-11e8-11f9-7d13ad32a3b2"
 
 [compat]
 Adapt = "2, 3.2"
-ChainRulesCore = "0.9.45, 0.10"
+ChainRulesCore = "0.9.45, 0.10, 1.0"
 Compat = "3.14"
 Requires = "0.5, 1.0"
 julia = "1.6"
