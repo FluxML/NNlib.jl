@@ -275,15 +275,15 @@ function ∇upsample_trilinear_whdcn_kernel!(n_elem, rwidth, rheight, rdepth, Δ
         @inbounds for n in 1:batchsize
             for c in 1:channels
                 val = Δ[iw+1, ih+1, id+1, c, n]
-                @atomic dx[ow0, oh0, od0, c, n] += w0lambda * h0lambda * d0lambda * val
-                @atomic dx[ow1, oh0, od0, c, n] += w1lambda * h0lambda * d0lambda * val
-                @atomic dx[ow0, oh1, od0, c, n] += w0lambda * h1lambda * d0lambda * val
-                @atomic dx[ow1, oh1, od0, c, n] += w1lambda * h1lambda * d0lambda * val
+                CUDA.@atomic dx[ow0, oh0, od0, c, n] += w0lambda * h0lambda * d0lambda * val
+                CUDA.@atomic dx[ow1, oh0, od0, c, n] += w1lambda * h0lambda * d0lambda * val
+                CUDA.@atomic dx[ow0, oh1, od0, c, n] += w0lambda * h1lambda * d0lambda * val
+                CUDA.@atomic dx[ow1, oh1, od0, c, n] += w1lambda * h1lambda * d0lambda * val
 
-                @atomic dx[ow0, oh0, od1, c, n] += w0lambda * h0lambda * d1lambda * val
-                @atomic dx[ow1, oh0, od1, c, n] += w1lambda * h0lambda * d1lambda * val
-                @atomic dx[ow0, oh1, od1, c, n] += w0lambda * h1lambda * d1lambda * val
-                @atomic dx[ow1, oh1, od1, c, n] += w1lambda * h1lambda * d1lambda * val
+                CUDA.@atomic dx[ow0, oh0, od1, c, n] += w0lambda * h0lambda * d1lambda * val
+                CUDA.@atomic dx[ow1, oh0, od1, c, n] += w1lambda * h0lambda * d1lambda * val
+                CUDA.@atomic dx[ow0, oh1, od1, c, n] += w0lambda * h1lambda * d1lambda * val
+                CUDA.@atomic dx[ow1, oh1, od1, c, n] += w1lambda * h1lambda * d1lambda * val
             end
         end
     end # if
@@ -315,7 +315,7 @@ function NNlib.∇upsample_trilinear_whdcn!(dx::CuArray{T,5}, Δ::CuArray{T,5}; 
     else
         ratios = ntuple(i -> T(size(dx,i) / size(Δ,i)), 3)
     end
-    
+
     kernel = @cuda launch=false ∇upsample_trilinear_whdcn_kernel!(in_size, ratios..., Δ, dx, align_corners)
     config = launch_configuration(kernel.fun; max_threads=256)
     threads = Base.min(in_size, config.threads)
