@@ -74,7 +74,7 @@ end
 
 
 """
-    scatter(op, src, idx; [init])
+    scatter(op, src, idx; [init, dstsize])
 
 Scatter operation allocating a destination array `dst` and 
 calling `scatter!(op, dst, src, idx)` on it.
@@ -83,16 +83,19 @@ If `init` is provided, it is used to initialize the content of `dst`.
 Otherwise, the init values is inferred from the reduction operator `op`
 for some common operators (e.g. `init = 0` for `op = +`). 
 
+If `dstsize` is provided, it will be used to define the size of
+destination array, otherwise it will be inferred by `src` and `idx`.
+
 See [`scatter!`](@ref) for the details.
 """
 function scatter(op,
                 src::AbstractArray{Tsrc,Nsrc},
                 idx::AbstractArray{Tidx,Nidx};
-                init = nothing) where {Tsrc,Tidx,Nsrc,Nidx}
+                init = nothing, dstsize = nothing) where {Tsrc,Tidx,Nsrc,Nidx}
     
     dims = Nsrc - Nidx
-    dstsize = (size(src)[1:dims]..., maximum_dims(idx)...)
-    dst = similar(src, Tsrc, dstsize)
+    dstsz = isnothing(dstsize) ? (size(src)[1:dims]..., maximum_dims(idx)...) : dstsize 
+    dst = similar(src, Tsrc, dstsz)
     xinit = isnothing(init) ? scatter_empty(op, Tsrc) : init 
     fill!(dst, xinit)
     scatter!(op, dst, src, idx)
@@ -156,8 +159,8 @@ function rrule(::typeof(scatter!), op, dst::AbstractArray, src::AbstractArray, i
     dst, scatter!_pullback
 end
 
-function rrule(::typeof(scatter), op, src::AbstractArray, idx::AbstractArray)
-    y = scatter(op, src, idx)
+function rrule(::typeof(scatter), op, src::AbstractArray, idx::AbstractArray; kws...)
+    y = scatter(op, src, idx; kws...)
     scatter_pullback(Δ) = (NoTangent(), NoTangent(), ∇scatter_src(op, Δ, y, src, idx), NoTangent())
     y, scatter_pullback
 end
