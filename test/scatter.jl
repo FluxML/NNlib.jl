@@ -68,9 +68,9 @@ res = Dict(
                          4. 4. 6. 5. 5.],
 )
 
-types = [UInt8, UInt16, UInt32, UInt64, UInt128,
-         Int8, Int16, Int32, Int64, Int128, BigInt,
-         Float16, Float32, Float64, BigFloat, Rational]
+types = [UInt8,  UInt32, UInt128,
+         Int16, Int64, BigInt,
+         Float32, Float64, Rational]
 
 @testset "scatter" begin
     for T = types
@@ -146,7 +146,7 @@ types = [UInt8, UInt16, UInt32, UInt64, UInt128,
         end
     end
 
-    for T = [Float16, Float32, Float64, BigFloat, Rational]
+    for T = [Float16, Float32, Rational]
         @testset "$T" begin
             PT = promote_type(T, Float64)
             @testset "/" begin
@@ -178,6 +178,14 @@ types = [UInt8, UInt16, UInt32, UInt64, UInt128,
     @test_throws AssertionError scatter!(+, dsts[0], srcs[(1, true)], idxs[:int])
     idx = [1 2 3 4; 4 2 1 3; 6 7 8 9]
     @test_throws BoundsError scatter!(+, dsts[1], srcs[(1, true)], idx)
+
+    @testset "dstsize" begin
+        idx = [2, 2, 3, 4, 4]
+        src = ones(3, 5)
+        y = scatter(+, src, idx, dstsize=(3, 6))
+        @test size(y) == (3, 6)
+        gradtest(x -> scatter(+, x, idx, dstsize=(3,6)), src)
+    end
 end
 
 @testset "∇scatter" begin
