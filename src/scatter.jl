@@ -152,15 +152,18 @@ function ∇scatter_src(::typeof(mean), Δ, dst,
     divide_by_counts!(gather(Δ, idx), idx, dims)
 end
 
+∇scatter_src(op, Δ, dst, src, idx) =
+  ∇scatter_src(op, unthunk(Δ), dst, src, idx)
+
 function rrule(::typeof(scatter!), op, dst::AbstractArray, src::AbstractArray, idx::AbstractArray)
     dst_old = copy(dst)
     scatter!(op, dst, src, idx)
-    scatter!_pullback(Δ) = (NoTangent(), NoTangent(), ∇scatter!_dst(op, Δ, dst_old, dst), ∇scatter!_src(op, Δ, dst, src, idx), NoTangent())
+    scatter!_pullback(Δ) = (NoTangent(), NoTangent(), ∇scatter!_dst(op, unthunk(Δ), dst_old, dst), ∇scatter!_src(op, unthunk(Δ), dst, src, idx), NoTangent())
     dst, scatter!_pullback
 end
 
-function rrule(::typeof(scatter), op, src::AbstractArray, idx::AbstractArray; kws...)
-    y = scatter(op, src, idx; kws...)
-    scatter_pullback(Δ) = (NoTangent(), NoTangent(), ∇scatter_src(op, Δ, y, src, idx), NoTangent())
+function rrule(::typeof(scatter), op, src::AbstractArray, idx::AbstractArray)
+    y = scatter(op, src, idx)
+    scatter_pullback(Δ) = (NoTangent(), NoTangent(), ∇scatter_src(op, unthunk(Δ), y, src, idx), NoTangent())
     y, scatter_pullback
 end

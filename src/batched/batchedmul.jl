@@ -91,7 +91,8 @@ end
 # Gradient, allowing that size(A,3)==1 means it's "broadcasted" out to size(B,3)
 
 function rrule(::typeof(batched_mul), A::AbstractArray{<:Any,3}, B::AbstractArray{<:Any,3})
-    function batched_mul_pullback(Δ)
+    function batched_mul_pullback(_Δ)
+        Δ = unthunk(_Δ)
         Athunk = @thunk begin
             tmp = batched_mul(Δ, batched_adjoint(B))
             size(A,3) == 1 ? sum(tmp, dims=3) : tmp

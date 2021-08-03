@@ -76,9 +76,9 @@ end
 ∇softmax!(Δ, x; dims = 1) = ∇softmax!(Δ, Δ, x, softmax(x, dims = dims); dims = dims)
 ∇softmax!(out, Δ, x; dims = 1) = ∇softmax!(out, Δ, x, softmax(x, dims = dims); dims = dims)
 
-function rrule(::typeof(softmax), xs; dims = 1)
-    y = softmax(xs; dims = dims)
-    softmax_pullback(Δ) = (NoTangent(), ∇softmax(Δ, xs, y, dims = dims))
+function rrule(::typeof(softmax), xs; dims=1)
+    y = softmax(xs; dims=dims)
+    softmax_pullback(Δ) = (NoTangent(), ∇softmax(unthunk(Δ), xs, y, dims = dims))
     return y, softmax_pullback
 end
 
@@ -125,8 +125,8 @@ function ∇logsoftmax!(out::AbstractArray, Δ::AbstractArray,
 end
 
 function rrule(::typeof(logsoftmax), xs; dims=1)
-    y = logsoftmax(xs; dims = dims)
-    logsoftmax_pullback(Δ) = (NoTangent(), ∇logsoftmax(Δ, xs, y, dims = dims))
+    y = logsoftmax(xs; dims=dims)
+    logsoftmax_pullback(Δ) = (NoTangent(), ∇logsoftmax(unthunk(Δ), xs, y, dims = dims))
     return y, logsoftmax_pullback
 end
 
