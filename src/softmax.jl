@@ -78,7 +78,7 @@ end
 
 function rrule(::typeof(softmax), xs; dims=1)
     y = softmax(xs; dims=dims)
-    softmax_pullback(Δ) = (NoTangent(), ∇softmax(Δ, xs, y, dims=dims))
+    softmax_pullback(Δ) = (NoTangent(), ∇softmax(unthunk(Δ), xs, y, dims=dims))
     return y, softmax_pullback
 end
 
@@ -125,7 +125,7 @@ end
 
 function rrule(::typeof(logsoftmax), xs; dims=1)
     y = logsoftmax(xs; dims=dims)
-    logsoftmax_pullback(Δ) = (NoTangent(), ∇logsoftmax(Δ, xs, y, dims=dims))
+    logsoftmax_pullback(Δ) = (NoTangent(), ∇logsoftmax(unthunk(Δ), xs, y, dims=dims))
     return y, logsoftmax_pullback
 end
 

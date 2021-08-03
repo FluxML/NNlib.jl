@@ -155,7 +155,7 @@ function rrule(::typeof(pad_constant), x::AbstractArray{T,N},
   function pad_constant_pullback(Δ)
     p = gen_pad(pad, dims, N)
     outsize, center = size_and_center(x, p)
-    (NoTangent(), @thunk(Δ[center...]), NoTangent(), NoTangent(),)
+    (NoTangent(), @thunk(unthunk(Δ)[center...]), NoTangent(), NoTangent(),)
   end
   return y, pad_constant_pullback
 end
