@@ -112,16 +112,16 @@ end
 
 @testset "AutoDiff" begin
     for f in (softmax, logsoftmax), d in (:, 1, 2)
-        gradtest(f, (3,4); fkwargs=(; dims=d), check_rrule=true)
+        gradtest(f, (3,4); fkwargs = (dims = d,), check_rrule = true)
     end
-    gradtest(x -> softmax(x).*(1:3), 3)
-    gradtest(x -> softmax(x).*(1:3), (3,5), atol=1e-4)
-    gradtest(x -> softmax(x, dims=2).*(1:3), (3,5), atol=1e-4)
-    gradtest(x -> logsoftmax(x).*(1:3), 3)
-    gradtest(x -> logsoftmax(x).*(1:3), (3,5))
-    gradtest(x -> logsoftmax(x, dims=2).*(1:3), (3,5))
+    gradtest(x -> softmax(x) .* (1:3), 3)
+    gradtest(x -> softmax(x) .* (1:3), (3,5), atol = 1e-4)
+    gradtest(x -> softmax(x, dims = 2) .* (1:3), (3,5), atol = 1e-4)
+    gradtest(x -> logsoftmax(x) .* (1:3), 3)
+    gradtest(x -> logsoftmax(x) .* (1:3), (3,5))
+    gradtest(x -> logsoftmax(x, dims = 2) .* (1:3), (3,5))
 
     for d  in (:, 1, 2)
-        gradtest(logsumexp, (3,4), fkwargs=(; dims=d))
+        gradtest(logsumexp, (3,4), fkwargs = (dims = d,))
     end
 end

@@ -173,7 +173,7 @@ for pool in [:maxpool, :meanpool]
     pullback = Symbol(pool, :_pullback)
     @eval function rrule(::typeof($pool), x, pdims::PoolDims; kw...)
         Ω = $pool(x, pdims; kw...)
-        $pullback(Δ) = (NoTangent(), $∇pool(Δ, Ω, x, pdims; kw...), NoTangent())
+        $pullback(Δ) = (NoTangent(), $∇pool(unthunk(Δ), Ω, x, pdims; kw...), NoTangent())
         return Ω, $pullback
     end
 end

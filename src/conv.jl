@@ -310,8 +310,8 @@ for conv in [:conv, :depthwiseconv]
             Δ = colmajor(Δ)
             return (
                 NoTangent(),
-                @thunk($∇conv_data(Δ, w, cdims, kw...)),
-                @thunk($∇conv_filter(x, Δ, cdims, kw...)),
+                @thunk($∇conv_data(unthunk(Δ), w, cdims, kw...)),
+                @thunk($∇conv_filter(x, unthunk(Δ), cdims, kw...)),
                 NoTangent(),
             )
         end
@@ -323,8 +323,8 @@ for conv in [:conv, :depthwiseconv]
             Δ = colmajor(Δ)
             return (
                 NoTangent(),
-                @thunk($conv(Δ, w, cdims, kw...)),
-                @thunk($∇conv_filter(Δ, x, cdims, kw...)),
+                @thunk($conv(unthunk(Δ), w, cdims, kw...)),
+                @thunk($∇conv_filter(unthunk(Δ), x, cdims, kw...)),
                 NoTangent(),
             )
         end

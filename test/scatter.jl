@@ -70,7 +70,7 @@ res = Dict(
 
 types = [UInt8,  UInt32, UInt128,
          Int16, Int64, BigInt,
-         Float32, Float64, Rational]
+         Float16, Float32, Float64, BigFloat, Rational]
 
 @testset "scatter" begin
     for T = types
@@ -146,7 +146,7 @@ types = [UInt8,  UInt32, UInt128,
         end
     end
 
-    for T = [Float16, Float32, Rational]
+    for T = [Float16, Float32, BigFloat, Rational]
         @testset "$T" begin
             PT = promote_type(T, Float64)
             @testset "/" begin
@@ -182,9 +182,9 @@ types = [UInt8,  UInt32, UInt128,
     @testset "dstsize" begin
         idx = [2, 2, 3, 4, 4]
         src = ones(3, 5)
-        y = scatter(+, src, idx, dstsize=(3, 6))
+        y = scatter(+, src, idx, dstsize = (3, 6))
         @test size(y) == (3, 6)
-        gradtest(x -> scatter(+, x, idx, dstsize=(3,6)), src)
+        gradtest(x -> scatter(+, x, idx, dstsize = (3,6)), src)
     end
 end
 
