@@ -9,19 +9,18 @@ export softmax,
     logsumexp
 
 """
-    softmax(x; dims=1)
+    softmax(x; dims = 1)
 
 [Softmax](https://en.wikipedia.org/wiki/Softmax_function) turns input array `x`
 into probability distributions that sum to 1 along the dimensions specified by `dims`.
 It is semantically equivalent to the following:
 
-    softmax(x; dims=1) = exp.(x) ./ sum(exp.(x), dims=dims)
+    softmax(x; dims = 1) = exp.(x) ./ sum(exp.(x), dims = dims)
 
 with additional manipulations enhancing numerical stability.
 
-For a matrix input `x` it will by default (`dims=1`) treat it as a batch of vectors,
-with each column independent. Keyword `dims=2` will instead treat rows independently,
-etc...
+For a matrix input `x` it will by default (`dims = 1`) treat it as a batch of vectors,
+with each column independent. Keyword `dims = 2` will instead treat rows independently, and so on.
 
 See also [`logsoftmax`](@ref).
 
@@ -61,9 +60,10 @@ end
 
 ∇softmax(Δ::AbstractArray{T}, x::AbstractArray, y::AbstractArray{S}; dims = 1) where {T,S} = 
     ∇softmax!(similar(y, promote_type(T, S)), Δ, x, y; dims = dims)
+∇softmax(Δ, x, y; dims = 1) = ∇softmax(unthunk(Δ), x, y, dims = dims)
 
-## Can introduce at the end of deprecation cycle of ∇softmax!(out, Δ, x; dims = 1)  
-#∇softmax!(Δ, x, y; dims = 1) = ∇softmax!(Δ, Δ, x, y; dims = dims)
+# Can introduce at the end of deprecation cycle of ∇softmax!(out, Δ, x; dims = 1)
+# ∇softmax!(Δ, x, y; dims = 1) = ∇softmax!(Δ, Δ, x, y; dims = dims)
 
 function ∇softmax!(out::AbstractArray, Δ::AbstractArray, 
                     x::AbstractArray, y::AbstractArray; dims = 1)
@@ -72,18 +72,18 @@ function ∇softmax!(out::AbstractArray, Δ::AbstractArray,
 end
 
 # Old 2-arg version recomputing forward
-∇softmax(Δ, x; dims=1) = ∇softmax(Δ, x, softmax(x, dims=dims); dims=dims)
-∇softmax!(Δ, x; dims=1) = ∇softmax!(Δ, Δ, x, softmax(x, dims=dims); dims=dims)
-∇softmax!(out, Δ, x; dims=1) = ∇softmax!(out, Δ, x, softmax(x, dims=dims); dims=dims)
+∇softmax(Δ, x; dims = 1) = ∇softmax(Δ, x, softmax(x, dims = dims); dims = dims)
+∇softmax!(Δ, x; dims = 1) = ∇softmax!(Δ, Δ, x, softmax(x, dims = dims); dims = dims)
+∇softmax!(out, Δ, x; dims = 1) = ∇softmax!(out, Δ, x, softmax(x, dims = dims); dims = dims)
 
-function rrule(::typeof(softmax), xs; dims=1)
-    y = softmax(xs; dims=dims)
-    softmax_pullback(Δ) = (NoTangent(), ∇softmax(Δ, xs, y, dims=dims))
+function rrule(::typeof(softmax), xs; dims = 1)
+    y = softmax(xs; dims = dims)
+    softmax_pullback(Δ) = (NoTangent(), ∇softmax(Δ, xs, y, dims = dims))
     return y, softmax_pullback
 end
 
 """
-    logsoftmax(x; dims=1)
+    logsoftmax(x; dims = 1)
 
 Computes the log of softmax in a more numerically stable
 way than directly taking `log.(softmax(xs))`. Commonly used in
@@ -91,7 +91,7 @@ computing cross entropy loss.
 
 It is semantically equivalent to the following:
 
-    logsoftmax(x; dims=1) = x .- log.(sum(exp.(x), dims=dims))
+    logsoftmax(x; dims = 1) = x .- log.(sum(exp.(x), dims = dims))
 
 See also [`softmax`](@ref).
 """
@@ -112,11 +112,12 @@ end
 
 ∇logsoftmax(Δ::AbstractArray{T}, x::AbstractArray, y::AbstractArray{S}; dims = 1) where {T,S} =
     ∇logsoftmax!(similar(y, promote_type(T, S)), Δ, x, y; dims = dims)
+∇logsoftmax(Δ, x, y; dims = 1)  = ∇logsoftmax(unthunk(Δ), x, y, dims = dims)
 
 # Old 2-arg version recomputing forward
-∇logsoftmax(Δ, x; dims=1) =  ∇logsoftmax(Δ, x, logsoftmax(x, dims=dims); dims=dims)
-∇logsoftmax!(Δ, x; dims=1) =  ∇logsoftmax!(Δ, Δ, x, logsoftmax(x, dims=dims); dims=dims)
-∇logsoftmax!(out, Δ, x; dims=1) =  ∇logsoftmax!(out, Δ, x, logsoftmax(x, dims=dims); dims=dims)
+∇logsoftmax(Δ, x; dims = 1) = ∇logsoftmax(Δ, x, logsoftmax(x, dims = dims); dims = dims)
+∇logsoftmax!(Δ, x; dims = 1) = ∇logsoftmax!(Δ, Δ, x, logsoftmax(x, dims = dims); dims = dims)
+∇logsoftmax!(out, Δ, x; dims = 1) = ∇logsoftmax!(out, Δ, x, logsoftmax(x, dims = dims); dims = dims)
     
 function ∇logsoftmax!(out::AbstractArray, Δ::AbstractArray,
                     x::AbstractArray, y::AbstractArray; dims = 1) 
@@ -124,15 +125,15 @@ function ∇logsoftmax!(out::AbstractArray, Δ::AbstractArray,
 end
 
 function rrule(::typeof(logsoftmax), xs; dims=1)
-    y = logsoftmax(xs; dims=dims)
-    logsoftmax_pullback(Δ) = (NoTangent(), ∇logsoftmax(Δ, xs, y, dims=dims))
+    y = logsoftmax(xs; dims = dims)
+    logsoftmax_pullback(Δ) = (NoTangent(), ∇logsoftmax(Δ, xs, y, dims = dims))
     return y, logsoftmax_pullback
 end
 
 """
-    logsumexp(x; dims=:)
+    logsumexp(x; dims = :)
 
-Computes `log.(sum(exp.(x); dims=dims))` in a numerically stable
+Computes `log.(sum(exp.(x); dims = dims))` in a numerically stable
 way.
 
 See also [`logsoftmax`](@ref).
