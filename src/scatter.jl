@@ -162,8 +162,8 @@ function rrule(::typeof(scatter!), op, dst::AbstractArray, src::AbstractArray, i
     dst, scatter!_pullback
 end
 
-function rrule(::typeof(scatter), op, src::AbstractArray, idx::AbstractArray)
-    y = scatter(op, src, idx)
+function rrule(::typeof(scatter), op, src::AbstractArray, idx::AbstractArray; kws...)
+    y = scatter(op, src, idx; kws...)
     scatter_pullback(Δ) = (NoTangent(), NoTangent(), ∇scatter_src(op, unthunk(Δ), y, src, idx), NoTangent())
     y, scatter_pullback
 end
