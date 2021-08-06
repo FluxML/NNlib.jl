@@ -23,6 +23,7 @@ include("test_utils.jl")
 
 @testset "Activation Functions" begin
     include("activations.jl")
+    include("bias_act.jl")
 end
 
 @testset "Batched Multiplication" begin

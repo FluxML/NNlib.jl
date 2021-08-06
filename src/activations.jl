@@ -22,6 +22,69 @@ export sigmoid, hardsigmoid, logsigmoid, thresholdrelu
 oftf(x, y) = oftype(float(x), y)
 
 """
+    tanh_fast(x) = exp(2x) / (1 + exp(2x))
+
+This is faster, but slightly less accurate, version of `tanh`.
+"""
+@inline function tanh_fast(x)
+   exp2x = exp(x + x)
+   (exp2x - one(x)) / (exp2x + one(x))
+end
+
+#=
+
+[abs((NNlib.tanh_fast(x) - tanh(x))/tanh(x)) for x in Float32.(-1:0.01:1)] |> sort
+# max is 1.3040255f-6
+
+[abs((NNlib.tanh_fast(x) - tanh(x))/eps(tanh(x))) for x in Float32.(-1:0.01:1)] |> sort
+# only 5% above 2eps, worst 14 eps
+
+xs = -2:0.01:2; plot(xs, tanh.(xs)); plot!(xs, NNlib.tanh_fast.(xs), lab="fast")
+# really invisible
+
+julia> @btime x .= NNlib.tanh_fast.(x)  setup=(x=randn(Float64, 10^3));
+  5.507 μs (0 allocations: 0 bytes)
+
+julia> @btime x .= tanh.(x)  setup=(x=randn(Float64, 10^3));
+  9.729 μs (0 allocations: 0 bytes)
+
+julia> @btime x .= NNlib.tanh_fast.(x)  setup=(x=randn(Float32, 10^3));
+  6.192 μs (0 allocations: 0 bytes)
+
+julia> @btime x .= tanh.(x)  setup=(x=randn(Float32, 10^3));
+  2.962 μs (0 allocations: 0 bytes)
+# slower on Float32!
+
+julia> @btime x .= sigmoid.(x)  setup=(x=randn(Float64, 10^3));
+  5.729 μs (0 allocations: 0 bytes)
+
+julia> @btime x .= sigmoid.(x)  setup=(x=randn(Float32, 10^3));
+  6.458 μs (0 allocations: 0 bytes)
+# sigmoid is literally slower on Float32, maybe it's me?
+
+=#
+
+# Same times, on cyclops, a xeon:
+
+# julia> @btime x .= NNlib.tanh_fast.(x)  setup=(x=randn(Float64, 10^3));
+#   13.623 μs (0 allocations: 0 bytes)
+
+# julia> @btime x .= tanh.(x)  setup=(x=randn(Float64, 10^3));
+#   23.833 μs (0 allocations: 0 bytes)
+
+# julia> @btime x .= NNlib.tanh_fast.(x)  setup=(x=randn(Float32, 10^3));
+#   13.188 μs (0 allocations: 0 bytes)
+
+# julia> @btime x .= tanh.(x)  setup=(x=randn(Float32, 10^3));
+#   8.501 μs (0 allocations: 0 bytes)
+
+# julia> @btime x .= sigmoid.(x)  setup=(x=randn(Float64, 10^3));
+#   14.793 μs (0 allocations: 0 bytes)
+
+# julia> @btime x .= sigmoid.(x)  setup=(x=randn(Float32, 10^3));
+#   13.405 μs (0 allocations: 0 bytes)
+
+"""
     σ(x) = 1 / (1 + exp(-x))
 
 Classic [sigmoid](https://en.wikipedia.org/wiki/Sigmoid_function) activation
@@ -55,12 +118,6 @@ function σ(x)
 end
 
 const sigmoid = σ
-
-∇σ(y, dy) = @. dy * conj(y * (1 - y)) # gradient, used in map!!(f, xs)
-∇σ!(dx, y, dy) = @. dx = dy * conj(y * (1 - y))
-
-∇tanh(y, dy) = @. dy * conj(1 - y^2)
-∇tanh!(dx, y, dy) = @. dx = dy * conj(1 - y^2)
 
 """
     hardσ(x) = max(0, min(1, (x + 3) / 6))
@@ -777,6 +834,7 @@ UNARY_ACTS = [ # f, df
     (:relu,         :(x > 0)),
     (:hardtanh,     :(-1 < x < 1)),
     (:selu,         :(deriv_selu(Ω))),
+    (:tanh_fast,    :(conj(1 - Ω^2))),
     (:σ,            :(conj(Ω * (1 - Ω)))),
     (:elu,          :(deriv_elu(Ω))),
     (:softplus,     :(σ(x))),
@@ -821,3 +879,18 @@ for (f, df1, df2) in BINARY_ACTS
         return Ω, $pullback
     end
 end
+
+# For some activation functions, the gradient can be written only in terms of Ω.
+# That means that `conv_bias_act` and `bias_act!` can safely broadcast
+# them in-plance, to save allocations. (Not so easy to opt-in to this, sadly.)
+INPLACE_ACTS = [
+    (:identity,     :true),
+    (:tanh,         :(conj(1 - Ω^2))),
+    (:tanh_fast,    :(conj(1 - Ω^2))),
+    (:σ,            :(conj(Ω * (1 - Ω)))),
+    (:relu,         :(Ω > 0)),
+    (:leakyrelu,    :(ifelse(Ω > 0, one(Ω), oftf(Ω, 0.01)))),  # only the 1-argument method
+    (:hardtanh,     :(-1 < Ω < 1)),
+    (:selu,         :(deriv_selu(Ω))),
+    (:elu,          :(deriv_elu(Ω))),
+    ]

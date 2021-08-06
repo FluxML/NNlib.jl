@@ -27,15 +27,19 @@ is_nnpack_available() = false
 end
 
 include("activations.jl")
-include("broadcast.jl") # map!! and friends
+include("bias_act.jl")
 include("softmax.jl")
+
 include("batched/batchedmul.jl")
 include("gemm.jl")
+
 include("conv.jl")
 include("conv_bias_act.jl")
+
 include("pooling.jl")
 include("padding.jl")
 include("upsample.jl")
+
 include("gather.jl")
 include("scatter.jl")
 include("utils.jl")
@@ -54,6 +58,7 @@ include("impl/depthwiseconv_im2col.jl")
 
 # Direct implementations of pooling
 include("impl/pooling_direct.jl")
+
 include("deprecations.jl")
 
 end # module NNlib

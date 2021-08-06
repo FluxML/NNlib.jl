@@ -299,20 +299,28 @@ for Dims in [:DenseConvDims, :DepthwiseConvDims, :PoolDims]
     @eval @non_differentiable $Dims(::Any...)
 end
 
-colmajor(x) = (is_strided(x) && Base.stride(x, 1) == 1) ? x : collect(x)
+colmajor(x) = (is_strided(x) && Base.stride(x, 1) == 1) ? x : identity.(x)
 
-for conv in [:conv, :depthwiseconv]
-    local ∇conv_data, ∇conv_filter = Symbol.(:∇, conv, [:_data, :_filter])
+for conv in [:conv, :conv!, :depthwiseconv]
+    if endswith(string(conv), '!')
+        # Then we insert one more argument, but still reference the no-! gradient functions
+        local ∇conv_data, ∇conv_filter = Symbol.(:∇, string(conv)[1:end-1], [:_data, :_filter])
+        extra, extra_grad = (:y,), (:(NoTangent()),)
+    else
+        local ∇conv_data, ∇conv_filter = Symbol.(:∇, conv, [:_data, :_filter])
+        extra, extra_grad = (), ()
+    end
     conv_pullback, ∇conv_data_pullback = Symbol.([conv, ∇conv_data], :_pullback)
 
-    @eval function rrule(::typeof($conv), x, w, cdims; kw...)
-        function $conv_pullback(Δ)
-            Δ = colmajor(Δ)
+    @eval function rrule(::typeof($conv), $(extra...), x, w, cdims; kw...)
+        function $conv_pullback(Δ_raw)
+            Δ = colmajor(unthunk(Δ_raw))  # would it be better to do this inside each @thunk? 
             return (
-                NoTangent(),
-                @thunk($∇conv_data(unthunk(Δ), w, cdims, kw...)),
-                @thunk($∇conv_filter(x, unthunk(Δ), cdims, kw...)),
-                NoTangent(),
+                NoTangent(),      # func
+                $(extra_grad...), # y
+                @thunk($∇conv_data(Δ, w, cdims; kw...)),
+                @thunk($∇conv_filter(x, Δ, cdims; kw...)),
+                NoTangent(),      # cdims
             )
         end
         return $conv(x, w, cdims; kw...), $conv_pullback
@@ -320,11 +328,11 @@ for conv in [:conv, :depthwiseconv]
 
     @eval function rrule(::typeof($∇conv_data), x, w, cdims; kw...)
         function $∇conv_data_pullback(Δ)
-            Δ = colmajor(Δ)
+            Δ = colmajor(unthunk(Δ_raw))
             return (
                 NoTangent(),
-                @thunk($conv(unthunk(Δ), w, cdims, kw...)),
-                @thunk($∇conv_filter(unthunk(Δ), x, cdims, kw...)),
+                @thunk($conv(Δ, w, cdims; kw...)),
+                @thunk($∇conv_filter(Δ, x, cdims; kw...)),
                 NoTangent(),
             )
         end

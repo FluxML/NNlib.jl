@@ -78,6 +78,10 @@ end
     return x
 end
 
+# Fall-through method, to ignore bias=false or bias=Zero() or bias=Zeros() or 
+# whatever, in `conv_bias_act`:
+insert_singleton_spatial_dimension(x) = x
+
 """
     predilated_size(x_size::Tuple, dilation::Tuple)
 
