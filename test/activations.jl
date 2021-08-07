@@ -221,6 +221,29 @@ end
     @test trelu(0.9,0.5) == 0.9
 end
 
+## Faster variants
+
+using NNlib: tanh_fast, tanh_faster, sigmoid_fast, _fast_stop
+
+@testset "$fast(::$T)" for T in [Float64, Float32], #, Float16]
+    (fast, slow, atol, jump) in [
+        (tanh_fast, tanh,       5*eps(T), 0     ), 
+        (tanh_faster, tanh,     1e-5,     1e-4  ), 
+        (sigmoid_fast, sigmoid, 5*eps(T), 1e-25 )
+    ] 
+
+    @test @inferred(fast(one(T))) isa T
+
+    @test Float64.(fast.(T.(-5:0.1:5))) ≈ slow.(-5:0.1:5)  atol = atol
+    @test Float64.(fast.(T.(-200:13.3:200))) ≈ slow.(-200:13.3:200)  atol = atol
+
+    stop = _fast_stop(fast, one(T))
+    @test abs(fast(nextfloat(stop)) - fast(prevfloat(stop))) <= jump
+    @test abs(fast(nextfloat(-stop)) - fast(prevfloat(-stop))) <= jump
+    # @show fast(nextfloat(stop)) - fast(prevfloat(stop))
+    # @show fast(nextfloat(-stop)) - fast(prevfloat(-stop))
+end
+
 @testset "AutoDiff" begin
     
     local rng = StableRNG(17)

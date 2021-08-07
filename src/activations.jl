@@ -3,12 +3,13 @@
 # Some of activation functions have its wrapper function for GPU in NNlibCUDA.jl.
 # https://github.com/JuliaGPU/CuArrays.jl/issues/614
 
-const ACTIVATIONS = 
-    [:σ, :hardσ, :hardtanh, :relu, 
-    :leakyrelu, :relu6, :rrelu, :elu, :gelu, :swish, :selu, 
-    :celu, :softplus, :softsign, :logσ, :logcosh, 
-    :mish, :tanhshrink, :softshrink, :trelu, 
-    :lisht]
+ACTIVATIONS = [
+    :σ, :hardσ, :tanh_fast, :hardtanh, :relu,
+    :leakyrelu, :relu6, :rrelu, :elu, :gelu, :swish, :selu,
+    :celu, :softplus, :softsign, :logσ, :logcosh,
+    :mish, :tanhshrink, :softshrink, :trelu, :lisht,
+    :tanh_fast, :tanh_faster, :sigmoid_fast,
+    ]
 
 for f in ACTIVATIONS
     @eval export $(f)
@@ -652,15 +653,76 @@ for f in ACTIVATIONS
       error("Use broadcasting (`", $(string(f)), ".(x)`) to apply activation functions to arrays.")
 end
 
-## Define rrules for some activation functions, along with the 
+## Faster, less accurate, versions of some.
+## TODO: mechanism to use automatically, and worry about GPUs.
+
+"""
+    tanh_fast(x) = exp(2x) / (1 + exp(2x))
+
+This is faster, but slightly less accurate, version of `tanh`.
+
+For `x::Float64`, this has errors up to about `3e-15`, sometimes `> 10 * eps(x)`.
+For `x::Float32`, errors up to about `1f-6`. About 2-5 times faster.
+"""
+@inline function tanh_fast(x)
+   exp2x = @fastmath exp(x + x)
+   y = (exp2x - 1) / (exp2x + 1)
+   stop = _fast_stop(tanh_fast, x)
+   ifelse(x > stop, one(y), ifelse(x < -stop, -one(y), y))
+end
+# Badly behaved examples, without the stop:
+# tanh_fast(400.0), tanh_fast(60f0), tanh_fast(Float16(6)) 
+_fast_stop(::typeof(tanh_fast), x) = oftype(x, 30)
+_fast_stop(::typeof(tanh_fast), ::Float16) = Float16(5)
+
+"""
+    tanh_faster(x)
+
+This is even faster, via a rational approximation, 4/5 terms, from here:
+https://math.stackexchange.com/questions/107292/rapid-approximation-of-tanhx
+
+Errors of up to about `3e-5` or `3f-5`, on Float64 & Float32 numbers.
+About 8-10 times faster. 
+"""
+@inline function tanh_faster(x::Real)
+    T = float(typeof(x))
+    x2 = 4x^2
+    # y = 94.9339451088 * x * ((( x2 + 1.06315869e+03 ) * x2 + 1.88748783e+05 ) * x2 + 5.86237309e+06 ) / ((( ( x2 + 4.03183926e+03 ) * x2 + 1.64253046e+06 ) * x2 + 1.28592857e+08 ) * x2 + 1.11307745e+09 )
+    num = @fastmath T(94.9339451088) * 2x * ((( x2 + T(1.06315869e+03) ) * x2 + T(1.88748783e+05) ) * x2 + T(5.86237309e+06) )
+    den = @fastmath ((( ( x2 + T(4.03183926e+03) ) * x2 + T(1.64253046e+06) ) * x2 + T(1.28592857e+08) ) * x2 + T(1.11307745e+09) )
+    y = num / den
+    stop = _fast_stop(tanh_faster, x)
+    ifelse(x > stop, one(y), ifelse(x < -stop, -one(y), y))
+end
+_fast_stop(::typeof(tanh_faster), x) = oftype(x, 10)
+
+@inline function sigmoid_fast(x::Real)
+   s = @fastmath exp(x)
+   y = s / (s + 1)
+   stop = _fast_stop(sigmoid_fast, x)
+   ifelse(x > stop, one(y), ifelse(x < -stop, zero(y), y))
+end
+_fast_stop(::typeof(sigmoid_fast), x) = oftype(x, 60)
+_fast_stop(::typeof(sigmoid_fast), ::Float16) = Float16(10)
+
+@inline function sigmoid_faster(x::Real)
+    T = float(typeof(x))
+    x2 = x^2
+    num = @fastmath T(47.4669725544) * x * ((( x2 + T(1.06315869e+03) ) * x2 + T(1.88748783e+05) ) * x2 + T(5.86237309e+06) )
+    den = @fastmath ((( ( x2 + T(4.03183926e+03) ) * x2 + T(1.64253046e+06) ) * x2 + T(1.28592857e+08) ) * x2 + T(1.11307745e+09) )
+    T(0.5) + num / den  # this is really hacked together
+end
+
+
+## Define rrules for some activation functions, along with the
 ## broadcasted rrule activation functions.
-## TODO: add to the lists below all activations. 
+## TODO: add to the lists below all activations.
 
 ## This is a performance hack specifically for Zygote, because it doesn't handle fused
-## broadcasts well; but it generally should be good (or at least harmless) for any AD, as 
+## broadcasts well; but it generally should be good (or at least harmless) for any AD, as
 ## it saves ADing the broadcasting machinery.
 ## Related Issue https://github.com/JuliaDiff/ChainRulesCore.jl/issues/271
-  
+
 UNARY_ACTS = [ # f, df
     (:relu,         :(x > 0)),
     (:hardtanh,     :(-1 < x < 1)),
@@ -668,6 +730,10 @@ UNARY_ACTS = [ # f, df
     (:σ,            :(conj(Ω * (1 - Ω)))),
     (:elu,          :(deriv_elu(Ω))),
     (:softplus,     :(σ(x))),
+
+    (:tanh_fast,    :(conj(1 - Ω^2))),
+    (:tanh_faster,  :(conj(1 - Ω^2))),
+    (:sigmoid_fast, :(conj(Ω * (1 - Ω)))),
     ]
 
 for (f, df) in UNARY_ACTS
@@ -706,3 +772,21 @@ for (f, df1, df2) in BINARY_ACTS
         return Ω, $pullback
     end
 end
+
+# For some activation functions, the gradient can be written only in terms of Ω.
+# That means that `conv_bias_act` etc. can replace `Ω = σ.(x)` with `x .= σ.(x)`
+# to save allocations. (Not so easy to opt-in to this mechanism, sadly.)
+INPLACE_ACTS = [
+    (:σ,            :(conj(Ω * (1 - Ω)))),
+    (:relu,         :(Ω > 0)),
+    (:leakyrelu,    :(ifelse(Ω > 0, one(Ω), oftf(Ω, 0.01)))),  # only the 1-argument method
+    (:hardtanh,     :(-1 < Ω < 1)),
+    (:selu,         :(deriv_selu(Ω))),
+    (:elu,          :(deriv_elu(Ω))),
+
+    (:identity,     :true),
+    (:tanh,         :(conj(1 - Ω^2))),
+    (:tanh_fast,    :(conj(1 - Ω^2))),
+    (:tanh_faster,  :(conj(1 - Ω^2))),
+    (:sigmoid_fast, :(conj(Ω * (1 - Ω)))),
+    ]
