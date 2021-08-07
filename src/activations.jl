@@ -772,21 +772,3 @@ for (f, df1, df2) in BINARY_ACTS
         return Ω, $pullback
     end
 end
-
-# For some activation functions, the gradient can be written only in terms of Ω.
-# That means that `conv_bias_act` etc. can replace `Ω = σ.(x)` with `x .= σ.(x)`
-# to save allocations. (Not so easy to opt-in to this mechanism, sadly.)
-INPLACE_ACTS = [
-    (:σ,            :(conj(Ω * (1 - Ω)))),
-    (:relu,         :(Ω > 0)),
-    (:leakyrelu,    :(ifelse(Ω > 0, one(Ω), oftf(Ω, 0.01)))),  # only the 1-argument method
-    (:hardtanh,     :(-1 < Ω < 1)),
-    (:selu,         :(deriv_selu(Ω))),
-    (:elu,          :(deriv_elu(Ω))),
-
-    (:identity,     :true),
-    (:tanh,         :(conj(1 - Ω^2))),
-    (:tanh_fast,    :(conj(1 - Ω^2))),
-    (:tanh_faster,  :(conj(1 - Ω^2))),
-    (:sigmoid_fast, :(conj(Ω * (1 - Ω)))),
-    ]
