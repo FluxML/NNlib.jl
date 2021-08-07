@@ -3,7 +3,6 @@
 # Some of activation functions have its wrapper function for GPU in NNlibCUDA.jl.
 # https://github.com/JuliaGPU/CuArrays.jl/issues/614
 
-<<<<<<< HEAD
 ACTIVATIONS = [
     :σ, :hardσ, :hardtanh, :relu,
     :leakyrelu, :relu6, :rrelu, :elu, :gelu, :swish, :selu,
@@ -11,14 +10,6 @@ ACTIVATIONS = [
     :mish, :tanhshrink, :softshrink, :trelu, :lisht,
     :tanh_fast, :sigmoid_fast,
     ]
-=======
-const ACTIVATIONS = 
-    [:σ, :hardσ, :hardtanh, :relu, 
-    :leakyrelu, :relu6, :rrelu, :elu, :gelu, :swish, :selu, 
-    :celu, :softplus, :softsign, :logσ, :logcosh, 
-    :mish, :tanhshrink, :softshrink, :trelu, 
-    :lisht]
->>>>>>> 6300293 (next day)
 
 for f in ACTIVATIONS
     @eval export $(f)
@@ -188,9 +179,6 @@ julia> lineplot(relu, -2, 2, height=7)
 """
 relu(x) = ifelse(x<0, zero(x), x)  # faster than max(zero(x), x), still preserves NaN
 
-∇relu(y, dy) = ifelse.(y .> 0, one(y), zero(y))
-∇relu!(dx, y, dy) = dx .= ifelse.(y .> 0, one(y), zero(y))
-
 """
     leakyrelu(x, a=0.01) = max(a*x, x)
 
@@ -219,7 +207,7 @@ julia> leakyrelu(-10f0, 1//20)
 -0.5f0
 ```
 """
-leakyrelu(x, a=oftf(x, 0.01)) = ifelse(x>0, float(x), oftf(x, a*x))  # max(a*x, x) is 3x slower
+leakyrelu(x, a=oftf(x, 0.01)) = max(a * x, x)
 
 """
     relu6(x) = min(max(0, x), 6)
@@ -306,7 +294,7 @@ julia> elu(-10f0, 2)
 """
 elu(x, α=1) = ifelse(x ≥ 0, float(x), @fastmath α * (exp(x) - 1)) 
 
-deriv_elu(Ω, α=1) = ifelse(Ω ≥ 0, one(Ω), Ω + α)
+deriv_elu(Ω, α=1) = ifelse(Ω ≥ 0, 1, Ω + α)
 
 """
     gelu(x) = 0.5x * (1 + tanh(√(2/π) * (x + 0.044715x^3)))
@@ -677,7 +665,6 @@ for f in ACTIVATIONS
 end
 
 ## Faster, less accurate, versions of some.
-<<<<<<< HEAD
 
 """
     tanh_fast(x)
@@ -770,13 +757,13 @@ this replacement for some array or element types.
 
 ## Define rrules for some activation functions, along with the
 ## broadcasted rrule activation functions.
-## TODO: add to the lists below all activations.
+## TODO: add to the lists below all activations. 
 
 ## This is a performance hack specifically for Zygote, because it doesn't handle fused
-## broadcasts well; but it generally should be good (or at least harmless) for any AD, as
+## broadcasts well; but it generally should be good (or at least harmless) for any AD, as 
 ## it saves ADing the broadcasting machinery.
 ## Related Issue https://github.com/JuliaDiff/ChainRulesCore.jl/issues/271
-
+  
 UNARY_ACTS = [ # f, df
     (:relu,         :(x > 0)),
     (:hardtanh,     :(-1 < x < 1)),
@@ -796,16 +783,13 @@ for (f, df) in UNARY_ACTS
     @eval function rrule(::typeof(broadcasted),
                          ::typeof($f), x::Numeric)
         Ω = $f.(x)
-        function $pullback(Δ)
-            x_thunk = InplaceableThunk(
-                dx -> @.(dx += Δ * $df),
-                @thunk @.(Δ * $df)
-            )
-            NoTangent(), NoTangent(), x_thunk
+        function $pullback(Δ) 
+            NoTangent(), NoTangent(), @.(Δ * $df)
         end
         return Ω, $pullback
     end
 end
+
 
 BINARY_ACTS = [ # f, df1, df2
     (:elu, :(deriv_elu(Ω, x2)), :(NoTangent())), # TODO use real deriv instead of DNE
