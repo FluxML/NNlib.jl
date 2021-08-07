@@ -18,7 +18,7 @@ end
 # Aliases
 export sigmoid, hardsigmoid, logsigmoid, thresholdrelu
 
-# of type float (to allow for integer inputs)
+# of type float
 oftf(x, y) = oftype(float(x), y)
 
 """
@@ -203,7 +203,7 @@ julia> leakyrelu(-10f0, 1//20)
 -0.5f0
 ```
 """
-leakyrelu(x, a=oftf(x, 0.01)) = ifelse(x>0, float(x), oftf(x, a*x))  # max(a*x, x) is 3x slower
+leakyrelu(x, a=oftf(x, 0.01)) = max(a * x, x)
 
 """
     relu6(x) = min(max(0, x), 6)
@@ -290,7 +290,7 @@ julia> elu(-10f0, 2)
 """
 elu(x, α=1) = ifelse(x ≥ 0, float(x), α * (exp(x) - 1))
 
-deriv_elu(Ω, α=1) = ifelse(Ω ≥ 0, one(Ω), Ω + α)
+deriv_elu(Ω, α=1) = ifelse(Ω ≥ 0, 1, Ω + α)
 
 """
     gelu(x) = 0.5x * (1 + tanh(√(2/π) * (x + 0.044715x^3)))
@@ -743,16 +743,13 @@ for (f, df) in UNARY_ACTS
     @eval function rrule(::typeof(broadcasted),
                          ::typeof($f), x::Numeric)
         Ω = $f.(x)
-        function $pullback(Δ)
-            x_thunk = InplaceableThunk(
-                dx -> @.(dx += Δ * $df),
-                @thunk @.(Δ * $df)
-            )
-            NoTangent(), NoTangent(), x_thunk
+        function $pullback(Δ) 
+            NoTangent(), NoTangent(), @.(Δ * $df)
         end
         return Ω, $pullback
     end
 end
+
 
 BINARY_ACTS = [ # f, df1, df2
     (:elu, :(deriv_elu(Ω, x2)), :(NoTangent())), # TODO use real deriv instead of DNE
