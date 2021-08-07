@@ -17,7 +17,7 @@ end
 # Aliases
 export sigmoid, hardsigmoid, logsigmoid, thresholdrelu
 
-# of type float
+# of type float (to allow for integer inputs)
 oftf(x, y) = oftype(float(x), y)
 
 """
@@ -66,7 +66,7 @@ hardtanh(x) = max(-one(x), min(one(x), x))
 [Rectified Linear Unit](https://en.wikipedia.org/wiki/Rectifier_(neural_networks))
 activation function.
 """
-relu(x) = max(zero(x), x)
+relu(x) = ifelse(x>0, x, zero(x)) # about 10% faster than max(zero(x), x), as that checks NaN etc.
 
 """
     leakyrelu(x, a=0.01) = max(a*x, x)
@@ -75,7 +75,7 @@ Leaky [Rectified Linear Unit](https://en.wikipedia.org/wiki/Rectifier_(neural_ne
 activation function.
 You can also specify the coefficient explicitly, e.g. `leakyrelu(x, 0.01)`.
 """
-leakyrelu(x, a=oftf(x, 0.01)) = max(a * x, x)
+leakyrelu(x, a=oftf(x, 0.01)) = ifelse(x>0, float(x), oftf(x, a*x))  # max(a*x, x) is 3x slower
 
 """
     relu6(x) = min(max(0, x), 6)
@@ -109,7 +109,7 @@ You can also specify the coefficient explicitly, e.g. `elu(x, 1)`.
 """
 elu(x, α=1) = ifelse(x ≥ 0, float(x), α * (exp(x) - 1))
 
-deriv_elu(Ω, α=1) = ifelse(Ω ≥ 0, 1, Ω + α)
+deriv_elu(Ω, α=1) = ifelse(Ω ≥ 0, one(Ω), Ω + α)
 
 """
     gelu(x) = 0.5x * (1 + tanh(√(2/π) * (x + 0.044715x^3)))
@@ -260,13 +260,16 @@ for (f, df) in UNARY_ACTS
     @eval function rrule(::typeof(broadcasted),
                          ::typeof($f), x::Numeric)
         Ω = $f.(x)
-        function $pullback(Δ) 
-            NoTangent(), NoTangent(), @.(Δ * $df)
+        function $pullback(Δ)
+            x_thunk = InplaceableThunk(
+                dx -> @.(dx += Δ * $df),
+                @thunk @.(Δ * $df)
+            )
+            NoTangent(), NoTangent(), x_thunk
         end
         return Ω, $pullback
     end
 end
-
 
 BINARY_ACTS = [ # f, df1, df2
     (:elu, :(deriv_elu(Ω, x2)), :(NoTangent())), # TODO use real deriv instead of DNE
