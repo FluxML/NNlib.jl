@@ -654,58 +654,66 @@ for f in ACTIVATIONS
 end
 
 ## Faster, less accurate, versions of some.
-## TODO: mechanism to use automatically, and worry about GPUs.
+
+"""
+    tanh_fast(x::Float32)
+
+This is a faster but less accurate version of `tanh`.
+It has error of 5eps, instead of 1.5 eps for Julia's;
+under one less decimal digit. Usually about 10x faster.
+
+`tanh_new(x::Float16)` uses the same rational approximation,
+about twice the error of Julia's, about twice the speed
+(but still 5x slower than `Float32`). Might be better to remove this.
+"""
+@inline function tanh_fast(x::Float32)
+    x2 = abs2(x)
+    n = evalpoly(x2, (1.0f0, 0.1346604f0, 0.0035974074f0, 2.2332108f-5, 1.587199f-8))
+    d = evalpoly(x2, (1.0f0, 0.4679937f0, 0.026262015f0, 0.0003453992f0, 8.7767893f-7))
+    ifelse(x2 < 66f0, x * (n / d), sign(x))
+end
+
+# tanh_fast(x::Float16) # probably better. tanh_fast(x::Real) is very badly behaved for Float16.
+
+@inline function tanh_fast(x::Float16)
+    x2 = abs2(x)
+    n = evalpoly(x2, (Float16(1.0), Float16(0.1346), Float16(0.003597), Float16(2.235e-5)))
+    d = evalpoly(x2, (Float16(1.0), Float16(0.468), Float16(0.02626), Float16(0.0003455), Float16(9.0e-7)))
+    ifelse(x2 < Float16(18), x * (n / d), sign(x))
+end
 
 """
     tanh_fast(x) = exp(2x) / (1 + exp(2x))
 
 This is faster, but slightly less accurate, version of `tanh`.
+For `x::Float64`, this has errors up to about `3e-15`, sometimes `> 10 * eps(x)`,
+and should be about 2-5 times faster.
 
-For `x::Float64`, this has errors up to about `3e-15`, sometimes `> 10 * eps(x)`.
-For `x::Float32`, errors up to about `1f-6`. About 2-5 times faster.
+But `tanh_new(x::Float32)` is more important, and a different approximation.
 """
-@inline function tanh_fast(x)
+@inline function tanh_fast(x::Real)
    exp2x = @fastmath exp(x + x)
    y = (exp2x - 1) / (exp2x + 1)
-   stop = _fast_stop(tanh_fast, x)
-   ifelse(x > stop, one(y), ifelse(x < -stop, -one(y), y))
+   ifelse(x > 30, one(y), ifelse(x < -30, -one(y), y))
 end
 # Badly behaved examples, without the stop:
 # tanh_fast(400.0), tanh_fast(60f0), tanh_fast(Float16(6)) 
-_fast_stop(::typeof(tanh_fast), x) = oftype(x, 30)
-_fast_stop(::typeof(tanh_fast), ::Float16) = Float16(5)
+
 
 """
-    tanh_faster(x)
+    sigmoid_fast(x)
 
-This is even faster, via a rational approximation, 4/5 terms, from here:
-https://math.stackexchange.com/questions/107292/rapid-approximation-of-tanhx
-
-Errors of up to about `3e-5` or `3f-5`, on Float64 & Float32 numbers.
-About 8-10 times faster. 
+Like `tanh_fast`, except for `sigmoid`. 
+This needs updating to match latest tanh version.
 """
-@inline function tanh_faster(x::Real)
-    T = float(typeof(x))
-    x2 = 4x^2
-    # y = 94.9339451088 * x * ((( x2 + 1.06315869e+03 ) * x2 + 1.88748783e+05 ) * x2 + 5.86237309e+06 ) / ((( ( x2 + 4.03183926e+03 ) * x2 + 1.64253046e+06 ) * x2 + 1.28592857e+08 ) * x2 + 1.11307745e+09 )
-    num = @fastmath T(94.9339451088) * 2x * ((( x2 + T(1.06315869e+03) ) * x2 + T(1.88748783e+05) ) * x2 + T(5.86237309e+06) )
-    den = @fastmath ((( ( x2 + T(4.03183926e+03) ) * x2 + T(1.64253046e+06) ) * x2 + T(1.28592857e+08) ) * x2 + T(1.11307745e+09) )
-    y = num / den
-    stop = _fast_stop(tanh_faster, x)
-    ifelse(x > stop, one(y), ifelse(x < -stop, -one(y), y))
-end
-_fast_stop(::typeof(tanh_faster), x) = oftype(x, 10)
-
 @inline function sigmoid_fast(x::Real)
    s = @fastmath exp(x)
    y = s / (s + 1)
    stop = _fast_stop(sigmoid_fast, x)
-   ifelse(x > stop, one(y), ifelse(x < -stop, zero(y), y))
+   ifelse(x > 60, one(y), ifelse(x < -stop, zero(y), y))
 end
-_fast_stop(::typeof(sigmoid_fast), x) = oftype(x, 60)
-_fast_stop(::typeof(sigmoid_fast), ::Float16) = Float16(10)
 
-@inline function sigmoid_faster(x::Real)
+@inline function sigmoid_fast(x::Float32)
     T = float(typeof(x))
     x2 = x^2
     num = @fastmath T(47.4669725544) * x * ((( x2 + T(1.06315869e+03) ) * x2 + T(1.88748783e+05) ) * x2 + T(5.86237309e+06) )
@@ -713,6 +721,7 @@ _fast_stop(::typeof(sigmoid_fast), ::Float16) = Float16(10)
     T(0.5) + num / den  # this is really hacked together
 end
 
+sigmoid_fast(x::Float16) = sigmoid(x)  # sigmoid_fast is extremely badly behaved at large x
 
 ## Define rrules for some activation functions, along with the
 ## broadcasted rrule activation functions.
@@ -732,7 +741,6 @@ UNARY_ACTS = [ # f, df
     (:softplus,     :(σ(x))),
 
     (:tanh_fast,    :(conj(1 - Ω^2))),
-    (:tanh_faster,  :(conj(1 - Ω^2))),
     (:sigmoid_fast, :(conj(Ω * (1 - Ω)))),
     ]
 
