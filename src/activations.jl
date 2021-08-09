@@ -34,11 +34,11 @@ end
 const sigmoid = σ
 
 """
-    hardσ(x) = max(0, min(1, (x + 3) / 6)
+    hardσ(x) = max(0, min(1, (x + 3) / 6))
 
 Piecewise linear approximation of sigmoid.
 """
-hardσ(x) = max(0, min(1, (x + 3) / 6))
+hardσ(x) = clamp((x + 3) / 6, 0, 1)  # twice as quick as max(0, min(1, ... version
 
 # https://pytorch.org/docs/stable/generated/torch.nn.Hardsigmoid.html
 
@@ -58,7 +58,7 @@ const logsigmoid = logσ
 Segment-wise linear approximation of tanh. Cheaper  and  more  computational  efficient version of tanh.
 See [Large Scale Machine Learning](https://ronan.collobert.com/pub/matos/2004_phdthesis_lip6.pdf).
 """
-hardtanh(x) = max(-one(x), min(one(x), x))
+hardtanh(x) = clamp(x, -1, 1)
 
 """
     relu(x) = max(0, x)
@@ -84,7 +84,7 @@ leakyrelu(x, a=oftf(x, 0.01)) = ifelse(x>0, float(x), oftf(x, a*x))  # max(a*x, 
 activation function capped at 6.
 See [Convolutional Deep Belief Networks on CIFAR-10](https://www.cs.toronto.edu/~kriz/conv-cifar10-aug2010.pdf)
 """
-relu6(x) = min(relu(x), oftype(x, 6))
+relu6(x) = clamp(x, 0, 6)
 
 """
     rrelu(x, l=1/8, u=1/3) = max(a*x, x)
