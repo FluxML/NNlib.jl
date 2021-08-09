@@ -38,7 +38,7 @@ const sigmoid = σ
 
 Piecewise linear approximation of sigmoid.
 """
-hardσ(x) = clamp((x + 3) / 6, 0, 1)  # twice as quick as max(0, min(1, ... version
+hardσ(x) = clamp((x + 3) / 6, 0, 1)
 
 # https://pytorch.org/docs/stable/generated/torch.nn.Hardsigmoid.html
 
@@ -58,7 +58,7 @@ const logsigmoid = logσ
 Segment-wise linear approximation of tanh. Cheaper  and  more  computational  efficient version of tanh.
 See [Large Scale Machine Learning](https://ronan.collobert.com/pub/matos/2004_phdthesis_lip6.pdf).
 """
-hardtanh(x) = oftype(x, clamp(x, -1, 1))  # oftype is only for Int32
+hardtanh(x) = clamp(x, Int8(-1), Int8(1))  # (small types preserve Int32, not really necc.)
 
 """
     relu(x) = max(0, x)
@@ -84,8 +84,7 @@ leakyrelu(x, a=oftf(x, 0.01)) = ifelse(x>0, float(x), oftf(x, a*x))  # max(a*x, 
 activation function capped at 6.
 See [Convolutional Deep Belief Networks on CIFAR-10](https://www.cs.toronto.edu/~kriz/conv-cifar10-aug2010.pdf)
 """
-relu6(x) = oftype(x, clamp(x, 0, 6))
-# (somewhat bizarrely, we test whether this preserves Int32, which clamp does not)
+relu6(x) = clamp(x, Int8(0), Int8(6))  # (small types preserve Int32, not really necc.)
 
 """
     rrelu(x, l=1/8, u=1/3) = max(a*x, x)
