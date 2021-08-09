@@ -78,8 +78,8 @@ _bias_act!(σ, x) = x .= σ.(x)
 _bias_act!(::typeof(identity), x, b::Bool) = b ? (x.=x.+b) : x
 _bias_act!(::typeof(identity), x) = x
 # for (fast, slow) in [
-#         (tanh_faster, tanh), 
-#         (sigmoid_faster, sigmoid),
+#         (tanh_fast, tanh), 
+#         (sigmoid_fast, sigmoid),
 #     ]
 #     @eval _bias_act!(::typeof($slow), x, b) = x .= $fast.(x .+ b)
 #     @eval _bias_act!(::typeof($slow), x) = x .= $fast.(x)
