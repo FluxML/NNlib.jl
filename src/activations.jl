@@ -66,7 +66,7 @@ hardtanh(x) = clamp(x, Int8(-1), Int8(1))  # (small types preserve Int32, not re
 [Rectified Linear Unit](https://en.wikipedia.org/wiki/Rectifier_(neural_networks))
 activation function.
 """
-relu(x) = ifelse(x>0, x, zero(x)) # about 10% faster than max(zero(x), x), as that checks NaN etc.
+relu(x) = ifelse(x<0, zero(x), x)  # faster than max(zero(x), x), still preserves NaN
 
 """
     leakyrelu(x, a=0.01) = max(a*x, x)
@@ -179,7 +179,7 @@ celu(x, α=1) = ifelse(x ≥ 0, float(x), α * (exp(x/α) - 1))
 Threshold Gated Rectified Linear.
 See [ThresholdRelu](https://arxiv.org/abs/1402.3337)
 """
-trelu(x, theta=1) = ifelse(x > theta, x, zero(x))
+trelu(x, theta=1) = ifelse(x <= theta, zero(x), x)
 
 const thresholdrelu = trelu
 

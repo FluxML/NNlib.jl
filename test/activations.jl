@@ -113,6 +113,21 @@ end
     end
 end
 
+@testset "NaN propagation" begin
+    @testset "$a" for a in ACTIVATION_FUNCTIONS
+        # With NaN input, all should produce NaN output:
+        @test isnan(a(NaN32))
+
+        # Ideally +-Inf would not lead to NaN, but perhaps
+        # these aren't worth the complication of fixing:
+        a == softsign && continue
+        @test !isnan(a(Inf32))
+
+        a in [gelu, swish, logcosh, mish] && continue
+        @test !isnan(a(-Inf32))
+    end
+end
+
 @testset "Test Integer64 and Integer32 inputs will force Float64 outputs" begin
     test_value_int_input_forces_float64.(filter(x -> (x != relu && x != relu6 && x != hardtanh && x != trelu), ACTIVATION_FUNCTIONS))
 
