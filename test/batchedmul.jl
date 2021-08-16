@@ -1,6 +1,6 @@
 using NNlib, Test, LinearAlgebra, Logging
 using NNlib: storage_type, storage_typejoin, is_strided,
-    batched_mul!, batched_mul_generic!, _unbatch, _copy_if_faster,
+    batched_mul_generic!, _unbatch, _copy_if_faster,
     BatchedAdjoint, BatchedTranspose
 
 function bmm_test(a,b; transA = false, transB = false)

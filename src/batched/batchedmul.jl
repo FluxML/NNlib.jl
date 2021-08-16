@@ -1,5 +1,5 @@
 
-export batched_mul, ⊠,  batched_vec
+export batched_mul, batched_mul!, ⊠,  batched_vec
 export batched_transpose, batched_adjoint
 
 include("./batchedadjtrans.jl")
