@@ -7,6 +7,7 @@ using Statistics: mean
 using CUDA
 CUDA.allowscalar(false)
 
+@testset "NNlibCUDA" begin
 include("test_utils.jl")
 include("activations.jl")
 include("batchedmul.jl")
@@ -17,3 +18,4 @@ include("softmax.jl")
 include("batchnorm.jl")
 include("scatter.jl")
 include("gather.jl")
+end
