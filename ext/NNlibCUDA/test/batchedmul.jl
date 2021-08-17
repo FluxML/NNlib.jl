@@ -51,6 +51,6 @@ end
     @test !is_strided((M .+ im)')
     @test !is_strided(Diagonal(cu(ones(3))))
 
-    @test storage_type(M) == CuArray{Float32,2}
-    @test storage_type(reshape(view(M, 1:2:10,:), 10,:)) == CuArray{Float32,2}
+    @test storage_type(M) <: CuArray{Float32,2}
+    @test storage_type(reshape(view(M, 1:2:10,:), 10,:)) <: CuArray{Float32,2}
 end
