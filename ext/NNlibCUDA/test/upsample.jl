@@ -1,3 +1,23 @@
+@testset "Linear upsampling" begin
+    x = Float32.(1:10)[:,:,:]
+    x = cat(x, x; dims=2)
+    x = cat(x, x; dims=3)
+    xgpu = cu(x)
+
+    y_true = Float32.(1:1//2:10)
+    y_true = cat(y_true, y_true; dims=2)
+    y_true = cat(y_true, y_true; dims=3)
+    y_true_gpu = cu(y_true)
+
+    y = upsample_linear(xgpu; size=19)
+    
+    @test size(y) == size(y_true_gpu)
+    @test eltype(y) == Float32
+    @test collect(y) ≈ collect(y_true_gpu)
+
+    gputest(x -> upsample_linear(x, 2), x, atol=1e-5)
+end
+
 @testset "Bilinear upsampling" begin
     x = Float32[1 2; 3 4][:,:,:,:]
     x = cat(x,x; dims=3)

@@ -52,6 +52,106 @@
     end
 end
 
+
+###########
+# linear
+###########
+function upsample_linear_wcn_kernel!(n_elem, rwidth, x, y, align_corners)
+    index = (threadIdx().x - 1) + (blockIdx().x - 1) * blockDim().x
+
+    if index < n_elem
+        in_w, channels, batchsize = size(x)
+        out_w, _, _ = size(y)
+
+        ow = index % out_w
+
+        # real_index = rwidth*ow
+        real_index = compute_source_index(rwidth, ow, align_corners)
+        iw0 = Base.floor(Int, real_index)
+        offset = (iw0 < in_w-1) ? 1 : 0
+        iw1 = iw0 + offset + 1
+        w1lambda = real_index - iw0
+        w0lambda = 1 - w1lambda
+        iw0 += 1
+
+        @inbounds for n in 1:batchsize
+            for c in 1:channels
+                val = (w0lambda * x[iw0, c, n]  + # w0 * i00
+                       w1lambda * x[iw1, c, n])   # w1 * i01
+                y[ow+1, c, n] = val
+            end
+        end
+    end
+    return nothing
+end
+
+# Δ is the gradient backpropagated from downstream layers
+function ∇upsample_linear_wcn_kernel!(n_elem, rwidth, Δ, dx, align_corners)
+    index = (threadIdx().x - 1) + (blockIdx().x - 1) * blockDim().x
+
+    if index < n_elem
+        in_width, channels, batchsize = size(Δ)
+        out_width, _, _ = size(dx)
+
+        iw = index % in_width
+
+        # real_index_w = rwidth * iw
+        real_index_w = compute_source_index(rwidth, iw, align_corners)
+        ow0 = Base.floor(Int, real_index_w)
+        offset = (ow0 < out_width - 1) ? 1 : 0
+        ow1 = ow0 + offset + 1
+        w1lambda = real_index_w - ow0
+        w0lambda = 1 - w1lambda
+        ow0 += 1
+
+        @inbounds for n in 1:batchsize
+            for c in 1:channels
+                val = Δ[iw+1, c, n]
+                CUDA.@atomic dx[ow0, c, n] += w0lambda * val
+                CUDA.@atomic dx[ow1, c, n] += w1lambda * val
+            end
+        end
+    end # if
+    return nothing
+end
+
+function NNlib.upsample_linear_wcn!(y::CuArray{T,3}, x::CuArray{T,3}; align_corners=true) where T
+    out_size = size(y)[1] # w
+
+    if align_corners
+        ratios = ntuple(i -> T((size(x,i)-1) / (size(y,i)-1)), 1)
+    else
+        ratios = ntuple(i -> T(size(x,i) / size(y,i)), 1)
+    end
+
+    kernel = @cuda launch=false upsample_linear_wcn_kernel!(out_size, ratios..., x, y, align_corners)
+    config = launch_configuration(kernel.fun; max_threads=256)
+    threads = Base.min(out_size, config.threads)
+    blocks = cld(out_size, threads)
+    kernel(out_size, ratios..., x, y, align_corners; threads=threads, blocks=blocks)
+    return y
+end
+
+function NNlib.∇upsample_linear_wcn!(dx::CuArray{T,3}, Δ::CuArray{T,3}; align_corners=true) where T
+    in_size = size(Δ)[1]
+    if align_corners
+        ratios = ntuple(i -> T((size(dx,i)-1) / (size(Δ,i)-1)), 1)  # reversed compared to forward pass
+    else
+        ratios = ntuple(i -> T(size(dx,i) / size(Δ,i)), 1)
+    end
+
+    kernel = @cuda launch=false ∇upsample_linear_wcn_kernel!(in_size, ratios..., Δ, dx, align_corners)
+    config = launch_configuration(kernel.fun; max_threads=256)
+    threads = Base.min(in_size, config.threads)
+    blocks = cld(in_size, threads)
+    kernel(in_size, ratios..., Δ, dx, align_corners; threads=threads, blocks=blocks)
+    return dx
+end
+
+
+###########
+# bilinear
+###########
 function upsample_bilinear_whcn_kernel!(n_elem, rwidth, rheight, x, y, align_corners)
     index = (threadIdx().x - 1) + (blockIdx().x - 1) * blockDim().x
 
