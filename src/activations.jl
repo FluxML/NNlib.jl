@@ -678,8 +678,8 @@ end
     # That has bad errors near zero; using expm1 would be slower & more accurate.
     # Instead, we switch to an taylor series; seems to add about 50% to time.
     x2 = x * x
-    ypoly = x * evalpoly(x2, (0.9999999999999999, -0.33333333333309806, 0.13333333318143492, -0.053968217983868146 , 0.021865628148606587, -0.008671836868790176))
-    ifelse(x2 > 900.0, sign(y), ifelse(x2 < 0.017, oftype(y, ypoly), y))
+    ypoly = x * evalpoly(x2, (1.0, -0.33333333333333337, 0.1333333333332623, -0.0539682539194502, 0.021869476267930975, -0.00886184042142138, 0.0035188503873932893))
+    ifelse(x2 > 900.0, sign(y), ifelse(x2 < 0.02, oftype(y, ypoly), y))
 end
 
 tanh_fast(x::Float16) = Base.tanh(x) # Other approximations are very badly behaved for Float16; none are fast.
