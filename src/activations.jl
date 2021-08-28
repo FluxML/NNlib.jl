@@ -656,15 +656,14 @@ end
 ## Faster, less accurate, versions of some.
 
 """
-    tanh_fast(x::Float32)
+    tanh_fast(x)
 
 This is a faster but less accurate version of `tanh`.
 It has error of 5eps, instead of 1.5 eps for Julia's;
-under one less decimal digit. Usually about 10x faster.
+under one less decimal digit. 
 
-`tanh_new(x::Float16)` uses the same rational approximation,
-about twice the error of Julia's, about twice the speed
-(but still 5x slower than `Float32`). Might be better to remove this.
+Usually about 10x faster for Float32 (using a rational approximation),
+and 3x faster for Float64.
 """
 @inline function tanh_fast(x::Float32)
     x2 = abs2(x)
@@ -673,32 +672,17 @@ about twice the error of Julia's, about twice the speed
     ifelse(x2 < 66f0, x * (n / d), sign(x))
 end
 
-# tanh_fast(x::Float16) # probably better. tanh_fast(x::Real) is very badly behaved for Float16.
-
-@inline function tanh_fast(x::Float16)
-    x2 = abs2(x)
-    n = evalpoly(x2, (Float16(1.0), Float16(0.1346), Float16(0.003597), Float16(2.235e-5)))
-    d = evalpoly(x2, (Float16(1.0), Float16(0.468), Float16(0.02626), Float16(0.0003455), Float16(9.0e-7)))
-    ifelse(x2 < Float16(18), x * (n / d), sign(x))
-end
-
-"""
-    tanh_fast(x) = exp(2x) / (1 + exp(2x))
-
-This is faster, but slightly less accurate, version of `tanh`.
-For `x::Float64`, this has errors up to about `3e-15`, sometimes `> 10 * eps(x)`,
-and should be about 2-5 times faster.
-
-But `tanh_new(x::Float32)` is more important, and a different approximation.
-"""
 @inline function tanh_fast(x::Real)
-   exp2x = @fastmath exp(x + x)
-   y = (exp2x - 1) / (exp2x + 1)
-   ifelse(x > 30, one(y), ifelse(x < -30, -one(y), y))
+    exp2x = @fastmath exp(x + x)
+    y = (exp2x - 1) / (exp2x + 1) 
+    # That has bad errors near zero; using expm1 would be slower & more accurate.
+    # Instead, we switch to an taylor series; seems to add about 50% to time.
+    x2 = x * x
+    ypoly = x * evalpoly(x2, (0.9999999999999999, -0.33333333333309806, 0.13333333318143492, -0.053968217983868146 , 0.021865628148606587, -0.008671836868790176))
+    ifelse(x2 > 900.0, sign(y), ifelse(x2 < 0.017, oftype(y, ypoly), y))
 end
-# Badly behaved examples, without the stop:
-# tanh_fast(400.0), tanh_fast(60f0), tanh_fast(Float16(6)) 
 
+tanh_fast(x::Float16) = Base.tanh(x) # Other approximations are very badly behaved for Float16; none are fast.
 
 """
     sigmoid_fast(x)
