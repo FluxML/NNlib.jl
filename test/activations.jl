@@ -301,7 +301,7 @@ end
         worst_eps(sigmoid, sigmoid, -x32) # 2
 
         @test mean_eps(sigmoid_fast, sigmoid, -x32) < 0.5  # 0.38088
-        @test worst_eps(sigmoid_fast, sigmoid, -x32) <= 2  # 164
+        @test worst_eps(sigmoid_fast, sigmoid, -x32) <= 2  # 2
 
         @test sigmoid_fast.(xbig32) ≈ sigmoid.(xbig32)
         @test sigmoid_fast.(-xbig32) ≈ sigmoid.(-xbig32)

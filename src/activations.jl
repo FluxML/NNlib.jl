@@ -665,6 +665,8 @@ may be wrong by 5 eps, a reduction by less than one decimal digit.
 
 For `x::Float32` this is usually about 10 times faster,
 with a smaller speedup for `x::Float64`.
+
+See also [`sigmoid_fast`](@ref).
 """
 @inline function tanh_fast(x::Float32)
     x2 = abs2(x)
@@ -689,6 +691,9 @@ tanh_fast(x::Float16) = Base.tanh(x) # Other approximations are very badly behav
     sigmoid_fast(x)
 
 This is a faster, and very slightly less accurate, version of `sigmoid`.
+For `x::Float32, perhaps 3 times faster, and maximum errors 2 eps instead of 1.
+
+See also [`tanh_fast`](@ref).
 """
 @inline function sigmoid_fast(x::Real)
     t = @fastmath exp(-abs(x))
