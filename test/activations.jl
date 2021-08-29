@@ -258,7 +258,7 @@ worst_eps(f, g, xs) = maximum(x -> abs(countepsfrom(f(x), g(big(x)))), xs)
         mean_eps(sigmoid, sigmoid, x64)  # 0.39246
         worst_eps(sigmoid, sigmoid, x64) # 1
 
-        @test mean_eps(sigmoid_fast, sigmoid, x64) < 0.2  # 0.1355
+        @test mean_eps(sigmoid_fast, sigmoid, x64) < 0.5  # 0.40432
         @test worst_eps(sigmoid_fast, sigmoid, x64) <= 5  # 2
 
         mean_eps(sigmoid, sigmoid, -x64)  # 0.37672
@@ -294,14 +294,14 @@ end
         mean_eps(sigmoid, sigmoid, x32)  # 0.38896
         worst_eps(sigmoid, sigmoid, x32) # 1
 
-        @test mean_eps(sigmoid_fast, sigmoid, x32) < 0.2  # 0.29848
-        @test worst_eps(sigmoid_fast, sigmoid, x32) <= 5  # 2
+        @test mean_eps(sigmoid_fast, sigmoid, x32) < 0.5  # 0.38896
+        @test worst_eps(sigmoid_fast, sigmoid, x32) <= 2  # 2
 
         mean_eps(sigmoid, sigmoid, -x32)  # 0.38088
         worst_eps(sigmoid, sigmoid, -x32) # 2
 
-        @test_broken mean_eps(sigmoid_fast, sigmoid, -x32) < 0.6  # 7.18142
-        @test_broken worst_eps(sigmoid_fast, sigmoid, -x32) <= 5  # 164
+        @test mean_eps(sigmoid_fast, sigmoid, -x32) < 0.5  # 0.38088
+        @test worst_eps(sigmoid_fast, sigmoid, -x32) <= 2  # 164
 
         @test sigmoid_fast.(xbig32) ≈ sigmoid.(xbig32)
         @test sigmoid_fast.(-xbig32) ≈ sigmoid.(-xbig32)

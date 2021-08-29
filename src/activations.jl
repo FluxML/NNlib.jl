@@ -660,7 +660,7 @@ end
 
 This is a faster but slighly less accurate version of `tanh`.
 
-Where Julia's `tanh` function has an error of about 1.5 eps, this
+Where Julia's `tanh` function has an error under 2 eps, this
 may be wrong by 5 eps, a reduction by less than one decimal digit. 
 
 For `x::Float32` this is usually about 10 times faster,
@@ -688,20 +688,15 @@ tanh_fast(x::Float16) = Base.tanh(x) # Other approximations are very badly behav
 """
     sigmoid_fast(x)
 
-Like `tanh_fast`, except for `sigmoid`. 
+This is a faster, and very slightly less accurate, version of `sigmoid`.
 """
 @inline function sigmoid_fast(x::Real)
-    s = @fastmath exp(x)
-    y = s / (s + 1)
-    ifelse(x > 60, one(y), ifelse(x < -20, zero(y), y))
+    t = @fastmath exp(-abs(x))
+    y = ifelse(x ≥ 0, inv(1 + t), t / (1 + t))
+    ifelse(x > 40, one(y), ifelse(x < -80, zero(y), y))
 end
-
-@inline function sigmoid_fast(y::Float32)
-    x2 = abs2(0.5f0 * y)
-    n = evalpoly(x2, (1.0f0, 0.1346604f0, 0.0035974074f0, 2.2332108f-5, 1.587199f-8))
-    d = evalpoly(x2, (1.0f0, 0.4679937f0, 0.026262015f0, 0.0003453992f0, 8.7767893f-7))
-    ifelse(x2 < 66f0, muladd(0.25f0, y * (n / d), 0.5f0), ifelse(y<0, 0f0, 1f0))
-end
+# For x::Float32, this is not as quick as the rational tanh_fast(x) above,
+# but that polynomial has poor relative accuracy for negative x.
 
 sigmoid_fast(x::Float16) = sigmoid(x)  # sigmoid_fast is extremely badly behaved at large x
 
