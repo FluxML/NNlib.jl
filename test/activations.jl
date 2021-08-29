@@ -281,10 +281,10 @@ end
         mean_eps(tanh, tanh, x32)  # 0.065
         worst_eps(tanh, tanh, x32) # 1
 
-        @test mean_eps(tanh_fast, tanh, x32) < 0.7  # 0.65414
+        @test mean_eps(tanh_fast, tanh, x32) < 0.8  # 0.65414
         @test worst_eps(tanh_fast, tanh, x32) <= 5  # 5
 
-        @test mean_eps(tanh_fast, tanh, -x32) < 0.7 # 0.65414
+        @test mean_eps(tanh_fast, tanh, -x32) < 0.8 # 0.65414
         @test worst_eps(tanh_fast, tanh, -x32) <= 5 # 5
 
         @test tanh_fast.(xbig32) ≈ tanh.(xbig32)
