@@ -8,7 +8,7 @@ ACTIVATIONS = [
     :leakyrelu, :relu6, :rrelu, :elu, :gelu, :swish, :selu,
     :celu, :softplus, :softsign, :logσ, :logcosh,
     :mish, :tanhshrink, :softshrink, :trelu, :lisht,
-    :tanh_fast, :tanh_faster, :sigmoid_fast,
+    :tanh_fast, :sigmoid_fast,
     ]
 
 for f in ACTIVATIONS
@@ -658,12 +658,13 @@ end
 """
     tanh_fast(x)
 
-This is a faster but less accurate version of `tanh`.
-It has error of 5eps, instead of 1.5 eps for Julia's;
-under one less decimal digit. 
+This is a faster but slighly less accurate version of `tanh`.
 
-Usually about 10x faster for Float32 (using a rational approximation),
-and 3x faster for Float64.
+Where Julia's `tanh` function has an error of about 1.5 eps, this
+may be wrong by 5 eps, a reduction by less than one decimal digit. 
+
+For `x::Float32` this is usually about 10 times faster,
+with a smaller speedup for `x::Float64`.
 """
 @inline function tanh_fast(x::Float32)
     x2 = abs2(x)
@@ -675,8 +676,8 @@ end
 @inline function tanh_fast(x::Real)
     exp2x = @fastmath exp(x + x)
     y = (exp2x - 1) / (exp2x + 1) 
-    # That has bad errors near zero; using expm1 would be slower & more accurate.
-    # Instead, we switch to an taylor series; seems to add about 50% to time.
+    # That has large errors near zero; using `expm1` would more accurate, but about as slow as `tanh`.
+    # Instead, we switch to an Taylor series. This is very accurate within its range:
     x2 = x * x
     ypoly = x * evalpoly(x2, (1.0, -0.33333333333333337, 0.1333333333332623, -0.0539682539194502, 0.021869476267930975, -0.00886184042142138, 0.0035188503873932893))
     ifelse(x2 > 900.0, sign(y), ifelse(x2 < 0.02, oftype(y, ypoly), y))
@@ -688,21 +689,18 @@ tanh_fast(x::Float16) = Base.tanh(x) # Other approximations are very badly behav
     sigmoid_fast(x)
 
 Like `tanh_fast`, except for `sigmoid`. 
-This needs updating to match latest tanh version.
 """
 @inline function sigmoid_fast(x::Real)
-   s = @fastmath exp(x)
-   y = s / (s + 1)
-   stop = _fast_stop(sigmoid_fast, x)
-   ifelse(x > 60, one(y), ifelse(x < -stop, zero(y), y))
+    s = @fastmath exp(x)
+    y = s / (s + 1)
+    ifelse(x > 60, one(y), ifelse(x < -20, zero(y), y))
 end
 
-@inline function sigmoid_fast(x::Float32)
-    T = float(typeof(x))
-    x2 = x^2
-    num = @fastmath T(47.4669725544) * x * ((( x2 + T(1.06315869e+03) ) * x2 + T(1.88748783e+05) ) * x2 + T(5.86237309e+06) )
-    den = @fastmath ((( ( x2 + T(4.03183926e+03) ) * x2 + T(1.64253046e+06) ) * x2 + T(1.28592857e+08) ) * x2 + T(1.11307745e+09) )
-    T(0.5) + num / den  # this is really hacked together
+@inline function sigmoid_fast(y::Float32)
+    x2 = abs2(0.5f0 * y)
+    n = evalpoly(x2, (1.0f0, 0.1346604f0, 0.0035974074f0, 2.2332108f-5, 1.587199f-8))
+    d = evalpoly(x2, (1.0f0, 0.4679937f0, 0.026262015f0, 0.0003453992f0, 8.7767893f-7))
+    ifelse(x2 < 66f0, muladd(0.25f0, y * (n / d), 0.5f0), ifelse(y<0, 0f0, 1f0))
 end
 
 sigmoid_fast(x::Float16) = sigmoid(x)  # sigmoid_fast is extremely badly behaved at large x

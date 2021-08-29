@@ -223,18 +223,89 @@ end
 
 ## Faster variants
 
-using NNlib: tanh_fast, tanh_faster, sigmoid_fast, _fast_stop
+using NNlib: tanh_fast, sigmoid_fast
 
-@testset "$fast(::$T)" for T in [Float64, Float32], #, Float16]
-    (fast, slow, atol, jump) in [
-        (tanh_fast, tanh,       5*eps(T), 0     ), 
-        (sigmoid_fast, sigmoid, 5*eps(T), 1e-25 )
-    ] 
+function countepsfrom(x::T, xtrue) where {T<:AbstractFloat}
+    target = T(xtrue)
+    for n in Iterators.flatten(zip(0:100, -1:-1:-100))
+        nextfloat(x, n) === target && return n
+    end
+    return round(Int, (target - x) / eps(x))
+end
 
-    @test @inferred(fast(one(T))) isa T
+mean_eps(f, g, xs) = mean(x -> abs(countepsfrom(f(x), g(big(x)))), xs)
+worst_eps(f, g, xs) = maximum(x -> abs(countepsfrom(f(x), g(big(x)))), xs)
 
-    @test Float64.(fast.(T.(-5:0.1:5))) ≈ slow.(-5:0.1:5)  atol = atol
-    @test Float64.(fast.(T.(-200:13.3:200))) ≈ slow.(-200:13.3:200)  atol = atol
+@testset "tanh_fast & sigmoid_fast: Float64" begin
+    
+    x64 = 1e-6:1e-4:5
+    xbig = 6:3:200.0
+    
+    @testset "tanh" begin
+        mean_eps(tanh, tanh, x64)  # 0.06582
+        worst_eps(tanh, tanh, x64) # 2
+
+        @test mean_eps(tanh_fast, tanh, x64) < 0.2  # 0.13164
+        @test worst_eps(tanh_fast, tanh, x64) <= 5  # 5
+
+        @test mean_eps(tanh_fast, tanh, -x64) < 0.6 # 0.5248
+        @test worst_eps(tanh_fast, tanh, -x64) <= 5 # 5
+
+        @test tanh_fast.(xbig) ≈ tanh.(xbig)
+        @test tanh_fast.(-xbig) ≈ tanh.(-xbig)
+    end
+    @testset "sigmoid" begin
+        mean_eps(sigmoid, sigmoid, x64)  # 0.39246
+        worst_eps(sigmoid, sigmoid, x64) # 1
+
+        @test mean_eps(sigmoid_fast, sigmoid, x64) < 0.2  # 0.1355
+        @test worst_eps(sigmoid_fast, sigmoid, x64) <= 5  # 2
+
+        mean_eps(sigmoid, sigmoid, -x64)  # 0.37672
+        worst_eps(sigmoid, sigmoid, -x64) # 2
+
+        @test mean_eps(sigmoid_fast, sigmoid, -x64) < 0.6  # 0.56478
+        @test worst_eps(sigmoid_fast, sigmoid, -x64) <= 5  # 4
+
+        @test sigmoid_fast.(xbig) ≈ sigmoid.(xbig)
+        @test sigmoid_fast.(-xbig) ≈ sigmoid.(-xbig)
+    end
+end
+
+@testset "tanh_fast & sigmoid_fast: Float32" begin
+    
+    x32 = 1f-6:1f-4:5
+    xbig32 = 6:3:200f0
+
+    @testset "tanh" begin
+        mean_eps(tanh, tanh, x32)  # 0.065
+        worst_eps(tanh, tanh, x32) # 1
+
+        @test mean_eps(tanh_fast, tanh, x32) < 0.7  # 0.65414
+        @test worst_eps(tanh_fast, tanh, x32) <= 5  # 5
+
+        @test mean_eps(tanh_fast, tanh, -x32) < 0.7 # 0.65414
+        @test worst_eps(tanh_fast, tanh, -x32) <= 5 # 5
+
+        @test tanh_fast.(xbig32) ≈ tanh.(xbig32)
+        @test tanh_fast.(-xbig32) ≈ tanh.(-xbig32)
+    end
+    @testset "sigmoid" begin
+        mean_eps(sigmoid, sigmoid, x32)  # 0.38896
+        worst_eps(sigmoid, sigmoid, x32) # 1
+
+        @test mean_eps(sigmoid_fast, sigmoid, x32) < 0.2  # 0.29848
+        @test worst_eps(sigmoid_fast, sigmoid, x32) <= 5  # 2
+
+        mean_eps(sigmoid, sigmoid, -x32)  # 0.38088
+        worst_eps(sigmoid, sigmoid, -x32) # 2
+
+        @test_broken mean_eps(sigmoid_fast, sigmoid, -x32) < 0.6  # 7.18142
+        @test_broken worst_eps(sigmoid_fast, sigmoid, -x32) <= 5  # 164
+
+        @test sigmoid_fast.(xbig32) ≈ sigmoid.(xbig32)
+        @test sigmoid_fast.(-xbig32) ≈ sigmoid.(-xbig32)
+    end
 end
 
 @testset "AutoDiff" begin
