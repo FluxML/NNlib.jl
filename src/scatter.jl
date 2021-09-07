@@ -148,9 +148,21 @@ end
 function ∇scatter_src(::typeof(mean), Δ, dst,
                     src::AbstractArray{Tsrc,Nsrc}, 
                     idx::AbstractArray{Tidx,Nidx}) where {Tsrc,Tidx,Nsrc,Nidx}
-    dims = Nsrc - Nidx
-    divide_by_counts!(gather(Δ, idx), idx, dims)
+    
+    M = typelength(Tidx)
+    num = gather(Δ, idx)
+    print("START")
+    counts = fill!(similar(Δ, Int, size(Δ)[end-M+1:end]), 0)
+    scatter!(+, counts, fill!(similar(idx), 1), idx)
+    den = gather(counts, idx)
+    
+    # make num and den broadcast compatible
+    for i in 1:ndims(num)-ndims(den)
+        den = unsqueeze(den)
+    end
+    return safe_div.(num, den)
 end
+
 
 ∇scatter_src(op, Δ, dst, src, idx) =
   ∇scatter_src(op, unthunk(Δ), dst, src, idx)

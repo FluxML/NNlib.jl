@@ -53,19 +53,4 @@ function reverse_indices(idx::AbstractArray{<:Any,N}) where N
     return reverse_indices!(rev, idx)
 end
 
-function count_indices(idx::AbstractArray)
-    counts = zero.(idx)
-    for i in unique(idx)
-        counts += sum(idx .== i) * (idx .== i)
-    end
-    return counts
-end
-
-function divide_by_counts!(xs, idx::AbstractArray, dims)
-    colons = Base.ntuple(_->Colon(), dims)
-    counts = count_indices(idx)
-    for i in CartesianIndices(counts)
-        view(xs, colons..., i) ./= counts[i]
-    end
-    return xs
-end
+unsqueeze(x) = reshape(x, 1, size(x)...) 
