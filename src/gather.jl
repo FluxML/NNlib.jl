@@ -63,7 +63,6 @@ function gather(src::AbstractArray{Tsrc, Nsrc},
     return gather!(dst, src, idx)
 end
 
-
 ∇gather_src(Δ, src_size, idx) = scatter!(+, fill!(similar(Δ, eltype(Δ), src_size), 0), Δ, idx)
 
 function rrule(::typeof(gather!), dst::AbstractArray, src::AbstractArray, idx::AbstractArray)

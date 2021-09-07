@@ -68,8 +68,7 @@ res = Dict(
                          4. 4. 6. 5. 5.],
 )
 
-types = [UInt8,  UInt32, UInt128,
-         Int16, Int64, BigInt,
+types = [UInt8,  UInt32, Int64,
          Float16, Float32, Float64, BigFloat, Rational]
 
 @testset "scatter" begin
