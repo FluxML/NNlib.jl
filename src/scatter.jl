@@ -152,7 +152,7 @@ function ∇scatter_src(::typeof(mean), Δ, dst,
     M = typelength(Tidx)
     num = gather(Δ, idx)
     counts = fill!(similar(Δ, Int, size(Δ)[end-M+1:end]), 0)
-    scatter!(+, counts, fill!(similar(idx), 1), idx)
+    scatter!(+, counts, fill!(similar(idx, Int), 1), idx)
     den = gather(counts, idx)
     # make num and den broadcast compatible
     for i in 1:ndims(num)-ndims(den)
