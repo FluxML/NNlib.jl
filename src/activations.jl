@@ -84,7 +84,7 @@ leakyrelu(x, a=oftf(x, 0.01)) = ifelse(x>0, float(x), oftf(x, a*x))  # max(a*x, 
 activation function capped at 6.
 See [Convolutional Deep Belief Networks on CIFAR-10](https://www.cs.toronto.edu/~kriz/conv-cifar10-aug2010.pdf)
 """
-relu6(x) = clamp(x, Int8(0), Int8(6))  # (small types preserve Int32, not really necc.)
+relu6(x) = clamp(x, oftype(x, 0), oftype(x, 6))  # clamp promotes, but clamp(x, 0, 6) would promote x::Int32
 
 """
     rrelu(x, l=1/8, u=1/3) = max(a*x, x)
