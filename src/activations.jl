@@ -58,7 +58,7 @@ const logsigmoid = logσ
 Segment-wise linear approximation of tanh. Cheaper  and  more  computational  efficient version of tanh.
 See [Large Scale Machine Learning](https://ronan.collobert.com/pub/matos/2004_phdthesis_lip6.pdf).
 """
-hardtanh(x) = clamp(x, oftype(x, -1), oftype(x, 1)  # clamp(x, -1, 1) is type-stable, but would promote Int32, for which we have tests
+hardtanh(x) = clamp(x, oftype(x, -1), oftype(x, 1))  # clamp(x, -1, 1) is type-stable, but would promote Int32, for which we have tests
 
 """
     relu(x) = max(0, x)
