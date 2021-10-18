@@ -27,7 +27,8 @@ NNlibCUDA = "a00861dc-f156-4864-bf3c-e6376f28a68d"
 Random = "9a3f8284-a2c9-5f02-9a11-845980a1fd5c"
 StableRNGs = "860ef19b-820b-49d6-a774-d7a799459cd3"
 Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
+UnicodePlots = "b8865327-cd53-5732-bb35-84acbb429228"
 Zygote = "e88e6eb3-aa80-5325-afca-941959d7151f"
 
 [targets]
-test = ["ChainRulesTestUtils", "CUDA", "FiniteDifferences", "Logging", "NNlibCUDA", "Random", "StableRNGs", "Test", "Zygote"]
+test = ["ChainRulesTestUtils", "CUDA", "FiniteDifferences", "Logging", "NNlibCUDA", "Random", "StableRNGs", "Test", "UnicodePlots", "Zygote"]
