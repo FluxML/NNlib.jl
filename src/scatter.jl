@@ -38,7 +38,7 @@ _view(X, colons, k) = view(X, colons..., k...)
 _view(X, colons, k::Union{Integer, CartesianIndex}) = view(X, colons..., k)
 
 """
-    scatter!(op, dst, src, idx)
+    NNlib.scatter!(op, dst, src, idx)
 
 Scatter operation, which scatters data in `src` and assigns to `dst` according to `idx`.
 A binary reduction operator `op` is applied during the scatter. 
@@ -74,7 +74,7 @@ end
 
 
 """
-    scatter(op, src, idx; [init, dstsize])
+    NNlib.scatter(op, src, idx; [init, dstsize])
 
 Scatter operation allocating a destination array `dst` and 
 calling `scatter!(op, dst, src, idx)` on it.

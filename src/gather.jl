@@ -1,5 +1,5 @@
 """
-    gather!(dst, src, idx)
+    NNlib.gather!(dst, src, idx)
 
 Reverse operation of [`scatter!`](@ref). Gathers data from source `src` 
 and writes it in destination `dst` according to the index array `idx`.
@@ -30,7 +30,7 @@ function gather!(dst::AbstractArray, src::AbstractArray, idx::AbstractArray)
 end
 
 """
-    gather(src, idx) -> dst
+    NNlib.gather(src, idx) -> dst
 
 Reverse operation of [`scatter`](@ref). Gathers data from source `src` 
 and writes it in a destination `dst` according to the index
