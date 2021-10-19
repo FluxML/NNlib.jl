@@ -28,7 +28,6 @@ on every dimension in `dims`.
 See also [`pad_zeros`](@ref), [`pad_reflect`](@ref) and [`pad_repeat`](@ref).
 
 ```jldoctest
-
 julia> r = reshape(1:4, 2, 2)
 2×2 reshape(::UnitRange{Int64}, 2, 2) with eltype Int64:
  1  3
@@ -43,7 +42,7 @@ julia> pad_constant(r, (1, 2, 3, 4), 8)
  8  8  8  8  8  8  8  8  8
 
 julia> pad_constant(r, 1, 8)
-5×9 Matrix{Int64}:
+4×4 Matrix{Int64}:
  8  8  8  8
  8  1  3  8
  8  2  4  8
@@ -67,7 +66,7 @@ julia> r = reshape(1:27, 3, 3, 3)
  21  24  27
 
 julia> pad_constant(r, (2,1), dims = 1) # assymetric padding
-6×3×3 Array{Int64,3}:
+6×3×3 Array{Int64, 3}:
 [:, :, 1] =
  0  0  0
  0  0  0
@@ -180,7 +179,6 @@ defaults to the first `ndims(x)-2` dimensions
 See also [`pad_reflect`](@ref) and [`pad_constant`](@ref).
 
 ```jldoctest
-
 julia> r = reshape(1:9, 3, 3)
 3×3 reshape(::UnitRange{Int64}, 3, 3) with eltype Int64:
  1  4  7
@@ -242,7 +240,6 @@ defaults to the first `ndims(x)-2` dimensions
 See also [`pad_repeat`](@ref) and [`pad_constant`](@ref).
 
 ```jldoctest
-
 julia> r = reshape(1:9, 3, 3)
 3×3 reshape(::UnitRange{Int64}, 3, 3) with eltype Int64:
  1  4  7
