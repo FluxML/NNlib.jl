@@ -28,7 +28,7 @@ function.
 Unicode `σ` can be entered as `\\sigma` then tab, in many editors.
 The ascii name `sigmoid` is also exported.
 
-```jldoctest; setup=(using NNlib, UnicodePlots)
+```
 julia> lineplot(sigmoid, -5, 5, height=7)
           ┌────────────────────────────────────────┐     
         1 │⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⡇⠀⠀⠀⠀⠀⠀⣀⡠⠤⠖⠒⠒⠋⠉⠉⠉⠉⠉⠉│ σ(x)
@@ -58,7 +58,7 @@ const sigmoid = σ
 
 Piecewise linear approximation of [`sigmoid`](@ref).
 
-```jldoctest; setup=(using NNlib, UnicodePlots)
+```
 julia> lineplot(hardsigmoid, -5, 5, height=7)
           ┌────────────────────────────────────────┐         
         1 │⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⡇⠀⠀⠀⠀⠀⠀⠀⢀⡠⠖⠋⠉⠉⠉⠉⠉⠉⠉⠉│ hardσ(x)
@@ -97,7 +97,7 @@ const hardsigmoid = hardσ
 
 Return `log(σ(x))` which is computed in a numerically stable way.
 
-```jldoctest; setup=(using NNlib, UnicodePlots)
+```
 julia> lineplot(logsigmoid, -5, 5, height=7)
            ┌────────────────────────────────────────┐        
          0 │⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣀⡧⠤⠔⠒⠒⠒⠉⠉⠉⠉⠉⠉⠉⠉⠉⠉⠉⠉⠉⠉│ logσ(x)
@@ -121,7 +121,7 @@ const logsigmoid = logσ
 Segment-wise linear approximation of `tanh`, much cheaper to compute.
 See ["Large Scale Machine Learning"](https://ronan.collobert.com/pub/matos/2004_phdthesis_lip6.pdf).
 
-```jldoctest; setup=(using NNlib, UnicodePlots)
+```
 julia> lineplot(hardtanh, -2, 2, height=7)
            ┌────────────────────────────────────────┐            
          1 │⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⡇⠀⠀⠀⠀⠀⠀⣀⠔⠋⠉⠉⠉⠉⠉⠉⠉⠉⠉⠉│ hardtanh(x)
@@ -157,7 +157,7 @@ hardtanh(x) = clamp(x, oftype(x, -1), oftype(x, 1))  # clamp(x, -1, 1) is type-s
 [Rectified Linear Unit](https://en.wikipedia.org/wiki/Rectifier_(neural_networks))
 activation function.
 
-```jldoctest; setup=(using NNlib, UnicodePlots)
+```
 julia> lineplot(relu, -2, 2, height=7)
           ┌────────────────────────────────────────┐        
         2 │⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⡇⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣀⠔⠋│ relu(x)
@@ -211,7 +211,7 @@ leakyrelu(x, a=oftf(x, 0.01)) = ifelse(x>0, float(x), oftf(x, a*x))  # max(a*x, 
 activation function capped at 6.
 See ["Convolutional Deep Belief Networks"](https://www.cs.toronto.edu/~kriz/conv-cifar10-aug2010.pdf) from CIFAR-10.
 
-```jldoctest; setup=(using NNlib, UnicodePlots)
+```
 julia> lineplot(relu6, -10, 10, height=7)
           ┌────────────────────────────────────────┐         
         6 │⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⡇⠀⠀⠀⠀⠀⠀⠀⠀⠀⣀⠎⠉⠉⠉⠉⠉⠉⠉⠉│ relu6(x)
@@ -266,7 +266,7 @@ Exponential Linear Unit activation function.
 See ["Fast and Accurate Deep Network Learning by Exponential Linear Units"](https://arxiv.org/abs/1511.07289).
 You can also specify the coefficient explicitly, e.g. `elu(x, 1)`.
 
-```jldoctest; setup=(using NNlib, UnicodePlots)
+```
 julia> lineplot(elu, -2, 2, height=7)
            ┌────────────────────────────────────────┐       
          2 │⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⡇⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣀⠤⠒⠉│ elu(x)
@@ -296,7 +296,7 @@ deriv_elu(Ω, α=1) = ifelse(Ω ≥ 0, one(Ω), Ω + α)
 
 Activation function from ["Gaussian Error Linear Units"](https://arxiv.org/abs/1606.08415).
 
-```jldoctest; setup=(using NNlib, UnicodePlots)
+```
 julia> lineplot(gelu, -2, 2, height=7)
            ┌────────────────────────────────────────┐        
          2 │⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⡇⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⡠⠔⠊│ gelu(x)
@@ -325,7 +325,7 @@ const gelu_λ = √(2 / π)
 Self-gated activation function.
 See ["Swish: a Self-Gated Activation Function"](https://arxiv.org/abs/1710.05941).
 
-```jldoctest; setup=(using NNlib, UnicodePlots)
+```
 julia> lineplot(swish, -2, 2, height=7)
            ┌────────────────────────────────────────┐         
          2 │⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⡇⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣀⡤│ swish(x)
@@ -348,7 +348,7 @@ swish(x) = x * σ(x)
 Activation function from 
 ["LiSHT: Non-Parametric Linearly Scaled Hyperbolic Tangent ..."](https://arxiv.org/abs/1901.05894)
 
-```jldoctest; setup=(using NNlib, UnicodePlots)
+```
 julia> lineplot(lisht, -2, 2, height=7)
           ┌────────────────────────────────────────┐         
         2 │⠢⣄⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⡇⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣀⠔│ lisht(x)
@@ -374,7 +374,7 @@ lisht(x) = x * tanh(x)
 Scaled exponential linear units.
 See ["Self-Normalizing Neural Networks"](https://arxiv.org/abs/1706.02515).
 
-```jldoctest; setup=(using NNlib, UnicodePlots)
+```
 julia> lineplot(selu, -2, 2, height=7)
            ┌────────────────────────────────────────┐        
          3 │⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⡇⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀│ selu(x)
@@ -412,7 +412,7 @@ end
 
 Activation function from ["Continuously Differentiable Exponential Linear Units"](https://arxiv.org/abs/1704.07483).
 
-```jldoctest; setup=(using NNlib, UnicodePlots)
+```
 julia> lineplot(celu, -2, 2, height=7)
            ┌────────────────────────────────────────┐        
          2 │⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⡇⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣀⠤⠒⠉│ celu(x)
@@ -438,7 +438,7 @@ celu(x, α=1) = ifelse(x ≥ 0, float(x), α * (exp(x/α) - 1))
 Threshold gated rectified linear activation function.
 See ["Zero-bias autoencoders and the benefits of co-adapting features"](https://arxiv.org/abs/1402.3337)
 
-```jldoctest; setup=(using NNlib, UnicodePlots)
+```
 julia> lineplot(trelu, -2, 4, height=7)
           ┌────────────────────────────────────────┐         
         4 │⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⡇⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣀⡤⠖⠋│ trelu(x)
@@ -462,7 +462,7 @@ const thresholdrelu = trelu
 
 See ["Quadratic Polynomials Learn Better Image Features"](http://www.iro.umontreal.ca/~lisa/publications2/index.php/attachments/single/205) (2009).
 
-```jldoctest; setup=(using NNlib, UnicodePlots)
+```
 julia> lineplot(softsign, -5, 5, height=7)
            ┌────────────────────────────────────────┐            
          1 │⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⡇⠀⠀⠀⠀⠀⠀⠀⠀⠀⣀⣀⣀⣀⣀⠤⠤⠤⠤⠤│ softsign(x)
@@ -503,7 +503,7 @@ softsign(x) = x / (1 + abs(x))
 
 See ["Deep Sparse Rectifier Neural Networks"](http://proceedings.mlr.press/v15/glorot11a/glorot11a.pdf), JMLR 2011.
 
-```jldoctest; setup=(using NNlib, UnicodePlots)
+```
 julia> lineplot(softplus, -3, 3, height=7)
           ┌────────────────────────────────────────┐            
         4 │⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⡇⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀│ softplus(x)
@@ -541,7 +541,7 @@ softplus(x) = log1p(exp(-abs(x))) + max(x, 0)
 
 Return `log(cosh(x))` which is computed in a numerically stable way.
 
-```jldoctest; setup=(using NNlib, UnicodePlots)
+```
 julia> lineplot(logcosh, -5, 5, height=7)
           ┌────────────────────────────────────────┐           
         5 │⡀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⡇⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀│ logcosh(x)
@@ -565,7 +565,7 @@ const log2 = log(2)
 
 Activation function from ["Mish: A Self Regularized Non-Monotonic Neural Activation Function"](https://arxiv.org/abs/1908.08681).
 
-```jldoctest; setup=(using NNlib, UnicodePlots)
+```
 julia> lineplot(mish, -5, 5, height=7)
            ┌────────────────────────────────────────┐        
          5 │⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⡇⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⡠⠖⠋│ mish(x)
@@ -587,7 +587,7 @@ mish(x) = x * tanh(softplus(x))
 
 See ["Tanhshrink Activation Function"](https://www.gabormelli.com/RKB/Tanhshrink_Activation_Function).
 
-```jldoctest; setup=(using NNlib, UnicodePlots)
+```
 julia> lineplot(tanhshrink, -3, 3, height=7)
            ┌────────────────────────────────────────┐              
          3 │⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⡇⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀│ tanhshrink(x)
@@ -613,7 +613,7 @@ tanhshrink(x) = x - tanh(x)
 
 See ["Softshrink Activation Function"](https://www.gabormelli.com/RKB/Softshrink_Activation_Function).
 
-```jldoctest; setup=(using NNlib, UnicodePlots)
+```
 julia> lineplot(softshrink, -2, 2, height=7)
            ┌────────────────────────────────────────┐              
          2 │⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⡇⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣀│ softshrink(x)
