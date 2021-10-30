@@ -28,18 +28,18 @@ See also [`logsoftmax`](@ref).
 
 ```jldoctest
 julia> softmax([1, 2, 3])
-3-element Array{Float64,1}:
-  0.0900306
-  0.244728
-  0.665241
+3-element Vector{Float64}:
+ 0.09003057317038046
+ 0.24472847105479764
+ 0.6652409557748218
 
 julia> softmax([1 2 3; 2 2 2])  # dims=1
-2×3 Array{Float64,2}:
+2×3 Matrix{Float64}:
  0.268941  0.5  0.731059
  0.731059  0.5  0.268941
 
 julia> softmax([1 2 3; 2 2 2]; dims=2)
-2×3 Array{Float64,2}:
+2×3 Matrix{Float64}:
  0.0900306  0.244728  0.665241
  0.333333   0.333333  0.333333
 ```

@@ -18,7 +18,7 @@ See also [`upsample_bilinear`](@ref), for two dimensions of an `N=4` array.
 # Example
 ```jldoctest
 julia> upsample_nearest([1 2 3; 4 5 6], (2, 3))
-4×9 Array{$Int,2}:
+4×9 Matrix{$Int}:
  1  1  1  2  2  2  3  3  3
  1  1  1  2  2  2  3  3  3
  4  4  4  5  5  5  6  6  6
@@ -28,7 +28,7 @@ julia> ans == upsample_nearest([1 2 3; 4 5 6]; size=(4, 9))  # equivalent
 true
 
 julia> upsample_nearest([1 2 3; 4 5 6], (2,))
-4×3 Array{$Int,1}:
+4×3 Matrix{$Int}:
  1  2  3
  1  2  3
  4  5  6
@@ -226,13 +226,13 @@ The size of the output is equal to
 
 ```jldoctest
 julia> x = reshape(Float32[1 2 3; 4 5 6], (2,3,1,1))
-2×3×1×1 Array{Float32,4}:
+2×3×1×1 Array{Float32, 4}:
 [:, :, 1, 1] =
  1.0  2.0  3.0
  4.0  5.0  6.0
 
 julia> upsample_bilinear(x, (2, 3))
-4×9×1×1 Array{Float32,4}:
+4×9×1×1 Array{Float32, 4}:
 [:, :, 1, 1] =
  1.0  1.25  1.5  1.75  2.0  2.25  2.5  2.75  3.0
  2.0  2.25  2.5  2.75  3.0  3.25  3.5  3.75  4.0
@@ -243,13 +243,13 @@ julia> ans == upsample_bilinear(x; size=(4, 9))  # specify ouput size instead
 true
 
 julia> upsample_bilinear(x, (2.5, 3.5))  # non-integer scaling factors are allowed
-5×10×1×1 Array{Float32,4}:
+5×10×1×1 Array{Float32, 4}:
 [:, :, 1, 1] =
- 1.0   1.22222  1.44444  1.66667  1.88889  2.11111  2.33333  2.55556  2.77778  3.0
- 1.75  1.97222  2.19444  2.41667  2.63889  2.86111  3.08333  3.30556  3.52778  3.75
- 2.5   2.72222  2.94444  3.16667  3.38889  3.61111  3.83333  4.05556  4.27778  4.5
- 3.25  3.47222  3.69444  3.91667  4.13889  4.36111  4.58333  4.80556  5.02778  5.25
- 4.0   4.22222  4.44444  4.66667  4.88889  5.11111  5.33333  5.55556  5.77778  6.0
+ 1.0   1.22222  1.44444  1.66667  1.88889  …  2.33333  2.55556  2.77778  3.0
+ 1.75  1.97222  2.19444  2.41667  2.63889     3.08333  3.30556  3.52778  3.75
+ 2.5   2.72222  2.94444  3.16667  3.38889     3.83333  4.05556  4.27778  4.5
+ 3.25  3.47222  3.69444  3.91667  4.13889     4.58333  4.80556  5.02778  5.25
+ 4.0   4.22222  4.44444  4.66667  4.88889     5.33333  5.55556  5.77778  6.0
 ```
 """
 function upsample_bilinear(x::AbstractArray{<:Any,4}, scale::NTuple{2,Real})
@@ -540,7 +540,7 @@ Reference: Shi et. al., "Real-Time Single Image and Video Super-Resolution ...",
 
 ```jldoctest
 julia> x = [10i + j + channel/10 for i in 1:2, j in 1:3, channel in 1:4, batch in 1:1]
-2×3×4×1 Array{Float64,4}:
+2×3×4×1 Array{Float64, 4}:
 [:, :, 1, 1] =
  11.1  12.1  13.1
  21.1  22.1  23.1
@@ -558,7 +558,7 @@ julia> x = [10i + j + channel/10 for i in 1:2, j in 1:3, channel in 1:4, batch i
  21.4  22.4  23.4
 
 julia> pixel_shuffle(x, 2)  # 4 channels used up as 2x upscaling of image dimensions
-4×6×1×1 Array{Float64,4}:
+4×6×1×1 Array{Float64, 4}:
 [:, :, 1, 1] =
  11.1  11.3  12.1  12.3  13.1  13.3
  11.2  11.4  12.2  12.4  13.2  13.4
@@ -573,7 +573,7 @@ julia> y = [i + channel/10 for i in 1:3, channel in 1:6, batch in 1:1]
  3.1  3.2  3.3  3.4  3.5  3.6
 
 julia> pixel_shuffle(y, 2)  # 1D image, with 6 channels reduced to 3
-6×3×1 Array{Float64,3}:
+6×3×1 Array{Float64, 3}:
 [:, :, 1] =
  1.1  1.3  1.5
  1.2  1.4  1.6

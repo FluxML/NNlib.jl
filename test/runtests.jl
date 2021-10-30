@@ -7,6 +7,15 @@ using Zygote: gradient
 using StableRNGs
 using CUDA
 
+if VERSION < v"1.6"
+    @info "skipping doctests, on Julia $VERSION"  
+else
+    using Documenter
+    DocMeta.setdocmeta!(NNlib, :DocTestSetup, :(using NNlib, UnicodePlots); recursive=true)
+    @testset "Doctests" begin
+        doctest(NNlib, manual=false)
+    end
+end
 
 const rng = StableRNG(123)
 
