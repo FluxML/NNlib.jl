@@ -1,5 +1,5 @@
 """
-    gather!(dst, src, idx)
+    NNlib.gather!(dst, src, idx)
 
 Reverse operation of [`scatter!`](@ref). Gathers data from source `src` 
 and writes it in destination `dst` according to the index array `idx`.
@@ -30,7 +30,7 @@ function gather!(dst::AbstractArray, src::AbstractArray, idx::AbstractArray)
 end
 
 """
-    gather(src, idx) -> dst
+    NNlib.gather(src, idx) -> dst
 
 Reverse operation of [`scatter`](@ref). Gathers data from source `src` 
 and writes it in a destination `dst` according to the index
@@ -52,6 +52,20 @@ A single `src` column can end up being copied into zero, one,
 or multiple `dst` columns.
 
 See [`gather!`](@ref) for an in-place version.
+
+# Examples
+```jldoctest
+julia> NNlib.gather([1,20,300,4000], [2,4,2])
+3-element Vector{Int64}:
+   20
+ 4000
+   20
+
+julia> NNlib.gather([1 2 3; 4 5 6], [1,3,1,3,1])
+2×5 Matrix{Int64}:
+ 1  3  1  3  1
+ 4  6  4  6  4
+```
 """
 function gather(src::AbstractArray{Tsrc, Nsrc}, 
                 idx::AbstractArray{Tidx, Nidx}) where 

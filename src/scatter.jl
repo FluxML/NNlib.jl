@@ -38,13 +38,15 @@ _view(X, colons, k) = view(X, colons..., k...)
 _view(X, colons, k::Union{Integer, CartesianIndex}) = view(X, colons..., k)
 
 """
-    scatter!(op, dst, src, idx)
+    NNlib.scatter!(op, dst, src, idx)
 
-Scatter operation, which scatters data in `src` and assigns to `dst` according to `idx`.
+Scatter operation, which writes data in `src` into `dst` at locations `idx`.
 A binary reduction operator `op` is applied during the scatter. 
 For each index `k` in `idx`, accumulates values in `dst` according to
 
     dst[:, ..., idx[k]...] = (op).(dst[:, ..., idx[k]...], src[:, ..., k...])
+
+See also [`scatter`](@ref), [`gather`](@ref).
 
 # Arguments
 
@@ -53,6 +55,20 @@ For each index `k` in `idx`, accumulates values in `dst` according to
 - `src`: The source data for aggregating.
 - `idx`: The mapping for aggregation from source (index) to destination (value). 
          The `idx` array can contain either integers or tuples.
+
+# Examples
+```jldoctest
+julia> NNlib.scatter!(+, ones(3), [10,100], [1,3])
+3-element Vector{Float64}:
+  11.0
+   1.0
+ 101.0
+
+julia> NNlib.scatter!(*, fill(0.5, 2, 4), [1 10; 100 1000], [3,2])
+2×4 Matrix{Float64}:
+ 0.5    5.0   0.5  0.5
+ 0.5  500.0  50.0  0.5
+```
 """
 function scatter!(op, dst::AbstractArray, src::AbstractArray, idx::AbstractArray)
     dims = scatter_dims(dst, src, idx)
@@ -74,19 +90,42 @@ end
 
 
 """
-    scatter(op, src, idx; [init, dstsize])
+    NNlib.scatter(op, src, idx; [init, dstsize])
 
 Scatter operation allocating a destination array `dst` and 
 calling `scatter!(op, dst, src, idx)` on it.
 
-If `init` is provided, it is used to initialize the content of `dst`.
-Otherwise, the init values is inferred from the reduction operator `op`
-for some common operators (e.g. `init = 0` for `op = +`). 
+* If keyword `init` is provided, it is used to initialize the content of `dst`.
+  Otherwise, the init values is inferred from the reduction operator `op`
+  for some common operators (e.g. `init = 0` for `op = +`). 
 
-If `dstsize` is provided, it will be used to define the size of
-destination array, otherwise it will be inferred by `src` and `idx`.
+* If `dstsize` is provided, it will be used to define the size of
+  destination array, otherwise it will be inferred by `src` and `idx`.
 
-See [`scatter!`](@ref) for the details.
+See [`scatter!`](@ref) for full details on how `idx` works.
+
+# Examples
+```jldoctest
+julia> NNlib.scatter(+, [10,100,1000], [3,1,2])
+3-element Vector{Int64}:
+  100
+ 1000
+   10
+
+julia> NNlib.scatter(+, [1 2 3 4; 5 6 7 8], [2,1,1,5])
+2×5 Matrix{Int64}:
+  5  1  0  0  4
+ 13  5  0  0  8
+
+julia> NNlib.scatter(*, [10,200,3000], [1,4,2]; init = 10, dstsize = 6)
+6-element Vector{Int64}:
+   100
+ 30000
+    10
+  2000
+    10
+    10
+```
 """
 function scatter(op,
                 src::AbstractArray{Tsrc,Nsrc},
