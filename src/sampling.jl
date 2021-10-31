@@ -4,13 +4,13 @@
 """
 Borders are considered out-of-bounds.
 """
-function ∇clip_coordinate(coordinate, dim_size)
+function ∇clip_coordinate(coordinate::C, dim_size) where C
     if coordinate ≤ 1
-        return 1, 0
+        return C(1), 0.0
     elseif coordinate ≥ dim_size
-        return dim_size, 0
+        return C(dim_size), 0.0
     end
-    coordinate, 1
+    coordinate, 1.0
 end
 
 """
@@ -61,38 +61,54 @@ interpolation mode - billinear
 """
 function grid_sampler(input, grid, padding_mode)
     T = eltype(input)
-    iW, iH, iC, iN = size(input)
-    gW, gH = size(grid, 1), size(grid, 2)
+    _, _, iC, iN = size(input)
+    _, gW, gH, _ = size(grid)
     output = similar(input, T, (gW, gH, iC, iN))
-    # Loop over each output pixel.
-    @inbounds for n in 1:iN, w in 1:gW, h in 1:gH
-        # Get the corresponding (x, y) coordinates from the grid.
-        x, y = grid[w, h, :, n]
-        ix = compute_source_index(x, iW, padding_mode)
-        iy = compute_source_index(y, iH, padding_mode)
-        # Get corner pixel values from (ix, iy) in north-east-south-west directions.
-        ix_nw = floor(Int64, ix)
-        ix_ne = ix_nw + 1
-        ix_sw = ix_nw
-        ix_se = ix_ne
+    grid_sampler!(output, input, grid, padding_mode)
+end
 
-        iy_nw = floor(Int64, iy)
-        iy_ne = iy_nw
-        iy_sw = iy_nw + 1
-        iy_se = iy_sw
-        # Get surfaces to each neighbor (a.k.a. interpolation weights).
-        nw = (ix_se - ix) * (iy_se - iy)
-        ne = (ix - ix_sw) * (iy_sw - iy)
-        sw = (ix_ne - ix) * (iy - iy_ne)
-        se = (ix - ix_nw) * (iy - iy_nw)
-        # ∀ channel: Calculate billinear weighted pixel value.
-        for c in 1:iC
-            r = T(0.0)
-            in_bounds(iy_nw, ix_nw, iH, iW) && (r += input[ix_nw, iy_nw, c, n] * nw)
-            in_bounds(iy_ne, ix_ne, iH, iW) && (r += input[ix_ne, iy_ne, c, n] * ne)
-            in_bounds(iy_sw, ix_sw, iH, iW) && (r += input[ix_sw, iy_sw, c, n] * sw)
-            in_bounds(iy_se, ix_se, iH, iW) && (r += input[ix_se, iy_se, c, n] * se)
-            output[w, h, c, n] = r
+function grid_sampler!(output, input, grid, padding_mode)
+    iW, iH, iC, iN = size(input)
+    _, gW, gH, _ = size(grid)
+    # Loop over each output pixel.
+    Threads.@threads for n in 1:iN
+        @inbounds for w in 1:gW, h in 1:gH
+            # Get the corresponding (x, y) coordinates from the grid.
+            x, y = grid[1, w, h, n], grid[2, w, h, n]
+            ix = compute_source_index(x, iW, padding_mode)
+            iy = compute_source_index(y, iH, padding_mode)
+            # Get corner pixel values from (ix, iy) in north-east-south-west directions.
+            ix_nw = floor(Int64, ix)
+            ix_ne = ix_nw + 1
+            ix_sw = ix_nw
+            ix_se = ix_ne
+
+            iy_nw = floor(Int64, iy)
+            iy_ne = iy_nw
+            iy_sw = iy_nw + 1
+            iy_se = iy_sw
+            # Get surfaces to each neighbor (a.k.a. interpolation weights).
+            nw = (ix_se - ix) * (iy_se - iy)
+            ne = (ix - ix_sw) * (iy_sw - iy)
+            sw = (ix_ne - ix) * (iy - iy_ne)
+            se = (ix - ix_nw) * (iy - iy_nw)
+            # ∀ channel: Calculate bilinear weighted pixel value.
+            for c in 1:iC
+                r = 0.0
+                if in_bounds(iy_nw, ix_nw, iH, iW)
+                    r += input[ix_nw, iy_nw, c, n] * nw
+                end
+                if in_bounds(iy_ne, ix_ne, iH, iW)
+                    r += input[ix_ne, iy_ne, c, n] * ne
+                end
+                if in_bounds(iy_sw, ix_sw, iH, iW)
+                    r += input[ix_sw, iy_sw, c, n] * sw
+                end
+                if in_bounds(iy_se, ix_se, iH, iW)
+                    r += input[ix_se, iy_se, c, n] * se
+                end
+                output[w, h, c, n] = r
+            end
         end
     end
     output
@@ -114,14 +130,17 @@ function ∇grid_sampler(Δ, input, grid, padding_mode)
     T = eltype(input)
     dx = zeros(T, size(input))
     dgrid = similar(grid)
+    ∇grid_sampler!(dx, dgrid, Δ, input, grid, padding_mode)
+end
 
+function ∇grid_sampler!(dx, dgrid, Δ, input, grid, padding_mode)
     iW, iH, iC, iN = size(input)
-    gW, gH = size(grid, 1), size(grid, 2)
+    gW, gH = size(grid, 2), size(grid, 3)
     # Loop over each output pixel.
-    for n in 1:iN
-        for w in 1:gW, h in 1:gH
+    Threads.@threads for n in 1:iN
+        @inbounds for w in 1:gW, h in 1:gH
             # Get corresponding (x, y) from grid.
-            x, y = grid[w, h, :, n]
+            x, y = grid[1, w, h, n], grid[2, w, h, n]
             # Compute multipliers for gradinets on ix, iy.
             ix, gix_mult = ∇compute_source_index(x, iW, padding_mode)
             iy, giy_mult = ∇compute_source_index(y, iH, padding_mode)
@@ -141,7 +160,7 @@ function ∇grid_sampler(Δ, input, grid, padding_mode)
             sw = (ix_ne - ix) * (iy - iy_ne)
             se = (ix - ix_nw) * (iy - iy_nw)
             # ∀ channel: Calculate billinear weighted pixel value.
-            gix, giy = 0, 0
+            gix, giy = 0.0, 0.0
             for c in 1:iC
                 g_out = Δ[w, h, c, n]
                 # Calculate dx and dgrid partials.
@@ -170,8 +189,8 @@ function ∇grid_sampler(Δ, input, grid, padding_mode)
                     giy += se_val * (ix - ix_nw) * g_out
                 end
             end
-            dgrid[w, h, 1, n] = gix_mult * gix
-            dgrid[w, h, 2, n] = giy_mult * giy
+            dgrid[1, w, h, n] = gix_mult * gix
+            dgrid[2, w, h, n] = giy_mult * giy
         end
     end
     dx, dgrid

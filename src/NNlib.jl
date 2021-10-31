@@ -57,30 +57,28 @@ include("impl/pooling_direct.jl")
 include("deprecations.jl")
 
 function main()
-    w, h, c = 1024, 1024, 2
-    input = rand(Float64, w, h, c, 1)
-    grid = zeros(Float64, w, h, 2, 1)
+    padding_mode = 0
+    w, h, c, n = 512, 512, 8, 32
+    input = rand(Float64, w, h, c, n)
+    grid = zeros(Float64, 2, w, h, n)
     delta = 0.01
 
-    for xi in 1:1024, yi in 1:1024
-        grid[xi, yi, 1, 1] = (xi / 1024) * 2 - 1 + delta
-        grid[xi, yi, 2, 1] = (yi / 1024) * 2 - 1
+    for xi in 1:w, yi in 1:h, ni in 1:n
+        grid[1, xi, yi, ni] = (xi / 1024) * 2 - 1 + delta
+        grid[2, xi, yi, ni] = (yi / 1024) * 2 - 1
     end
 
-    padding_mode = 0
+    output = similar(input, Float64, (w, h, c, n))
+    dx = similar(input)
+    dgrid = similar(grid)
+
     sampled = grid_sampler(input, grid, padding_mode)
-    out_grad = ones(size(sampled))
-    ∇input, ∇grid = ∇grid_sampler(out_grad, input, grid, padding_mode)
+    external_grad = ones(size(sampled))
+    ∇input, ∇grid = ∇grid_sampler(external_grad, input, grid, padding_mode)
 
-    @btime grid_sampler($input, $grid, $padding_mode)
-    @btime ∇grid_sampler($out_grad, $input, $grid, $padding_mode)
-
-    # display(sampled); println()
-    # @info "dx"
-    # display(∇input); println()
-    # @info "dgrid"
-    # display(∇grid); println()
+    @btime grid_sampler!($output, $input, $grid, $padding_mode)
+    @btime ∇grid_sampler!($dx, $dgrid, $external_grad, $input, $grid, $padding_mode)
 end
-main()
+# main()
 
 end # module NNlib
