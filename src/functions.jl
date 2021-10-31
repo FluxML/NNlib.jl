@@ -2,12 +2,9 @@ using NNlib: sigmoid
 """
     glu(x, dim = 1)
 
-The gated linear unit.
+The gated linear unit from the ["Language Modeling with Gated Convolutional Networks"](https://arxiv.org/abs/1612.08083) paper.
 
-Calculates `glu(x, dim) = a ⊗ σ(b)`, where
-  `x` is split in half along given dimension `dim` to form `a` and `b`
-  then the element-wise product between above matrices is computed
-See ["Language Modeling with Gated Convolutional Networks"](https://arxiv.org/abs/1612.08083).
+Calculates `a .* sigmoid(b)`, where `x` is split in half along given dimension `dim` to form `a` and `b`.
 """
 function glu(x, dim = 1)
     maxdim = size(x, dim)
