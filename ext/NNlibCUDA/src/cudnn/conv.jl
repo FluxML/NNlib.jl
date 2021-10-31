@@ -24,7 +24,6 @@ end
 
 function conv!(y::DenseCuArray{T}, x::DenseCuArray{T}, w::DenseCuArray{T}, cdims::DenseConvDims;
                alpha=1, beta=0, algo=-1) where T<:CUDNNFloat
-    @info size(y), size(x)
     if cudnnversion() < v"6"
         all(x -> x == 1, dilation(cdims)) || error("Only dilation = 1 is supported in cuDNN version < 6")
     end
@@ -56,7 +55,6 @@ end
 
 function ∇conv_data!(dx::DenseCuArray{T}, dy::DenseCuArray{T}, w::DenseCuArray{T},
                      cdims::DenseConvDims; alpha=1, beta=0, algo=-1) where T<:CUDNNFloat
-    @info size(dy), size(dx)
     if cudnnversion() < v"6"
         all(x -> x == 1, dilation(cdims)) || error("Only dilation = 1 is supported in cuDNN version < 6")
     end
