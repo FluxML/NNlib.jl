@@ -92,8 +92,8 @@ function ∇grid_sampler_kernel!(n_elem, dx, dgrid, Δ, input, grid, padding_mod
         # Get corresponding (x, y) from grid.
         x, y = grid[w, h, 1, n], grid[w, h, 2, n]
         # Compute multipliers for gradinets on ix, iy.
-        gix_mult, ix = ∇compute_source_index(x, iW, padding_mode)
-        giy_mult, iy = ∇compute_source_index(y, iH, padding_mode)
+        ix, gix_mult = ∇compute_source_index(x, iW, padding_mode)
+        iy, giy_mult = ∇compute_source_index(y, iH, padding_mode)
         # Get corner pixel values from (ix, iy) in north-east-south-west directions.
         ix_nw = floor(Int64, ix)
         ix_ne = ix_nw + 1
