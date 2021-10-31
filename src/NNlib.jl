@@ -57,18 +57,19 @@ include("impl/pooling_direct.jl")
 include("deprecations.jl")
 
 function main()
-    padding_mode = 0
-    w, h, c, n = 512, 512, 8, 32
-    input = rand(Float64, w, h, c, n)
-    grid = zeros(Float64, 2, w, h, n)
+    T = Float64
+    padding_mode = Val(:border)
+    w, h, c, n = 128, 128, 8, 32
+    input = rand(T, w, h, c, n)
+    grid = zeros(T, 2, w, h, n)
     delta = 0.01
 
     for xi in 1:w, yi in 1:h, ni in 1:n
-        grid[1, xi, yi, ni] = (xi / 1024) * 2 - 1 + delta
-        grid[2, xi, yi, ni] = (yi / 1024) * 2 - 1
+        grid[1, xi, yi, ni] = (xi / w) * 2 - 1 + delta
+        grid[2, xi, yi, ni] = (yi / h) * 2 - 1
     end
 
-    output = similar(input, Float64, (w, h, c, n))
+    output = similar(input, T, (w, h, c, n))
     dx = similar(input)
     dgrid = similar(grid)
 
@@ -79,6 +80,6 @@ function main()
     @btime grid_sampler!($output, $input, $grid, $padding_mode)
     @btime ∇grid_sampler!($dx, $dgrid, $external_grad, $input, $grid, $padding_mode)
 end
-# main()
+main()
 
 end # module NNlib

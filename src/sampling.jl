@@ -1,43 +1,27 @@
-@inbounds in_bounds(h, w, H, W) = 1 ≤ h ≤ H && 1 ≤ w ≤ W
-@inbounds clip_coordinate(coordinate, dim_size) = min(dim_size, max(1, coordinate))
+@inline in_bounds(h, w, H, W) = 1 ≤ h ≤ H && 1 ≤ w ≤ W
+@inline clip_coordinate(coordinate, dim_size) = min(dim_size, max(1, coordinate))
 
-"""
-Borders are considered out-of-bounds.
-"""
-function ∇clip_coordinate(coordinate::C, dim_size) where C
+# Borders are considered out-of-bounds.
+@inline function ∇clip_coordinate(coordinate::C, dim_size) where C
     if coordinate ≤ 1
-        return C(1), 0.0
+        return C(1), C(0)
     elseif coordinate ≥ dim_size
-        return C(dim_size), 0.0
+        return C(dim_size), C(0)
     end
-    coordinate, 1.0
+    coordinate, C(1)
 end
 
-"""
-Unnormalize coordinates from `[-1, 1]` to `[1, dim_size]`.
-Align corners - true:
-    -1 → 1
-    1 → dim_size
-"""
-function unnormalize(coordinate, dim_size)
-    ((coordinate + 1.0) / 2.0) * (dim_size - 1.0) + 1.0
-end
-function ∇unnormalize(coordinate, dim_size)
-    grad = (dim_size - 1.0) * 0.5
-    unnormalize(coordinate, dim_size), grad
-end
+@inline unnormalize(coordinate, dim_size) = ((coordinate + 1.0) / 2.0) * (dim_size - 1.0) + 1.0
+@inline ∇unnormalize(coordinate, dim_size) = unnormalize(coordinate, dim_size), (dim_size - 1.0) * 0.5
 
-function compute_source_index(coordinate, dim_size, padding_mode)
-    source_coordinate = unnormalize(coordinate, dim_size)
-    padding_mode == 0 ? source_coordinate : clip_coordinate(source_coordinate, dim_size)
-end
-function ∇compute_source_index(coordinate, dim_size, padding_mode)
+@inline compute_source_index(coordinate, dim_size, ::Val{:zeros}) = unnormalize(coordinate, dim_size)
+@inline compute_source_index(coordinate, dim_size, ::Val{:border}) = clip_coordinate(unnormalize(coordinate, dim_size), dim_size)
+
+@inline ∇compute_source_index(coordinate, dim_size, ::Val{:zeros}) = ∇unnormalize(coordinate, dim_size)
+@inline function ∇compute_source_index(coordinate, dim_size, ::Val{:border})
     source_coordinate, grad_in = ∇unnormalize(coordinate, dim_size)
-    if padding_mode == 1
-        source_coordinate, grad_clip = ∇clip_coordinate(source_coordinate, dim_size)
-        grad_in *= grad_clip
-    end
-    source_coordinate, grad_in
+    source_coordinate, grad_clip = ∇clip_coordinate(source_coordinate, dim_size)
+    source_coordinate, grad_in * grad_clip
 end
 
 """
@@ -66,34 +50,28 @@ function grid_sampler(input, grid, padding_mode)
     output = similar(input, T, (gW, gH, iC, iN))
     grid_sampler!(output, input, grid, padding_mode)
 end
-
 function grid_sampler!(output, input, grid, padding_mode)
     iW, iH, iC, iN = size(input)
     _, gW, gH, _ = size(grid)
     # Loop over each output pixel.
     Threads.@threads for n in 1:iN
-        @inbounds for w in 1:gW, h in 1:gH
+        for w in 1:gW, h in 1:gH
             # Get the corresponding (x, y) coordinates from the grid.
-            x, y = grid[1, w, h, n], grid[2, w, h, n]
+            @inbounds x, y = grid[1, w, h, n], grid[2, w, h, n]
             ix = compute_source_index(x, iW, padding_mode)
             iy = compute_source_index(y, iH, padding_mode)
             # Get corner pixel values from (ix, iy) in north-east-south-west directions.
-            ix_nw = floor(Int64, ix)
-            ix_ne = ix_nw + 1
-            ix_sw = ix_nw
-            ix_se = ix_ne
-
-            iy_nw = floor(Int64, iy)
-            iy_ne = iy_nw
-            iy_sw = iy_nw + 1
-            iy_se = iy_sw
+            ix_nw, iy_nw = floor(Int, ix), floor(Int64, iy)
+            ix_ne, iy_ne = ix_nw + 1, iy_nw
+            ix_sw, iy_sw = ix_nw, iy_nw + 1
+            ix_se, iy_se = ix_ne, iy_sw
             # Get surfaces to each neighbor (a.k.a. interpolation weights).
             nw = (ix_se - ix) * (iy_se - iy)
             ne = (ix - ix_sw) * (iy_sw - iy)
             sw = (ix_ne - ix) * (iy - iy_ne)
             se = (ix - ix_nw) * (iy - iy_nw)
             # ∀ channel: Calculate bilinear weighted pixel value.
-            for c in 1:iC
+            @inbounds for c in 1:iC
                 r = 0.0
                 if in_bounds(iy_nw, ix_nw, iH, iW)
                     r += input[ix_nw, iy_nw, c, n] * nw
@@ -132,28 +110,22 @@ function ∇grid_sampler(Δ, input, grid, padding_mode)
     dgrid = similar(grid)
     ∇grid_sampler!(dx, dgrid, Δ, input, grid, padding_mode)
 end
-
 function ∇grid_sampler!(dx, dgrid, Δ, input, grid, padding_mode)
     iW, iH, iC, iN = size(input)
     gW, gH = size(grid, 2), size(grid, 3)
     # Loop over each output pixel.
     Threads.@threads for n in 1:iN
-        @inbounds for w in 1:gW, h in 1:gH
+        for w in 1:gW, h in 1:gH
             # Get corresponding (x, y) from grid.
-            x, y = grid[1, w, h, n], grid[2, w, h, n]
+            @inbounds x, y = grid[1, w, h, n], grid[2, w, h, n]
             # Compute multipliers for gradinets on ix, iy.
             ix, gix_mult = ∇compute_source_index(x, iW, padding_mode)
             iy, giy_mult = ∇compute_source_index(y, iH, padding_mode)
             # Get corner pixel values from (ix, iy) in north-east-south-west directions.
-            ix_nw = floor(Int64, ix)
-            ix_ne = ix_nw + 1
-            ix_sw = ix_nw
-            ix_se = ix_ne
-
-            iy_nw = floor(Int64, iy)
-            iy_ne = iy_nw
-            iy_sw = iy_nw + 1
-            iy_se = iy_sw
+            ix_nw, iy_nw = floor(Int, ix), floor(Int, iy)
+            ix_ne, iy_ne = ix_nw + 1, iy_nw
+            ix_sw, iy_sw = ix_nw, iy_nw + 1
+            ix_se, iy_se = ix_ne, iy_sw
             # Get surfaces to each neighbor (a.k.a. interpolation weights).
             nw = (ix_se - ix) * (iy_se - iy)
             ne = (ix - ix_sw) * (iy_sw - iy)
@@ -161,7 +133,7 @@ function ∇grid_sampler!(dx, dgrid, Δ, input, grid, padding_mode)
             se = (ix - ix_nw) * (iy - iy_nw)
             # ∀ channel: Calculate billinear weighted pixel value.
             gix, giy = 0.0, 0.0
-            for c in 1:iC
+            @inbounds for c in 1:iC
                 g_out = Δ[w, h, c, n]
                 # Calculate dx and dgrid partials.
                 if in_bounds(iy_nw, ix_nw, iH, iW)
@@ -189,8 +161,8 @@ function ∇grid_sampler!(dx, dgrid, Δ, input, grid, padding_mode)
                     giy += se_val * (ix - ix_nw) * g_out
                 end
             end
-            dgrid[1, w, h, n] = gix_mult * gix
-            dgrid[2, w, h, n] = giy_mult * giy
+            @inbounds dgrid[1, w, h, n] = gix_mult * gix
+            @inbounds dgrid[2, w, h, n] = giy_mult * giy
         end
     end
     dx, dgrid
