@@ -38,6 +38,7 @@ include("upsample.jl")
 include("gather.jl")
 include("scatter.jl")
 include("utils.jl")
+include("functions.jl")
 
 ## Include implementations
 include("impl/padding_edges.jl")
