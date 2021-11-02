@@ -70,6 +70,10 @@ end
     include("sampling.jl")
 end
 
+@testset "Functions" begin
+    include("functions.jl")
+end
+
 if VERSION >= v"1.6" && CUDA.functional()
     if get(ENV, "NNLIB_TEST_CUDA", "false") == "true"
         import Pkg
