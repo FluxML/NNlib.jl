@@ -35,7 +35,7 @@ This implementation assumes the extrema (`-1` and `1`) are considered
 as referring to the center points of the input’s corner pixels
 (i.e. align corners is `true`).
 
-# Arguments:
+# Arguments
 
 - `input`: Input array in `(W_in, H_in, C, N)` shape.
 - `grid`: Input grid in `(2, W_out, H_out, N)` shape.
@@ -51,7 +51,7 @@ as referring to the center points of the input’s corner pixels
     `Val(:zeros)` to use `0` for out-of-bound grid locations.
     `Val(:border)` to use border values for out-of-bound grid locations.
 
-# Returns:
+# Returns
 
 `(W_out, H_out, C, N)` sampled grid from `input`.
 
@@ -145,19 +145,24 @@ function grid_sample!(output, input, grid, padding_mode)
 end
 
 """
-# Arguments:
+    ∇grid_sample(Δ::AbstractArray{T, 4}, input::AbstractArray{T, 4}, grid::AbstractArray{T, 4}; padding_mode) where T
 
-- `∇output`: Gradient in `W'H'CN` shape
-    (same shape as for the output from forward pass).
-- `input`: Input from forward pass in `WHCN` shape.
-- `grid`: Grid from forward pass in `W'H'2N` shape. Where for each `W'H'N`
-    grid contains `(x, y)` coordinates to sample from `input`.
+# Arguments
+
+- `Δ`: Input gradient in `(W_out, H_out, C, N)` shape
+    (same as output of the primal computation).
+- `input`: Input from primal computation in `(W_in, H_in, C, N)` shape.
+- `grid`: Grid from primal computation in `(2, W_out, H_out, N)` shape.
 - `padding_mode`: Out-of-bound padding.
-    `0` for zero-padding, `1` - for border padding.
-    Should be the same as in the forward pass.
+    `Val(:zeros)` to use `0` for out-of-bound grid locations.
+    `Val(:border)` to use border values for out-of-bound grid locations.
+    Should be the same as in primal computation.
+
+# Returns
+
+`dinput` (same shape as `input`) and `dgrid` (same shape as `grid`) gradients.
 """
-function ∇grid_sample(Δ, input, grid; padding_mode)
-    T = eltype(input)
+function ∇grid_sample(Δ::AbstractArray{T, 4}, input::AbstractArray{T, 4}, grid::AbstractArray{T, 4}; padding_mode) where T
     dx = zeros(T, size(input))
     dgrid = similar(grid)
     ∇grid_sample!(dx, dgrid, Δ, input, grid, padding_mode)
