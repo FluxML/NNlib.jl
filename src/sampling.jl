@@ -1,7 +1,8 @@
-@inline in_bounds(h, w, H, W) = 1 ≤ h ≤ H && 1 ≤ w ≤ W
-@inline clip_coordinate(coordinate, dim_size) = min(dim_size, max(1, coordinate))
+export grid_sample, ∇grid_sample
 
-# Borders are considered out-of-bounds.
+@inline in_bounds(h, w, H, W) = 1 ≤ h ≤ H && 1 ≤ w ≤ W
+# Borders are considered out-of-bounds for gradient.
+@inline clip_coordinate(coordinate, dim_size) = min(dim_size, max(1, coordinate))
 @inline function ∇clip_coordinate(coordinate::C, dim_size) where C
     if coordinate ≤ 1
         return C(1), C(0)
@@ -11,7 +12,7 @@
     coordinate, C(1)
 end
 
-@inline unnormalize(coordinate, dim_size) = ((coordinate + 1.0) / 2.0) * (dim_size - 1.0) + 1.0
+@inline unnormalize(coordinate, dim_size) = ((coordinate + 1.0) * 0.5) * (dim_size - 1.0) + 1.0
 @inline ∇unnormalize(coordinate, dim_size) = unnormalize(coordinate, dim_size), (dim_size - 1.0) * 0.5
 
 @inline compute_source_index(coordinate, dim_size, ::Val{:zeros}) = unnormalize(coordinate, dim_size)
@@ -25,32 +26,83 @@ end
 end
 
 """
-# Modes:
-align corners - true only
-padding mode - zeros, border
-interpolation mode - billinear
+    grid_sample(input::AbstractArray{T, 4}, grid::AbstractArray{T, 4}; padding_mode)
 
-# Arguments
+Given `input`, compute output by sampling `input` values at pixel
+locations from `grid`. Uses bilinear interpolation to calculate output values.
 
-- `input`: Input array in `WHCN` shape.
-- `grid`: Input grid in `W'H'2N` shape. Where for each `W'H'N`
-    grid contains `(x, y)` coordinates to sample from `input`.
-    `W'` can be different from `W` (same for `H'`).
+This implementation assumes the extrema (`-1` and `1`) are considered
+as referring to the center points of the input’s corner pixels
+(i.e. align corners is `true`).
+
+# Arguments:
+
+- `input`: Input array in `(W_in, H_in, C, N)` shape.
+- `grid`: Input grid in `(2, W_out, H_out, N)` shape.
+    Where for each `(W_out, H_out, N)` grid contains `(x, y)`
+    coordinates that specify sampling locations normalized by the `input` shape.
+
+    Therefore, it should have values mostly in `[-1, 1]` range.
+    For example, values `x = -1, y = -1` is the left-top pixel of `input`,
+    and values `x = 1, y = 1` is the right-bottom pixel of `input`.
+
+    Out-of-bound values are handled accroding to the `padding_mode`.
 - `padding_mode`: Out-of-bound padding.
-    `0` for zero-padding, `1` - for border padding.
+    `Val(:zeros)` to use `0` for out-of-bound grid locations.
+    `Val(:border)` to use border values for out-of-bound grid locations.
 
 # Returns:
 
-`W'H'CN` sampled tensor from `x`.
+`(W_out, H_out, C, N)` sampled grid from `input`.
+
+# Examples
+
+In the example below, grid contains two out-of-bound sampling locations,
+which are handled differently, depending on the `padding_mode`.
+
+```jldoctest
+julia> x = reshape(collect(1.0:4.0), (2, 2, 1, 1))
+2×2×1×1 Array{Float64, 4}:
+[:, :, 1, 1] =
+ 1.0  3.0
+ 2.0  4.0
+
+julia> grid = Array{Float64}(undef, 2, 3, 2, 1);
+
+julia> grid[:, 1, 1, 1] .= (-3, -1);
+
+julia> grid[:, 2, 1, 1] .= (0, -1);
+
+julia> grid[:, 3, 1, 1] .= (1, -1);
+
+julia> grid[:, 1, 2, 1] .= (-1, 1);
+
+julia> grid[:, 2, 2, 1] .= (0, 1);
+
+julia> grid[:, 3, 2, 1] .= (3, 1);
+
+julia> grid_sample(x, grid; padding_mode=Val(:zeros))
+3×2×1×1 Array{Float64, 4}:
+[:, :, 1, 1] =
+ 0.0  3.0
+ 1.5  3.5
+ 2.0  0.0
+
+julia> grid_sample(x, grid; padding_mode=Val(:border))
+3×2×1×1 Array{Float64, 4}:
+[:, :, 1, 1] =
+ 1.0  3.0
+ 1.5  3.5
+ 2.0  4.0
+```
 """
-function grid_sampler(input, grid, padding_mode)
-    T = eltype(input)
+function grid_sample(input::AbstractArray{T, 4}, grid::AbstractArray{T, 4}; padding_mode) where T
     _, _, iC, iN = size(input)
     _, gW, gH, _ = size(grid)
     output = similar(input, T, (gW, gH, iC, iN))
-    grid_sampler!(output, input, grid, padding_mode)
+    grid_sample!(output, input, grid, padding_mode)
 end
-function grid_sampler!(output, input, grid, padding_mode)
+function grid_sample!(output, input, grid, padding_mode)
     iW, iH, iC, iN = size(input)
     _, gW, gH, _ = size(grid)
     # Loop over each output pixel.
@@ -104,13 +156,13 @@ end
     `0` for zero-padding, `1` - for border padding.
     Should be the same as in the forward pass.
 """
-function ∇grid_sampler(Δ, input, grid, padding_mode)
+function ∇grid_sample(Δ, input, grid; padding_mode)
     T = eltype(input)
     dx = zeros(T, size(input))
     dgrid = similar(grid)
-    ∇grid_sampler!(dx, dgrid, Δ, input, grid, padding_mode)
+    ∇grid_sample!(dx, dgrid, Δ, input, grid, padding_mode)
 end
-function ∇grid_sampler!(dx, dgrid, Δ, input, grid, padding_mode)
+function ∇grid_sample!(dx, dgrid, Δ, input, grid, padding_mode)
     iW, iH, iC, iN = size(input)
     gW, gH = size(grid, 2), size(grid, 3)
     # Loop over each output pixel.
@@ -166,4 +218,13 @@ function ∇grid_sampler!(dx, dgrid, Δ, input, grid, padding_mode)
         end
     end
     dx, dgrid
+end
+
+function rrule(::typeof(grid_sample), x, grid; padding_mode)
+    y = grid_sample(x, grid; padding_mode=padding_mode)
+    function grid_sample_pullback(Δ)
+        ∇x, ∇grid = ∇grid_sample(unthunk(Δ), x, grid; padding_mode=padding_mode)
+        (NoTangent(), ∇x, ∇grid)
+    end
+    return y, grid_sample_pullback
 end
