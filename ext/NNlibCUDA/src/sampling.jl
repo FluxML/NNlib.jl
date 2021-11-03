@@ -32,7 +32,7 @@ function ∇grid_sample_kernel!(n_elem, dx, dgrid, Δ, input, grid, padding_mode
     nothing
 end
 
-function NNlib.grid_sample(x::CuArray{T, 4}, grid::CuArray{T, 4}; padding_mode) where T
+function NNlib.grid_sample(x::CuArray{T, 4}, grid::CuArray{T, 4}; padding_mode = Val(:zeros)) where T
     _, _, xC, xN = size(x)
     _, gW, gH, _ = size(grid)
     n_elem = gW * gH * xN
@@ -47,7 +47,7 @@ function NNlib.grid_sample(x::CuArray{T, 4}, grid::CuArray{T, 4}; padding_mode) 
     y
 end
 
-function NNlib.∇grid_sample(Δ::CuArray{T, 4}, x::CuArray{T, 4}, grid::CuArray{T, 4}; padding_mode) where T
+function NNlib.∇grid_sample(Δ::CuArray{T, 4}, x::CuArray{T, 4}, grid::CuArray{T, 4}; padding_mode = Val(:zeros)) where T
     xN = size(x, 4)
     _, gW, gH, _ = size(grid)
     n_elem = gW * gH * xN

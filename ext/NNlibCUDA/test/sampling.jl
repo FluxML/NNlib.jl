@@ -40,27 +40,14 @@
 end
 
 @testset "Compare grid sampling with NNlib" begin
-    for T in (Float32, Float64), padding_mode in (Val(:zeros), Val(:border))
-        w, h, c, n = 16, 16, 2, 4
-        input = rand(T, w, h, c, n)
-        grid = zeros(T, 2, w, h, n)
-        @inbounds for xi in 1:w, yi in 1:h, ni in 1:n
-            grid[1, xi, yi, ni] = (xi / w) * 2 - 1 + 0.01
-            grid[2, xi, yi, ni] = (yi / h) * 2 - 1
-        end
-
-        dx = CuArray(input)
-        dg = CuArray(grid)
-        out_grad_gpu = CUDA.ones(T, (w, h, c, n))
-        out_grad = ones(T, (w, h, c, n))
-
-        y_gpu = grid_sample(dx, dg; padding_mode=padding_mode)
-        y = grid_sample(input, grid; padding_mode=padding_mode)
-        @assert y ≈ collect(y_gpu)
-
-        ∇input_gpu, ∇grid_gpu = ∇grid_sample(out_grad_gpu, dx, dg; padding_mode=padding_mode)
-        ∇input, ∇grid = ∇grid_sample(out_grad, input, grid; padding_mode=padding_mode)
-        @assert ∇input ≈ collect(∇input_gpu)
-        @assert ∇grid ≈ collect(∇grid_gpu)
+    w, h, c, n = 16, 16, 2, 4
+    input = rand(Float64, w, h, c, n)
+    grid = zeros(Float64, 2, w, h, n)
+    @inbounds for xi in 1:w, yi in 1:h, ni in 1:n
+        grid[1, xi, yi, ni] = (xi / w) * 2.0 - 1.0 + 0.01
+        grid[2, xi, yi, ni] = (yi / h) * 2.0 - 1.0
+    end
+    for padding_mode in (Val(:zeros), Val(:border))
+        gputest(grid_sample, input, grid; atol=1e-6, padding_mode=padding_mode)
     end
 end
