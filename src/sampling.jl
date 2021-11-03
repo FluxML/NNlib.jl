@@ -26,7 +26,7 @@ end
 end
 
 """
-    grid_sample(input::AbstractArray{T, 4}, grid::AbstractArray{T, 4}; padding_mode)
+    grid_sample(input::AbstractArray{T, 4}, grid::AbstractArray{T, 4}; padding_mode = Val(:zeros))
 
 Given `input`, compute output by sampling `input` values at pixel
 locations from `grid`. Uses bilinear interpolation to calculate output values.
@@ -50,6 +50,7 @@ as referring to the center points of the input’s corner pixels
 - `padding_mode`: Out-of-bound padding.
     `Val(:zeros)` to use `0` for out-of-bound grid locations.
     `Val(:border)` to use border values for out-of-bound grid locations.
+    Default is `Val(:zeros)`.
 
 # Returns
 
@@ -96,7 +97,7 @@ julia> grid_sample(x, grid; padding_mode=Val(:border))
  2.0  4.0
 ```
 """
-function grid_sample(input::AbstractArray{T, 4}, grid::AbstractArray{T, 4}; padding_mode) where T
+function grid_sample(input::AbstractArray{T, 4}, grid::AbstractArray{T, 4}; padding_mode = Val(:zeros)) where T
     _, _, iC, iN = size(input)
     _, gW, gH, _ = size(grid)
     output = similar(input, T, (gW, gH, iC, iN))
@@ -115,8 +116,7 @@ function grid_sample!(output, input, grid, padding_mode)
     output
 end
 @inline function _grid_sample_kernel!(
-    output, input, grid, padding_mode,
-    w, h, n, iW, iH, iC,
+    output, input, grid, padding_mode, w, h, n, iW, iH, iC,
 )
     # Get the corresponding (x, y) coordinates from the grid.
     @inbounds x, y = grid[1, w, h, n], grid[2, w, h, n]
@@ -152,7 +152,7 @@ end
 end
 
 """
-    ∇grid_sample(Δ::AbstractArray{T, 4}, input::AbstractArray{T, 4}, grid::AbstractArray{T, 4}; padding_mode) where T
+    ∇grid_sample(Δ::AbstractArray{T, 4}, input::AbstractArray{T, 4}, grid::AbstractArray{T, 4}; padding_mode = Val(:zeros)) where T
 
 # Arguments
 
@@ -164,12 +164,13 @@ end
     `Val(:zeros)` to use `0` for out-of-bound grid locations.
     `Val(:border)` to use border values for out-of-bound grid locations.
     Should be the same as in primal computation.
+    Default is `Val(:zeros)`.
 
 # Returns
 
 `dinput` (same shape as `input`) and `dgrid` (same shape as `grid`) gradients.
 """
-function ∇grid_sample(Δ::AbstractArray{T, 4}, input::AbstractArray{T, 4}, grid::AbstractArray{T, 4}; padding_mode) where T
+function ∇grid_sample(Δ::AbstractArray{T, 4}, input::AbstractArray{T, 4}, grid::AbstractArray{T, 4}; padding_mode = Val(:zeros)) where T
     dx = zeros(T, size(input))
     dgrid = similar(grid)
     ∇grid_sample!(dx, dgrid, Δ, input, grid, padding_mode)
@@ -187,8 +188,7 @@ function ∇grid_sample!(dx, dgrid, Δ, input, grid, padding_mode)
     dx, dgrid
 end
 @inline function _∇grid_sample_kernel!(
-    dx, dgrid, Δ, input, grid, padding_mode,
-    w, h, n, iW, iH, iC,
+    dx, dgrid, Δ, input, grid, padding_mode, w, h, n, iW, iH, iC,
 )
     # Get corresponding (x, y) from grid.
     @inbounds x, y = grid[1, w, h, n], grid[2, w, h, n]
@@ -212,28 +212,24 @@ end
         # Calculate dx and dgrid partials.
         if in_bounds(iy_nw, ix_nw, iH, iW)
             _safe_add!(dx, g_out * nw, ix_nw, iy_nw, c, n)
-            # dx[ix_nw, iy_nw, c, n] += g_out * nw
             nw_val = input[ix_nw, iy_nw, c, n]
             gix -= nw_val * (iy_se - iy) * g_out
             giy -= nw_val * (ix_se - ix) * g_out
         end
         if in_bounds(iy_ne, ix_ne, iH, iW)
             _safe_add!(dx, g_out * ne, ix_ne, iy_ne, c, n)
-            # dx[ix_ne, iy_ne, c, n] += g_out * ne
             ne_val = input[ix_ne, iy_ne, c, n]
             gix += ne_val * (iy_sw - iy) * g_out
             giy -= ne_val * (ix - ix_sw) * g_out
         end
         if in_bounds(iy_sw, ix_sw, iH, iW)
             _safe_add!(dx, g_out * sw, ix_sw, iy_sw, c, n)
-            # dx[ix_sw, iy_sw, c, n] += g_out * sw
             sw_val = input[ix_sw, iy_sw, c, n]
             gix -= sw_val * (iy - iy_ne) * g_out
             giy += sw_val * (ix_ne - ix) * g_out
         end
         if in_bounds(iy_se, ix_se, iH, iW)
             _safe_add!(dx, g_out * se, ix_se, iy_se, c, n)
-            # dx[ix_se, iy_se, c, n] += g_out * se
             se_val = input[ix_se, iy_se, c, n]
             gix += se_val * (iy - iy_nw) * g_out
             giy += se_val * (ix - ix_nw) * g_out
@@ -250,8 +246,8 @@ end
 function rrule(::typeof(grid_sample), x, grid; padding_mode)
     y = grid_sample(x, grid; padding_mode=padding_mode)
     function grid_sample_pullback(Δ)
-        ∇x, ∇grid = ∇grid_sample(unthunk(Δ), x, grid; padding_mode=padding_mode)
-        (NoTangent(), ∇x, ∇grid)
+        ∇x, ∇grid = @thunk(∇grid_sample(unthunk(Δ), x, grid; padding_mode=padding_mode))
+        NoTangent(), ∇x, ∇grid
     end
     return y, grid_sample_pullback
 end
