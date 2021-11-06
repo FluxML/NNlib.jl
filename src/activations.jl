@@ -18,7 +18,7 @@ end
 # Aliases
 export sigmoid, hardsigmoid, logsigmoid, thresholdrelu
 
-# of type float
+# of type float (to allow for integer inputs)
 oftf(x, y) = oftype(float(x), y)
 
 """
@@ -28,6 +28,8 @@ Classic [sigmoid](https://en.wikipedia.org/wiki/Sigmoid_function) activation
 function.
 Unicode `σ` can be entered as `\\sigma` then tab, in many editors.
 The ascii name `sigmoid` is also exported.
+
+See also [`sigmoid_fast`](@ref).
 
 ```
 julia> lineplot(sigmoid, -5, 5, height=7)
@@ -114,6 +116,7 @@ julia> lineplot(logsigmoid, -5, 5, height=7)
 ```
 """
 logσ(x) = -softplus(-x)
+
 const logsigmoid = logσ
 
 """
@@ -122,6 +125,7 @@ const logsigmoid = logσ
 Segment-wise linear approximation of `tanh`, much cheaper to compute.
 See ["Large Scale Machine Learning"](https://ronan.collobert.com/pub/matos/2004_phdthesis_lip6.pdf).
 
+See also [`tanh_fast`](@ref).
 ```
 julia> lineplot(hardtanh, -2, 2, height=7)
            ┌────────────────────────────────────────┐            
@@ -203,7 +207,7 @@ julia> leakyrelu(-10f0, 1//20)
 -0.5f0
 ```
 """
-leakyrelu(x, a=oftf(x, 0.01)) = max(a * x, x)
+leakyrelu(x, a=oftf(x, 0.01)) = ifelse(x>0, float(x), oftf(x, a*x))  # max(a*x, x) is 3x slower
 
 """
     relu6(x) = min(max(0, x), 6)
@@ -290,7 +294,7 @@ julia> elu(-10f0, 2)
 """
 elu(x, α=1) = ifelse(x ≥ 0, float(x), α * (exp(x) - 1))
 
-deriv_elu(Ω, α=1) = ifelse(Ω ≥ 0, 1, Ω + α)
+deriv_elu(Ω, α=1) = ifelse(Ω ≥ 0, one(Ω), Ω + α)
 
 """
     gelu(x) = 0.5x * (1 + tanh(√(2/π) * (x + 0.044715x^3)))
@@ -667,6 +671,17 @@ For `x::Float32` this is usually about 10 times faster,
 with a smaller speedup for `x::Float64`.
 
 See also [`sigmoid_fast`](@ref).
+
+```
+julia> tanh(0.5f0)
+0.46211717f0
+
+julia> tanh_fast(0.5f0)
+0.46211714f0
+
+julia> hard_tanh(0.5f0)
+0.5f0
+```
 """
 @inline function tanh_fast(x::Float32)
     x2 = abs2(x)
@@ -694,6 +709,17 @@ This is a faster, and very slightly less accurate, version of `sigmoid`.
 For `x::Float32, perhaps 3 times faster, and maximum errors 2 eps instead of 1.
 
 See also [`tanh_fast`](@ref).
+
+```
+julia> sigmoid(0.2f0)
+0.54983395f0
+
+julia> sigmoid_fast(0.2f0)
+0.54983395f0
+
+julia> hardσ(0.2f0)
+0.53333336f0
+```
 """
 @inline function sigmoid_fast(x::Real)
     t = @fastmath exp(-abs(x))
@@ -733,13 +759,16 @@ for (f, df) in UNARY_ACTS
     @eval function rrule(::typeof(broadcasted),
                          ::typeof($f), x::Numeric)
         Ω = $f.(x)
-        function $pullback(Δ) 
-            NoTangent(), NoTangent(), @.(Δ * $df)
+        function $pullback(Δ)
+            x_thunk = InplaceableThunk(
+                dx -> @.(dx += Δ * $df),
+                @thunk @.(Δ * $df)
+            )
+            NoTangent(), NoTangent(), x_thunk
         end
         return Ω, $pullback
     end
 end
-
 
 BINARY_ACTS = [ # f, df1, df2
     (:elu, :(deriv_elu(Ω, x2)), :(NoTangent())), # TODO use real deriv instead of DNE
