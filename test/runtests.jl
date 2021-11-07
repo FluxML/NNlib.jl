@@ -32,7 +32,7 @@ end
 
 @testset "Convolution" begin
     include("conv.jl")
-    include("conv_bias_act.jl")
+    # include("conv_bias_act.jl")
 end
 
 @testset "Inference" begin

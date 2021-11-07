@@ -22,6 +22,15 @@ ACTIVATION_FUNCTIONS =
         # This is a test that it's safe to evaluate the pullback more than once:
         @test jx ≈ Zygote.jacobian(x -> dense_bias_act(fun, w, x, b), x)[1]
     end
+
+    @testset "with two matmuls" begin
+        w2 = randn(3,7)
+        x2 = randn(7,5)
+        @test dense_bias_act(tanh, w, x, w2, x2, b) ≈ tanh.((w * x) .+ (w2 * x2) .+ b)
+
+        gw2 = ForwardDiff.gradient(w2 -> sum(dense_bias_act(tanh, w, x, w2, x2, b)), w2)
+        @test gw2 ≈ Zygote.gradient(w2 -> sum(dense_bias_act(tanh, w, x, w2, x2, b)), w2)[1]
+    end
 end
 
 @testset "bias_act!" begin
@@ -37,13 +46,11 @@ end
 
         @test bias_act!(fun, copy(x), b) ≈ fun.(x .+ b)
         @test bias_act!(fun, copy(x), false) ≈ fun.(x)
-        @test bias_act!(fun, copy(x)) ≈ fun.(x)
 
         gx = ForwardDiff.gradient(x -> sum(bias_act!(fun, copy(x), b)), x)
         @test gx ≈ Zygote.gradient(x -> sum(bias_act!(fun, copy(x), b)), x)[1]
 
-        gx2 = ForwardDiff.gradient(x -> sum(bias_act!(fun, copy(x))), x)
-        @test gx2 ≈ Zygote.gradient(x -> sum(bias_act!(fun, copy(x))), x)[1]
+        gx2 = ForwardDiff.gradient(x -> sum(bias_act!(fun, copy(x), false)), x)
         @test gx2 ≈ Zygote.gradient(x -> sum(bias_act!(fun, copy(x), false)), x)[1]
 
         gb = ForwardDiff.gradient(b -> sum(bias_act!(fun, copy(x), b)), b)

@@ -3,7 +3,7 @@ module NNlib
 using Pkg
 using Requires
 using ChainRulesCore
-import ChainRulesCore: rrule
+import ChainRulesCore: rrule, derivatives_given_output
 using Base.Broadcast: broadcasted
 using Statistics: mean
 
@@ -34,7 +34,7 @@ include("batched/batchedmul.jl")
 include("gemm.jl")
 
 include("conv.jl")
-include("conv_bias_act.jl")
+# include("conv_bias_act.jl")
 
 include("pooling.jl")
 include("padding.jl")
