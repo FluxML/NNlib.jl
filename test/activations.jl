@@ -235,6 +235,10 @@ end
 
 mean_eps(f, g, xs) = mean(x -> abs(countepsfrom(f(x), g(big(x)))), xs)
 worst_eps(f, g, xs) = maximum(x -> abs(countepsfrom(f(x), g(big(x)))), xs)
+function find_worst(f, g, xs)
+    c, i = findmax(x -> abs(countepsfrom(f(x), g(big(x)))), xs)
+    c, xs[i]
+end
 
 @testset "tanh_fast & sigmoid_fast: Float64" begin
     

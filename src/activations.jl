@@ -694,10 +694,10 @@ end
     exp2x = @fastmath exp(x + x)
     y = (exp2x - 1) / (exp2x + 1) 
     # That has large errors near zero; using `expm1` would more accurate, but about as slow as `tanh`.
-    # Instead, we switch to an Taylor series. This is very accurate within its range:
+    # Instead, we switch to a polynomial, which is very accurate within its range, < 2 eps:
     x2 = x * x
-    ypoly = x * evalpoly(x2, (1.0, -0.33333333333333337, 0.1333333333332623, -0.0539682539194502, 0.021869476267930975, -0.00886184042142138, 0.0035188503873932893))
-    ifelse(x2 > 900.0, sign(y), ifelse(x2 < 0.02, oftype(y, ypoly), y))
+    ypoly = x * evalpoly(x2, (1.0, -0.33333333333324583, 0.13333333325511604, -0.05396823125794372, 0.02186660872609521, -0.008697141630499953))
+    ifelse(x2 > 900.0, sign(y), ifelse(x2 < 0.017, oftype(y, ypoly), y))
 end
 
 tanh_fast(x::Float16) = Base.tanh(x) # Other approximations are very badly behaved for Float16; none are fast.
