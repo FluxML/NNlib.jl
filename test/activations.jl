@@ -221,7 +221,6 @@ end
     @test trelu(0.9,0.5) == 0.9
 end
 
-<<<<<<< HEAD
 ## Faster variants
 
 using NNlib: tanh_fast, sigmoid_fast
