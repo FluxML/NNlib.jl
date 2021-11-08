@@ -26,7 +26,7 @@ end
 end
 
 """
-    grid_sample(input::AbstractArray{T, 4}, grid::AbstractArray{T, 4}; padding_mode = Val(:zeros))
+    grid_sample(input::AbstractArray{T, 4}, grid::AbstractArray{T, 4}; padding_mode = :zeros)
 
 Given `input`, compute output by sampling `input` values at pixel
 locations from `grid`. Uses bilinear interpolation to calculate output values.
@@ -42,15 +42,15 @@ as referring to the center points of the input’s corner pixels
     Where for each `(W_out, H_out, N)` grid contains `(x, y)`
     coordinates that specify sampling locations normalized by the `input` shape.
 
-    Therefore, it should have values mostly in `[-1, 1]` range.
-    For example, values `x = -1, y = -1` is the left-top pixel of `input`,
-    and values `x = 1, y = 1` is the right-bottom pixel of `input`.
+    Therefore, `x` and `y` should have values in `[-1, 1]` range.
+    For example, `(x = -1, y = -1)` is the left-top pixel of `input`,
+    and `(x = 1, y = 1)` is the right-bottom pixel of `input`.
 
-    Out-of-bound values are handled accroding to the `padding_mode`.
+    Out-of-bound values are handled according to the `padding_mode`.
 - `padding_mode`: Out-of-bound padding.
-    `Val(:zeros)` to use `0` for out-of-bound grid locations.
-    `Val(:border)` to use border values for out-of-bound grid locations.
-    Default is `Val(:zeros)`.
+    `:zeros` to use `0` for out-of-bound grid locations.
+    `:border` to use border values for out-of-bound grid locations.
+    Default is `:zeros`.
 
 # Returns
 
@@ -82,14 +82,14 @@ julia> grid[:, 2, 2, 1] .= (0, 1);
 
 julia> grid[:, 3, 2, 1] .= (3, 1);
 
-julia> grid_sample(x, grid; padding_mode=Val(:zeros))
+julia> grid_sample(x, grid; padding_mode=:zeros)
 3×2×1×1 Array{Float64, 4}:
 [:, :, 1, 1] =
  0.0  3.0
  1.5  3.5
  2.0  0.0
 
-julia> grid_sample(x, grid; padding_mode=Val(:border))
+julia> grid_sample(x, grid; padding_mode=:border)
 3×2×1×1 Array{Float64, 4}:
 [:, :, 1, 1] =
  1.0  3.0
@@ -97,20 +97,20 @@ julia> grid_sample(x, grid; padding_mode=Val(:border))
  2.0  4.0
 ```
 """
-function grid_sample(input::AbstractArray{T, 4}, grid::AbstractArray{T, 4}; padding_mode = Val(:zeros)) where T
+function grid_sample(input::AbstractArray{T, 4}, grid::AbstractArray{T, 4}; padding_mode = :zeros) where T
     _, _, iC, iN = size(input)
     _, gW, gH, _ = size(grid)
     output = similar(input, T, (gW, gH, iC, iN))
     grid_sample!(output, input, grid, padding_mode)
 end
 function grid_sample!(output, input, grid, padding_mode)
+    pad = Val(padding_mode)
     iW, iH, iC, iN = size(input)
     _, gW, gH, _ = size(grid)
     # Loop over each output pixel.
     Threads.@threads for n in 1:iN
         for w in 1:gW, h in 1:gH
-            _grid_sample_kernel!(
-                output, input, grid, padding_mode, w, h, n, iW, iH, iC)
+            _grid_sample_kernel!(output, input, grid, pad, w, h, n, iW, iH, iC)
         end
     end
     output
@@ -152,7 +152,7 @@ end
 end
 
 """
-    ∇grid_sample(Δ::AbstractArray{T, 4}, input::AbstractArray{T, 4}, grid::AbstractArray{T, 4}; padding_mode = Val(:zeros)) where T
+    ∇grid_sample(Δ::AbstractArray{T, 4}, input::AbstractArray{T, 4}, grid::AbstractArray{T, 4}; padding_mode = :zeros) where T
 
 # Arguments
 
@@ -161,28 +161,28 @@ end
 - `input`: Input from primal computation in `(W_in, H_in, C, N)` shape.
 - `grid`: Grid from primal computation in `(2, W_out, H_out, N)` shape.
 - `padding_mode`: Out-of-bound padding.
-    `Val(:zeros)` to use `0` for out-of-bound grid locations.
-    `Val(:border)` to use border values for out-of-bound grid locations.
+    `:zeros` to use `0` for out-of-bound grid locations.
+    `:border` to use border values for out-of-bound grid locations.
     Should be the same as in primal computation.
-    Default is `Val(:zeros)`.
+    Default is `:zeros`.
 
 # Returns
 
 `dinput` (same shape as `input`) and `dgrid` (same shape as `grid`) gradients.
 """
-function ∇grid_sample(Δ::AbstractArray{T, 4}, input::AbstractArray{T, 4}, grid::AbstractArray{T, 4}; padding_mode = Val(:zeros)) where T
+function ∇grid_sample(Δ::AbstractArray{T, 4}, input::AbstractArray{T, 4}, grid::AbstractArray{T, 4}; padding_mode = :zeros) where T
     dx = zeros(T, size(input))
     dgrid = similar(grid)
     ∇grid_sample!(dx, dgrid, Δ, input, grid, padding_mode)
 end
 function ∇grid_sample!(dx, dgrid, Δ, input, grid, padding_mode)
+    pad = Val(padding_mode)
     iW, iH, iC, iN = size(input)
     gW, gH = size(grid, 2), size(grid, 3)
     # Loop over each output pixel.
     Threads.@threads for n in 1:iN
         for w in 1:gW, h in 1:gH
-            _∇grid_sample_kernel!(
-                dx, dgrid, Δ, input, grid, padding_mode, w, h, n, iW, iH, iC)
+            _∇grid_sample_kernel!(dx, dgrid, Δ, input, grid, pad, w, h, n, iW, iH, iC)
         end
     end
     dx, dgrid
@@ -246,7 +246,7 @@ end
 function rrule(::typeof(grid_sample), x, grid; padding_mode)
     y = grid_sample(x, grid; padding_mode=padding_mode)
     function grid_sample_pullback(Δ)
-        ∇x, ∇grid = @thunk(∇grid_sample(unthunk(Δ), x, grid; padding_mode=padding_mode))
+        ∇x, ∇grid = ∇grid_sample(unthunk(Δ), x, grid; padding_mode=padding_mode)
         NoTangent(), ∇x, ∇grid
     end
     return y, grid_sample_pullback
