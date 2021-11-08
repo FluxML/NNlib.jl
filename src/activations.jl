@@ -669,6 +669,7 @@ may be wrong by 5 eps, a reduction by less than one decimal digit.
 
 For `x::Float32` this is usually about 10 times faster,
 with a smaller speedup for `x::Float64`.
+For any other number types, it just calls `tanh`.
 
 See also [`sigmoid_fast`](@ref).
 
@@ -690,7 +691,7 @@ julia> hard_tanh(0.5f0)
     ifelse(x2 < 66f0, x * (n / d), sign(x))
 end
 
-@inline function tanh_fast(x::Real)
+@inline function tanh_fast(x::Float64)
     exp2x = @fastmath exp(x + x)
     y = (exp2x - 1) / (exp2x + 1) 
     # That has large errors near zero; using `expm1` would more accurate, but about as slow as `tanh`.
@@ -700,7 +701,9 @@ end
     ifelse(x2 > 900.0, sign(y), ifelse(x2 < 0.017, oftype(y, ypoly), y))
 end
 
-tanh_fast(x::Float16) = Base.tanh(x) # Other approximations are very badly behaved for Float16; none are fast.
+# These approximations are very badly behaved for Float16; none are fast.
+# They are also a bit slower with ForwardDiff.Dual numbers, let's use Base:
+tanh_fast(x::Real) = Base.tanh(x)
 
 """
     sigmoid_fast(x)
