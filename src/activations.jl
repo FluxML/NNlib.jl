@@ -4,7 +4,7 @@
 # https://github.com/JuliaGPU/CuArrays.jl/issues/614
 
 ACTIVATIONS = [
-    :σ, :hardσ, :tanh_fast, :hardtanh, :relu,
+    :σ, :hardσ, :hardtanh, :relu,
     :leakyrelu, :relu6, :rrelu, :elu, :gelu, :swish, :selu,
     :celu, :softplus, :softsign, :logσ, :logcosh,
     :mish, :tanhshrink, :softshrink, :trelu, :lisht,
