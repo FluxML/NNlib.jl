@@ -97,7 +97,7 @@ julia> grid_sample(x, grid; padding_mode=:border)
  2.0  4.0
 ```
 """
-function grid_sample(input::AbstractArray{T, 4}, grid::AbstractArray{T, 4}; padding_mode = :zeros) where T
+function grid_sample(input::AbstractArray{T, 4}, grid; padding_mode = :zeros) where T
     _, _, iC, iN = size(input)
     _, gW, gH, _ = size(grid)
     output = similar(input, T, (gW, gH, iC, iN))
@@ -170,7 +170,7 @@ end
 
 `dinput` (same shape as `input`) and `dgrid` (same shape as `grid`) gradients.
 """
-function ∇grid_sample(Δ::AbstractArray{T, 4}, input::AbstractArray{T, 4}, grid::AbstractArray{T, 4}; padding_mode = :zeros) where T
+function ∇grid_sample(Δ::AbstractArray{T, 4}, input::AbstractArray{T, 4}, grid; padding_mode = :zeros) where T
     dx = zeros(T, size(input))
     dgrid = similar(grid)
     ∇grid_sample!(dx, dgrid, Δ, input, grid, padding_mode)
