@@ -11,8 +11,7 @@ function grid_sample_kernel!(n_elem, output, input, grid, padding_mode)
         w = index % gW + 1
         h = (index ÷ gW) % gH + 1
         n = index ÷ (gW * gH) + 1
-        NNlib._grid_sample_kernel!(
-            output, input, grid, padding_mode, w, h, n, iW, iH, iC)
+        NNlib._grid_sample_kernel!(output, input, grid, padding_mode, w, h, n, iW, iH, iC)
     end
     nothing
 end
@@ -26,38 +25,37 @@ function ∇grid_sample_kernel!(n_elem, dx, dgrid, Δ, input, grid, padding_mode
         w = index % gW + 1
         h = (index ÷ gW) % gH + 1
         n = index ÷ (gW * gH) + 1
-        NNlib._∇grid_sample_kernel!(
-            dx, dgrid, Δ, input, grid, padding_mode, w, h, n, iW, iH, iC)
+        NNlib._∇grid_sample_kernel!(dx, dgrid, Δ, input, grid, padding_mode, w, h, n, iW, iH, iC)
     end
     nothing
 end
 
-function NNlib.grid_sample(x::CuArray{T, 4}, grid::CuArray{T, 4}; padding_mode = Val(:zeros)) where T
+function NNlib.grid_sample(x::CuArray{T, 4}, grid::CuArray{V, 4}; padding_mode = :zeros) where {T, V}
+    pad = Val(padding_mode)
     _, _, xC, xN = size(x)
     _, gW, gH, _ = size(grid)
     n_elem = gW * gH * xN
     y = similar(x, T, (gW, gH, xC, xN))
 
-    kernel = @cuda launch=false grid_sample_kernel!(
-        n_elem, y, x, grid, padding_mode)
+    kernel = @cuda launch=false grid_sample_kernel!(n_elem, y, x, grid, pad)
     config = launch_configuration(kernel.fun; max_threads=256)
     threads = min(n_elem, config.threads)
     blocks = cld(n_elem, threads)
-    kernel(n_elem, y, x, grid, padding_mode; threads=threads, blocks=blocks)
+    kernel(n_elem, y, x, grid, pad; threads=threads, blocks=blocks)
     y
 end
 
-function NNlib.∇grid_sample(Δ::CuArray{T, 4}, x::CuArray{T, 4}, grid::CuArray{T, 4}; padding_mode = Val(:zeros)) where T
+function NNlib.∇grid_sample(Δ::CuArray{T, 4}, x::CuArray{T, 4}, grid::CuArray{V, 4}; padding_mode = :zeros) where {T, V}
+    pad = Val(padding_mode)
     xN = size(x, 4)
     _, gW, gH, _ = size(grid)
     n_elem = gW * gH * xN
     dx, dgrid = CUDA.zeros(T, size(x)), similar(grid)
 
-    kernel = @cuda launch=false ∇grid_sample_kernel!(
-        n_elem, dx, dgrid, Δ, x, grid, padding_mode)
+    kernel = @cuda launch=false ∇grid_sample_kernel!(n_elem, dx, dgrid, Δ, x, grid, pad)
     config = launch_configuration(kernel.fun; max_threads=256)
     threads = min(n_elem, config.threads)
     blocks = cld(n_elem, threads)
-    kernel(n_elem, dx, dgrid, Δ, x, grid, padding_mode; threads=threads, blocks=blocks)
+    kernel(n_elem, dx, dgrid, Δ, x, grid, pad; threads=threads, blocks=blocks)
     dx, dgrid
 end

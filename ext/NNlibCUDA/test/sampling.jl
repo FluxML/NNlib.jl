@@ -13,7 +13,7 @@
 
         x_gpu, grid_gpu = CuArray(x), CuArray(grid)
 
-        padding_mode = Val(:zeros)
+        padding_mode = :zeros
         y_gpu = grid_sample(x_gpu, grid_gpu; padding_mode=padding_mode)
         @test x == collect(y_gpu)
         @test eltype(y_gpu) == T
@@ -25,7 +25,7 @@
         @test eltype(∇input) == T
         @test eltype(∇grid) == T
 
-        padding_mode = Val(:border)
+        padding_mode = :border
         fill!(∇grid_true, 0.0)
         sampled = grid_sample(x_gpu, grid_gpu; padding_mode=padding_mode)
         @test x == collect(sampled)
@@ -47,7 +47,7 @@ end
         grid[1, xi, yi, ni] = (xi / w) * 2.0 - 1.0 + 0.01
         grid[2, xi, yi, ni] = (yi / h) * 2.0 - 1.0
     end
-    for padding_mode in (Val(:zeros), Val(:border))
+    for padding_mode in (:zeros, :border)
         gputest(grid_sample, input, grid; atol=1e-6, padding_mode=padding_mode)
     end
 end
