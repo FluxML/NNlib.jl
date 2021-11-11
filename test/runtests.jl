@@ -8,7 +8,7 @@ using StableRNGs
 using CUDA
 
 if VERSION < v"1.6"
-    @info "skipping doctests, on Julia $VERSION"  
+    @info "skipping doctests, on Julia $VERSION"
 else
     using Documenter
     DocMeta.setdocmeta!(NNlib, :DocTestSetup, :(using NNlib, UnicodePlots); recursive=true)
@@ -64,6 +64,10 @@ end
 
 @testset "Utilities" begin
     include("utils.jl")
+end
+
+@testset "Grid Sampling" begin
+    include("sampling.jl")
 end
 
 @testset "Functions" begin
