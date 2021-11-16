@@ -105,27 +105,37 @@ can be directly specified with a keyword argument.
 The size of the output is equal to
 `(scale*S1, S2, S3)`, where `S1, S2, S3 = size(x)`.
 """
-function upsample_linear(x::AbstractArray{<:Any,3}, scale::Real)
-    outsize = floor(Int, scale * Base.size(x)[1])
+# the user facing function
+function upsample_linear(x::AbstractArray{<:Any,N}, scale::NTuple{M,Real}) where {N,M}
+    M == N-2 || error("The scale argument should be an NTuple with length $(N-2), but it has length $M.")
+    outsize = ntuple(i -> floor(Int, scale[i] * Base.size(x, i)), N-2)
     return upsample_linear(x; size=outsize)
 end
 
-function upsample_linear(x::AbstractArray{T,3}; size::Integer) where T
-    w,c,n = Base.size(x)
-    if w == size
+# convenience for single-number scale
+upsample_linear(x::AbstractArray{<:Any,N}, scale::Real) where N = upsample_linear(x, ntuple(_ -> scale, N-2))
+
+# this actually calls the upsamling kernel
+function upsample_linear(x::AbstractArray{T,N}; size::Union{Integer, NTuple{<:Any,Integer}}) where {T,N}
+    length(size) == N-2 || error("The scale argument should be an NTuple with length $(N-2), but it has length $(length(size)).")
+
+    if Base.size(x)[1:N-2] == size
         return x
     end
-    y = similar(x, T, size, c, n)
-    return upsample_linear_wcn!(y, x)
+
+    y = similar(x, T, size..., Base.size(x)[end-1:end]...)
+    return upsample_linear_kernel!(y, x)
 end
 
-function upsample_linear(x::AbstractArray{T,3}; size::Integer) where T<:Integer
+# Convenience definition for integers. The algo internally works with floats and then rounds.
+function upsample_linear(x::AbstractArray{T,<:Any}; size) where T<:Integer
     y = float.(x)
     res = upsample_linear(y; size=size)
     return round.(T, res)
 end
 
-function upsample_linear_wcn!(output::AbstractArray{T,3}, input::AbstractArray{T,3}) where T
+# linearly upsamples first dim of 3D array
+function upsample_linear_kernel!(output::AbstractArray{T,3}, input::AbstractArray{T,3}) where T
     size(input)[2:3] == size(output)[2:3] || error("Number of input and output channels and batches must match. Got input $(size(input)) and output $(size(output))")
     in_w, channels, batches = size(input)
     # treat batch and channel dimension as one for better parallelization granularity
@@ -138,16 +148,92 @@ function upsample_linear_wcn!(output::AbstractArray{T,3}, input::AbstractArray{T
 
     @inline idx(c, w) = c * in_w + w + 1
 
-    @inbounds Threads.@threads for c in 0:channels-1
-        for ow in 0:out_w-1
+    Threads.@threads for c in 0:channels-1
+        @inbounds for ow in 0:out_w-1
             iw0, iw1, w0lambda, w1lambda = compute_source_index_and_lambda(width_scale, ow, in_w, out_w)
             output_offset = c * output_slice_size + ow + 1
             output[output_offset] = (w0lambda * input[idx(c, iw0)] + # w0 * i00
-                                     w1lambda * input[idx(c, iw1)])  # w1 * i01
+                                    w1lambda * input[idx(c, iw1)])  # w1 * i01
         end
     end
     return output
 end
+
+# bilinear
+# linearly upsamples first two dims of 4D array
+function upsample_linear_kernel!(output::AbstractArray{T,4}, input::AbstractArray{T,4}) where T
+    size(input)[3:4] == size(output)[3:4] || error("Number of input and output channels and batches must match. Got input $(size(input)) and output $(size(output))")
+    in_w, in_h, channels, batches = size(input)
+    # treat batch and channel dimension as one for better parallelization granularity
+    channels *= batches
+    out_w, out_h, _, _ = size(output)
+    output_slice_size = out_h * out_w
+
+    # T() and // so that we can handle rationals (super slow)
+    width_scale  = T((in_w - 1) // (out_w - 1))
+    height_scale = T((in_h - 1) // (out_h - 1))
+
+    @inline idx(c, h, w) = c * in_h * in_w + h * in_w + w + 1
+
+    Threads.@threads for c in 0:channels-1
+        @inbounds for oh in 0:out_h-1
+            ih0, ih1, h0lambda, h1lambda = compute_source_index_and_lambda(height_scale, oh, in_h, out_h)
+            for ow in 0:out_w-1
+                iw0, iw1, w0lambda, w1lambda = compute_source_index_and_lambda(width_scale, ow, in_w, out_w)
+                output_offset = c * output_slice_size + oh * out_w + ow + 1
+                output[output_offset] =
+                    (h0lambda * w0lambda * input[idx(c, ih0, iw0)] + # h0 * w0 * i00
+                     h0lambda * w1lambda * input[idx(c, ih0, iw1)] + # h0 * w1 * i01
+                     h1lambda * w0lambda * input[idx(c, ih1, iw0)] + # h1 * w0 * i10
+                     h1lambda * w1lambda * input[idx(c, ih1, iw1)])  # h1 * w1 * i11
+            end
+        end
+    end
+    return output
+end
+
+# trilinear
+# linearly upsamples first three dims of 5D array
+function upsample_linear_kernel!(output::AbstractArray{T,5}, input::AbstractArray{T,5}) where T
+    size(input)[4:5] == size(output)[4:5] || error("Number of input and output channels and batches must match. Got input $(size(input)) and output $(size(output))")
+    in_w, in_h, in_d, channels, batches = size(input)
+    # treat batch and channel dimension as one for better parallelization granularity
+    channels *= batches
+    out_w, out_h, out_d, _, _ = size(output)
+    output_slice_size = out_h * out_w * out_d
+
+    # T() and // so that we can handle rationals (super slow)
+    width_scale  = T((in_w - 1) // (out_w - 1))
+    height_scale = T((in_h - 1) // (out_h - 1))
+    depth_scale  = T((in_d - 1) // (out_d - 1))
+
+    @inline idx(c, d, h, w) = c * in_d * in_h * in_w + d * in_h * in_w + h * in_w + w + 1
+
+    Threads.@threads for c in 0:channels-1
+        @inbounds for od in 0:out_d-1
+            id0, id1, d0lambda, d1lambda = compute_source_index_and_lambda(depth_scale, od, in_d, out_d)
+            for oh in 0:out_h-1
+                ih0, ih1, h0lambda, h1lambda = compute_source_index_and_lambda(height_scale, oh, in_h, out_h)
+                for ow in 0:out_w-1
+                    iw0, iw1, w0lambda, w1lambda = compute_source_index_and_lambda(width_scale, ow, in_w, out_w)
+                    output_offset = c * output_slice_size + od * out_w * out_h + oh * out_w + ow + 1
+                    output[output_offset] =
+                        d0lambda * h0lambda * w0lambda * input[idx(c, id0, ih0, iw0)] + # d0 * h0 * w0 * i000
+                        d0lambda * h0lambda * w1lambda * input[idx(c, id0, ih0, iw1)] + # d0 * h0 * w1 * i001
+                        d0lambda * h1lambda * w0lambda * input[idx(c, id0, ih1, iw0)] + # d0 * h1 * w0 * i010
+                        d0lambda * h1lambda * w1lambda * input[idx(c, id0, ih1, iw1)] + # d0 * h1 * w1 * i011
+                        d1lambda * h0lambda * w0lambda * input[idx(c, id1, ih0, iw0)] + # d1 * h0 * w0 * i100
+                        d1lambda * h0lambda * w1lambda * input[idx(c, id1, ih0, iw1)] + # d1 * h0 * w1 * i101
+                        d1lambda * h1lambda * w0lambda * input[idx(c, id1, ih1, iw0)] + # d1 * h1 * w0 * i110
+                        d1lambda * h1lambda * w1lambda * input[idx(c, id1, ih1, iw1)]   # d1 * h1 * w1 * i111
+                end
+            end
+        end
+    end
+    return output
+end
+
+
 
 """
     ∇upsample_linear(Δ::AbstractArray{T,3}; size::Integer) where T
@@ -159,17 +245,16 @@ end
 # Outputs
 - `dx`: Downsampled version of `Δ`
 """
-function ∇upsample_linear(Δ::AbstractArray{T,3}; size::Integer) where T
-    w, c, n = Base.size(Δ)
-    out_w = size
-    if w == out_w
+function ∇upsample_linear(Δ::AbstractArray{T,N}; size::NTuple{<:Any,Integer}) where {T,N}
+    if Base.size(Δ)[1:N-2] == size
         return Δ
     end
-    dx = zero(similar(Δ, T, out_w, c, n))
-    return ∇upsample_linear_wcn!(dx, Δ)
+    dx = zero(similar(Δ, T, size..., Base.size(Δ)[end-1:end]...))
+    return ∇upsample_linear_kernel!(dx, Δ)
 end
 
-function ∇upsample_linear_wcn!(dx::AbstractArray{T,3}, Δ::AbstractArray{T,3}) where T
+# linear
+function ∇upsample_linear_kernel!(dx::AbstractArray{T,3}, Δ::AbstractArray{T,3}) where T
     size(dx)[2:3] == size(Δ)[2:3] || error("Number of input and output channels and batches must match. Got input $(size(input)) and output $(size(output))")
     in_w, channels, batches = size(dx)
 
@@ -182,8 +267,8 @@ function ∇upsample_linear_wcn!(dx::AbstractArray{T,3}, Δ::AbstractArray{T,3})
 
     @inline idx(c, w) = c * in_w + w + 1
 
-    @inbounds Threads.@threads for c in 0:channels-1
-        for ow in 0:out_w-1
+    Threads.@threads for c in 0:channels-1
+        @inbounds for ow in 0:out_w-1
             iw0, iw1, w0lambda, w1lambda = compute_source_index_and_lambda(width_scale, ow, in_w, out_w)
             output_offset = c * output_slice_size + ow + 1
             Δ_value = Δ[output_offset]
@@ -194,10 +279,82 @@ function ∇upsample_linear_wcn!(dx::AbstractArray{T,3}, Δ::AbstractArray{T,3})
     return dx
 end
 
-function rrule(::typeof(upsample_linear), x; size)
+# bilinear
+function ∇upsample_linear_kernel!(dx::AbstractArray{T,4}, Δ::AbstractArray{T,4}) where T
+    size(dx)[3:4] == size(Δ)[3:4] || error("Number of input and output channels and batches must match. Got input $(size(input)) and output $(size(output))")
+    in_w, in_h, channels, batches = size(dx)
+
+    # treat batch and channel dimension as one for better parallelization granularity
+    channels *= batches
+    out_w, out_h, _, _ = size(Δ)
+    output_slice_size = out_h * out_w
+
+    width_scale  = T((in_w - 1) // (out_w - 1))
+    height_scale = T((in_h - 1) // (out_h - 1))
+
+    @inline idx(c, h, w) = c * in_h * in_w + h * in_w + w + 1
+
+    Threads.@threads for c in 0:channels-1
+        @inbounds for oh in 0:out_h-1
+            ih0, ih1, h0lambda, h1lambda = compute_source_index_and_lambda(height_scale, oh, in_h, out_h)
+            for ow in 0:out_w-1
+                iw0, iw1, w0lambda, w1lambda = compute_source_index_and_lambda(width_scale, ow, in_w, out_w)
+                output_offset = c * output_slice_size + oh * out_w + ow + 1
+                Δ_value = Δ[output_offset]
+                dx[idx(c, ih0, iw0)] += h0lambda * w0lambda * Δ_value # i00
+                dx[idx(c, ih0, iw1)] += h0lambda * w1lambda * Δ_value # i01
+                dx[idx(c, ih1, iw0)] += h1lambda * w0lambda * Δ_value # i10
+                dx[idx(c, ih1, iw1)] += h1lambda * w1lambda * Δ_value # i11
+            end
+        end
+    end
+    return dx
+end
+
+# trilinear
+function ∇upsample_linear_kernel!(dx::AbstractArray{T,5}, Δ::AbstractArray{T,5}) where T
+    size(dx)[4:5] == size(Δ)[4:5] || error("Number of input and output channels and batches must match. Got dx $(size(dx)) and Δ $(size(Δ))")
+    in_w, in_h, in_d, channels, batches = size(dx)
+    # treat batch and channel dimension as one for better parallelization granularity
+    channels *= batches
+    out_w, out_h, out_d, _, _ = size(Δ)
+    output_slice_size = out_h * out_w * out_d
+
+    # T() and // so that we can handle rationals (super slow)
+    width_scale  = T((in_w - 1) // (out_w - 1))
+    height_scale = T((in_h - 1) // (out_h - 1))
+    depth_scale  = T((in_d - 1) // (out_d - 1))
+
+    @inline idx(c, d, h, w) = c * in_d * in_h * in_w + d * in_h * in_w + h * in_w + w + 1
+
+    Threads.@threads for c in 0:channels-1
+        @inbounds for od in 0:out_d-1
+            id0, id1, d0lambda, d1lambda = compute_source_index_and_lambda(depth_scale, od, in_d, out_d)
+            for oh in 0:out_h-1
+                ih0, ih1, h0lambda, h1lambda = compute_source_index_and_lambda(height_scale, oh, in_h, out_h)
+                for ow in 0:out_w-1
+                    iw0, iw1, w0lambda, w1lambda = compute_source_index_and_lambda(width_scale, ow, in_w, out_w)
+                    output_offset = c * output_slice_size + od * out_w * out_h + oh * out_w + ow + 1
+                    Δ_value = Δ[output_offset]
+                    dx[idx(c, id0, ih0, iw0)] += d0lambda * h0lambda * w0lambda * Δ_value  # /* i000 */
+                    dx[idx(c, id0, ih0, iw1)] += d0lambda * h0lambda * w1lambda * Δ_value  # /* i001 */
+                    dx[idx(c, id0, ih1, iw0)] += d0lambda * h1lambda * w0lambda * Δ_value  # /* i010 */
+                    dx[idx(c, id0, ih1, iw1)] += d0lambda * h1lambda * w1lambda * Δ_value  # /* i011 */
+                    dx[idx(c, id1, ih0, iw0)] += d1lambda * h0lambda * w0lambda * Δ_value  # /* i100 */
+                    dx[idx(c, id1, ih0, iw1)] += d1lambda * h0lambda * w1lambda * Δ_value  # /* i101 */
+                    dx[idx(c, id1, ih1, iw0)] += d1lambda * h1lambda * w0lambda * Δ_value  # /* i110 */
+                    dx[idx(c, id1, ih1, iw1)] += d1lambda * h1lambda * w1lambda * Δ_value  # /* i111 */
+                end
+            end
+        end
+    end
+    return dx
+end
+
+function rrule(::typeof(upsample_linear), x::AbstractArray{<:Any,N}; size) where N
     Ω = upsample_linear(x; size=size)
     function upsample_linear_pullback(Δ)
-        (NoTangent(), ∇upsample_linear(unthunk(Δ); size=Base.size(x,1)))
+        (NoTangent(), ∇upsample_linear(unthunk(Δ); size=Base.size(x)[1:N-2]))
     end
     return Ω, upsample_linear_pullback
 end
@@ -246,67 +403,9 @@ julia> upsample_bilinear(x, (2.5, 3.5))  # non-integer scaling factors are allow
  4.0   4.22222  4.44444  4.66667  4.88889     5.33333  5.55556  5.77778  6.0
 ```
 """
-function upsample_bilinear(x::AbstractArray{<:Any,4}, scale::NTuple{2,Real})
-    outsize = ntuple(i -> floor(Int, scale[i] * Base.size(x, i)), 2)
-    return upsample_bilinear(x; size=outsize)
-end
+upsample_bilinear(x, scale) = upsample_linear(x, scale)
+upsample_bilinear(x; size)  = upsample_linear(x; size)
 
-upsample_bilinear(x, scale::Real) = upsample_bilinear(x, (scale,scale))
-
-function upsample_bilinear(x::AbstractArray{T,4}; size::NTuple{2,Integer}) where T
-    w,h,c,n = Base.size(x)
-    if (w,h) == size
-        return x
-    end
-    y = similar(x, T, size..., c, n)
-    return upsample_bilinear_whcn!(y, x)
-end
-
-function upsample_bilinear(x::AbstractArray{T,4}; size::NTuple{2,Integer}) where T<:Integer
-    y = float.(x)
-    res = upsample_bilinear(y; size=size)
-    return round.(T, res)
-end
-
-# this is the core function which works on arrays of arbitrary size
-# the implementation is a translation of https://github.com/pytorch/pytorch/blob/master/aten/src/ATen/native/cpu/UpSampleMoreKernel.cpp
-# which implements open-cv style linear interpolation / upsampling
-# for simplicity, corners are aligned and all logic for other behaviour has been stripped
-# - whcn because there is also a cwhn implementation
-# - the function is parallelized using @threads
-# - RGB types could be supported via reinterpreting
-# - integer types need to be converted to Float and back
-# - rationals work, but are slow
-function upsample_bilinear_whcn!(output::AbstractArray{T,4}, input::AbstractArray{T,4}) where T
-    size(input)[3:4] == size(output)[3:4] || error("Number of input and output channels and batches must match. Got input $(size(input)) and output $(size(output))")
-    in_w, in_h, channels, batches = size(input)
-    # treat batch and channel dimension as one for better parallelization granularity
-    channels *= batches
-    out_w, out_h, _, _ = size(output)
-    output_slice_size = out_h * out_w
-
-    # T() and // so that we can handle rationals (super slow)
-    width_scale  = T((in_w - 1) // (out_w - 1))
-    height_scale = T((in_h - 1) // (out_h - 1))
-
-    @inline idx(c, h, w) = c * in_h * in_w + h * in_w + w + 1
-
-    @inbounds Threads.@threads for c in 0:channels-1
-        for oh in 0:out_h-1
-            ih0, ih1, h0lambda, h1lambda = compute_source_index_and_lambda(height_scale, oh, in_h, out_h)
-            for ow in 0:out_w-1
-                iw0, iw1, w0lambda, w1lambda = compute_source_index_and_lambda(width_scale, ow, in_w, out_w)
-                output_offset = c * output_slice_size + oh * out_w + ow + 1
-                output[output_offset] =
-                    (h0lambda * w0lambda * input[idx(c, ih0, iw0)] + # h0 * w0 * i00
-                     h0lambda * w1lambda * input[idx(c, ih0, iw1)] + # h0 * w1 * i01
-                     h1lambda * w0lambda * input[idx(c, ih1, iw0)] + # h1 * w0 * i10
-                     h1lambda * w1lambda * input[idx(c, ih1, iw1)])  # h1 * w1 * i11
-            end
-        end
-    end
-    return output
-end
 
 """
     ∇upsample_bilinear(Δ::AbstractArray{T,4}; size::NTuple{2,Integer}) where T
@@ -318,58 +417,8 @@ end
 # Outputs
 - `dx`: Downsampled version of `Δ`
 """
-function ∇upsample_bilinear(Δ::AbstractArray{T,4}; size::NTuple{2,Integer}) where T
-    w, h, c, n = Base.size(Δ)
-    out_w, out_h = size
-    if (w,h) == (out_w, out_h)
-        return Δ
-    end
-    dx = zero(similar(Δ, T, out_w, out_h, c, n))
-    return ∇upsample_bilinear_whcn!(dx, Δ)
-end
+∇upsample_bilinear(Δ; size) = ∇upsample_linear(Δ; size)
 
-function ∇upsample_bilinear_whcn!(dx::AbstractArray{T,4}, Δ::AbstractArray{T,4}) where T
-    size(dx)[3:4] == size(Δ)[3:4] || error("Number of input and output channels and batches must match. Got input $(size(input)) and output $(size(output))")
-    in_w, in_h, channels, batches = size(dx)
-
-    # treat batch and channel dimension as one for better parallelization granularity
-    channels *= batches
-    out_w, out_h, _, _ = size(Δ)
-    output_slice_size = out_h * out_w
-
-    width_scale  = T((in_w - 1) // (out_w - 1))
-    height_scale = T((in_h - 1) // (out_h - 1))
-
-    @inline idx(c, h, w) = c * in_h * in_w + h * in_w + w + 1
-
-    @inbounds Threads.@threads for c in 0:channels-1
-        for oh in 0:out_h-1
-            ih0, ih1, h0lambda, h1lambda = compute_source_index_and_lambda(height_scale, oh, in_h, out_h)
-            for ow in 0:out_w-1
-                iw0, iw1, w0lambda, w1lambda = compute_source_index_and_lambda(width_scale, ow, in_w, out_w)
-                output_offset = c * output_slice_size + oh * out_w + ow + 1
-                Δ_value = Δ[output_offset]
-                dx[idx(c, ih0, iw0)] += h0lambda * w0lambda * Δ_value # i00
-                dx[idx(c, ih0, iw1)] += h0lambda * w1lambda * Δ_value # i01
-                dx[idx(c, ih1, iw0)] += h1lambda * w0lambda * Δ_value # i10
-                dx[idx(c, ih1, iw1)] += h1lambda * w1lambda * Δ_value # i11
-            end
-        end
-    end
-    return dx
-end
-
-function rrule(::typeof(upsample_bilinear), x; size)
-    Ω = upsample_bilinear(x; size=size)
-    function upsample_bilinear_pullback(Δ)
-        (NoTangent(), ∇upsample_bilinear(unthunk(Δ); size=(Base.size(x,1),Base.size(x,2))))
-    end
-    return Ω, upsample_bilinear_pullback
-end
-
-###########
-# trilinear
-###########
 """
     upsample_trilinear(x::AbstractArray{T,5}, scale::NTuple{3,Real})
     upsample_trilinear(x::AbstractArray{T,5}; size::NTuple{3,Integer})
@@ -389,66 +438,8 @@ upsample_trilinear(x; size=(4, 9, 11))  # specify ouput size instead
 upsample_trilinear(x, (2.5, 3.5, pi))  # non-integer scaling factors are allowed
 ```
 """
-function upsample_trilinear(x::AbstractArray{<:Any,5}, scale::NTuple{3,Real})
-    outsize = ntuple(i -> floor(Int, scale[i] * Base.size(x, i)), 3)
-    return upsample_trilinear(x; size=outsize)
-end
-
-upsample_trilinear(x, scale::Real) = upsample_trilinear(x, (scale,scale,scale))
-
-function upsample_trilinear(x::AbstractArray{T,5}; size::NTuple{3,Integer}) where T
-    w,h,d,c,n = Base.size(x)
-    if (w,h,d) == size
-        return x
-    end
-    y = similar(x, T, size..., c, n)
-    return upsample_trilinear_whdcn!(y, x)
-end
-
-function upsample_trilinear(x::AbstractArray{T,5}; size::NTuple{3,Integer}) where T<:Integer
-    y = float.(x)
-    res = upsample_trilinear(y; size=size)
-    return round.(T, res)
-end
-
-function upsample_trilinear_whdcn!(output::AbstractArray{T,5}, input::AbstractArray{T,5}) where T
-    size(input)[4:5] == size(output)[4:5] || error("Number of input and output channels and batches must match. Got input $(size(input)) and output $(size(output))")
-    in_w, in_h, in_d, channels, batches = size(input)
-    # treat batch and channel dimension as one for better parallelization granularity
-    channels *= batches
-    out_w, out_h, out_d, _, _ = size(output)
-    output_slice_size = out_h * out_w * out_d
-
-    # T() and // so that we can handle rationals (super slow)
-    width_scale  = T((in_w - 1) // (out_w - 1))
-    height_scale = T((in_h - 1) // (out_h - 1))
-    depth_scale  = T((in_d - 1) // (out_d - 1))
-
-    @inline idx(c, d, h, w) = c * in_d * in_h * in_w + d * in_h * in_w + h * in_w + w + 1
-
-    @inbounds Threads.@threads for c in 0:channels-1
-        for od in 0:out_d-1
-            id0, id1, d0lambda, d1lambda = compute_source_index_and_lambda(depth_scale, od, in_d, out_d)
-            for oh in 0:out_h-1
-                ih0, ih1, h0lambda, h1lambda = compute_source_index_and_lambda(height_scale, oh, in_h, out_h)
-                for ow in 0:out_w-1
-                    iw0, iw1, w0lambda, w1lambda = compute_source_index_and_lambda(width_scale, ow, in_w, out_w)
-                    output_offset = c * output_slice_size + od * out_w * out_h + oh * out_w + ow + 1
-                    output[output_offset] =
-                        d0lambda * h0lambda * w0lambda * input[idx(c, id0, ih0, iw0)] + # d0 * h0 * w0 * i000
-                        d0lambda * h0lambda * w1lambda * input[idx(c, id0, ih0, iw1)] + # d0 * h0 * w1 * i001
-                        d0lambda * h1lambda * w0lambda * input[idx(c, id0, ih1, iw0)] + # d0 * h1 * w0 * i010
-                        d0lambda * h1lambda * w1lambda * input[idx(c, id0, ih1, iw1)] + # d0 * h1 * w1 * i011
-                        d1lambda * h0lambda * w0lambda * input[idx(c, id1, ih0, iw0)] + # d1 * h0 * w0 * i100
-                        d1lambda * h0lambda * w1lambda * input[idx(c, id1, ih0, iw1)] + # d1 * h0 * w1 * i101
-                        d1lambda * h1lambda * w0lambda * input[idx(c, id1, ih1, iw0)] + # d1 * h1 * w0 * i110
-                        d1lambda * h1lambda * w1lambda * input[idx(c, id1, ih1, iw1)]   # d1 * h1 * w1 * i111
-                end
-            end
-        end
-    end
-    return output
-end
+upsample_trilinear(x, scale) = upsample_linear(x, scale)
+upsample_trilinear(x; size)  = upsample_linear(x; size)
 
 """
     ∇upsample_trilinear(Δ::AbstractArray{T,5}; size::NTuple{3,Integer}) where T
@@ -460,62 +451,8 @@ end
 # Outputs
 - `dx`: Downsampled version of `Δ`
 """
-function ∇upsample_trilinear(Δ::AbstractArray{T,5}; size::NTuple{3,Integer}) where T
-    w, h, d, c, n = Base.size(Δ)
-    out_w, out_h, out_d = size
-    if (w,h,d) == (out_w, out_h, out_d)
-        return Δ
-    end
-    dx = zero(similar(Δ, T, size..., c, n))
-    return ∇upsample_trilinear_whdcn!(dx, Δ)
-end
+∇upsample_trilinear(Δ; size)= ∇upsample_linear(Δ; size)
 
-function ∇upsample_trilinear_whdcn!(dx::AbstractArray{T,5}, Δ::AbstractArray{T,5}) where T
-    size(dx)[4:5] == size(Δ)[4:5] || error("Number of input and output channels and batches must match. Got dx $(size(dx)) and Δ $(size(Δ))")
-    in_w, in_h, in_d, channels, batches = size(dx)
-    # treat batch and channel dimension as one for better parallelization granularity
-    channels *= batches
-    out_w, out_h, out_d, _, _ = size(Δ)
-    output_slice_size = out_h * out_w * out_d
-
-    # T() and // so that we can handle rationals (super slow)
-    width_scale  = T((in_w - 1) // (out_w - 1))
-    height_scale = T((in_h - 1) // (out_h - 1))
-    depth_scale  = T((in_d - 1) // (out_d - 1))
-
-    @inline idx(c, d, h, w) = c * in_d * in_h * in_w + d * in_h * in_w + h * in_w + w + 1
-
-    @inbounds Threads.@threads for c in 0:channels-1
-        for od in 0:out_d-1
-            id0, id1, d0lambda, d1lambda = compute_source_index_and_lambda(depth_scale, od, in_d, out_d)
-            for oh in 0:out_h-1
-                ih0, ih1, h0lambda, h1lambda = compute_source_index_and_lambda(height_scale, oh, in_h, out_h)
-                for ow in 0:out_w-1
-                    iw0, iw1, w0lambda, w1lambda = compute_source_index_and_lambda(width_scale, ow, in_w, out_w)
-                    output_offset = c * output_slice_size + od * out_w * out_h + oh * out_w + ow + 1
-                    Δ_value = Δ[output_offset]
-                    dx[idx(c, id0, ih0, iw0)] += d0lambda * h0lambda * w0lambda * Δ_value  # /* i000 */
-                    dx[idx(c, id0, ih0, iw1)] += d0lambda * h0lambda * w1lambda * Δ_value  # /* i001 */
-                    dx[idx(c, id0, ih1, iw0)] += d0lambda * h1lambda * w0lambda * Δ_value  # /* i010 */
-                    dx[idx(c, id0, ih1, iw1)] += d0lambda * h1lambda * w1lambda * Δ_value  # /* i011 */
-                    dx[idx(c, id1, ih0, iw0)] += d1lambda * h0lambda * w0lambda * Δ_value  # /* i100 */
-                    dx[idx(c, id1, ih0, iw1)] += d1lambda * h0lambda * w1lambda * Δ_value  # /* i101 */
-                    dx[idx(c, id1, ih1, iw0)] += d1lambda * h1lambda * w0lambda * Δ_value  # /* i110 */
-                    dx[idx(c, id1, ih1, iw1)] += d1lambda * h1lambda * w1lambda * Δ_value  # /* i111 */
-                end
-            end
-        end
-    end
-    return dx
-end
-
-function rrule(::typeof(upsample_trilinear), x; size)
-    Ω = upsample_trilinear(x; size=size)
-    function upsample_trilinear_pullback(Δ)
-        (NoTangent(), ∇upsample_trilinear(unthunk(Δ); size=(Base.size(x,1), Base.size(x,2), Base.size(x,3))))
-    end
-    return Ω, upsample_trilinear_pullback
-end
 
 
 """
