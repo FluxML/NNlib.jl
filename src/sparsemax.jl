@@ -21,7 +21,7 @@ julia> sparsemax([1 2 3; 2 2 2]; dims=2)
 0.333333  0.333333  0.333333
 ```
 """
-sparsemax(x; dims = 1) = sparsemax!(similar(x, (float ∘ eltype)(x)), x; dims = dims)
+sparsemax(x; dims = 1) = sparsemax!(similar(x, (eltype)(x)), x; dims = dims)
 
 sparsemax!(x; dims = 1) = sparsemax!(x, x; dims = dims)
 
