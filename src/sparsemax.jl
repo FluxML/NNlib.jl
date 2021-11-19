@@ -4,8 +4,9 @@
 [Sparsemax](https://arxiv.org/abs/1602.02068) turns input array `x`
 into sparse probability distributions that sum to 1 along the dimensions specified by `dims`.
 
-For a matrix input `x` it will by default (`dims = 1`) treat it as a batch of vectors,
-with each column independent. Keyword `dims = 2` will instead treat rows independently, and so on.
+Similar to softmax, each dimension is considered independent. For a matrix input `x` it will 
+by default (`dims = 1`) treat it as a batch of vectors, with each column independent. Keyword 
+`dims = 2` will instead treat rows independently.
 
 # Examples
 
@@ -28,7 +29,7 @@ sparsemax!(x; dims = 1) = sparsemax!(x, x; dims = dims)
 function sparsemax!(out::AbstractArray, x::AbstractArray; dims = 1)
     # only 2D tensors are supported
     @assert dims in (1, 2)
-    x = x .- maximum(x; dims=dims)
+    x = x .- maximum(x; dims=dims) 
 
     # make ix like
     d = size(x, dims)
