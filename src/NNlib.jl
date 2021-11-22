@@ -6,8 +6,6 @@ using ChainRulesCore
 import ChainRulesCore: rrule
 using Base.Broadcast: broadcasted
 using Statistics: mean
-using LinearAlgebra: diag
-using SliceMap: slicemap
 
 const IntOrIntTuple = Union{Integer, NTuple{N,<:Integer} where N}
 const Numeric = Union{AbstractArray{<:T}, T} where {T<:Number}
