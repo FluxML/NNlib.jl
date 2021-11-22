@@ -22,52 +22,40 @@ julia> sparsemax([1 2 3; 2 2 2]; dims=2)
 0.333333  0.333333  0.333333
 ```
 """
-sparsemax(x; dims = 1) = sparsemax!(similar(x, (eltype)(x)), x; dims = dims)
-
-sparsemax!(x; dims = 1) = sparsemax!(x, x; dims = dims)
-
-function sparsemax!(out::AbstractArray, x::AbstractArray; dims = 1)
-    # only 2D tensors are supported
-    @assert dims in (1, 2)
-    x = x .- maximum(x; dims=dims) 
-
-    # make ix like
-    d = size(x, dims)
-    if dims==1
-        rhos = reshape(collect(1:d), d, 1) |> typeof(x)
-    elseif dims == 2 
-        rhos = reshape(collect(1:d), 1, d) |> typeof(x)
-    end
-
-
-    # compute threshold and support
-    x_sorted = slicemap(x -> reverse(sort(x)), x; dims=dims)
-    x_cumsum = cumsum(x_sorted; dims=dims) .- 1.0
-    support =  rhos .* x_sorted .> x_cumsum
-    support_size = vec(sum(support; dims=dims)) |> Vector{Int64}
-    if dims == 1
-        tau = diag(gather(transpose(x_cumsum), support_size)) ./ support_size
-    elseif dims == 2
-        tau = diag(gather(x_cumsum, support_size)) ./ support_size
-    end
-
-    if dims == 1
-        out = clamp.(x .- transpose(tau), 0, Inf)
-    elseif dims == 2
-        out =  clamp.(x .- tau, 0, Inf)
-    end
+function sparsemax(x::AbstractArray; dims::Integer=1)
+    z = slicemap(x -> reverse(sort(x)), x; dims=dims)  # float is usually free, except on integers etc.
+    mask = _sparsemax_mask(z, dims)
+    tausum = sum(z .* mask; dims)  # no longer need z
+    kay = sum(mask; dims)
+    z = _relu.(x  .- (tausum .- 1) ./ kay)
 end
 
+function _sparsemax_mask(z::AbstractArray, dim::Integer)
+    acc = cumsum(z; dims=dim)
+    if dim == 1
+        acc = 1 .+ axes(z,1) .* z .> acc
+    elseif dim == 2
+        acc = 1 .+ axes(z,2)' .* z .> acc
+    else
+        # This isn't type-stable. Writing into `acc` ensures the whole function still is:
+        cnt = reshape(axes(x, dim), ntuple(_->1, dim-1)..., :)
+        acc = 1 .+ cnt .* z .> acc
+    end
+    acc
+end
 
-function ∇sparsemax!(Δ::AbstractArray, x::AbstractArray, y::AbstractArray; dims = 1)
-   nonzeros = x[x.!=0.0]
-   out .= Δ .* y
-   sum = sum(out .* nonzeros; dims=dims) / sum(nonzeros; dims=dims)
-   out .= nonzeros .* (out .- sum)
+_relu(x) = _ifelse(x>0, x, false)  # different gradient at zero
+
+_ifelse(p, x, y) = ifelse(p, promote(x, y)...)
+
+function ∇sparsemax(dy::AbstractArray, y::AbstractArray; dims::Integer=1)
+    vee = sum(dy .* (y .> 0); dims)
+    kay = count(>(0), y; dims)  # could also keep from forward pass?
+    _ifelse.(y .> 0, dy .- vee ./ kay, 0)
 end
 
 function rrule(::typeof(sparsemax), xs; dims=1)
-   y = sparsemax(xs; dims=dims)
-   sparsemax_pullback(Δ) = (NoTangent(), ∇sparsemax(unthunk(Δ), xs, y, dims = dims))
-   return y, sparsemax_pullback
-end
+    y = sparsemax(xs; dims=dims)
+    sparsemax_pullback(Δ) = (NoTangent(), ∇sparsemax(xs, y, dims = dims))
+    return y, sparsemax_pullback
+ end
