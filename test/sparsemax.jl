@@ -15,6 +15,12 @@ end
     @test sparsemax(Float32[1, 2, 2]; dims=2) == Float32[1.0, 1.0, 1.0]
 end
 
+@testset "sparsemax inferred return type" begin
+    for T in [Float16, Float32, Float64]
+        val = @inferred sparsemax(T[1,2,3])
+        @test typeof(val) == Vector{T}
+    end
+end
 
 @testset "AutoDiff" begin
     gradtest(x -> sparsemax(x) .* (1:3), 3)
