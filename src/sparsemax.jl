@@ -37,44 +37,34 @@ julia> sparsemax(reshape(1:15, 5, 3) ./ 20) # Scale matters
 ```
 """
 function sparsemax(x::AbstractArray; dims::Integer=1)
-    z = sort(float(x); dims, rev=true)   # float is usually free, except on integers etc.
-    mask = _sparsemax_mask(z, dims)
-    tausum = sum(z .* mask; dims)  # no longer need z
-    kay = sum(mask; dims)
-    z = _relu.(x  .- (tausum .- 1) ./ kay)
-end
-
-function sparsemax(x::AbstractVector; dims::Integer=1)
-    if dims == 1
-        z = sort(float(x); rev=true)
-    elseif dims == 2
-        z = float(x)
+    if isa(x, AbstractVector)
+        z = _sort_vector(x)
+    else
+        z = sort(float(x); dims=dims, rev=true) 
     end
     mask = _sparsemax_mask(z, dims)
-    tausum = sum(z .* mask; dims)  # no longer need z
+    tausum = sum(z .* mask; dims) 
     kay = sum(mask; dims)
-    z = _relu.(x  .- (tausum .- 1) ./ kay)
+    z = max.(x  .- (tausum .- 1) ./ kay, 0) # relu
 end
 
-
+function _sort_vector(x::AbstractVector; dims::Integer=1, rev=true)
+    if dims == 1
+        z = sort(float(x); rev=rev)
+    elseif dims == 2
+        z = x
+    else
+        error("Dims must be in (1,2) for a vector. Not " * string(dims))
+    end
+    return z
+end
 
 function _sparsemax_mask(z::AbstractArray, dim::Integer)
     acc = cumsum(z; dims=dim)
-    if dim == 1
-        acc = 1 .+ axes(z,1) .* z .> acc
-    elseif dim == 2
-        acc = 1 .+ axes(z,2)' .* z .> acc
-    else
-        # This isn't type-stable. Writing into `acc` ensures the whole function still is:
-        cnt = reshape(axes(x, dim), ntuple(_->1, dim-1)..., :)
-        acc = 1 .+ cnt .* z .> acc
-    end
-    acc
+    # This isn't type-stable. Writing into `acc` ensures the whole function still is:
+    cnt = reshape(axes(z, dim), ntuple(_->1, dim-1)..., :)
+    acc = 1 .+ cnt .* z .> acc
 end
-
-_relu(x) = _ifelse(x>0, x, false)  # different gradient at zero
-
-_ifelse(p, x, y) = ifelse(p, promote(x, y)...)
 
 function ∇sparsemax(Δ::AbstractArray, y::AbstractArray; dims = 1)
     nonzeros = Δ.!=0.0
