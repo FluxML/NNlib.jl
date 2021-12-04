@@ -562,7 +562,7 @@ end
     w = Float64.(reshape(1:6, (3,1,2)))
     cdims = DepthwiseConvDims(x, w; padding=1)
     for conv in (NNlib.depthwiseconv, NNlib.depthwiseconv_im2col, NNlib.depthwiseconv_direct)
-        @test isapprox(conv(x, w, cdims)[:], [2, 10], rtol=1e-7)
+        @test conv(x, w, cdims)[:] ≈ [2, 10]  rtol=1e-7
     end
 end
 
