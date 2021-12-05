@@ -242,6 +242,9 @@ conv_answer_dict = Dict(
     ),
 )
 
+# A "drop channels and batch dimension" helper
+ddims(x) = dropdims(x, dims=(ndims(x)-1, ndims(x)))
+
 @testset "Dense Convolution" begin
     # Start with some easy-to-debug cases that we have worked through and _know_ work
     for rank in (1,2,3)
@@ -271,9 +274,6 @@ conv_answer_dict = Dict(
             # We generate x and w from the shapes we know they must be
             x = reshape(Float64[1:prod(size(dx));], size(dx)..., 1, 1)
             w = reshape(Float64[1:prod(size(dw));], size(dw)..., 1, 1)
-
-            # A "drop channels and batch dimension" helper
-            ddims(x) = dropdims(x, dims=(rank+1, rank+2))
 
             convs = [NNlib.conv, NNlib.conv_im2col, NNlib.conv_direct,]
             NNlib.is_nnpack_available() && push!(convs, NNlib.conv_nnpack)
@@ -450,8 +450,10 @@ else
 end
 
 @testset "Depthwise Convolution" begin
-    # Start with some easy-to-debug cases that we have worked through and _know_ work
-    for rank in (1,) #2,3)
+    # Start with some easy-to-debug cases that we have worked through and _know_ work.
+    # NOTE: these examples are all single-channel... which doesn't really stress test
+    # the important parts of depthwise convolution!
+    for rank in (1,2,3)
         @testset "depthwiseconv$(rank)d" begin
             # Pull out known-good answers for y = depthwiseconv(x, w)
             y_pad = conv_answer_dict[rank]["y_pad"]
@@ -478,9 +480,6 @@ end
             # We generate x and w from the shapes we know they must be
             x = reshape(Float64[1:prod(size(dx));], size(dx)..., 1, 1)
             w = reshape(Float64[1:prod(size(dw));], size(dw)..., 1, 1)
-
-            # A "drop channels and batch dimension" helper
-            ddims(x) = dropdims(x, dims=(rank+1, rank+2))
 
             for conv in (NNlib.depthwiseconv, NNlib.depthwiseconv_im2col, NNlib.depthwiseconv_direct)
                 @testset "$(conv)" begin
@@ -556,6 +555,14 @@ end
                 end
             end
         end
+    end
+
+    # Do some real depthwise convolution tests
+    x = Float64.(reshape(1:2, (1,2,1)))
+    w = Float64.(reshape(1:6, (3,1,2)))
+    cdims = DepthwiseConvDims(x, w; padding=1)
+    for conv in (NNlib.depthwiseconv, NNlib.depthwiseconv_im2col, NNlib.depthwiseconv_direct)
+        @test conv(x, w, cdims)[:] ≈ [2, 10]  rtol=1e-7
     end
 end
 

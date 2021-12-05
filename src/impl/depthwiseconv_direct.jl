@@ -81,12 +81,10 @@ function depthwiseconv_direct!(y::AbstractArray{yT,5}, x::AbstractArray{xT,5},
         h_idx in h_region,
         w_idx in w_region
 
-        # Probe for out-of-bounds accesses on `x` and `continue` if we hit one
         dotprod = yT(0)
         c_out = (c_in - 1)*channel_multiplier(cdims) + c_mult
-        for c_in in 1:channels_in(cdims),
-            kd in 1:kernel_d
-
+        for kd in 1:kernel_d
+            # Probe for out-of-bounds accesses on `x` and `continue` if we hit one
             x_d = project(d_idx, stride_d, pad_d_lo) + (kd - 1)*dil_d
             if x_d <= 0 || x_d > depth
                 continue
