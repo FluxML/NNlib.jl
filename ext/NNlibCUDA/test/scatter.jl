@@ -16,6 +16,9 @@ idxs = [
     cu([(1,) (2,) (3,) (4,);
         (4,) (2,) (1,) (3,);
         (3,) (5,) (5,) (3,)]),  # tuple index
+    cu(CartesianIndex.([(1,) (2,) (3,) (4,);
+        (4,) (2,) (1,) (3,);
+        (3,) (5,) (5,) (3,)])),  # CartesianIndex index
 ]
 
 types = [CuArray{Int32}, CuArray{Int64}, CuArray{Float32}, CuArray{Float64}]
