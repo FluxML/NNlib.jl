@@ -17,6 +17,38 @@
     gputest(src -> NNlib.gather(src, index), src, checkgrad=true)
     @test NNlib.gather!(CUDA.zeros(T, size(index)...), src, index) == output
     @test_throws ArgumentError NNlib.gather!(zeros(T, 3, 5), src, index)
+    
+    ## 1d src, 2d index of tuples -> 2d output
+    src = CT([3, 4, 5, 6, 7])
+    index = cu([(1,) (2,) (3,) (4,);
+                (4,) (2,) (1,) (3,);
+                (3,) (5,) (5,) (3,)])
+    output = CT([3 4 5 6;
+                6 4 3 5;
+                5 7 7 5])
+    
+    y = NNlib.gather(src, index)
+    @test y isa CuArray{Float32,2}
+    @test size(y) == size(index)
+    gputest(src -> NNlib.gather(src, index), src, checkgrad=true)
+    @test NNlib.gather!(CUDA.zeros(T, size(index)...), src, index) == output
+    @test_throws ArgumentError NNlib.gather!(zeros(T, 3, 5), src, index)
+    
+    ## 1d src, 2d index of CartesianIndex -> 2d output
+    src = CT([3, 4, 5, 6, 7])
+    index = cu(CartesianIndex.([(1,) (2,) (3,) (4,);
+                (4,) (2,) (1,) (3,);
+                (3,) (5,) (5,) (3,)]))
+    output = CT([3 4 5 6;
+                6 4 3 5;
+                5 7 7 5])
+    
+    y = NNlib.gather(src, index)
+    @test y isa CuArray{Float32,2}
+    @test size(y) == size(index)
+    gputest(src -> NNlib.gather(src, index), src, checkgrad=true)
+    @test NNlib.gather!(CUDA.zeros(T, size(index)...), src, index) == output
+    @test_throws ArgumentError NNlib.gather!(zeros(T, 3, 5), src, index)
 
     ## 1d src, 3d index of ints -> 3d output
     src = CT([3, 4, 5, 6, 7])

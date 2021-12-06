@@ -37,6 +37,18 @@ function gather_kernel!(dst, src, idx, max_idx, max_dims_idx, dims_size)
     return nothing
 end
 
+function gather_kernel!(dst, src, idx::CUDA.CuDeviceArray{<:CartesianIndex}, max_idx, max_dims_idx, dims_size)
+    index = threadIdx().x + (blockIdx().x - 1) * blockDim().x
+
+    @inbounds if index <= max_idx
+        j, k = divrem(index-1, max_dims_idx)
+        dims_i = CartesianIndices(dims_size)[k+1]
+        li = Base._to_linear_index(src, Tuple(dims_i)..., Tuple(idx[j+1])...)
+        dst[index] = src[li]
+    end
+    return nothing
+end
+
 function NNlib.gather!(dst::AnyCuArray, src::AnyCuArray, idx::AnyCuArray)
     dims = gather_check_dims(src, dst, idx)
     dims_size = size(src)[1:dims]

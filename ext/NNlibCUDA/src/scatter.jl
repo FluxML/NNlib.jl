@@ -9,6 +9,16 @@ function scatter_kernel!(op, dst, src, idx)
     return nothing
 end
 
+function scatter_kernel!(op, dst, src, idx::CUDA.CuDeviceArray{<:CartesianIndex})
+    index = threadIdx().x + (blockIdx().x - 1) * blockDim().x
+
+    @inbounds if index <= length(idx)
+        li = Base._to_linear_index(dst, Tuple(idx[index])...)
+        CUDA.@atomic dst[li] = op(dst[li], src[index])
+    end
+    return nothing
+end
+
 function scatter_kernel!(op, dst, src, idx, max_idx, max_dims_idx, dims_size)
     index = threadIdx().x + (blockIdx().x - 1) * blockDim().x
 
@@ -16,6 +26,18 @@ function scatter_kernel!(op, dst, src, idx, max_idx, max_dims_idx, dims_size)
         j, k = divrem(index-1, max_dims_idx)
         dims_i = CartesianIndices(dims_size)[k+1]
         CUDA.@atomic dst[Tuple(dims_i)..., idx[j+1]...] = op(dst[Tuple(dims_i)..., idx[j+1]...], src[index])
+    end
+    return nothing
+end
+
+function scatter_kernel!(op, dst, src, idx::CUDA.CuDeviceArray{<:CartesianIndex}, max_idx, max_dims_idx, dims_size)
+    index = threadIdx().x + (blockIdx().x - 1) * blockDim().x
+
+    @inbounds if index <= max_idx
+        j, k = divrem(index-1, max_dims_idx)
+        dims_i = CartesianIndices(dims_size)[k+1]
+        li = Base._to_linear_index(dst, Tuple(dims_i)..., Tuple(idx[j+1])...)
+        CUDA.@atomic dst[li] = op(dst[li], src[index])
     end
     return nothing
 end
@@ -69,6 +91,25 @@ function ∇scatter_src_kernel!(op, Δsrc, src, idx, rev_idx, max_idx, T)
     return nothing
 end
 
+function ∇scatter_src_kernel!(op, Δsrc, src, idx::CUDA.CuDeviceArray{<:CartesianIndex}, rev_idx, max_idx, T)
+    index = threadIdx().x + (blockIdx().x - 1) * blockDim().x
+
+    @inbounds if index <= max_idx
+        cart_j = CartesianIndices(idx)[index]
+        # get aggregating indeices, which is to be aggregated together, and itself index
+        inds = rev_idx[Tuple(idx[cart_j])...]
+        # multiply all values to be aggregated but not itself
+        x = one(T)
+        for k in inds
+            x *= src[k]
+        end
+        x /= src[cart_j]
+        # apply `op` on `Δsrc[i, k]` and `x`
+        Δsrc[cart_j] = op(Δsrc[cart_j], x)
+    end
+    return nothing
+end
+
 function ∇scatter_src_kernel!(op, Δsrc, src, idx, rev_idx, pre_cart_idx, max_dims_idx, max_idx, T)
     index = threadIdx().x + (blockIdx().x - 1) * blockDim().x
 
@@ -78,6 +119,28 @@ function ∇scatter_src_kernel!(op, Δsrc, src, idx, rev_idx, pre_cart_idx, max_
         cart_j = pre_cart_idx[j]
         # get aggregating indeices, which is to be aggregated together, and itself index
         inds = rev_idx[idx[cart_i]...]
+        # multiply all values to be aggregated but not itself
+        x = one(T)
+        for k in inds
+            jk = Base._to_linear_index(src, Tuple(cart_j)..., Tuple(k)...)
+            x *= src[jk]
+        end
+        x /= src[index]
+        # apply `op` on `Δsrc[i, k]` and `x`
+        Δsrc[index] = op(Δsrc[index], x)
+    end
+    return nothing
+end
+
+function ∇scatter_src_kernel!(op, Δsrc, src, idx::CUDA.CuDeviceArray{<:CartesianIndex}, rev_idx, pre_cart_idx, max_dims_idx, max_idx, T)
+    index = threadIdx().x + (blockIdx().x - 1) * blockDim().x
+
+    @inbounds if index <= max_idx
+        i, j = fldmod1(index, max_dims_idx)
+        cart_i = CartesianIndices(idx)[i]
+        cart_j = pre_cart_idx[j]
+        # get aggregating indeices, which is to be aggregated together, and itself index
+        inds = rev_idx[Tuple(idx[cart_i])...]
         # multiply all values to be aggregated but not itself
         x = one(T)
         for k in inds
