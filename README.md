@@ -1,6 +1,7 @@
 # NNlib.jl
 
-[![Build Status](https://travis-ci.org/FluxML/NNlib.jl.svg?branch=master)](https://travis-ci.org/FluxML/NNlib.jl) [![Build status](https://ci.appveyor.com/api/projects/status/wo2wkv1l9cj548uh?svg=true)](https://ci.appveyor.com/project/one-more-minute/nnlib-jl) [![Coverage](https://codecov.io/gh/FluxML/NNlib.jl/branch/master/graph/badge.svg)](https://codecov.io/gh/FluxML/NNlib.jl) 
+[![Build Status](https://github.com/FluxML/NNlib.jl/workflows/CI/badge.svg)](https://github.com/FluxML/NNlib.jl/workflows/CI/badge.svg)
+[![Coverage](https://codecov.io/gh/FluxML/NNlib.jl/branch/master/graph/badge.svg)](https://codecov.io/gh/FluxML/NNlib.jl) 
 [![Documentation](https://img.shields.io/badge/docs-fluxml.ai-blue)](https://fluxml.ai/Flux.jl/stable/models/nnlib/)
 
 
