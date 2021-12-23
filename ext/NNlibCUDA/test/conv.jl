@@ -12,6 +12,9 @@ using NNlib: DenseConvDims
     options = Dict{Any, Any}.((
         (), (:dilation => 2), (:flipkernel => true), (:stride => 2),
         (:padding => 1),
+        (:padding => (1,0)),
+        (:padding => (0,1)),
+        (:padding => (2,3)),
     ))
     C_in_ = 3
     C_out = 4
@@ -26,6 +29,14 @@ using NNlib: DenseConvDims
 
         for opts in options
             opts[:groups] = groups
+            
+            if :padding in keys(opts)
+                padding = opts[:padding]
+                if 1 < length(padding) && length(padding) != 2num_spatial_dims
+                    opts[:padding] = ntuple(i -> padding[mod1(i,2)] .+ 2div(i-1,2), 2num_spatial_dims)   
+                end
+            end
+
             cdims = DenseConvDims(x, w; opts...)
             y = NNlib.conv(x, w, cdims)
 
@@ -44,5 +55,4 @@ using NNlib: DenseConvDims
             gputest((w, x, y) -> NNlib.∇conv_filter!(copy(w), x, y, cdims; beta=2.0), w, x, y, checkgrad=false) # TODO
         end
     end
-
 end
