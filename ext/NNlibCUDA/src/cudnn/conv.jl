@@ -14,29 +14,26 @@ function cudnnConvolutionDescriptorAndPaddedInput(cdims::DenseConvDims, x::Dense
     # The main purpose of this function is to catch asymmetric padding which cudnn does not support
     # If we find asymmetric padding we'll make a copy of x which is manually padded so that we can
     # call cudnn with symmetric padding.
-    pad = collect(NNlib.padding(cdims)) # work with an array to make things more type stable
-    all(pad[1:2:end] .== pad[2:2:end]) && return (cudnnConvolutionDescriptor(cdims, x), x, identity)
-
-    # Maybe we should warn the user that this copies data, but other ML libs generally don't warn
+    pad = NNlib.padding(cdims)
     sdims = NNlib.spatial_dims(cdims)
-    
+    all(i -> pad[i] .== pad[i+1], 1:2:2sdims) && return (cudnnConvolutionDescriptor(cdims, x), x, identity)
+
     # Naive implementation, is there a faster way?
     # How much we need to pad x manually: The absolute difference between pad_left and pad_right, pad_top
     # and pad_bottom etc. respectively. We keep the sign here though because we use it below to figure out
     # which side of x to pad.
-    pad_manual = pad[1:2:2sdims] .- pad[2:2:2sdims]
+    pad_manual = ntuple(i -> pad[2(i-1)+1] - pad[2(i-1)+2], sdims) 
     # How much we can let cudnn pad: The smallest padding amount between pad_left and pad_right, pad_top 
     # and pad_bottom etc. respectively
-    pad_cudnn = min.(pad[1:2:2sdims], pad[2:2:2sdims])
+    pad_cudnn = ntuple(i -> min(pad[2(i-1)+1], pad[2(i-1)+2]), sdims) 
 
+    x_padded_size = ntuple(i -> i <= sdims ? size(x, i) + abs(pad_manual[i]) : size(x ,i), ndims(x))
 
-    x_padded = similar(x, (size(x)[1:sdims] .+ abs.(pad_manual))..., size(x)[end-1:end]...)
-    # We could do the same yucky indexing stuff for the zeros too so we don't have to write zeros in the whole array.
-    # Not sure if it is worth it though...
+    x_padded = similar(x, x_padded_size)
     fill!(x_padded, 0)
     # This is a bit yucky, but we are basically figuring out where in x_padded we shall insert x_inds
-    # Haven't benchmarked if this has any advantages over a more readable solution, e.g. writing dim by dim in a loop 
-    x_inds = range.(1 .+ max.(0, pad_manual), size(x)[1:sdims] .- min.(0, .-pad_manual))
+    # Haven't benchmarked if this has any advantages over a more readable solution, e.g. writing dim by dim in a loop
+    x_inds = ntuple(i -> range(1 + max(0, pad_manual[i]),  size(x,i) - min(0, -pad_manual[i])), sdims)
     x_padded[x_inds..., :, :] = x
     return cudnnConvolutionDescriptor(cdims, x_padded, pad_cudnn), x_padded, _x -> _x[x_inds...,:,:]
 end
