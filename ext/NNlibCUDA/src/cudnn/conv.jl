@@ -21,21 +21,26 @@ function cudnnConvolutionDescriptorAndPaddedInput(cdims::DenseConvDims, x::Dense
     # Naive implementation, is there a faster way?
     # How much we need to pad x manually: The absolute difference between pad_left and pad_right, pad_top
     # and pad_bottom etc. respectively. We keep the sign here though because we use it below to figure out
-    # which side of x to pad.
-    pad_manual = ntuple(i -> pad[2(i-1)+1] - pad[2(i-1)+2], sdims) 
+    # which side of x to pad. Oh, and we use a CartesianIndex as we will mainly use this to index in x
+    pad_manual = CartesianIndex(ntuple(i -> i > sdims ? 0 : pad[2(i-1)+1] - pad[2(i-1)+2], ndims(x)))
+
     # How much we can let cudnn pad: The smallest padding amount between pad_left and pad_right, pad_top 
     # and pad_bottom etc. respectively
     pad_cudnn = ntuple(i -> min(pad[2(i-1)+1], pad[2(i-1)+2]), sdims) 
 
     x_padded_size = ntuple(i -> i <= sdims ? size(x, i) + abs(pad_manual[i]) : size(x ,i), ndims(x))
-
     x_padded = similar(x, x_padded_size)
     fill!(x_padded, 0)
-    # This is a bit yucky, but we are basically figuring out where in x_padded we shall insert x_inds
-    # Haven't benchmarked if this has any advantages over a more readable solution, e.g. writing dim by dim in a loop
-    x_inds = ntuple(i -> range(1 + max(0, pad_manual[i]),  size(x,i) - min(0, -pad_manual[i])), sdims)
-    x_padded[x_inds..., :, :] = x
-    return cudnnConvolutionDescriptor(cdims, x_padded, pad_cudnn), x_padded, _x -> _x[x_inds...,:,:]
+    # This is a bit yucky, but we are basically figuring out where in x_padded we shall insert x
+    # Haven't benchmarked if this has any advantages over a more readable solution, e.g. writing dim 
+    # by dim to an array in a loop
+    xIs = CartesianIndices(x)
+    xI_first = first(xIs)
+    xI_last = last(xIs)
+    xIs_pad = max(xI_first, xI_first + pad_manual) : max(xI_last, xI_last + pad_manual)
+    x_padded[xIs_pad] = x 
+    
+    return cudnnConvolutionDescriptor(cdims, x_padded, pad_cudnn), x_padded, _x -> _x[xIs_pad]
 end
 
 function cudnnConvolutionDescriptor(cdims::DenseConvDims, x::DenseCuArray{T}, pad = nnlibPadding(cdims)) where T
