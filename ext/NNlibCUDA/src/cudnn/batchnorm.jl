@@ -18,25 +18,26 @@ BNCache() = BNCache(nothing, nothing)
 # NOTE: CuDNN supports only 4D and 5D Tensors for BatchNorm Operations
 # so reshape a 2D Tensor into 4D
 batchnorm(g::DenseCuArray{T}, b::DenseCuArray{T}, x::DenseCuArray{T,2},
-          running_mean::DenseCuArray{T}, running_var::DenseCuArray{T}, momentum;
-          cache = nothing, alpha = T(1), beta = T(0),
-          eps = T(1e-5), training = true) where T<:Union{Float32, Float64} =
-  dropdims(batchnorm(g, b, reshape(x, 1, 1, size(x, 1), size(x, 2)), running_mean, running_var, momentum,
-            cache = cache, alpha = alpha, beta = beta, eps = eps, training = training), dims = (1, 2))
+          running_mean, running_var, momentum;
+          kws...) where T<:Union{Float32, Float64} =
+  dropdims(batchnorm(g, b, reshape(x, 1, 1, size(x, 1), size(x, 2)), 
+                     running_mean, running_var, momentum;
+                     kws...), 
+            dims = (1, 2))
 
 function batchnorm(g::DenseCuArray{T}, b::DenseCuArray{T}, x::Union{DenseCuArray{T,4},DenseCuArray{T,5}},
-                    running_mean::DenseCuArray{T}, running_var::DenseCuArray{T}, momentum;
-                    cache = nothing, alpha = T(1), beta = T(0),
-                    eps = T(1e-5), training = true) where T<:Union{Float32, Float64}
-  cudnnBNForward!(similar(x), g, b, x, running_mean, running_var, momentum, cache = cache,
-      alpha = alpha, beta = beta, eps = eps, training = training)
+                    running_mean, running_var, momentum;
+                    kws...) where T<:Union{Float32, Float64}
+  cudnnBNForward!(similar(x), g, b, x, running_mean, running_var, momentum; kws...)
 end
 
 function cudnnBNForward!(y::DenseCuArray{T}, g::DenseCuArray{T}, b::DenseCuArray{T}, x::DenseCuArray{T},
-                        running_mean::DenseCuArray{T}, running_var::DenseCuArray{T},
-                        momentum; cache = nothing,
+                        running_mean, running_var, momentum; 
+                        cache = nothing, 
                         alpha = T(1), beta = T(0),
-                        eps = T(1e-5), training = true) where T<:Union{Float32, Float64}
+                        eps = T(1e-5), 
+                        training = true,
+                        track_stats = true) where T<:Union{Float32, Float64}
   dims = _wsize(x)
   if eps < CUDNN_BN_MIN_EPSILON
     # warn("eps ",eps," is too small for CuDNN so eps has been assigned the value ", CUDNN_BN_MIN_EPSILON)
@@ -46,8 +47,12 @@ function cudnnBNForward!(y::DenseCuArray{T}, g::DenseCuArray{T}, b::DenseCuArray
   yd = cudnnTensorDescriptor(y)
   gd = cudnnTensorDescriptor(CUDNN_TENSOR_NCHW, cudnnDataType(T), Cint(length(dims)), dim4(dims,Val(CUDNN_TENSOR_NCHW)))
 
-  if training
+  if !track_stats
+    running_mean = CU_NULL
+    running_var = CU_NULL
+  end
 
+  if training
     if cache !== nothing
       mean = zeros(CuArray{T}, dims...)
       ivar = ones(CuArray{T}, dims...)
@@ -69,33 +74,36 @@ function cudnnBNForward!(y::DenseCuArray{T}, g::DenseCuArray{T}, b::DenseCuArray
 end
 
 function ∇batchnorm(g::DenseCuArray{T}, b::DenseCuArray{T}, x::DenseCuArray{T, 2}, dy::DenseCuArray{T, 2},
-            running_mean::DenseCuArray{T}, running_var::DenseCuArray{T}, momentum;
-            cache = nothing, eps = T(1e-5), alpha = T(1),
-            beta = T(0), training = true) where T<:Union{Float32, Float64}
+            running_mean, running_var, momentum;
+            kws...) where T<:Union{Float32, Float64}
   dg, db, dx = ∇batchnorm(g, b, reshape(x, 1, 1, size(x, 1), size(x, 2)), reshape(dy, 1, 1, size(dy, 1),
-                          size(dy, 2)), running_mean, running_var, momentum, cache = cache, eps = eps,
-                          alpha = alpha, beta = beta, training = training)
+                          size(dy, 2)), running_mean, running_var, momentum; kws...)
   (dg, db, dropdims(dx, dims = (1, 2)))
 end
 
 function ∇batchnorm(g::DenseCuArray{T}, b::DenseCuArray{T}, x::DenseCuArray{T}, dy::DenseCuArray{T},
-                    running_mean::DenseCuArray{T}, running_var::DenseCuArray{T}, momentum;
-                    cache = nothing, eps = T(1e-5), alpha = T(1),
-                    beta = T(0), training = true) where T<:Union{Float32, Float64}
+                    running_mean, running_var, momentum;
+                    kws...) where T<:Union{Float32, Float64}
   dg = similar(g)
   db = similar(b)
   dx = similar(x)
-  cudnnBNBackward!(dg, g, db, dx, x, dy, running_mean, running_var, T(momentum),
-    training = training, cache = cache, eps = eps, alpha = alpha, beta = beta)
+  cudnnBNBackward!(dg, g, db, dx, x, dy, running_mean, running_var, T(momentum); kws...)
   (dg, db, dx)
 end
 
 function cudnnBNBackward!(dg::DenseCuArray{T}, g::DenseCuArray{T}, db::DenseCuArray{T},
                           dx::DenseCuArray{T}, x::DenseCuArray{T}, dy::DenseCuArray{T},
-                          running_mean::DenseCuArray{T}, running_var::DenseCuArray{T},
+                          running_mean, running_var,
                           momentum; cache = nothing, eps = T(1e-5),
                           alpha = T(1), beta = T(0),
-                          dalpha = T(1), dbeta = T(0), training = true) where T<:Union{Float32, Float64}
+                          dalpha = T(1), dbeta = T(0), training = true, 
+                          track_stats = true) where T<:Union{Float32, Float64}
+  
+  if !track_stats
+    running_mean = CU_NULL
+    running_var = CU_NULL
+  end
+
   if training
     xd = cudnnTensorDescriptor(x)
     dyd = cudnnTensorDescriptor(dy)
@@ -121,4 +129,4 @@ function cudnnBNBackward!(dg::DenseCuArray{T}, g::DenseCuArray{T}, db::DenseCuAr
     db .= vec(sum(dy, dims=rdims))
   end
 end
-  
+
