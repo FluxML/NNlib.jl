@@ -3,6 +3,8 @@ module NNlibCUDA
 using NNlib
 using CUDA
 using Random, Statistics
+using ChainRulesCore: NoTangent, ZeroTangent
+import ChainRulesCore: rrule
 
 const IntOrIntTuple = Union{Integer, NTuple{N,<:Integer} where N}
 

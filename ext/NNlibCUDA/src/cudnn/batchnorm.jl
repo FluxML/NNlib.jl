@@ -15,6 +15,16 @@ BNCache() = BNCache(nothing, nothing)
 
 @inline _wsize(y) = (fill(1, ndims(y)-2)..., size(y)[end-1], 1)
 
+function batchnorm(g::Nothing, b::Nothing, x::DenseCuArray,
+                running_mean, running_var, momentum;
+                kws...)
+  g = fill!(similar(x, size(ndims(x)-1)), 1)
+  b = fill!(similar(x, size(ndims(x)-1)), 0)
+  
+  batchnorm(g, b, x, running_mean, running_var, momentum;
+                     kws...)
+end
+
 # NOTE: CuDNN supports only 4D and 5D Tensors for BatchNorm Operations
 # so reshape a 2D Tensor into 4D
 batchnorm(g::DenseCuArray{T}, b::DenseCuArray{T}, x::DenseCuArray{T,2},
@@ -37,6 +47,7 @@ function cudnnBNForward!(y::DenseCuArray{T}, g::DenseCuArray{T}, b::DenseCuArray
                         alpha = T(1), beta = T(0),
                         eps = T(1e-5), 
                         training = true,
+                        affine = true,
                         track_stats = true) where T<:Union{Float32, Float64}
   dims = _wsize(x)
   if eps < CUDNN_BN_MIN_EPSILON
@@ -73,6 +84,13 @@ function cudnnBNForward!(y::DenseCuArray{T}, g::DenseCuArray{T}, b::DenseCuArray
   return y
 end
 
+function ∇batchnorm(g::Nothing, b::Nothing, x::DenseCuArray, dy::DenseCuArray,
+                  running_mean, running_var, momentum; kws...)
+  g = fill!(similar(x, size(ndims(x)-1)), 1)
+  b = fill!(similar(x, size(ndims(x)-1)), 0)
+  ∇batchnorm(g, b, x, dy, running_mean, running_var, momentum; kws...)
+end
+
 function ∇batchnorm(g::DenseCuArray{T}, b::DenseCuArray{T}, x::DenseCuArray{T, 2}, dy::DenseCuArray{T, 2},
             running_mean, running_var, momentum;
             kws...) where T<:Union{Float32, Float64}
@@ -81,14 +99,20 @@ function ∇batchnorm(g::DenseCuArray{T}, b::DenseCuArray{T}, x::DenseCuArray{T,
   (dg, db, dropdims(dx, dims = (1, 2)))
 end
 
+
 function ∇batchnorm(g::DenseCuArray{T}, b::DenseCuArray{T}, x::DenseCuArray{T}, dy::DenseCuArray{T},
                     running_mean, running_var, momentum;
-                    kws...) where T<:Union{Float32, Float64}
+                    affine=true, kws...) where T<:Union{Float32, Float64}
   dg = similar(g)
   db = similar(b)
   dx = similar(x)
   cudnnBNBackward!(dg, g, db, dx, x, dy, running_mean, running_var, T(momentum); kws...)
-  (dg, db, dx)
+  if affine
+    (dg, db, dx)
+  else
+    # CUDNN always calculates dg and db, therefore we just have to drop them  
+    (nothing, nothing, dx)
+  end
 end
 
 function cudnnBNBackward!(dg::DenseCuArray{T}, g::DenseCuArray{T}, db::DenseCuArray{T},
@@ -104,29 +128,38 @@ function cudnnBNBackward!(dg::DenseCuArray{T}, g::DenseCuArray{T}, db::DenseCuAr
     running_var = CU_NULL
   end
 
-  if training
-    xd = cudnnTensorDescriptor(x)
-    dyd = cudnnTensorDescriptor(dy)
-    dxd = cudnnTensorDescriptor(dx)
-    gd = cudnnTensorDescriptor(CUDNN_TENSOR_NCHW, cudnnDataType(T), Cint(length(_wsize(x))), dim4(_wsize(x),Val(CUDNN_TENSOR_NCHW)))
-    if cache !== nothing
-      mean, ivar = cache.mean, cache.ivar
-      info("mean and ivar are fetched from the cache")
-    else
-      mean, ivar = CU_NULL, CU_NULL
-    end
-
-    if eps < CUDNN_BN_MIN_EPSILON
-      eps = CUDNN_BN_MIN_EPSILON
-    end
-
-    cudnnBatchNormalizationBackward(handle(), CUDNN_BATCHNORM_SPATIAL, scalingParameter(T, alpha), scalingParameter(T, beta), scalingParameter(T, dalpha), scalingParameter(T, dbeta), xd, x, dyd, dy, dxd, dx, gd, g, dg, db, eps, mean, ivar)
+  xd = cudnnTensorDescriptor(x)
+  dyd = cudnnTensorDescriptor(dy)
+  dxd = cudnnTensorDescriptor(dx)
+  gd = cudnnTensorDescriptor(CUDNN_TENSOR_NCHW, cudnnDataType(T), Cint(length(_wsize(x))), dim4(_wsize(x),Val(CUDNN_TENSOR_NCHW)))
+  if cache !== nothing
+    mean, ivar = cache.mean, cache.ivar
+    # info("mean and ivar are fetched from the cache")
   else
-    ivar = 1 ./ sqrt.(reshape(running_var, _wsize(x)) .+ eps)
-    dx .= dy .* reshape(g, _wsize(x)) .* ivar
-    rdims = ((1:ndims(x)-2)..., ndims(x))
-    dg .= vec(sum(dy .* (x .- reshape(running_mean, _wsize(x))) .* ivar, dims=rdims))
-    db .= vec(sum(dy, dims=rdims))
+    mean, ivar = CU_NULL, CU_NULL
+  end
+
+  if eps < CUDNN_BN_MIN_EPSILON
+    eps = CUDNN_BN_MIN_EPSILON
+  end
+
+  if training
+    cudnnBatchNormalizationBackward(handle(), CUDNN_BATCHNORM_SPATIAL, 
+          scalingParameter(T, alpha), scalingParameter(T, beta), scalingParameter(T, dalpha), scalingParameter(T, dbeta), 
+          xd, x, dyd, dy, dxd, dx, gd, g, dg, db, eps, 
+          mean, ivar)
+  else
+    cudnnBatchNormalizationBackward(handle(), CUDNN_BATCHNORM_SPATIAL, 
+          scalingParameter(T, alpha), scalingParameter(T, beta), scalingParameter(T, dalpha), scalingParameter(T, dbeta), 
+          xd, x, dyd, dy, dxd, dx, gd, g, dg, db, eps, 
+          running_mean, running_var)  
   end
 end
 
+function rrule(::typeof(batchnorm), g, b, x, running_mean, running_var, momentum; kws...)
+  y = batchnorm(g, b, x, running_mean, running_var, momentum; kws...) 
+  function batchnorm_pullback(Δ)
+    NoTangent(), ∇batchnorm(g, b, x, Δ, running_mean, running_var, momentum; kws...)..., NoTangent(), NoTangent(), NoTangent()
+  end
+  y, batchnorm_pullback
+end
