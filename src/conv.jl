@@ -59,7 +59,7 @@ function conv(
     padding = expand(Val(N - 2), pad)
     dilation = expand(Val(N - 2), dilation)
 
-    cdims = DynDenseConvDims(
+    cdims = DenseConvDims(
         size(x), size(w); stride, padding, dilation, flipkernel=flipped, groups)
     conv(x, w, cdims)
 end

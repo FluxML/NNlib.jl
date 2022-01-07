@@ -6,8 +6,15 @@
     kernel_w, kernel_h, kernel_d = kernel_size(cdims)
     return (kernel_w - w + 1, kernel_h - h + 1, kernel_d - d + 1)
 end
-@inline function kernel_index(w, h, d, cdim::ConvDims{N, S, P, D, true}) where {N, S, P, D}
+@inline function kernel_index(w, h, d, ::ConvDims{N, S, P, D, true}) where {N, S, P, D}
     return (w, h, d)
+end
+function kernel_index(w, h, d, cdims::DenseConvDims)
+    if cdims.flipkernel
+        return (w, h, d)
+    end
+    kernel_w, kernel_h, kernel_d = cdims.kernel_size
+    return (kernel_w - w + 1, kernel_h - h + 1, kernel_d - d + 1)
 end
 
 """

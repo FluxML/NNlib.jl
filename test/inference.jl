@@ -13,13 +13,7 @@ import NNlib: conv_direct, conv_im2col, channels_in, channels_out
         for f in impl
             @test @inferred(f(x, w, DenseConvDims(x, w))) isa Array{T,4}
         end
-
     end
-
-    x = rand(Float32, 10, 10, 3, 2)
-    w = rand(Float32, 3, 3, 3, 1)
-    @test @inferred(conv(x, w)) isa Array{Float32, 4}
-    @test @inferred(conv(x, w, DynDenseConvDims(size(x), size(w)))) isa Array{Float32, 4}
 end
 
 @testset "DenseConvDims Inference" begin

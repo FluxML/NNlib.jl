@@ -1,7 +1,6 @@
 # Various helper functions to calculate dimensions for operations
 include("dim_helpers/ConvDims.jl")
 include("dim_helpers/DenseConvDims.jl")
-include("dim_helpers/DynDenseConvDims.jl")
 include("dim_helpers/DepthwiseConvDims.jl")
 include("dim_helpers/PoolDims.jl")
 
@@ -29,7 +28,7 @@ transposed convolution of two operands, in essence taking care of that "extra pa
 Note that this method should almost always be accompanied by a call that predilates one
 of the operands.
 """
-function transpose_pad(cdims::ConvDims)
+function transpose_pad(cdims::C) where C <: Union{ConvDims, DenseConvDims}
     I = input_size(cdims)
     K = kernel_size(cdims)
     D = dilation(cdims)
@@ -51,7 +50,7 @@ end
 When converting a 1d convolution to a 2d, or a 2d to a 3d, we need to insert a singleton
 spatial dimension at the end of the spatial dimensions.  This does so for a ConvDims.
 """
-@inline function insert_singleton_spatial_dimension(cdims::C) where {C <: ConvDims}
+@inline function insert_singleton_spatial_dimension(cdims::C) where {C <: Union{ConvDims, DenseConvDims}}
     return basetype(C)(cdims;
         N=spatial_dims(cdims) + 1,
         I=(input_size(cdims)..., 1),
