@@ -1,6 +1,7 @@
 # Various helper functions to calculate dimensions for operations
 include("dim_helpers/ConvDims.jl")
 include("dim_helpers/DenseConvDims.jl")
+include("dim_helpers/DynDenseConvDims.jl")
 include("dim_helpers/DepthwiseConvDims.jl")
 include("dim_helpers/PoolDims.jl")
 
