@@ -46,7 +46,7 @@ Note that because im2col is multithreaded, we need to allocate a separate worksp
 memory per-thread; hence the dimensions returned by this will depend on the number of
 threads Julia is currently running with.
 """
-function im2col_dims(c::ConvDims)
+function im2col_dims(c)
     return (
         # Output size
         prod(output_size(c)),
