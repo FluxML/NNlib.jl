@@ -51,14 +51,17 @@ export conv, conv!, ∇conv_data, ∇conv_data!, ∇conv_filter, ∇conv_filter!
 Apply convolution filter `w` to input `x`. `x` and `w` are 3d/4d/5d tensors
 in 1d/2d/3d convolutions respectively.
 """
-function conv(x, w::AbstractArray{T, N}; stride=1, pad=0, dilation=1, flipped=false, groups = 1) where {T, N}
-    stride = expand(Val(N-2), stride)
-    pad = expand(Val(N-2), pad)
-    dilation = expand(Val(N-2), dilation)
+function conv(
+    x, w::AbstractArray{T, N}; stride=1, pad=0, dilation=1,
+    flipped=false, groups=1,
+) where {T, N}
+    stride = expand(Val(N - 2), stride)
+    padding = expand(Val(N - 2), pad)
+    dilation = expand(Val(N - 2), dilation)
+
     cdims = DynDenseConvDims(
-        size(x), size(w); stride=stride, padding=pad, dilation=dilation,
-        flipkernel=flipped, groups = groups)
-    return conv(x, w, cdims)
+        size(x), size(w); stride, padding, dilation, flipkernel=flipped, groups)
+    conv(x, w, cdims)
 end
 
 """
@@ -89,7 +92,7 @@ for backend in (Symbol(), :_direct, :_im2col, :_nnpack)
                 x::AbstractArray{xT,N}, w::AbstractArray{wT,N}, cdims; kwargs...,
             ) where {xT, wT, N}
                 y = similar(
-                    x, promote_type(xT, wT), output_size(cdims)...,
+                   x, promote_type(xT, wT), output_size(cdims)...,
                    channels_out(cdims), size(x,N))
                 return $(Symbol("$(name)$(backend)!"))(y, x, w, cdims; kwargs...)
             end
@@ -193,7 +196,6 @@ for (front_name, backend) in (
             out::AbstractArray{T,5}, in1::AbstractArray{T,5},
             in2::AbstractArray{T,5}, cdims::C; kwargs...,
         ) where {T <: $G, C}
-
             x_cs = Iterators.partition(
                 1:size(in1, 4), channels_in(cdims) ÷ groupcount(cdims))
             w_cs = Iterators.partition(

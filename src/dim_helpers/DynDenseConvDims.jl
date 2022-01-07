@@ -38,7 +38,7 @@ function DynDenseConvDims(
         groups, sstride, ppadding, ddilation, flipkernel)
 end
 
-function DynDenseConvDims(
+@inline function DynDenseConvDims(
     c::C; I=input_size(c), K=kernel_size(c),
     C_in=channels_in(c), C_out=channels_out(c), S=stride(c),
     P=padding(c), D=dilation(c), F=flipkernel(c), G=groupcount(c),
@@ -62,7 +62,7 @@ end
 @inline flipkernel(c::DynDenseConvDims) = c.flipkernel
 
 @inline input_size(c::DynDenseConvDims) = c.input_size
-function output_size(c::DynDenseConvDims)
+@inline function output_size(c::DynDenseConvDims)
     ntuple(spatial_dims(c)) do i
         div(
             c.input_size[i] +
@@ -105,12 +105,11 @@ function check_dims(
 end
 
 @inline function insert_singleton_spatial_dimension(cdims::C) where {C <: DynDenseConvDims}
-    basetype(C)(
+    DynDenseConvDims(
         cdims;
         I=(input_size(cdims)..., 1),
         K=(kernel_size(cdims)..., 1),
         S=(stride(cdims)..., 1),
-        # Padding is always the problem child....
         P=(padding(cdims)..., 0, 0),
         D=(dilation(cdims)..., 1))
 end
