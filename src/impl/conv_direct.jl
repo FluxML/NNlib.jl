@@ -53,15 +53,12 @@ function conv_direct!(y::AbstractArray{yT,5}, x::AbstractArray{xT,5},
     width, height, depth = input_size(cdims)
     kernel_w, kernel_h, kernel_d = kernel_size(cdims)
     out_c = channels_out(cdims)
-    pad_w_lo, pad_w_hi, pad_h_lo, pad_h_hi, pad_d_lo, pad_d_hi = padding(cdims)
+    pad_w_lo, _, pad_h_lo, _, pad_d_lo, _ = padding(cdims)
     dil_w, dil_h, dil_d = dilation(cdims)
     stride_w, stride_h, stride_d = stride(cdims)
-    out_width, out_height, out_depth = output_size(cdims)
 
-    # Create a method that, at compile-time, determines how we're going to index into `w`
-    kproj(k, M, cdims::ConvDims{N,S,P,D,true}) where {N, S, P, D} = k
-    kproj(k, M, cdims::ConvDims{N,S,P,D,false}) where {N, S, P, D} = M - k + 1
-    kproj(k, M, cdims::DenseConvDims) = cdims.flipkernel ? k : M - k + 1
+    # Create a method that determines how we're going to index into `w`.
+    kproj(k, M, cdims::DenseConvDims) = flipkernel(cdims) ? k : (M - k + 1)
 
     # A helper function to project from output (w, h) to input (input_w, input_h)
     project(idx, stride, pad) = (idx - 1)*stride - pad + 1

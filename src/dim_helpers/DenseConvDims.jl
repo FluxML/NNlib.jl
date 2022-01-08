@@ -1,6 +1,6 @@
 export DenseConvDims
 
-struct DenseConvDims{N, K, S, P, D}
+struct DenseConvDims{N, K, S, P, D} <: ConvDims{N}
     input_size::NTuple{N, Int}
 
     kernel_size::NTuple{K, Int}
@@ -34,8 +34,9 @@ function DenseConvDims(
     end
 
     DenseConvDims(
-        x_size[1:(end - 2)], w_size[1:(end - 2)], x_size[end - 1], w_size[end],
-        groups, sstride, ppadding, ddilation, flipkernel)
+        x_size[1:(end - 2)],
+        w_size[1:(end - 2)], x_size[end - 1], w_size[end], groups,
+        sstride, ppadding, ddilation, flipkernel)
 end
 
 function DenseConvDims(x::AbstractArray, w::AbstractArray; kwargs...)
@@ -46,41 +47,18 @@ function DenseConvDims(x::AbstractArray, w::AbstractArray; kwargs...)
     return DenseConvDims(size(x), size(w); kwargs...)
 end
 
-# TODO: `N` parameter is for compatibility.
 @inline DenseConvDims(
-    c::C; N=spatial_dims(c), I=input_size(c), K=kernel_size(c),
+    c::C; I=input_size(c), K=kernel_size(c),
     C_in=channels_in(c), C_out=channels_out(c), S=stride(c),
     P=padding(c), D=dilation(c), F=flipkernel(c), G=groupcount(c),
-) where C<: Union{DenseConvDims, ConvDims} = DenseConvDims(
-        I,
-        K, C_in, C_out, G,
-        S, P, D, F)
-
-@inline spatial_dims(::DenseConvDims{N, K, S, P, D}) where {N, K, S, P, D} = N
+) where C <: ConvDims = DenseConvDims(
+    I,
+    K, C_in, C_out, G,
+    S, P, D, F)
 
 @inline groupcount(c::DenseConvDims) = c.groupcount
 @inline channels_in(c::DenseConvDims) = c.channels_in
 @inline channels_out(c::DenseConvDims) = c.channels_out
-@inline kernel_size(c::DenseConvDims) = c.kernel_size
-
-@inline stride(c::DenseConvDims) = c.stride
-@inline padding(c::DenseConvDims) = c.padding
-@inline dilation(c::DenseConvDims) = c.dilation
-@inline flipkernel(c::DenseConvDims) = c.flipkernel
-
-@inline input_size(c::DenseConvDims) = c.input_size
-@inline function output_size(c::DenseConvDims)
-    ntuple(spatial_dims(c)) do i
-        div(
-            c.input_size[i] +
-            c.padding[(i - 1) * 2 + 1] +
-            c.padding[(i - 1) * 2 + 2] -
-            (c.kernel_size[i] - 1) * c.dilation[i] - 1,
-            c.stride[i]) + 1
-    end
-end
-
-@inline basetype(::Type{D}) where D <: DenseConvDims = DenseConvDims
 
 function check_dims(
     x::NTuple{M}, w::NTuple{M}, y::NTuple{M}, cdims::DenseConvDims,

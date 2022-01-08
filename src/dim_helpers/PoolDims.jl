@@ -1,69 +1,49 @@
 export PoolDims
 
-"""
-    PoolDims(x_size::NTuple{M}, k::Union{NTuple{L, Int}, Int}; 
-            stride=k, padding=0, dilation=1)  where {M, L}
+struct PoolDims{N, K, S, P, D} <: ConvDims{N}
+    input_size::NTuple{N, Int}
 
-Dimensions for a "pooling" operation that can have an arbitrary input size, kernel size,
-stride, dilation, and channel count.  Used to dispatch onto efficient implementations at
-compile-time.
-"""
-struct PoolDims{N,K,S,P,D} <: ConvDims{N, S, P, D, false}
-    I::NTuple{N,Int}
-    C_in::Int
+    kernel_size::NTuple{K, Int}
+    channels_in::Int
+
+    stride::NTuple{S, Int}
+    padding::NTuple{P, Int}
+    dilation::NTuple{D, Int}
 end
 
-# Getters for both type parameters and fields
-kernel_size(c::PoolDims{N,K,S,P,D}) where {N, K, S, P, D} = K
-input_size(c::PoolDims) = c.I
-channels_in(c::PoolDims) = c.C_in
-channels_out(c::PoolDims) = c.C_in
+function PoolDims(
+    x_size::NTuple{M}, k;
+    stride = k, padding = 0, dilation = 1,
+) where {M}
+    _check_kernel(k::Number, N::Int) = ntuple(_ -> Int(k), N)
+    _check_kernel(k::NTuple, ::Int) = k
 
+    kernel = _check_kernel(k, M - 2)
+    spdf_kernel = NTuple{M, Int}([kernel..., 1, 1])
 
-# Convenience wrapper to create DenseConvDims objects
-function PoolDims(x_size::NTuple{M}, k::Union{NTuple{L, Int}, Int};
-                  stride=k, padding=0, dilation=1) where {M, L}
-    # Expand `k` up to a tuple
-    if typeof(k) <: Number
-        k = ntuple(_ -> k, M - 2)
-    end
-
-    # Do common parameter validation
-    stride, padding, dilation = check_spdf(x_size, (k..., 1, 1), stride, padding, dilation)
-
-    # Build it
-    return PoolDims{
-        M - 2,
-        k,
-        stride,
-        padding,
-        dilation
-    }(
-        # Image spatial size
-        x_size[1:end-2],
-
-        # Input channels
-        x_size[end-1],
-    )
+    sstride, ppadding, ddilation = check_spdf(
+        x_size, spdf_kernel, stride, padding, dilation)
+    PoolDims(
+        x_size[1:(end - 2)], kernel, x_size[end - 1],
+        sstride, ppadding, ddilation)
 end
 
-# Auto-take `size(x)` when `x` is an array.
-function PoolDims(x::AbstractArray, k; kwargs...)
-    return PoolDims(size(x), k; kwargs...)
-end
+PoolDims(x::AbstractArray, k; kwargs...) = PoolDims(size(x), k; kwargs...)
 
-# Useful for constructing a new PoolDims that has only a few elements different
-# from the original progenitor object that it inherits shapes from.
-function PoolDims(c::ConvDims; N=spatial_dims(c), I=input_size(c), K=kernel_size(c),
-                       C_in=channels_in(c), S=stride(c), P=padding(c), D=dilation(c))
-    return PoolDims{N, K, S, P, D}(I, C_in)
-end
+PoolDims(
+    c::C; I=input_size(c), K=kernel_size(c),
+    C_in=channels_in(c), S=stride(c), P=padding(c), D=dilation(c),
+) where C <: ConvDims = PoolDims(I, K, C_in, S, P, D)
+
+@inline channels_in(c::PoolDims) = c.channels_in
+@inline channels_out(c::PoolDims) = c.channels_in
+@inline flipkernel(c::PoolDims) = false
 
 function check_dims(x::NTuple{M}, y::NTuple{M}, pdims::PoolDims) where {M}
     # First, check that channel counts are all correct:
     @assert x[end-1] == channels_in(pdims) DimensionMismatch("Data input channel count ($(x[end-1]) vs. $(channels_in(pdims)))")
     @assert y[end-1] == channels_out(pdims) DimensionMismatch("Data output channel count ($(y[end-1]) vs. $(channels_out(pdims)))")
-    
+
     # Next, check that the spatial dimensions match up
     @assert x[1:end-2] == input_size(pdims) DimensionMismatch("Data input spatial size ($(x[1:end-2]) vs. $(input_size(pdims)))")
     @assert y[1:end-2] == output_size(pdims) DimensionMismatch("Data output spatial size ($(y[1:end-2]) vs. $(output_size(pdims)))")

@@ -1,19 +1,12 @@
 ## This file contains im2col-backed implementations of convolution for 2d and 3d
 ## convolutions.  Expect to see a lot of indexing.
 
-# Helper functions for flipkernel-induced dyslexia
-@inline function kernel_index(w, h, d, cdims::ConvDims{N, S, P, D, false}) where {N, S, P, D}
-    kernel_w, kernel_h, kernel_d = kernel_size(cdims)
-    return (kernel_w - w + 1, kernel_h - h + 1, kernel_d - d + 1)
-end
-@inline function kernel_index(w, h, d, ::ConvDims{N, S, P, D, true}) where {N, S, P, D}
-    return (w, h, d)
-end
-function kernel_index(w, h, d, cdims::DenseConvDims)
-    if cdims.flipkernel
+# Helper function for flipkernel-induced dyslexia
+function kernel_index(w, h, d, cdims::ConvDims)
+    if flipkernel(cdims)
         return (w, h, d)
     end
-    kernel_w, kernel_h, kernel_d = cdims.kernel_size
+    kernel_w, kernel_h, kernel_d = kernel_size(cdims)
     return (kernel_w - w + 1, kernel_h - h + 1, kernel_d - d + 1)
 end
 
@@ -31,7 +24,7 @@ which should eliminate any need for large allocations within this method.
 """
 function conv_im2col!(
                 y::AbstractArray{T,5}, x::AbstractArray{T,5},
-                w::AbstractArray{T,5}, cdims;
+                w::AbstractArray{T,5}, cdims::DenseConvDims;
                 col::AbstractArray{T,3}=similar(x, im2col_dims(cdims)),
                 alpha::T=T(1), beta::T=T(0)) where {T}
     check_dims(size(x), size(w), size(y), cdims)
@@ -76,7 +69,7 @@ See the documentation for `conv_im2col!()` for explanation of optional parameter
 """
 function ∇conv_filter_im2col!(
                 dw::AbstractArray{T,5}, x::AbstractArray{T,5},
-                dy::AbstractArray{T,5}, cdims;
+                dy::AbstractArray{T,5}, cdims::DenseConvDims;
                 col::AbstractArray{T,3} = similar(dw, im2col_dims(cdims)),
                 alpha::T=T(1), beta::T=T(0)) where {T}
     check_dims(size(x), size(dw), size(dy), cdims)
@@ -128,7 +121,7 @@ See the documentation for `conv_im2col!()` for explanation of other parameters.
 """
 function ∇conv_data_im2col!(
                 dx::AbstractArray{T,5}, dy::AbstractArray{T,5},
-                w::AbstractArray{T,5}, cdims;
+                w::AbstractArray{T,5}, cdims::DenseConvDims;
                 col::AbstractArray{T,3} = similar(dx, im2col_dims(cdims)),
                 alpha::T=T(1), beta::T=T(0)) where {T}
     check_dims(size(dx), size(w), size(dy), cdims)
@@ -180,7 +173,7 @@ out along the rows of `col`, one for each output pixel.  This routine is used by
 im2col-based convolutions, just with extra singleton dimensions added in the case of `2d`
 or `1d` images.
 """
-function im2col!(col::AbstractArray{T,2}, x::AbstractArray{T,4}, cdims) where {T}
+function im2col!(col::AbstractArray{T,2}, x::AbstractArray{T,4}, cdims::ConvDims) where {T}
     if spatial_dims(cdims) != 3
         throw(DimensionMismatch("im2col!() only accepts 3d convoluitional inputs"))
     end
@@ -285,7 +278,7 @@ desperate enough yet.
 """
 col2im!
 
-function col2im!(x::AbstractArray{T,4}, col::AbstractArray{T,2}, cdims) where T
+function col2im!(x::AbstractArray{T,4}, col::AbstractArray{T,2}, cdims::ConvDims) where T
     if spatial_dims(cdims) != 3
         throw(DimensionMismatch("col2im!() only accepts 3d convoluitional inputs"))
     end

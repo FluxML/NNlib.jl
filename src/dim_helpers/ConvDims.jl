@@ -6,34 +6,54 @@ export ConvDims
 Type system-level information about convolution dimensions. Critical for things like
 `im2col!()` to generate efficient code, and helpful to reduce the number of kwargs
 getting passed around.
-
-We don't want to specialize on things like image size/channel count, so we generally
-store those as fields, just for convenience, and to allow for non-breaking changes when
-we decide we _do_ want to specialize on those values.  We always want to specialize on
-things like stride, padding, dilation, and kernel flipping though.
 """
-abstract type ConvDims{N, S, P, D, F} end
+abstract type ConvDims{N} end
 
-# Hack to get rid of type parameters
+@inline spatial_dims(::ConvDims{N}) where N = N
+@inline input_size(c::ConvDims) = c.input_size
+@inline kernel_size(c::ConvDims) = c.kernel_size
+
+@inline stride(c::ConvDims) = c.stride
+@inline padding(c::ConvDims) = c.padding
+@inline dilation(c::ConvDims) = c.dilation
+@inline flipkernel(c::ConvDims) = c.flipkernel
+
+@inline groupcount(c::ConvDims) = 1
+
 function basetype(::Type{C}) where {C <: ConvDims}
-    if C <: DepthwiseConvDims
-        return DepthwiseConvDims
-    elseif C <: DenseConvDims
+    if C <: DenseConvDims
         return DenseConvDims
+    elseif C <: DepthwiseConvDims
+        return DepthwiseConvDims
     elseif C <: PoolDims
         return PoolDims
-    else
-        return nothing
+    end
+    nothing
+end
+
+function output_size(c::ConvDims)
+    I = input_size(c)
+    K = kernel_size(c)
+    S = stride(c)
+    P = padding(c)
+    D = dilation(c)
+
+    return ntuple(spatial_dims(c)) do i
+        return div(I[i] + P[(i-1)*2 + 1] + P[(i-1)*2 + 2] - (K[i] - 1) * D[i] - 1, S[i]) + 1
     end
 end
 
-# Obvious getter definitions for the type system-level definitions
-spatial_dims(c::ConvDims{N,S,P,D,F}) where {N, S, P, D, F} = N
-stride(c::ConvDims{N,S,P,D,F}) where {N, S, P, D, F} = S
-padding(c::ConvDims{N,S,P,D,F}) where {N, S, P, D, F} = P
-dilation(c::ConvDims{N,S,P,D,F}) where {N, S, P, D, F} = D
-flipkernel(c::ConvDims{N,S,P,D,F}) where {N, S, P, D, F} = F
-groupcount(c::ConvDims) = 1
+function Base.show(io::IO, cdims::C) where {C <: ConvDims}
+    I = (input_size(cdims)..., channels_in(cdims))
+    O = (output_size(cdims)..., channels_out(cdims))
+    K = kernel_size(cdims)
+    S = stride(cdims)
+    P = padding(cdims)
+    D = dilation(cdims)
+    F = flipkernel(cdims)
+    G = groupcount(cdims)
+    print(io, "$(basetype(C)): $I * $K -> $O, stride: $S, pad: $P, dil: $D, flip: $F, groups: $G")
+end
 
 """
     im2col_dims(c::ConvDims)
@@ -81,10 +101,10 @@ function check_spdf(x_size::NTuple{N}, w_size::NTuple{N}, stride, padding, dilat
 
     # padding is kind of a special case; we allow it to be either 2-length or 4-length,
     # since we support asymmetrical padding
-    if length(ppadding) != 2*nd
+    if length(ppadding) != 2 * nd
         if length(ppadding) == nd
             # Do this repeat dance so that we get lo/hi symmetrical padding
-            ppadding = tuple(repeat(collect(ppadding), inner=2)...)
+            ppadding = NTuple{2 * nd, Int}(repeat(collect(ppadding), inner=2))
         else
             throw(DimensionMismatch("Padding $(length(ppadding))d, should be either $(nd)d or $(2*nd)d!"))
         end
@@ -93,8 +113,8 @@ function check_spdf(x_size::NTuple{N}, w_size::NTuple{N}, stride, padding, dilat
     # Assert that kernel size * dilation is <= padded input size
     for idx in 1:nd
         Is = x_size[idx]
-        Pl = ppadding[(idx - 1)*2 + 1]
-        Ph = ppadding[(idx - 1)*2 + 2]
+        Pl = ppadding[(idx - 1) * 2 + 1]
+        Ph = ppadding[(idx - 1) * 2 + 2]
         Ks = w_size[idx]
         Ds = pdilation[idx]
         if Is + Pl + Ph < (Ks - 1)*Ds + 1
@@ -103,35 +123,4 @@ function check_spdf(x_size::NTuple{N}, w_size::NTuple{N}, stride, padding, dilat
     end
 
     return pstride, ppadding, pdilation
-end
-
-"""
-    output_size(c::ConvDims)
-
-Calculate the output (spatial) dimensions of the convolution.  Get channel count via
-`channels_out(c)`, and batch count is unknowable.
-"""
-function output_size(c::ConvDims)
-    I = input_size(c)
-    K = kernel_size(c)
-    S = stride(c)
-    P = padding(c)
-    D = dilation(c)
-
-    return ntuple(spatial_dims(c)) do i
-        return div(I[i] + P[(i-1)*2 + 1] + P[(i-1)*2 + 2] - (K[i] - 1) * D[i] - 1, S[i]) + 1
-    end
-end
-
-# Override show() for these beauties
-function Base.show(io::IO, cdims::C) where {C <: ConvDims}
-    I = (input_size(cdims)..., channels_in(cdims))
-    O = (output_size(cdims)..., channels_out(cdims))
-    K = kernel_size(cdims)
-    S = stride(cdims)
-    P = padding(cdims)
-    D = dilation(cdims)
-    F = flipkernel(cdims)
-    G = groupcount(cdims)
-    print(io, "$(basetype(C)): $I * $K -> $O, stride: $S, pad: $P, dil: $D, flip: $F, groups: $G")
 end
