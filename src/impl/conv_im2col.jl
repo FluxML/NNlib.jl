@@ -30,11 +30,10 @@ Note for the particularly performance-minded, you can provide a pre-allocated `c
 which should eliminate any need for large allocations within this method.
 """
 function conv_im2col!(
-    y::AbstractArray{T,5}, x::AbstractArray{T,5},
-    w::AbstractArray{T,5}, cdims;
-    col::AbstractArray{T,3}=similar(x, im2col_dims(cdims)),
-    alpha::T=T(1), beta::T=T(0),
-) where {T}
+                y::AbstractArray{T,5}, x::AbstractArray{T,5},
+                w::AbstractArray{T,5}, cdims;
+                col::AbstractArray{T,3}=similar(x, im2col_dims(cdims)),
+                alpha::T=T(1), beta::T=T(0)) where {T}
     check_dims(size(x), size(w), size(y), cdims)
 
     #   COL   *    W    ->    Y
@@ -76,11 +75,10 @@ Conv backward pass onto the weights using im2col and GEMM; stores the result in 
 See the documentation for `conv_im2col!()` for explanation of optional parameters.
 """
 function ∇conv_filter_im2col!(
-    dw::AbstractArray{T,5}, x::AbstractArray{T,5},
-    dy::AbstractArray{T,5}, cdims;
-    col::AbstractArray{T,3} = similar(dw, im2col_dims(cdims)),
-    alpha::T=T(1), beta::T=T(0),
-) where {T}
+                dw::AbstractArray{T,5}, x::AbstractArray{T,5},
+                dy::AbstractArray{T,5}, cdims;
+                col::AbstractArray{T,3} = similar(dw, im2col_dims(cdims)),
+                alpha::T=T(1), beta::T=T(0)) where {T}
     check_dims(size(x), size(dw), size(dy), cdims)
 
     #   COL'   *   dY   ->    dW
@@ -129,11 +127,10 @@ Conv2d backward pass onto the input using im2col and GEMM; stores the result in 
 See the documentation for `conv_im2col!()` for explanation of other parameters.
 """
 function ∇conv_data_im2col!(
-    dx::AbstractArray{T,5}, dy::AbstractArray{T,5},
-    w::AbstractArray{T,5}, cdims;
-    col::AbstractArray{T,3} = similar(dx, im2col_dims(cdims)),
-    alpha::T=T(1), beta::T=T(0),
-) where {T}
+                dx::AbstractArray{T,5}, dy::AbstractArray{T,5},
+                w::AbstractArray{T,5}, cdims;
+                col::AbstractArray{T,3} = similar(dx, im2col_dims(cdims)),
+                alpha::T=T(1), beta::T=T(0)) where {T}
     check_dims(size(dx), size(w), size(dy), cdims)
 
     #    dY        W'   ->    dX
