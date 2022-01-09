@@ -60,6 +60,14 @@ end
 @inline channels_out(c::DepthwiseConvDims) = c.channels_in * c.channels_multiplier
 @inline channel_multiplier(c::DepthwiseConvDims) = c.channels_multiplier
 
+@inline input_size(c::DepthwiseConvDims) = c.input_size
+@inline kernel_size(c::DepthwiseConvDims) = c.kernel_size
+
+@inline stride(c::DepthwiseConvDims) = c.stride
+@inline padding(c::DepthwiseConvDims) = c.padding
+@inline dilation(c::DepthwiseConvDims) = c.dilation
+@inline flipkernel(c::DepthwiseConvDims) = c.flipkernel
+
 # This one is basically the same as for DenseConvDims, we only change a few lines for kernel channel count
 function check_dims(x::NTuple{M}, w::NTuple{M}, y::NTuple{M}, cdims::DepthwiseConvDims) where {M}
     # First, check that channel counts are all correct:

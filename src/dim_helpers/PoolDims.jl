@@ -37,6 +37,13 @@ PoolDims(
 
 @inline channels_in(c::PoolDims) = c.channels_in
 @inline channels_out(c::PoolDims) = c.channels_in
+
+@inline input_size(c::PoolDims) = c.input_size
+@inline kernel_size(c::PoolDims) = c.kernel_size
+
+@inline stride(c::PoolDims) = c.stride
+@inline padding(c::PoolDims) = c.padding
+@inline dilation(c::PoolDims) = c.dilation
 @inline flipkernel(c::PoolDims) = false
 
 function check_dims(x::NTuple{M}, y::NTuple{M}, pdims::PoolDims) where {M}

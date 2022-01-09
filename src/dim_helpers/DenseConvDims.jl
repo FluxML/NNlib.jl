@@ -60,6 +60,14 @@ end
 @inline channels_in(c::DenseConvDims) = c.channels_in
 @inline channels_out(c::DenseConvDims) = c.channels_out
 
+@inline input_size(c::DenseConvDims) = c.input_size
+@inline kernel_size(c::DenseConvDims) = c.kernel_size
+
+@inline stride(c::DenseConvDims) = c.stride
+@inline padding(c::DenseConvDims) = c.padding
+@inline dilation(c::DenseConvDims) = c.dilation
+@inline flipkernel(c::DenseConvDims) = c.flipkernel
+
 function check_dims(
     x::NTuple{M}, w::NTuple{M}, y::NTuple{M}, cdims::DenseConvDims,
 ) where {M}

@@ -10,15 +10,15 @@ getting passed around.
 abstract type ConvDims{N} end
 
 @inline spatial_dims(::ConvDims{N}) where N = N
-@inline input_size(c::ConvDims) = c.input_size
-@inline kernel_size(c::ConvDims) = c.kernel_size
-
-@inline stride(c::ConvDims) = c.stride
-@inline padding(c::ConvDims) = c.padding
-@inline dilation(c::ConvDims) = c.dilation
-@inline flipkernel(c::ConvDims) = c.flipkernel
-
 @inline groupcount(c::ConvDims) = 1
+
+function input_size(::ConvDims) end
+function kernel_size(::ConvDims) end
+
+function stride(::ConvDims) end
+function padding(::ConvDims) end
+function dilation(::ConvDims) end
+function flipkernel(::ConvDims) end
 
 function basetype(::Type{C}) where {C <: ConvDims}
     if C <: DenseConvDims
