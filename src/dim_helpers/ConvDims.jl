@@ -28,7 +28,7 @@ function basetype(::Type{C}) where {C <: ConvDims}
     elseif C <: PoolDims
         return PoolDims
     end
-    nothing
+    return nothing
 end
 
 function output_size(c::ConvDims)

@@ -64,18 +64,18 @@ function check_dims(
     x::NTuple{M}, w::NTuple{M}, y::NTuple{M}, cdims::DenseConvDims,
 ) where {M}
     # First, check that channel counts are all correct:
-    @assert x[M-1] * cdims.groupcount == cdims.channels_in DimensionMismatch("Data input channel count ($(x[M-1]) vs. $(channels_in(cdims)))")
-    @assert y[M-1] == cdims.channels_out ÷ cdims.groupcount  DimensionMismatch("Data output channel count ($(y[M-1]) vs. $(channels_out(cdims)))")
-    @assert w[M-1] * cdims.groupcount == cdims.channels_in DimensionMismatch("Kernel input channel count ($(w[M-1]) vs. $(channels_in(cdims)))")
-    @assert w[M] * cdims.groupcount == cdims.channels_out DimensionMismatch("Kernel output channel count ($(w[M]) vs. $(channels_out(cdims)))")
+    @assert x[M-1] * groupcount(cdims) == channels_in(cdims) DimensionMismatch("Data input channel count ($(x[M-1]) vs. $(channels_in(cdims)))")
+    @assert y[M-1] == channels_out(cdims) ÷ groupcount(cdims)  DimensionMismatch("Data output channel count ($(y[M-1]) vs. $(channels_out(cdims)))")
+    @assert w[M-1] * groupcount(cdims) == channels_in(cdims) DimensionMismatch("Kernel input channel count ($(w[M-1]) vs. $(channels_in(cdims)))")
+    @assert w[M] * groupcount(cdims) == channels_out(cdims) DimensionMismatch("Kernel output channel count ($(w[M]) vs. $(channels_out(cdims)))")
 
     # Next, check that the spatial dimensions match up
-    @assert x[1:M-2] == cdims.input_size DimensionMismatch("Data input spatial size ($(x[1:M-2]) vs. $(input_size(cdims)))")
+    @assert x[1:M-2] == input_size(cdims) DimensionMismatch("Data input spatial size ($(x[1:M-2]) vs. $(input_size(cdims)))")
     @assert y[1:M-2] == output_size(cdims) DimensionMismatch("Data output spatial size ($(y[1:M-2]) vs. $(output_size(cdims)))")
-    @assert w[1:M-2] == cdims.kernel_size DimensionMismatch("Kernel spatial size ($(w[1:M-2]) vs. $(kernel_size(cdims)))")
+    @assert w[1:M-2] == kernel_size(cdims) DimensionMismatch("Kernel spatial size ($(w[1:M-2]) vs. $(kernel_size(cdims)))")
 
     # Check the groups match
-    @assert cdims.channels_in % cdims.groupcount == 0 DimensionMismatch("Groups ($(groupcount(cdims))) should be divisble by input channels $(channels_in(cdims))")
+    @assert channels_in(cdims) % groupcount(cdims) == 0 DimensionMismatch("Groups ($(groupcount(cdims))) should be divisble by input channels $(channels_in(cdims))")
 
     # Finally, check that the batch size matches
     @assert x[M] == y[M] DimensionMismatch("Batch size ($(x[M]) vs. $(y[M]))")
