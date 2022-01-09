@@ -50,7 +50,7 @@ end
 When converting a 1d convolution to a 2d, or a 2d to a 3d, we need to insert a singleton
 spatial dimension at the end of the spatial dimensions.  This does so for a ConvDims.
 """
-@inline function insert_singleton_spatial_dimension(cdims::C) where C <: ConvDims
+@inline function insert_singleton_spatial_dimension(cdims::C) where {C <: ConvDims}
     return basetype(C)(cdims;
         I=(input_size(cdims)..., 1),
         K=(kernel_size(cdims)..., 1),
