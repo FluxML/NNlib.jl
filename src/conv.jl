@@ -87,7 +87,7 @@ for backend in (Symbol(), :_direct, :_im2col, :_nnpack)
         @eval begin
             function $(Symbol("$(name)$(backend)"))(
                             x::AbstractArray{xT,N}, w::AbstractArray{wT,N},
-                            cdims; kwargs...) where {xT, wT, N}
+                            cdims::ConvDims; kwargs...) where {xT, wT, N}
                 y = similar(
                    x, promote_type(xT, wT), output_size(cdims)...,
                    channels_out(cdims), size(x,N))
@@ -100,7 +100,7 @@ for backend in (Symbol(), :_direct, :_im2col, :_nnpack)
         @eval begin
             function $(Symbol("$(name)$(backend)"))(
                             dy::AbstractArray{yT,N}, w::AbstractArray{wT,N},
-                            cdims; kwargs...) where {yT, wT, N}
+                            cdims::C; kwargs...) where {yT, wT, N, C <: ConvDims}
                 dx = similar(
                     dy, input_size(cdims)..., channels_in(cdims), size(dy, N))
                 return $(Symbol("$(name)$(backend)!"))(dx, dy, w, cdims; kwargs...)
@@ -113,7 +113,7 @@ for backend in (Symbol(), :_direct, :_im2col, :_nnpack)
     @eval begin
         function $(Symbol("∇conv_filter$(backend)"))(
                         x::AbstractArray{xT,N}, dy::AbstractArray{yT,N},
-                        cdims; kwargs...) where {xT, yT, N}
+                        cdims::ConvDims; kwargs...) where {xT, yT, N}
             dw = similar(
                 dy, kernel_size(cdims)..., channels_in(cdims) ÷ groupcount(cdims),
                 channels_out(cdims))
@@ -124,7 +124,7 @@ for backend in (Symbol(), :_direct, :_im2col, :_nnpack)
     @eval begin
         function $(Symbol("∇depthwiseconv_filter$(backend)"))(
                         x::AbstractArray{xT,N}, dy::AbstractArray{yT,N},
-                        cdims; kwargs...) where {xT, yT, N}
+                        cdims::ConvDims; kwargs...) where {xT, yT, N}
             dw = similar(
                 dy, kernel_size(cdims)..., channel_multiplier(cdims),
                 channels_in(cdims))
@@ -147,7 +147,7 @@ for front_name in (:conv, :∇conv_data, :∇conv_filter,
             @eval begin
                 function $(Symbol("$(front_name)$(backend)!"))(
                                 y::AbstractArray{yT,$N}, x::AbstractArray{xT,$N},
-                                w::AbstractArray{wT,$N}, cdims;
+                                w::AbstractArray{wT,$N}, cdims::ConvDims;
                                 kwargs...) where {yT, xT, wT}
                     $(Symbol("$(front_name)$(backend)!"))(
                         insert_singleton_spatial_dimension(y, $(5 - N)),
@@ -187,7 +187,7 @@ for (front_name, backend) in (
         # im2col-accelerated function forwarding definition
         function $(Symbol("$(front_name)!"))(
                         out::AbstractArray{T,5}, in1::AbstractArray{T,5},
-                        in2::AbstractArray{T,5}, cdims::C; kwargs...) where {T <: $G, C}
+                        in2::AbstractArray{T,5}, cdims::C; kwargs...) where {T <: $G, C <: ConvDims}
             x_cs = Iterators.partition(1:size(in1, 4),
                                        channels_in(cdims) ÷ groupcount(cdims))
             w_cs = Iterators.partition(1:size(in2, 5),
@@ -211,7 +211,7 @@ end
 
 # im2col-accelerated function forwarding definition
 function ∇conv_data!(out::AbstractArray{T,5}, in1::AbstractArray{T,5},
-                     in2::AbstractArray{T,5}, cdims::C; kwargs...) where {T <: G, C}
+                     in2::AbstractArray{T,5}, cdims::C; kwargs...) where {T <: G, C <: ConvDims}
 
     dx_cs = Iterators.partition(1:size(out, 4),
                                 channels_in(cdims) ÷ groupcount(cdims))
@@ -235,7 +235,7 @@ function ∇conv_data!(out::AbstractArray{T,5}, in1::AbstractArray{T,5},
 end
 
 function ∇conv_filter!(out::AbstractArray{T,5}, in1::AbstractArray{T,5},
-                       in2::AbstractArray{T,5}, cdims::C; kwargs...) where {T <: G, C}
+                       in2::AbstractArray{T,5}, cdims::C; kwargs...) where {T <: G, C <: ConvDims}
     dw_cs = Iterators.partition(1:size(out, 5),
                                 channels_out(cdims) ÷ groupcount(cdims))
     dy_cs = Iterators.partition(1:size(in2, 4),
@@ -271,7 +271,7 @@ for (front_name, backend) in (
         function $(Symbol("$(front_name)!"))(
                         out::AbstractArray{T,5}, in1::AbstractArray{T,5},
                         in2::AbstractArray{T,5}, cdims::C;
-                        kwargs...) where {T <: $G, C}
+                        kwargs...) where {T <: $G, C <: ConvDims}
             $(Symbol("$(front_name)_$(backend)!"))(out, in1, in2, cdims; kwargs...)
         end
     end
@@ -285,7 +285,7 @@ for front_name in (:conv, :∇conv_data, :∇conv_filter,
     @eval begin
         function $(Symbol("$(front_name)!"))(
                         y::AbstractArray{yT,N}, in1::AbstractArray{T1,N},
-                        in2::AbstractArray{T2,N}, cdims;
+                        in2::AbstractArray{T2,N}, cdims::ConvDims;
                         kwargs...) where {yT, T1, T2, N}
             @warn string("Slow fallback implementation invoked for ", $(string(front_name)), "!  ",
                           "You probably don't want this; check your datatypes.") yT T1 T2 maxlog=1
