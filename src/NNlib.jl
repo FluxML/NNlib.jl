@@ -55,22 +55,4 @@ include("impl/depthwiseconv_im2col.jl")
 include("impl/pooling_direct.jl")
 include("deprecations.jl")
 
-using BenchmarkTools
-function main()
-    x = rand(Float32, 224, 224, 3, 2)
-    pdims = PoolDims(x, 3)
-
-    y_max = maxpool(x, pdims)
-    y_mean = meanpool(x, pdims)
-    dy = ones(Float32, size(y_max)...)
-
-    @btime maxpool($x, $pdims)
-    @btime meanpool($x, $pdims)
-
-    @btime ∇maxpool($dy, $y_max, $x, $pdims)
-    @btime ∇meanpool($dy, $y_mean, $x, $pdims)
-
-    nothing
-end
-
 end # module NNlib
