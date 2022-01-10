@@ -12,7 +12,7 @@ for name in (:max, :mean)
         width, height, depth = input_size(pdims)
         kernel_w, kernel_h, kernel_d = kernel_size(pdims)
         out_c = channels_out(pdims)
-        pad_w_lo, pad_w_hi, pad_h_lo, pad_h_hi, pad_d_lo, pad_d_hi = padding(pdims)
+        pad_w_lo, _, pad_h_lo, _, pad_d_lo, _ = padding(pdims)
         dil_w, dil_h, dil_d = dilation(pdims)
         stride_w, stride_h, stride_d = stride(pdims)
         out_width, out_height, out_depth = output_size(pdims)
@@ -41,82 +41,94 @@ for name in (:max, :mean)
 
         # Start with the central region
         w_region, h_region, d_region = central_region
-        @inbounds for batch_idx in 1:size(x)[end],
-            c in 1:out_c,
-            d in d_region,
-            h in h_region,
-            w in w_region
-          
-            # Initialize `m` to `0.0`, or `typemin(T)` or whatever.
-            m = m_init
 
-            for kd in 1:kernel_d,
-                kh in 1:kernel_h,
-                kw in 1:kernel_w
+        for batch_idx in 1:size(x, 5), c in 1:out_c
+            for d in d_region
+                pd = project(d, stride_d, pad_d_lo)
+                for h in h_region
+                    ph = project(h, stride_h, pad_h_lo)
+                    for w in w_region
+                        pw = project(w, stride_w, pad_w_lo)
+                        m = m_init
 
-                input_kd = project(d, stride_d, pad_d_lo) + (kd - 1) * dil_d
-                input_kh = project(h, stride_h, pad_h_lo) + (kh - 1) * dil_h
-                input_kw = project(w, stride_w, pad_w_lo) + (kw - 1) * dil_w
+                        @inbounds for kd in 1:kernel_d,
+                            kh in 1:kernel_h,
+                            kw in 1:kernel_w
 
-                # This conditional will be optimized away at compile time
-                if $(name == :max)
-                    m = max(m, x[input_kw, input_kh, input_kd, c, batch_idx])
-                elseif $(name == :mean)
-                    m += x[input_kw, input_kh, input_kd, c, batch_idx]
-                else
-                    error("Unimplemented codegen path")
-                end
-            end
-            y[w, h, d, c, batch_idx] = alpha * m + beta * y[w, h, d, c, batch_idx]
-        end
+                            input_kd = pd + (kd - 1) * dil_d
+                            input_kh = ph + (kh - 1) * dil_h
+                            input_kw = pw + (kw - 1) * dil_w
 
-        # Next, the padded regions
-        @inbounds for (w_region, h_region, d_region) in padded_regions
-            for batch_idx in 1:size(x)[end],
-                c in 1:out_c,
-                d in d_region,
-                h in h_region,
-                w in w_region
-
-                # In these loops, we have to check that we're not reaching off the edge, we
-                # do so by putting in a bunch of conditionals.  :/
-                m = m_init
-                for kd in 1:kernel_d
-                    input_kd = project(d, stride_d, pad_d_lo) + (kd - 1) * dil_d
-                    if input_kd <= 0 || input_kd > depth
-                        # add here condition for handling options for paded value handling  
-                        continue
-                    end
-
-                    for kh in 1:kernel_h
-                        input_kh = project(h, stride_h, pad_h_lo) + (kh - 1) * dil_h
-                        if input_kh <= 0 || input_kh > height
-                            # add here condition for handling options for paded value handling  
-                            continue
-                        end
-
-                        for kw in 1:kernel_w
-                            input_kw = project(w, stride_w, pad_w_lo) + (kw - 1) * dil_w
-                            if input_kw <= 0 || input_kw > width
-                                # add here condition for handling options for paded value handling  
-                                continue
-                            end
-
+                            # This conditional will be optimized away at compile time
                             if $(name == :max)
-                                m = max(m, x[input_kw, input_kh, input_kd, c, batch_idx])
+                                xv = x[input_kw, input_kh, input_kd, c, batch_idx]
+                                if xv > m
+                                    m = xv
+                                end
                             elseif $(name == :mean)
                                 m += x[input_kw, input_kh, input_kd, c, batch_idx]
                             else
                                 error("Unimplemented codegen path")
                             end
                         end
+                        y[w, h, d, c, batch_idx] = alpha * m # + beta * y[w, h, d, c, batch_idx]
                     end
                 end
-                y[w, h, d, c, batch_idx] = alpha * m + beta * y[w, h, d, c, batch_idx]
             end
         end
 
-        # Return `y`
+        # Next, the padded regions
+        @inbounds for (w_region, h_region, d_region) in padded_regions
+            for batch_idx in 1:size(x, 5), c in 1:out_c
+                for d in d_region
+                    pd = project(d, stride_d, pad_d_lo)
+                    for h in h_region
+                        ph = project(h, stride_h, pad_h_lo)
+                        for w in w_region
+                            pw = project(w, stride_w, pad_w_lo)
+                            m = m_init
+
+                            for kd in 1:kernel_d
+                                input_kd = pd + (kd - 1) * dil_d
+                                if input_kd < 1 || input_kd > depth
+                                    # add here condition for handling options for paded value handling
+                                    continue
+                                end
+
+                                for kh in 1:kernel_h
+                                    input_kh = ph + (kh - 1) * dil_h
+                                    if input_kh < 1 || input_kh > height
+                                        # add here condition for handling options for paded value handling
+                                        continue
+                                    end
+
+                                    for kw in 1:kernel_w
+                                        input_kw = pw + (kw - 1) * dil_w
+                                        if input_kw < 1 || input_kw > width
+                                            # add here condition for handling options for paded value handling
+                                            continue
+                                        end
+
+                                        if $(name == :max)
+                                            xv = x[input_kw, input_kh, input_kd, c, batch_idx]
+                                            if xv > m
+                                                m = xv
+                                            end
+                                        elseif $(name == :mean)
+                                            m += x[input_kw, input_kh, input_kd, c, batch_idx]
+                                        else
+                                            error("Unimplemented codegen path")
+                                        end
+                                    end
+                                end
+                            end
+                            y[w, h, d, c, batch_idx] = alpha * m # + beta * y[w, h, d, c, batch_idx]
+                        end
+                    end
+                end
+            end
+        end
+
         return y
     end
 
@@ -131,7 +143,7 @@ for name in (:max, :mean)
         width, height, depth = input_size(pdims)
         kernel_w, kernel_h, kernel_d = kernel_size(pdims)
         out_c = channels_out(pdims)
-        pad_w_lo, pad_w_hi, pad_h_lo, pad_h_hi, pad_d_lo, pad_d_hi = padding(pdims)
+        pad_w_lo, _, pad_h_lo, _, pad_d_lo, _ = padding(pdims)
         dil_w, dil_h, dil_d = dilation(pdims)
         stride_w, stride_h, stride_d = stride(pdims)
         out_width, out_height, out_depth = output_size(pdims)
