@@ -319,7 +319,7 @@ julia> lineplot(gelu, -2, 2, height=7)
 function gelu(x)
     α = oftf(x, 0.044715)
     # λ = oftf(x, gelu_λ)
-    # x/2 * (1 + tanh(λ * (x + α * x^3)))
+    # x/2 * (1 + tanh(λ * (x + α * x^3)))  # Standard implementation, for reference
     λλ = oftf(x, gelu_2λ)
     x * sigmoid_fast(λλ * x * muladd(x^2, α, one(x)))  # This is faster & more accurate
 end
@@ -692,6 +692,8 @@ julia> hard_tanh(0.5f0)
 ```
 """
 @inline function tanh_fast(x::Float32)
+    # This method added in NNlib.jl#345 by @mcabbott and @oscardssmith,
+    # with coeffiecients found using Remez.jl
     x2 = abs2(x)
     n = evalpoly(x2, (1.0f0, 0.1346604f0, 0.0035974074f0, 2.2332108f-5, 1.587199f-8))
     d = evalpoly(x2, (1.0f0, 0.4679937f0, 0.026262015f0, 0.0003453992f0, 8.7767893f-7))
