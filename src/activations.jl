@@ -292,7 +292,7 @@ julia> elu(-10f0, 2)
 -1.9999092f0
 ```
 """
-elu(x, α=1) = ifelse(x ≥ 0, float(x), α * (exp(x) - 1))
+elu(x, α=1) = ifelse(x ≥ 0, float(x), @fastmath α * (exp(x) - 1)) 
 
 deriv_elu(Ω, α=1) = ifelse(Ω ≥ 0, one(Ω), Ω + α)
 
@@ -318,11 +318,14 @@ julia> lineplot(gelu, -2, 2, height=7)
 """
 function gelu(x)
     α = oftf(x, 0.044715)
-    λ = oftf(x, gelu_λ)
-    x/2 * (1 + tanh(λ * (x + α * x^3)))
+    # λ = oftf(x, gelu_λ)
+    # x/2 * (1 + tanh(λ * (x + α * x^3)))  # Standard implementation, for reference
+    λλ = oftf(x, gelu_2λ)
+    x * sigmoid_fast(λλ * x * muladd(x^2, α, one(x)))  # This is faster & more accurate
 end
 
 const gelu_λ = √(2 / π)
+const gelu_2λ = √(8 / π)
 
 """
     swish(x) = x * σ(x)
@@ -345,7 +348,7 @@ julia> lineplot(swish, -2, 2, height=7)
            ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀x⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀         
 ```
 """
-swish(x) = x * σ(x)
+@inline swish(x) = x * sigmoid_fast(x)
 
 """
     lisht(x) = x * tanh(x)
@@ -368,7 +371,7 @@ julia> lineplot(lisht, -2, 2, height=7)
           ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀x⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀         
 ```
 """
-lisht(x) = x * tanh(x)
+lisht(x) = x * tanh_fast(x)
 
 """
     selu(x) = λ * (x ≥ 0 ? x : α * (exp(x) - 1))
@@ -400,7 +403,7 @@ julia> selu(-10f0)
 function selu(x)
     λ = oftf(x, selu_λ)
     α = oftf(x, selu_α)
-    λ * ifelse(x > 0, x, α * (exp(x) - 1))
+    λ * ifelse(x > 0, x, @fastmath α * (exp(x) - 1))
 end
 
 const selu_λ = 1.0507009873554804934193349852946
@@ -610,7 +613,7 @@ julia> tanhshrink.((-10f0, 10f0))
 (-9.0f0, 9.0f0)
 ```
 """
-tanhshrink(x) = x - tanh(x)
+tanhshrink(x) = x - tanh_fast(x)
 
 """
     softshrink(x, λ=0.5) =
@@ -649,7 +652,11 @@ julia> softshrink.((-10f0, 10f0))
 (-9.5f0, 9.5f0)
 ```
 """
-softshrink(x, λ=oftf(x, 0.5)) = min(max(0, x - λ), x + λ)
+function softshrink(x, λ=oftf(x, 0.5))
+    lo = x - λ
+    hi = x + λ
+    ifelse(hi > 0, ifelse(lo < 0, zero(hi), lo), hi)
+end
 
 # Provide an informative error message if activation functions are called with an array
 for f in ACTIVATIONS
@@ -685,6 +692,8 @@ julia> hard_tanh(0.5f0)
 ```
 """
 @inline function tanh_fast(x::Float32)
+    # This method added in NNlib.jl#345 by @mcabbott and @oscardssmith,
+    # with coeffiecients found using Remez.jl
     x2 = abs2(x)
     n = evalpoly(x2, (1.0f0, 0.1346604f0, 0.0035974074f0, 2.2332108f-5, 1.587199f-8))
     d = evalpoly(x2, (1.0f0, 0.4679937f0, 0.026262015f0, 0.0003453992f0, 8.7767893f-7))
@@ -733,6 +742,18 @@ end
 # but that polynomial has poor relative accuracy for negative x.
 
 sigmoid_fast(x::Float16) = sigmoid(x)  # sigmoid_fast is extremely badly behaved at large x
+
+"""
+    NNlib.fast_act(f, [x::AbstractArray])
+
+Replaces `f == tanh` with [`tanh_fast`](@ref), etc.
+
+Takes an optional 2nd argument, so that you can disable
+this replacement for some array or element types.
+"""
+@inline fast_act(f::F, ::AbstractArray = 1:0) where {F<:Function} = f
+@inline fast_act(::typeof(tanh), ::AbstractArray = 1:0) = tanh_fast
+@inline fast_act(::typeof(sigmoid), ::AbstractArray = 1:0) = sigmoid_fast
 
 ## Define rrules for some activation functions, along with the
 ## broadcasted rrule activation functions.
