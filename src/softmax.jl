@@ -22,6 +22,20 @@ with additional manipulations enhancing numerical stability.
 For a matrix input `x` it will by default (`dims = 1`) treat it as a batch of vectors,
 with each column independent. Keyword `dims = 2` will instead treat rows independently, and so on.
 
+Since softmax by default acts on a vector instead of a scalar, a syntax different from scalar
+activation functions is to be used when using it in a layer of a neural network. For example,
+a sketch of a convolutional model with a softmax classifier head can be implemented like this:
+
+```jldoctest `
+julia> X = randn(Float32, 4, 4, 3, 9);
+
+julia> model = Chain(Conv((4, 4), 3 => 8), x -> flatten(x), x -> softmax(x));
+
+julia> size(model(X))
+(8, 9)
+````
+
+
 See also [`logsoftmax`](@ref).
 
 # Examples
