@@ -712,7 +712,7 @@ end
 
 # These approximations are very badly behaved for Float16; none are fast.
 # They are also a bit slower with ForwardDiff.Dual numbers, let's use Base:
-tanh_fast(x::Real) = Base.tanh(x)
+tanh_fast(x::Number) = Base.tanh(x)
 
 """
     sigmoid_fast(x)
