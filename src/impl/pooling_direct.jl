@@ -104,21 +104,21 @@ for name in (:max, :mean)
 
                 for kd in 1:kernel_d
                     input_kd = pd + (kd - 1) * dil_d
-                    if input_kd < 1 || input_kd > depth
+                    if input_kd <= 0 || input_kd > depth
                         # add here condition for handling options for paded value handling
                         continue
                     end
 
                     for kh in 1:kernel_h
                         input_kh = ph + (kh - 1) * dil_h
-                        if input_kh < 1 || input_kh > height
+                        if input_kh <= 0 || input_kh > height
                             # add here condition for handling options for paded value handling
                             continue
                         end
 
                         for kw in 1:kernel_w
                             input_kw = pw + (kw - 1) * dil_w
-                            if input_kw < 1 || input_kw > width
+                            if input_kw <= 0 || input_kw > width
                                 # add here condition for handling options for paded value handling
                                 continue
                             end
@@ -256,19 +256,19 @@ for name in (:max, :mean)
                 # we do so by putting in a bunch of conditionals.  :/
                 for kd in 1:kernel_d
                     input_kd = pd + (kd - 1) * dil_d
-                    if input_kd < 1 || input_kd > depth
+                    if input_kd <= 0 || input_kd > depth
                         continue
                     end
 
                     for kh in 1:kernel_h
                         input_kh = ph + (kh - 1) * dil_h
-                        if input_kh < 1 || input_kh > height
+                        if input_kh <= 0 || input_kh > height
                             continue
                         end
 
                         for kw in 1:kernel_w
                             input_kw = pw + (kw - 1) * dil_w
-                            if input_kw < 1 || input_kw > width
+                            if input_kw <= 0 || input_kw > width
                                 continue
                             end
 
