@@ -4,13 +4,23 @@ using Statistics
 # the inner loop operation and a few initialization parameters.
 for name in (:max, :mean)
     @eval function $((Symbol("$(name)pool_direct!")))(
+                    y::AbstractArray{T, 5}, x::AbstractArray{T, 5},
+                    pdims::PoolDims; kwargs...) where T
+        $((Symbol("$(name)pool_direct!")))(
+            y, x, pdims, Val(kernel_size(pdims)); kwargs...)
+        return y
+    end
+
+    @eval function $((Symbol("$(name)pool_direct!")))(
                     y::AbstractArray{T,5}, x::AbstractArray{T,5},
-                    pdims::PoolDims; alpha::T=T(1), beta::T=T(0)) where {T}
+                    pdims::PoolDims,
+                    ::Val{K}; # == kernel_size(pdims)
+                    alpha::T=T(1), beta::T=T(0)) where {T, K}
         @assert beta == T(0) "beta not supported yet"
         check_dims(size(x), size(y), pdims)
 
         width, height, depth = input_size(pdims)
-        kernel_w, kernel_h, kernel_d = kernel_size(pdims)
+        kernel_w, kernel_h, kernel_d = K
         out_c = channels_out(pdims)
         pad_w_lo, _, pad_h_lo, _, pad_d_lo, _ = padding(pdims)
         dil_w, dil_h, dil_d = dilation(pdims)
@@ -133,16 +143,27 @@ for name in (:max, :mean)
         return y
     end
 
+    @eval function $((Symbol("∇$(name)pool_direct!")))(
+                    dx::AbstractArray{T,5}, dy::AbstractArray{T,5},
+                    y::AbstractArray{T,5}, x::AbstractArray{T,5},
+                    pdims::PoolDims; kwargs...) where T
+        $((Symbol("∇$(name)pool_direct!")))(
+            dx, dy, y, x, pdims, Val(kernel_size(pdims)); kwargs...)
+        return y
+    end
+
     # Same story for gradients, and although this is very similar to the forward pass,
     # it's unfortunately different enough that I think we need a separate function.  :(
     @eval function $((Symbol("∇$(name)pool_direct!")))(
                     dx::AbstractArray{T,5}, dy::AbstractArray{T,5},
                     y::AbstractArray{T,5}, x::AbstractArray{T,5},
-                    pdims::PoolDims; alpha::T=T(1), beta::T=T(0)) where {T}
+                    pdims::PoolDims,
+                    ::Val{K}; # == kernel_size(pdims)
+                    alpha::T=T(1), beta::T=T(0)) where {T, K}
         check_dims(size(x), size(dy), pdims)
 
         width, height, depth = input_size(pdims)
-        kernel_w, kernel_h, kernel_d = kernel_size(pdims)
+        kernel_w, kernel_h, kernel_d = K
         out_c = channels_out(pdims)
         pad_w_lo, _, pad_h_lo, _, pad_d_lo, _ = padding(pdims)
         dil_w, dil_h, dil_d = dilation(pdims)
