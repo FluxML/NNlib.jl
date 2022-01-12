@@ -29,7 +29,7 @@ a sketch of a convolutional model with a softmax classifier head can be implemen
 ```jldoctest `
 julia> X = randn(Float32, 4, 4, 3, 9);
 
-julia> model = Chain(Conv((4, 4), 3 => 8), x -> flatten(x), x -> softmax(x));
+julia> model = Chain(Conv((4, 4), 3 => 8), flatten, softmax);
 
 julia> size(model(X))
 (8, 9)
