@@ -57,20 +57,17 @@ function conv_direct!(y::AbstractArray{yT,5}, x::AbstractArray{xT,5},
 end
 
 
-function conv_direct!(y::AbstractArray{yT,5}, x::AbstractArray{xT,5},
-                      w::AbstractArray{wT,5}, cdims::DenseConvDims,
-                      ::Val{K}, # == kernel_size(pdims)
-                      ::Val{C}, # == channels_out(pdims)
-                      ::Val{P}, # == padding(pdims)
-                      ::Val{D}, # == dilation(pdims)
-                      ::Val{S}, # == stride(pdims)
-                      fk::Val{F}; # == flipkernel(pdims)
-                      alpha::yT = yT(1), beta = false) where {yT, xT, wT, K, C, P, D, S, F}
+function conv_direct!(
+    y::AbstractArray{yT,5}, x::AbstractArray{xT,5},
+    w::AbstractArray{wT,5}, cdims::DenseConvDims,
+    # kernel size, output channels, padding, dilation, stride, flipped kernel
+    ::Val{K}, ::Val{C}, ::Val{P}, ::Val{D}, ::Val{S}, fk::Val{F};
+    alpha::yT = yT(1), beta = false,
+) where {yT, xT, wT, K, C, P, D, S, F}
     check_dims(size(x), size(w), size(y), cdims)
 
     width, height, depth = input_size(cdims)
     kernel_w, kernel_h, kernel_d = K
-    out_c = C
     pad_w_lo, _, pad_h_lo, _, pad_d_lo, _ = P
     dil_w, dil_h, dil_d = D
     stride_w, stride_h, stride_d = S
@@ -88,7 +85,7 @@ function conv_direct!(y::AbstractArray{yT,5}, x::AbstractArray{xT,5},
     # Start with the central region
     w_region, h_region, d_region = central_region
     @inbounds for batch in 1:size(x, 5),
-        c_out in 1:out_c,
+        c_out in 1:C,
         d_idx in d_region,
         h_idx in h_region,
         w_idx in w_region
@@ -118,7 +115,7 @@ function conv_direct!(y::AbstractArray{yT,5}, x::AbstractArray{xT,5},
     # Next, do potentially-padded regions:
     @inbounds for (w_region, h_region, d_region) in padded_regions,
         batch in 1:size(x, 5),
-        c_out in 1:out_c,
+        c_out in 1:C,
         d_idx in d_region,
         h_idx in h_region,
         w_idx in w_region

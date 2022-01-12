@@ -15,20 +15,17 @@ for name in (:max, :mean)
     end
 
     @eval function $((Symbol("$(name)pool_direct!")))(
-                    y::AbstractArray{T,5}, x::AbstractArray{T,5},
-                    pdims::PoolDims,
-                    ::Val{K}, # == kernel_size(pdims)
-                    ::Val{C}, # == channels_out(pdims)
-                    ::Val{P}, # == padding(pdims)
-                    ::Val{D}, # == dilation(pdims)
-                    ::Val{S}; # == stride(pdims)
-                    alpha::T=T(1), beta::T=T(0)) where {T, K, C, P, D, S}
+        y::AbstractArray{T,5}, x::AbstractArray{T,5},
+        pdims::PoolDims,
+        # kernel size, channels out, padding, dilation, stride
+        ::Val{K}, ::Val{C}, ::Val{P}, ::Val{D}, ::Val{S};
+        alpha::T=T(1), beta::T=T(0),
+    ) where {T, K, C, P, D, S}
         @assert beta == T(0) "beta not supported yet"
         check_dims(size(x), size(y), pdims)
 
         width, height, depth = input_size(pdims)
         kernel_w, kernel_h, kernel_d = K
-        out_c = C
         pad_w_lo, _, pad_h_lo, _, pad_d_lo, _ = P
         dil_w, dil_h, dil_d = D
         stride_w, stride_h, stride_d = S
@@ -58,7 +55,7 @@ for name in (:max, :mean)
         # Start with the central region
         w_region, h_region, d_region = central_region
 
-        @inbounds for batch_idx in 1:size(x, 5), c in 1:out_c
+        @inbounds for batch_idx in 1:size(x, 5), c in 1:C
             for d in d_region
             pd = project(d, stride_d, pad_d_lo)
             for h in h_region
@@ -96,7 +93,7 @@ for name in (:max, :mean)
 
         # Next, the padded regions
         @inbounds for (w_region, h_region, d_region) in padded_regions
-            for batch_idx in 1:size(x, 5), c in 1:out_c
+            for batch_idx in 1:size(x, 5), c in 1:C
                 for d in d_region
                 pd = project(d, stride_d, pad_d_lo)
                 for h in h_region
@@ -163,8 +160,7 @@ for name in (:max, :mean)
     @eval function $((Symbol("∇$(name)pool_direct!")))(
                     dx::AbstractArray{T,5}, dy::AbstractArray{T,5},
                     y::AbstractArray{T,5}, x::AbstractArray{T,5},
-                    pdims::PoolDims,
-                    ::Val{K}; # == kernel_size(pdims)
+                    pdims::PoolDims, ::Val{K}; # == kernel_size(pdims)
                     alpha::T=T(1), beta::T=T(0)) where {T, K}
         check_dims(size(x), size(dy), pdims)
 

@@ -20,15 +20,17 @@ function padding(::ConvDims) end
 function dilation(::ConvDims) end
 function flipkernel(::ConvDims) end
 
+# Hack to get rid of type parameters
 function basetype(::Type{C}) where {C <: ConvDims}
-    if C <: DenseConvDims
-        return DenseConvDims
-    elseif C <: DepthwiseConvDims
+    if C <: DepthwiseConvDims
         return DepthwiseConvDims
+    elseif C <: DenseConvDims
+        return DenseConvDims
     elseif C <: PoolDims
         return PoolDims
+    else
+        return nothing
     end
-    return nothing
 end
 
 function output_size(c::ConvDims)
@@ -66,7 +68,7 @@ Note that because im2col is multithreaded, we need to allocate a separate worksp
 memory per-thread; hence the dimensions returned by this will depend on the number of
 threads Julia is currently running with.
 """
-function im2col_dims(c)
+function im2col_dims(c::ConvDims)
     return (
         # Output size
         prod(output_size(c)),

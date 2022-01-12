@@ -47,6 +47,8 @@ function DepthwiseConvDims(x::AbstractArray, w::AbstractArray; kwargs...)
     return DepthwiseConvDims(size(x), size(w); kwargs...)
 end
 
+# Useful for constructing a new DepthwiseConvDims that has only a few elements different
+# from the original progenitor object.
 @inline DepthwiseConvDims(
     c::DepthwiseConvDims; I=input_size(c), K=kernel_size(c),
     C_in=channels_in(c), C_m=channel_multiplier(c), S=stride(c),

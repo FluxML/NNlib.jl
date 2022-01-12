@@ -1,5 +1,10 @@
 export DenseConvDims
 
+"""
+    DenseConvDims
+
+Concrete subclass of `ConvDims` for a normal, dense, conv2d/conv3d.
+"""
 struct DenseConvDims{N, K, S, P, D} <: ConvDims{N}
     input_size::NTuple{N, Int}
 
@@ -22,12 +27,14 @@ function DenseConvDims(
     sstride, ppadding, ddilation = check_spdf(
         x_size, w_size, stride, padding, dilation)
 
+    # Ensure channels are equal
     if x_size[end - 1] != w_size[end - 1] * groups
         xs = x_size[end - 1]
         ws = w_size[end - 1]
         throw(DimensionMismatch("Input channels must match! ($xs vs. $ws)"))
     end
 
+    # Ensure groups are valid
     if x_size[end - 1] % w_size[end - 1] != 0 || w_size[end] % groups != 0
         throw(DimensionMismatch(
             "Group count should be divisble by input and output channels ($groups vs. $(w_size[end-1:end]))"))
@@ -47,6 +54,8 @@ function DenseConvDims(x::AbstractArray, w::AbstractArray; kwargs...)
     return DenseConvDims(size(x), size(w); kwargs...)
 end
 
+# Useful for constructing a new DenseConvDims that has only a few elements different
+# from the original progenitor object that it inherits shapes from.
 @inline DenseConvDims(
     c::C; I=input_size(c), K=kernel_size(c),
     C_in=channels_in(c), C_out=channels_out(c), S=stride(c),
@@ -68,9 +77,7 @@ end
 @inline dilation(c::DenseConvDims) = c.dilation
 @inline flipkernel(c::DenseConvDims) = c.flipkernel
 
-function check_dims(
-    x::NTuple{M}, w::NTuple{M}, y::NTuple{M}, cdims::DenseConvDims,
-) where {M}
+function check_dims(x::NTuple{M}, w::NTuple{M}, y::NTuple{M}, cdims::DenseConvDims) where {M}
     # First, check that channel counts are all correct:
     @assert x[M-1] * groupcount(cdims) == channels_in(cdims) DimensionMismatch("Data input channel count ($(x[M-1]) vs. $(channels_in(cdims)))")
     @assert y[M-1] == channels_out(cdims) ÷ groupcount(cdims)  DimensionMismatch("Data output channel count ($(y[M-1]) vs. $(channels_out(cdims)))")

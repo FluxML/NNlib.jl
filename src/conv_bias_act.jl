@@ -8,7 +8,7 @@ function conv_bias_act(x::AbstractArray{xT,N}, w::AbstractArray{wT,N},
 end
 
 function conv_bias_act!(y::AbstractArray{yT,5}, x::AbstractArray{xT,5}, w::AbstractArray{wT,5},
-                    cdims::ConvDims, b::AbstractArray{bT,5}, σ=identity; kwargs...) where {yT, xT, wT, bT}
+                cdims::ConvDims, b::AbstractArray{bT,5}, σ=identity; kwargs...) where {yT, xT, wT, bT}
     conv!(y, x, w, cdims)
     y .= σ.(y .+ b)
     return y

@@ -55,10 +55,9 @@ function conv(x, w::AbstractArray{T, N}; stride = 1, pad = 0, dilation = 1, flip
     stride = expand(Val(N - 2), stride)
     padding = expand(Val(N - 2), pad)
     dilation = expand(Val(N - 2), dilation)
-
     cdims = DenseConvDims(
         size(x), size(w); stride, padding, dilation, flipkernel=flipped, groups)
-    conv(x, w, cdims)
+    return conv(x, w, cdims)
 end
 
 """
@@ -88,9 +87,8 @@ for backend in (Symbol(), :_direct, :_im2col, :_nnpack)
             function $(Symbol("$(name)$(backend)"))(
                             x::AbstractArray{xT,N}, w::AbstractArray{wT,N},
                             cdims::ConvDims; kwargs...) where {xT, wT, N}
-                y = similar(
-                   x, promote_type(xT, wT), output_size(cdims)...,
-                   channels_out(cdims), size(x,N))
+                y = similar(x, promote_type(xT, wT), output_size(cdims)...,
+                               channels_out(cdims), size(x,N))
                 return $(Symbol("$(name)$(backend)!"))(y, x, w, cdims; kwargs...)
             end
         end
@@ -101,8 +99,7 @@ for backend in (Symbol(), :_direct, :_im2col, :_nnpack)
             function $(Symbol("$(name)$(backend)"))(
                             dy::AbstractArray{yT,N}, w::AbstractArray{wT,N},
                             cdims::C; kwargs...) where {yT, wT, N, C <: ConvDims}
-                dx = similar(
-                    dy, input_size(cdims)..., channels_in(cdims), size(dy, N))
+                dx = similar(dy, input_size(cdims)..., channels_in(cdims), size(dy, N))
                 return $(Symbol("$(name)$(backend)!"))(dx, dy, w, cdims; kwargs...)
             end
         end
@@ -114,9 +111,8 @@ for backend in (Symbol(), :_direct, :_im2col, :_nnpack)
         function $(Symbol("∇conv_filter$(backend)"))(
                         x::AbstractArray{xT,N}, dy::AbstractArray{yT,N},
                         cdims::ConvDims; kwargs...) where {xT, yT, N}
-            dw = similar(
-                dy, kernel_size(cdims)..., channels_in(cdims) ÷ groupcount(cdims),
-                channels_out(cdims))
+            dw = similar(dy, kernel_size(cdims)..., channels_in(cdims) ÷ groupcount(cdims),
+                                                    channels_out(cdims))
             return $(Symbol("∇conv_filter$(backend)!"))(dw, x, dy, cdims; kwargs...)
         end
     end
@@ -125,10 +121,10 @@ for backend in (Symbol(), :_direct, :_im2col, :_nnpack)
         function $(Symbol("∇depthwiseconv_filter$(backend)"))(
                         x::AbstractArray{xT,N}, dy::AbstractArray{yT,N},
                         cdims::ConvDims; kwargs...) where {xT, yT, N}
-            dw = similar(
-                dy, kernel_size(cdims)..., channel_multiplier(cdims),
-                channels_in(cdims))
-            return $(Symbol("∇depthwiseconv_filter$(backend)!"))(dw, x, dy, cdims; kwargs...)
+            dw = similar(dy, kernel_size(cdims)..., channel_multiplier(cdims),
+                                                    channels_in(cdims))
+            return $(Symbol("∇depthwiseconv_filter$(backend)!"))(dw, x, dy, cdims;
+                                                                 kwargs...)
         end
     end
 end
@@ -149,6 +145,7 @@ for front_name in (:conv, :∇conv_data, :∇conv_filter,
                                 y::AbstractArray{yT,$N}, x::AbstractArray{xT,$N},
                                 w::AbstractArray{wT,$N}, cdims::ConvDims;
                                 kwargs...) where {yT, xT, wT}
+
                     $(Symbol("$(front_name)$(backend)!"))(
                         insert_singleton_spatial_dimension(y, $(5 - N)),
                         insert_singleton_spatial_dimension(x, $(5 - N)),
@@ -156,6 +153,7 @@ for front_name in (:conv, :∇conv_data, :∇conv_filter,
                         insert_singleton_spatial_dimension(cdims, $(5 - N));
                         kwargs...
                     )
+
                     # We explicitly return `y` here, because the backend call
                     # itself may return a reshaped view, which we don't want.
                     return y
@@ -188,6 +186,7 @@ for (front_name, backend) in (
         function $(Symbol("$(front_name)!"))(
                         out::AbstractArray{T,5}, in1::AbstractArray{T,5},
                         in2::AbstractArray{T,5}, cdims::C; kwargs...) where {T <: $G, C <: ConvDims}
+
             x_cs = Iterators.partition(1:size(in1, 4),
                                        channels_in(cdims) ÷ groupcount(cdims))
             w_cs = Iterators.partition(1:size(in2, 5),
@@ -204,7 +203,7 @@ for (front_name, backend) in (
                 Threads.@spawn $(Symbol("$(front_name)_$(backend)!"))(y, x, w, cdims2; kwargs...)
             end
 
-           return out
+            return out
         end
     end
 end
@@ -270,8 +269,7 @@ for (front_name, backend) in (
         # im2col-accelerated function forwarding definition
         function $(Symbol("$(front_name)!"))(
                         out::AbstractArray{T,5}, in1::AbstractArray{T,5},
-                        in2::AbstractArray{T,5}, cdims::C;
-                        kwargs...) where {T <: $G, C <: ConvDims}
+                        in2::AbstractArray{T,5}, cdims::C; kwargs...) where {T <: $G, C <: ConvDims}
             $(Symbol("$(front_name)_$(backend)!"))(out, in1, in2, cdims; kwargs...)
         end
     end

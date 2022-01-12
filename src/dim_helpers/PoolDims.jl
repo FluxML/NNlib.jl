@@ -1,5 +1,13 @@
 export PoolDims
 
+"""
+    PoolDims(x_size::NTuple{M}, k::Union{NTuple{L, Int}, Int};
+            stride=k, padding=0, dilation=1)  where {M, L}
+
+Dimensions for a "pooling" operation that can have an arbitrary input size, kernel size,
+stride, dilation, and channel count.  Used to dispatch onto efficient implementations at
+compile-time.
+"""
 struct PoolDims{N, K, S, P, D} <: ConvDims{N}
     input_size::NTuple{N, Int}
 
@@ -12,9 +20,9 @@ struct PoolDims{N, K, S, P, D} <: ConvDims{N}
 end
 
 function PoolDims(
-    x_size::NTuple{M}, k;
+    x_size::NTuple{M}, k::Union{NTuple{L, Int}, Int};
     stride = k, padding = 0, dilation = 1,
-) where {M}
+) where {M, L}
     _check_kernel(k::Number, N::Int) = ntuple(_ -> Int(k), N)
     _check_kernel(k::NTuple, ::Int) = k
 
@@ -30,6 +38,8 @@ end
 
 PoolDims(x::AbstractArray, k; kwargs...) = PoolDims(size(x), k; kwargs...)
 
+# Useful for constructing a new PoolDims that has only a few elements different
+# from the original progenitor object that it inherits shapes from.
 PoolDims(
     c::C; I=input_size(c), K=kernel_size(c),
     C_in=channels_in(c), S=stride(c), P=padding(c), D=dilation(c),
