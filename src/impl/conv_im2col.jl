@@ -3,9 +3,7 @@
 
 # Helper function for flipkernel-induced dyslexia
 function kernel_index(w, h, d, cdims::ConvDims)
-    if flipkernel(cdims)
-        return (w, h, d)
-    end
+    flipkernel(cdims) && return (w, h, d)
     kernel_w, kernel_h, kernel_d = kernel_size(cdims)
     return (kernel_w - w + 1, kernel_h - h + 1, kernel_d - d + 1)
 end

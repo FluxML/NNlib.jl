@@ -5,27 +5,33 @@ using Statistics
 for name in (:max, :mean)
     @eval function $((Symbol("$(name)pool_direct!")))(
                     y::AbstractArray{T, 5}, x::AbstractArray{T, 5},
-                    pdims::PoolDims; kwargs...) where T
+                    pdims::PoolDims; alpha::T=T(1), beta::T=T(0)) where T
         $((Symbol("$(name)pool_direct!")))(
-            y, x, pdims, Val(kernel_size(pdims)); kwargs...)
+            y, x, pdims,
+            Val(kernel_size(pdims)), Val(channels_out(pdims)),
+            Val(padding(pdims)), Val(dilation(pdims)), Val(stride(pdims));
+            alpha, beta)
         return y
     end
 
     @eval function $((Symbol("$(name)pool_direct!")))(
                     y::AbstractArray{T,5}, x::AbstractArray{T,5},
                     pdims::PoolDims,
-                    ::Val{K}; # == kernel_size(pdims)
-                    alpha::T=T(1), beta::T=T(0)) where {T, K}
+                    ::Val{K}, # == kernel_size(pdims)
+                    ::Val{C}, # == channels_out(pdims)
+                    ::Val{P}, # == padding(pdims)
+                    ::Val{D}, # == dilation(pdims)
+                    ::Val{S}; # == stride(pdims)
+                    alpha::T=T(1), beta::T=T(0)) where {T, K, C, P, D, S}
         @assert beta == T(0) "beta not supported yet"
         check_dims(size(x), size(y), pdims)
 
         width, height, depth = input_size(pdims)
         kernel_w, kernel_h, kernel_d = K
-        out_c = channels_out(pdims)
-        pad_w_lo, _, pad_h_lo, _, pad_d_lo, _ = padding(pdims)
-        dil_w, dil_h, dil_d = dilation(pdims)
-        stride_w, stride_h, stride_d = stride(pdims)
-        out_width, out_height, out_depth = output_size(pdims)
+        out_c = C
+        pad_w_lo, _, pad_h_lo, _, pad_d_lo, _ = P
+        dil_w, dil_h, dil_d = D
+        stride_w, stride_h, stride_d = S
 
         # We use calc_padding_regions to split outselves up into separate regions that may or
         # may not need to worry about padding:
@@ -37,7 +43,7 @@ for name in (:max, :mean)
         # If we're doing mean pooling, we represent division by kernel size by rolling it
         # into the `alpha` multiplier.
         if $(name == :mean)
-            alpha = alpha / prod(kernel_size(pdims))
+            alpha = alpha / prod(K)
         end
 
         # Each loop, we initialize `m` to something, set that here.
@@ -168,7 +174,6 @@ for name in (:max, :mean)
         pad_w_lo, _, pad_h_lo, _, pad_d_lo, _ = padding(pdims)
         dil_w, dil_h, dil_d = dilation(pdims)
         stride_w, stride_h, stride_d = stride(pdims)
-        out_width, out_height, out_depth = output_size(pdims)
 
         # We use calc_padding_regions to split outselves up into separate regions that
         # may or may not need to worry about padding:
@@ -180,7 +185,7 @@ for name in (:max, :mean)
         # If we're doing mean pooling, we represent division by kernel size by rolling
         # it into the `alpha` multiplier.
         if $(name == :mean)
-            alpha = alpha / prod(kernel_size(pdims))
+            alpha = alpha / prod(K)
         end
 
         # Start with the central region
