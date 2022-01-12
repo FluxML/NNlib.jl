@@ -149,7 +149,7 @@ for name in (:max, :mean)
                     pdims::PoolDims; kwargs...) where T
         $((Symbol("∇$(name)pool_direct!")))(
             dx, dy, y, x, pdims, Val(kernel_size(pdims)); kwargs...)
-        return y
+        return dx
     end
 
     # Same story for gradients, and although this is very similar to the forward pass,
