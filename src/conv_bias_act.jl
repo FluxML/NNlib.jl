@@ -34,9 +34,11 @@ function conv_bias_act!(y::AbstractArray{yT,5}, x::AbstractArray{xT,5}, w::Abstr
     y = conv!(y, x, w, cdims)
     if σ != identity || b isa AbstractArray
         return bias_act!(σ, y, b)
-    else
+    elseif iszero(b)
         # nothing to do
         return y
+    else
+        throw(ArgumentError("The bias argument to `conv_bias_act!` must either be zero or an array."))
     end
 end
 
@@ -53,7 +55,7 @@ function rrule(::typeof(conv_bias_act!), y, x, w, cdims, b::B, σ::F; kw...) whe
         elseif σ === relu
             Δ = colmajor(unthunk(Δ_raw) .* (Ω .> 0))
         else
-            throw(ArgumentError("conv_bias_act! should only be called with identity or relu, conv_bias_act ensures this"))
+            throw(ArgumentError("`conv_bias_act!` should only be called with `identity` or `relu`. `conv_bias_act` ensures this."))
         end
         if eltype(B) == Bool
             Δb = NoTangent()
