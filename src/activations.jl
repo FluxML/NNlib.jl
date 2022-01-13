@@ -743,6 +743,11 @@ end
 
 sigmoid_fast(x::Float16) = sigmoid(x)  # sigmoid_fast is extremely badly behaved at large x
 
+function sigmoid_fast(x::Number)
+    Base.depwarn("sigmoid only makes sense on real numbers, got $(typeof(x))", :sigmoid_fast)
+    sigmoid(x)
+end
+
 """
     NNlib.fast_act(f, [x::AbstractArray])
 
