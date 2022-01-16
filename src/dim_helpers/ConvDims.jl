@@ -12,13 +12,13 @@ abstract type ConvDims{N} end
 @inline spatial_dims(::ConvDims{N}) where N = N
 @inline groupcount(c::ConvDims) = 1
 
-function input_size(::ConvDims) end
-function kernel_size(::ConvDims) end
-
-function stride(::ConvDims) end
-function padding(::ConvDims) end
-function dilation(::ConvDims) end
-function flipkernel(::ConvDims) end
+# Below functions should be implemented by dims that subtype `ConvDims`.
+function input_size end
+function kernel_size end
+function stride end
+function padding end
+function dilation end
+function flipkernel end
 
 # Hack to get rid of type parameters
 function basetype(::Type{C}) where {C <: ConvDims}
@@ -103,26 +103,31 @@ function check_spdf(x_size::NTuple{N}, w_size::NTuple{N}, stride, padding, dilat
 
     # padding is kind of a special case; we allow it to be either 2-length or 4-length,
     # since we support asymmetrical padding
-    if length(ppadding) != 2 * nd
-        if length(ppadding) == nd
-            # Do this repeat dance so that we get lo/hi symmetrical padding
-            ppadding = NTuple{2 * nd, Int}(repeat(collect(ppadding), inner=2))
-        else
-            throw(DimensionMismatch("Padding $(length(ppadding))d, should be either $(nd)d or $(2*nd)d!"))
-        end
+    if length(ppadding) == 2 * nd
+        _validate_padding(x_size, w_size, ppadding, pdilation)
+        return pstride, ppadding, pdilation
     end
 
-    # Assert that kernel size * dilation is <= padded input size
-    for idx in 1:nd
+    length(ppadding) != nd && throw(DimensionMismatch(
+        "Padding $(length(ppadding))d, should be either $(nd)d or $(2*nd)d!"))
+
+    # Do this repeat dance so that we get lo/hi symmetrical padding
+    ppadding_expanded = ntuple(i -> ppadding[(i - 1) ÷ 2 + 1], 2 * nd)
+    _validate_padding(x_size, w_size, ppadding_expanded, pdilation)
+    return pstride, ppadding_expanded, pdilation
+end
+
+# Assert that kernel size * dilation is <= padded input size
+function _validate_padding(x_size::NTuple{N}, w_size::NTuple{N}, padding, dilation) where N
+    for idx in 1:(N - 2)
         Is = x_size[idx]
-        Pl = ppadding[(idx - 1) * 2 + 1]
-        Ph = ppadding[(idx - 1) * 2 + 2]
         Ks = w_size[idx]
-        Ds = pdilation[idx]
-        if Is + Pl + Ph < (Ks - 1)*Ds + 1
+        Pl = padding[(idx - 1) * 2 + 1]
+        Ph = padding[(idx - 1) * 2 + 2]
+        Ds = dilation[idx]
+        if Is + Pl + Ph < (Ks - 1) * Ds + 1
             throw(DimensionMismatch("Kernel * dilation (($Ks - 1) * $Ds + 1) cannot be larger than input + padding ($Is + $Pl + $Ph)!"))
         end
     end
-
-    return pstride, ppadding, pdilation
+    nothing
 end
