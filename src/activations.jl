@@ -5,7 +5,7 @@
 
 ACTIVATIONS = [
     :σ, :hardσ, :hardtanh, :relu,
-    :leakyrelu, :relu6, :rrelu, :elu, :gelu, :swish, :selu,
+    :leakyrelu, :relu6, :rrelu, :elu, :gelu, :swish, :hardswish, :selu,
     :celu, :softplus, :softsign, :logσ, :logcosh,
     :mish, :tanhshrink, :softshrink, :trelu, :lisht,
     :tanh_fast, :sigmoid_fast,
@@ -371,7 +371,7 @@ julia> lineplot(h_swish, -2, 2, height = 7)
            ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀x⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀        
 ```
 """
-@inline h_swish(x) = x * hardσ(x)
+@inline hardswish(x) = x * hardσ(x)
 
 """
     lisht(x) = x * tanh(x)
