@@ -47,6 +47,7 @@ end
 @test elu(0.0) == 0.0
 @test gelu(0.0) == 0.0
 @test swish(0.0) == 0.0
+@test hardswish(0.0) == 0.0
 @test lisht(0.0) == 0.0
 @test softplus(0.0) ≈ log(2.0)
 @test softplus(1e8) ≈ 1e8
@@ -70,6 +71,7 @@ end
 @test elu(1.0) == 1.0
 @test gelu(1.0) == 0.8411919906082768
 @test swish(1.0) == sigmoid(1.0)
+@test hardswish(1.0) == hardsigmoid(1.0)
 @test lisht(1.0) ≈ 1.0 * tanh(1.0)
 @test softplus(1.0) ≈ log(exp(1.0) + 1.0)
 @test softsign(1.0) == 0.5
@@ -91,6 +93,7 @@ end
 @test elu(-1.0) == exp(-1.0) - 1.0
 @test gelu(-1.0) ≈ -0.15880800939172324
 @test swish(-1.0) == -sigmoid(-1.0)
+@test hardswish(-1.0) == -hardsigmoid(-1.0)
 @test lisht(-1.0) ≈ -1.0 * tanh(-1.0)
 @test softplus(-1.0) ≈ log(exp(-1.0) + 1.0)
 @test softsign(-1.0) == -0.5
@@ -123,7 +126,7 @@ end
         a == softsign && continue
         @test !isnan(a(Inf32))
 
-        a in [gelu, swish, logcosh, mish] && continue
+        a in [gelu, swish, hardswish, logcosh, mish] && continue
         @test !isnan(a(-Inf32))
     end
 end
