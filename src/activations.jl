@@ -351,15 +351,15 @@ julia> lineplot(swish, -2, 2, height=7)
 @inline swish(x) = x * sigmoid_fast(x)
 
 """
-    h_swish(x) = x * hardσ(x)
+    hardswish(x) = x * hardσ(x)
 
 Hard-Swish activation function
 See (["Searching for MobileNetV3"](https://arxiv.org/abs/1905.02244)).
 
 ```
-julia> lineplot(h_swish, -2, 2, height = 7)
+julia> lineplot(hardswish, -2, 2, height = 7)
            ┌────────────────────────────────────────┐           
-         2 │⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⡇⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣀│ h_swish(x)
+         2 │⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⡇⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣀│ hardswish(x)
            │⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⡇⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣀⡤⠖⠋⠁│           
            │⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⡇⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⣀⠤⠒⠋⠁⠀⠀⠀⠀│           
    f(x)    │⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⡇⠀⠀⠀⠀⣀⡠⠤⠒⠋⠁⠀⠀⠀⠀⠀⠀⠀⠀⠀│           
