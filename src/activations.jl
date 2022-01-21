@@ -3,13 +3,13 @@
 # Some of activation functions have its wrapper function for GPU in NNlibCUDA.jl.
 # https://github.com/JuliaGPU/CuArrays.jl/issues/614
 
-ACTIVATIONS = [
+const ACTIVATIONS = [
     :σ, :hardσ, :hardtanh, :relu,
     :leakyrelu, :relu6, :rrelu, :elu, :gelu, :swish, :hardswish, :selu,
     :celu, :softplus, :softsign, :logσ, :logcosh,
     :mish, :tanhshrink, :softshrink, :trelu, :lisht,
     :tanh_fast, :sigmoid_fast,
-    ]
+]
 
 for f in ACTIVATIONS
     @eval export $(f)
