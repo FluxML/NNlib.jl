@@ -142,3 +142,9 @@ function logsumexp(x::AbstractArray; dims = :)
     max_ = maximum(x; dims = dims)
     max_ .+ log.(sum(exp.(x .- max_); dims = dims))
 end
+
+# Informative error message if any of the softmax variants is called with a number
+for f in (:softmax, :logsoftmax, :softmax!, :logsoftmax!, :logsumexp)
+    @eval $(f)(x::Number, args...) = 
+      error("`", $(string(f)), "(x)` called with a number, but it expects an array. Usually this is because a layer like `Dense(3,4,softmax)` is broadcasting it like an activation function; `softmax` needs to be outside the layer.")
+end
