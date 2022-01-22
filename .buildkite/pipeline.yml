@@ -52,3 +52,5 @@ steps:
   #     queue: "juliagpu"
   #     cuda: "*"
   #   timeout_in_minutes: 60
+env:
+  SECRET_CODECOV_TOKEN: "IlEMvDI6RciJQr5eX7qBBpHYFAe8+Svf3lNJh9gZi0MeJZQvMZWzHfW/lVncA9d9K+gDBBTv/zwqF86xOaIFLuACNdcGZiGgHS+NGeXN5CEppjqLnqKuaeHmLgJ43jygxRwgF88LhwTGcHG7pmESIp1Bn3Jd23UUv4t8hJLBDF+KJLZMefzCXnEVzfwJYxhJktnKJPA4dOv59w33Vj1x5uCYZbQlLP54IJPBm8UGdXS+JrUX8Z7lhxbkJUi6c+R6cvVBw27uRjF0pUJY26mt1frx8MzTGTOweXTpi+Kc5JhzlokMlan17j6T/b7qMC13IuKopfqu1GhkSBQD3ZhQqA==;U2FsdGVkX19l7JMB48k4oJHLoaqC7/MmvQWmaiBxRN472ZC6AcQ0uCBRy6Fw8tI0YcjIxKDScaBnJ2v/deOfhg=="
