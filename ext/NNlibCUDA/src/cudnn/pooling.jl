@@ -41,8 +41,9 @@ end
 
 add1d(x) = reshape(x, 1, size(x)...)
 
-fix_pooldims_1d(pdims::PoolDims{1,K,S,P,D}) where {K,S,P,D} =
-        PoolDims{2,(1,K...),(1,S...),(0,0,P...),(1,D...)}((1,pdims.I...), pdims.C_in)
+function fix_pooldims_1d(pdims::PoolDims{1,K,S,P,D}) where {K,S,P,D}
+  PoolDims{2,(1,K...),(1,S...),(0,0,P...),(1,D...)}((1,NNlib.input_size(pdims)...), pdims.C_in)
+end
 
 function maxpool!(y::DenseCuArray{T,3}, x::DenseCuArray{T,3}, pdims::PoolDims) where T<:CUDNNFloat
     maxpool!(add1d(y), add1d(x), fix_pooldims_1d(pdims))
