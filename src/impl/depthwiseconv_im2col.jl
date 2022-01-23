@@ -16,7 +16,7 @@ function depthwiseconv_im2col!(
                 col::AbstractArray{T,3} = similar(x, im2col_dims(cdims)),
                 alpha::T=T(1), beta::T=T(0)) where T
     check_dims(size(x), size(w), size(y), cdims)
-    
+
     # This functions exactly the same as conv_im2col!(), except that we shard the
     # incoming data into slices of single channels.  This means that we need to walk
     # each pointer forward individually, as done below, taking a single input channel
@@ -30,7 +30,7 @@ function depthwiseconv_im2col!(
     @threads for batch_idx in 1:size(x)[end]
         # col_slice is a thread-local workspace
         col_slice = view(col, :, :, threadid())
-        
+
         im2col!(col_slice, view(x, :, :, :, :, batch_idx), dcdims)
 
         # We do a separate convolution for each channel in x, as we must
@@ -68,7 +68,7 @@ function ∇depthwiseconv_filter_im2col!(
 
     @threads for batch_idx in 1:size(x)[end]
         # col_slice is a thread-local workspace
-        col_slice = view(col, :, :, threadid()) 
+        col_slice = view(col, :, :, threadid())
         im2col!(col_slice, view(x, :, :, :, :, batch_idx), cdims)
 
         # We do a separate convolution for each channel in x, as we must

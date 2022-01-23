@@ -48,30 +48,44 @@ conv_direct!
 function conv_direct!(y::AbstractArray{yT,5}, x::AbstractArray{xT,5},
                       w::AbstractArray{wT,5}, cdims::DenseConvDims;
                       alpha::yT = yT(1), beta = false) where {yT, xT, wT}
+    conv_direct!(
+        y, x, w, cdims,
+        Val(kernel_size(cdims)), Val(channels_out(cdims)),
+        Val(padding(cdims)), Val(dilation(cdims)), Val(stride(cdims)),
+        Val(flipkernel(cdims)); alpha, beta)
+    return y
+end
+
+
+function conv_direct!(
+    y::AbstractArray{yT,5}, x::AbstractArray{xT,5},
+    w::AbstractArray{wT,5}, cdims::DenseConvDims,
+    # kernel size, output channels, padding, dilation, stride, flipped kernel
+    ::Val{K}, ::Val{C}, ::Val{P}, ::Val{D}, ::Val{S}, fk::Val{F};
+    alpha::yT = yT(1), beta = false,
+) where {yT, xT, wT, K, C, P, D, S, F}
     check_dims(size(x), size(w), size(y), cdims)
 
     width, height, depth = input_size(cdims)
-    kernel_w, kernel_h, kernel_d = kernel_size(cdims)
-    out_c = channels_out(cdims)
-    pad_w_lo, pad_w_hi, pad_h_lo, pad_h_hi, pad_d_lo, pad_d_hi = padding(cdims)
-    dil_w, dil_h, dil_d = dilation(cdims)
-    stride_w, stride_h, stride_d = stride(cdims)
-    out_width, out_height, out_depth = output_size(cdims)
-    
-    # Create a method that, at compile-time, determines how we're going to index into `w`
-    kproj(k, M, cdims::ConvDims{N,S,P,D,true}) where {N, S, P, D} = k
-    kproj(k, M, cdims::ConvDims{N,S,P,D,false}) where {N, S, P, D} = M - k + 1
-    
+    kernel_w, kernel_h, kernel_d = K
+    pad_w_lo, _, pad_h_lo, _, pad_d_lo, _ = P
+    dil_w, dil_h, dil_d = D
+    stride_w, stride_h, stride_d = S
+
+    # Create a method that determines how we're going to index into `w`.
+    kproj(k, _, ::Val{true}) = k
+    kproj(k, M, ::Val{false}) = M - k + 1
+
     # A helper function to project from output (w, h) to input (input_w, input_h)
     project(idx, stride, pad) = (idx - 1)*stride - pad + 1
-    
+
     # Use `calc_padding_regions` to determine where we do or don't need to worry about padding
     padded_regions, central_region = calc_padding_regions(cdims)
 
     # Start with the central region
     w_region, h_region, d_region = central_region
     @inbounds for batch in 1:size(x, 5),
-        c_out in 1:out_c,
+        c_out in 1:C,
         d_idx in d_region,
         h_idx in h_region,
         w_idx in w_region
@@ -89,9 +103,9 @@ function conv_direct!(y::AbstractArray{yT,5}, x::AbstractArray{xT,5},
             x_w = project(w_idx, stride_w, pad_w_lo) + (kw - 1)*dil_w
 
             x_val = x[x_w, x_h, x_d, c_in, batch]
-            w_val = w[kproj(kw, kernel_w, cdims),
-                    kproj(kh, kernel_h, cdims),
-                    kproj(kd, kernel_d, cdims),
+            w_val = w[kproj(kw, kernel_w, fk),
+                    kproj(kh, kernel_h, fk),
+                    kproj(kd, kernel_d, fk),
                     c_in, c_out]
             dotprod = muladd(x_val, w_val, dotprod)
         end
@@ -101,7 +115,7 @@ function conv_direct!(y::AbstractArray{yT,5}, x::AbstractArray{xT,5},
     # Next, do potentially-padded regions:
     @inbounds for (w_region, h_region, d_region) in padded_regions,
         batch in 1:size(x, 5),
-        c_out in 1:out_c,
+        c_out in 1:C,
         d_idx in d_region,
         h_idx in h_region,
         w_idx in w_region
@@ -129,9 +143,9 @@ function conv_direct!(y::AbstractArray{yT,5}, x::AbstractArray{xT,5},
                     end
 
                     x_val = x[x_w, x_h, x_d, c_in, batch]
-                    w_val = w[kproj(kw, kernel_w, cdims),
-                            kproj(kh, kernel_h, cdims),
-                            kproj(kd, kernel_d, cdims),
+                    w_val = w[kproj(kw, kernel_w, fk),
+                            kproj(kh, kernel_h, fk),
+                            kproj(kd, kernel_d, fk),
                             c_in, c_out]
                     dotprod = muladd(x_val, w_val, dotprod)
                 end

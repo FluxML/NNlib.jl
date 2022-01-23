@@ -26,20 +26,20 @@ export conv, conv!, ∇conv_data, ∇conv_data!, ∇conv_filter, ∇conv_filter!
 #       cdims = ConvDims(x, w; stride=2, dilation=(3,2))
 #       dx = ∇conv_data(conv(x, w, cdims), w, cdims)
 
-#   The computational flow, starting from the user facing functions, 
-#   goes through the following steps:  
+#   The computational flow, starting from the user facing functions,
+#   goes through the following steps:
 #
-#   STEP 1: 
+#   STEP 1:
 #       use ConvDims objects (only for `conv` and `depthwiseconv`)
-#   STEP 2: 
+#   STEP 2:
 #        define autoallocating version (frontend and implementations)
-#   STEP 3: 
+#   STEP 3:
 #        reshape to 3d convolutions (frontend and implementions)
-#   STEP 4: 
+#   STEP 4:
 #        choose implementation
 
 # TODO: should we also add
-#   STEP X: 
+#   STEP X:
 #        use homogeneus datatypes
 # to handle etherogeneus inputs now handled by conv_direct?
 
@@ -48,22 +48,23 @@ export conv, conv!, ∇conv_data, ∇conv_data!, ∇conv_filter, ∇conv_filter!
 """
     conv(x, w; stride = 1, pad = 0, dilation = 1, flipped = false, groups = 1)
 
-Apply convolution filter `w` to input `x`. `x` and `w` are 3d/4d/5d tensors 
-in 1d/2d/3d convolutions respectively. 
+Apply convolution filter `w` to input `x`. `x` and `w` are 3d/4d/5d tensors
+in 1d/2d/3d convolutions respectively.
 """
-function conv(x, w::AbstractArray{T, N}; stride=1, pad=0, dilation=1, flipped=false, groups = 1) where {T, N}
-    stride = expand(Val(N-2), stride)
-    pad = expand(Val(N-2), pad)
-    dilation = expand(Val(N-2), dilation)
-    cdims = DenseConvDims(x, w; stride=stride, padding=pad, dilation=dilation, flipkernel=flipped, groups = groups)
+function conv(x, w::AbstractArray{T, N}; stride = 1, pad = 0, dilation = 1, flipped = false, groups = 1) where {T, N}
+    stride = expand(Val(N - 2), stride)
+    padding = expand(Val(N - 2), pad)
+    dilation = expand(Val(N - 2), dilation)
+    cdims = DenseConvDims(
+        size(x), size(w); stride, padding, dilation, flipkernel=flipped, groups)
     return conv(x, w, cdims)
 end
 
 """
     depthwiseconv(x, w; stride=1, pad=0, dilation=1, flipped=false)
 
-Depthwise convolution operation with filter `w` on input `x`. `x` and `w` 
-are 3d/4d/5d tensors in 1d/2d/3d convolutions respectively. 
+Depthwise convolution operation with filter `w` on input `x`. `x` and `w`
+are 3d/4d/5d tensors in 1d/2d/3d convolutions respectively.
 """
 function depthwiseconv(x, w::AbstractArray{T, N}; stride=1, pad=0, dilation=1, flipped=false) where {T, N}
     stride = expand(Val(N-2), stride)
@@ -98,9 +99,7 @@ for backend in (Symbol(), :_direct, :_im2col, :_nnpack)
             function $(Symbol("$(name)$(backend)"))(
                             dy::AbstractArray{yT,N}, w::AbstractArray{wT,N},
                             cdims::C; kwargs...) where {yT, wT, N, C <: ConvDims}
-                dx = similar(dy, input_size(cdims)..., channels_in(cdims),
-                                                        size(dy, N))
-
+                dx = similar(dy, input_size(cdims)..., channels_in(cdims), size(dy, N))
                 return $(Symbol("$(name)$(backend)!"))(dx, dy, w, cdims; kwargs...)
             end
         end
@@ -114,7 +113,6 @@ for backend in (Symbol(), :_direct, :_im2col, :_nnpack)
                         cdims::ConvDims; kwargs...) where {xT, yT, N}
             dw = similar(dy, kernel_size(cdims)..., channels_in(cdims) ÷ groupcount(cdims),
                                                     channels_out(cdims))
-
             return $(Symbol("∇conv_filter$(backend)!"))(dw, x, dy, cdims; kwargs...)
         end
     end
@@ -197,7 +195,7 @@ for (front_name, backend) in (
                                  G = 1,
                                  C_in = channels_in(cdims) ÷ groupcount(cdims),
                                  C_out = channels_out(cdims) ÷ groupcount(cdims))
-            
+
             Threads.@sync for (xc, wc) in zip(x_cs, w_cs)
                 x = @view in1[ntuple(i -> i == 4 ? xc : Colon(), 5)...]
                 w = @view in2[ntuple(i -> i == 5 ? wc : Colon(), 5)...]
@@ -205,7 +203,7 @@ for (front_name, backend) in (
                 Threads.@spawn $(Symbol("$(front_name)_$(backend)!"))(y, x, w, cdims2; kwargs...)
             end
 
-           return out
+            return out
         end
     end
 end
@@ -232,12 +230,11 @@ function ∇conv_data!(out::AbstractArray{T,5}, in1::AbstractArray{T,5},
         Threads.@spawn ∇conv_data_im2col!(dxv, dyv, wv, cdims2; kwargs...)
     end
 
-   return out
+    return out
 end
 
 function ∇conv_filter!(out::AbstractArray{T,5}, in1::AbstractArray{T,5},
                        in2::AbstractArray{T,5}, cdims::C; kwargs...) where {T <: G, C <: ConvDims}
-
     dw_cs = Iterators.partition(1:size(out, 5),
                                 channels_out(cdims) ÷ groupcount(cdims))
     dy_cs = Iterators.partition(1:size(in2, 4),
@@ -256,7 +253,7 @@ function ∇conv_filter!(out::AbstractArray{T,5}, in1::AbstractArray{T,5},
         Threads.@spawn ∇conv_filter_im2col!(dw, x, dy, cdims2; kwargs...)
     end
 
-   return out
+    return out
 end
 
 

@@ -4,18 +4,31 @@ using Statistics
 # the inner loop operation and a few initialization parameters.
 for name in (:max, :mean)
     @eval function $((Symbol("$(name)pool_direct!")))(
-                    y::AbstractArray{T,5}, x::AbstractArray{T,5},
-                    pdims::PoolDims; alpha::T=T(1), beta::T=T(0)) where {T}
+                    y::AbstractArray{T, 5}, x::AbstractArray{T, 5},
+                    pdims::PoolDims; alpha::T=T(1), beta::T=T(0)) where T
+        $((Symbol("$(name)pool_direct!")))(
+            y, x, pdims,
+            Val(kernel_size(pdims)), Val(channels_out(pdims)),
+            Val(padding(pdims)), Val(dilation(pdims)), Val(stride(pdims));
+            alpha, beta)
+        return y
+    end
+
+    @eval function $((Symbol("$(name)pool_direct!")))(
+        y::AbstractArray{T,5}, x::AbstractArray{T,5},
+        pdims::PoolDims,
+        # kernel size, channels out, padding, dilation, stride
+        ::Val{K}, ::Val{C}, ::Val{P}, ::Val{D}, ::Val{S};
+        alpha::T=T(1), beta::T=T(0),
+    ) where {T, K, C, P, D, S}
         @assert beta == T(0) "beta not supported yet"
         check_dims(size(x), size(y), pdims)
 
         width, height, depth = input_size(pdims)
-        kernel_w, kernel_h, kernel_d = kernel_size(pdims)
-        out_c = channels_out(pdims)
-        pad_w_lo, pad_w_hi, pad_h_lo, pad_h_hi, pad_d_lo, pad_d_hi = padding(pdims)
-        dil_w, dil_h, dil_d = dilation(pdims)
-        stride_w, stride_h, stride_d = stride(pdims)
-        out_width, out_height, out_depth = output_size(pdims)
+        kernel_w, kernel_h, kernel_d = K
+        pad_w_lo, _, pad_h_lo, _, pad_d_lo, _ = P
+        dil_w, dil_h, dil_d = D
+        stride_w, stride_h, stride_d = S
 
         # We use calc_padding_regions to split outselves up into separate regions that may or
         # may not need to worry about padding:
@@ -27,7 +40,7 @@ for name in (:max, :mean)
         # If we're doing mean pooling, we represent division by kernel size by rolling it
         # into the `alpha` multiplier.
         if $(name == :mean)
-            alpha = alpha / prod(kernel_size(pdims))
+            alpha = alpha / prod(K)
         end
 
         # Each loop, we initialize `m` to something, set that here.
@@ -41,69 +54,80 @@ for name in (:max, :mean)
 
         # Start with the central region
         w_region, h_region, d_region = central_region
-        @inbounds for batch_idx in 1:size(x)[end],
-            c in 1:out_c,
-            d in d_region,
-            h in h_region,
-            w in w_region
-          
-            # Initialize `m` to `0.0`, or `typemin(T)` or whatever.
+
+        @inbounds for batch_idx in 1:size(x, 5), c in 1:C
+            for d in d_region
+            pd = project(d, stride_d, pad_d_lo)
+            for h in h_region
+            ph = project(h, stride_h, pad_h_lo)
+            for w in w_region
+            pw = project(w, stride_w, pad_w_lo)
             m = m_init
 
             for kd in 1:kernel_d,
                 kh in 1:kernel_h,
                 kw in 1:kernel_w
 
-                input_kd = project(d, stride_d, pad_d_lo) + (kd - 1) * dil_d
-                input_kh = project(h, stride_h, pad_h_lo) + (kh - 1) * dil_h
-                input_kw = project(w, stride_w, pad_w_lo) + (kw - 1) * dil_w
+                input_kd = pd + (kd - 1) * dil_d
+                input_kh = ph + (kh - 1) * dil_h
+                input_kw = pw + (kw - 1) * dil_w
 
                 # This conditional will be optimized away at compile time
                 if $(name == :max)
-                    m = max(m, x[input_kw, input_kh, input_kd, c, batch_idx])
+                    xv = x[input_kw, input_kh, input_kd, c, batch_idx]
+                    if xv > m
+                        m = xv
+                    end
                 elseif $(name == :mean)
                     m += x[input_kw, input_kh, input_kd, c, batch_idx]
                 else
                     error("Unimplemented codegen path")
                 end
             end
-            y[w, h, d, c, batch_idx] = alpha * m + beta * y[w, h, d, c, batch_idx]
+
+            y[w, h, d, c, batch_idx] = alpha * m # + beta * y[w, h, d, c, batch_idx]
+            end
+            end
+            end
         end
 
         # Next, the padded regions
         @inbounds for (w_region, h_region, d_region) in padded_regions
-            for batch_idx in 1:size(x)[end],
-                c in 1:out_c,
-                d in d_region,
-                h in h_region,
-                w in w_region
-
-                # In these loops, we have to check that we're not reaching off the edge, we
-                # do so by putting in a bunch of conditionals.  :/
+            for batch_idx in 1:size(x, 5), c in 1:C
+                for d in d_region
+                pd = project(d, stride_d, pad_d_lo)
+                for h in h_region
+                ph = project(h, stride_h, pad_h_lo)
+                for w in w_region
+                pw = project(w, stride_w, pad_w_lo)
                 m = m_init
+
                 for kd in 1:kernel_d
-                    input_kd = project(d, stride_d, pad_d_lo) + (kd - 1) * dil_d
+                    input_kd = pd + (kd - 1) * dil_d
                     if input_kd <= 0 || input_kd > depth
-                        # add here condition for handling options for paded value handling  
+                        # add here condition for handling options for paded value handling
                         continue
                     end
 
                     for kh in 1:kernel_h
-                        input_kh = project(h, stride_h, pad_h_lo) + (kh - 1) * dil_h
+                        input_kh = ph + (kh - 1) * dil_h
                         if input_kh <= 0 || input_kh > height
-                            # add here condition for handling options for paded value handling  
+                            # add here condition for handling options for paded value handling
                             continue
                         end
 
                         for kw in 1:kernel_w
-                            input_kw = project(w, stride_w, pad_w_lo) + (kw - 1) * dil_w
+                            input_kw = pw + (kw - 1) * dil_w
                             if input_kw <= 0 || input_kw > width
-                                # add here condition for handling options for paded value handling  
+                                # add here condition for handling options for paded value handling
                                 continue
                             end
 
                             if $(name == :max)
-                                m = max(m, x[input_kw, input_kh, input_kd, c, batch_idx])
+                                xv = x[input_kw, input_kh, input_kd, c, batch_idx]
+                                if xv > m
+                                    m = xv
+                                end
                             elseif $(name == :mean)
                                 m += x[input_kw, input_kh, input_kd, c, batch_idx]
                             else
@@ -112,12 +136,23 @@ for name in (:max, :mean)
                         end
                     end
                 end
-                y[w, h, d, c, batch_idx] = alpha * m + beta * y[w, h, d, c, batch_idx]
+                y[w, h, d, c, batch_idx] = alpha * m # + beta * y[w, h, d, c, batch_idx]
+                end
+                end
+                end
             end
         end
 
-        # Return `y`
         return y
+    end
+
+    @eval function $((Symbol("∇$(name)pool_direct!")))(
+                    dx::AbstractArray{T,5}, dy::AbstractArray{T,5},
+                    y::AbstractArray{T,5}, x::AbstractArray{T,5},
+                    pdims::PoolDims; kwargs...) where T
+        $((Symbol("∇$(name)pool_direct!")))(
+            dx, dy, y, x, pdims, Val(kernel_size(pdims)); kwargs...)
+        return dx
     end
 
     # Same story for gradients, and although this is very similar to the forward pass,
@@ -125,16 +160,16 @@ for name in (:max, :mean)
     @eval function $((Symbol("∇$(name)pool_direct!")))(
                     dx::AbstractArray{T,5}, dy::AbstractArray{T,5},
                     y::AbstractArray{T,5}, x::AbstractArray{T,5},
-                    pdims::PoolDims; alpha::T=T(1), beta::T=T(0)) where {T}
+                    pdims::PoolDims, ::Val{K}; # == kernel_size(pdims)
+                    alpha::T=T(1), beta::T=T(0)) where {T, K}
         check_dims(size(x), size(dy), pdims)
 
         width, height, depth = input_size(pdims)
-        kernel_w, kernel_h, kernel_d = kernel_size(pdims)
+        kernel_w, kernel_h, kernel_d = K
         out_c = channels_out(pdims)
-        pad_w_lo, pad_w_hi, pad_h_lo, pad_h_hi, pad_d_lo, pad_d_hi = padding(pdims)
+        pad_w_lo, _, pad_h_lo, _, pad_d_lo, _ = padding(pdims)
         dil_w, dil_h, dil_d = dilation(pdims)
         stride_w, stride_h, stride_d = stride(pdims)
-        out_width, out_height, out_depth = output_size(pdims)
 
         # We use calc_padding_regions to split outselves up into separate regions that
         # may or may not need to worry about padding:
@@ -146,16 +181,18 @@ for name in (:max, :mean)
         # If we're doing mean pooling, we represent division by kernel size by rolling
         # it into the `alpha` multiplier.
         if $(name == :mean)
-            alpha = alpha / prod(kernel_size(pdims))
+            alpha = alpha / prod(K)
         end
 
         # Start with the central region
         w_region, h_region, d_region = central_region
-        @inbounds for batch_idx in 1:size(x)[end],
-            c in 1:out_c,
-            d in d_region,
-            h in h_region,
-            w in w_region
+        @inbounds for batch_idx in 1:size(x, 5), c in 1:out_c
+            for d in d_region
+            pd = project(d, stride_d, pad_d_lo)
+            for h in h_region
+            ph = project(h, stride_h, pad_h_lo)
+            for w in w_region
+            pw = project(w, stride_w, pad_w_lo)
 
             # Grab the output at this index for future use
             y_idx = y[w, h, d, c, batch_idx]
@@ -166,20 +203,23 @@ for name in (:max, :mean)
                 kh in 1:kernel_h,
                 kw in 1:kernel_w
 
-                input_kd = project(d, stride_d, pad_d_lo) + (kd - 1) * dil_d
-                input_kh = project(h, stride_h, pad_h_lo) + (kh - 1) * dil_h
-                input_kw = project(w, stride_w, pad_w_lo) + (kw - 1) * dil_w
+                input_kd = pd + (kd - 1) * dil_d
+                input_kh = ph + (kh - 1) * dil_h
+                input_kw = pw + (kw - 1) * dil_w
 
                 # This conditional will be optimized away at compile time,
                 # or my name isn't shengdan jingyu
-                x_idxs = (input_kw, input_kh, input_kd, c, batch_idx)
+                # x_idxs = (input_kw, input_kh, input_kd, c, batch_idx)
                 if $(name == :max)
+                    if maxpool_already_chose
+                        break
+                    end
                     # If it's equal; this is the one we chose. We only choose one per
                     # kernel window, all other elements of dx must be zero.
                     # Uncomment line below if using with non-precise output (e.g. by NNPACK)
                     # if abs(y_idx - x[x_idxs...]) < 1e-5 && !maxpool_already_chose
-                    if y_idx ≈ x[x_idxs...] && !maxpool_already_chose
-                        dx[x_idxs...] += dy_idx * alpha + beta * dx[x_idxs...]
+                    if y_idx ≈ x[input_kw, input_kh, input_kd, c, batch_idx]
+                        dx[input_kw, input_kh, input_kd, c, batch_idx] += dy_idx * alpha #+ beta * dx[x_idxs...]
                         maxpool_already_chose = true
                     # Maxpooling does not support `beta` right now.  :(
                     # else
@@ -187,20 +227,25 @@ for name in (:max, :mean)
                     end
                 elseif $(name == :mean)
                     # Either does meanpool :(
-                    dx[x_idxs...] = dy_idx * alpha + dx[x_idxs...]
+                    dx[input_kw, input_kh, input_kd, c, batch_idx] += dy_idx * alpha
                 else
                     error("Unimplemented codegen path")
                 end
+            end
+            end
+            end
             end
         end
 
         # Next, the padded regions
         @inbounds for (w_region, h_region, d_region) in padded_regions
-            for batch_idx in 1:size(x)[end],
-                c in 1:out_c,
-                d in d_region,
-                h in h_region,
-                w in w_region
+            for batch_idx in 1:size(x, 5), c in 1:out_c
+                for d in d_region
+                pd = project(d, stride_d, pad_d_lo)
+                for h in h_region
+                ph = project(h, stride_h, pad_h_lo)
+                for w in w_region
+                pw = project(w, stride_w, pad_w_lo)
 
                 # Grab the incoming gradient at this index for future use
                 y_idx = y[w, h, d, c, batch_idx]
@@ -210,36 +255,39 @@ for name in (:max, :mean)
                 # In these loops, we have to check that we're not reaching off the edge,
                 # we do so by putting in a bunch of conditionals.  :/
                 for kd in 1:kernel_d
-                    input_kd = project(d, stride_d, pad_d_lo) + (kd - 1) * dil_d
+                    input_kd = pd + (kd - 1) * dil_d
                     if input_kd <= 0 || input_kd > depth
                         continue
                     end
 
                     for kh in 1:kernel_h
-                        input_kh = project(h, stride_h, pad_h_lo) + (kh - 1) * dil_h
+                        input_kh = ph + (kh - 1) * dil_h
                         if input_kh <= 0 || input_kh > height
                             continue
                         end
 
                         for kw in 1:kernel_w
-                            input_kw = project(w, stride_w, pad_w_lo) + (kw - 1) * dil_w
+                            input_kw = pw + (kw - 1) * dil_w
                             if input_kw <= 0 || input_kw > width
                                 continue
                             end
 
                             # Same as above
-                            x_idxs = (input_kw, input_kh, input_kd, c, batch_idx)
+                            # x_idxs = (input_kw, input_kh, input_kd, c, batch_idx)
                             if $(name == :max)
+                                if maxpool_already_chose
+                                    break
+                                end
                                 # Uncomment line below if using with non-precise output
                                 # if abs(y_idx - x[x_idxs...]) < 1e-5 && !maxpool_already_chose
-                                if y_idx ≈ x[x_idxs...] && !maxpool_already_chose
-                                    dx[x_idxs...] += dy_idx * alpha + beta * dx[x_idxs...]
+                                if y_idx ≈ x[input_kw, input_kh, input_kd, c, batch_idx]
+                                    dx[input_kw, input_kh, input_kd, c, batch_idx] += dy_idx * alpha #+ beta * dx[x_idxs...]
                                     maxpool_already_chose = true
                                 # else
                                 #    dx[x_idxs...] = T(0) + beta*dx[x_idxs...]
                                 end
                             elseif $(name == :mean)
-                                dx[x_idxs...] += dy_idx * alpha + beta * dx[x_idxs...]
+                                dx[input_kw, input_kh, input_kd, c, batch_idx] += dy_idx * alpha #+ beta * dx[x_idxs...]
                             else
                                 error("Unimplemented codegen path")
                             end
@@ -247,9 +295,11 @@ for name in (:max, :mean)
                     end
                 end
             end
+            end
+            end
+            end
         end
 
-        # Return `dx`
         return dx
     end
 end

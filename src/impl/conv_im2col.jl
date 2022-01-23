@@ -1,13 +1,11 @@
 ## This file contains im2col-backed implementations of convolution for 2d and 3d
 ## convolutions.  Expect to see a lot of indexing.
 
-# Helper functions for flipkernel-induced dyslexia
-@inline function kernel_index(w, h, d, cdims::ConvDims{N, S, P, D, false}) where {N, S, P, D}
+# Helper function for flipkernel-induced dyslexia
+function kernel_index(w, h, d, cdims::ConvDims)
+    flipkernel(cdims) && return (w, h, d)
     kernel_w, kernel_h, kernel_d = kernel_size(cdims)
     return (kernel_w - w + 1, kernel_h - h + 1, kernel_d - d + 1)
-end
-@inline function kernel_index(w, h, d, cdim::ConvDims{N, S, P, D, true}) where {N, S, P, D}
-    return (w, h, d)
 end
 
 """
@@ -45,7 +43,7 @@ function conv_im2col!(
     M = prod(output_size(cdims))
     N = channels_out(cdims)
     K = prod(kernel_size(cdims))*channels_in(cdims)
-    
+
     @threads for batch_idx in 1:size(x,5)
         # col_slice is a thread-local workspace
         col_slice = view(col, :, :, threadid())
@@ -89,12 +87,12 @@ function ∇conv_filter_im2col!(
     # input pixel that touched a particular element of the kernel.
     #
     # This is identical to a convolution between x and a dimension-permuted dY,
-    # where we 
-    
+    # where we
+
     M = prod(kernel_size(cdims))*channels_in(cdims)
     N = channels_out(cdims)
     K = prod(output_size(cdims))
-    
+
     for batch_idx in 1:size(x,5)
         col_slice = view(col, :, :, 1)
 
@@ -173,8 +171,7 @@ out along the rows of `col`, one for each output pixel.  This routine is used by
 im2col-based convolutions, just with extra singleton dimensions added in the case of `2d`
 or `1d` images.
 """
-function im2col!(col::AbstractArray{T,2}, x::AbstractArray{T,4},
-                                          cdims::ConvDims) where {T}
+function im2col!(col::AbstractArray{T,2}, x::AbstractArray{T,4}, cdims::ConvDims) where {T}
     if spatial_dims(cdims) != 3
         throw(DimensionMismatch("im2col!() only accepts 3d convoluitional inputs"))
     end
@@ -194,7 +191,7 @@ function im2col!(col::AbstractArray{T,2}, x::AbstractArray{T,4},
         out_width,
         out_height,
         out_depth,
-        
+
         # By input patch size
         kernel_w,
         kernel_h,
@@ -207,7 +204,7 @@ function im2col!(col::AbstractArray{T,2}, x::AbstractArray{T,4},
     # A helper function to project from output (w, h) to input (input_w, input_h)
     @inline project(idx, stride, pad) = (idx - 1)*stride - pad + 1
 
-    
+
     # We begin by copying the central region of the image which requires no padding at all.
     # Eliminating the branches of the fully generalized version below gives us a nice
     # speedup on the majority of the data.
@@ -221,7 +218,7 @@ function im2col!(col::AbstractArray{T,2}, x::AbstractArray{T,4},
             d in d_region,
             h in h_region,
             w in w_region
- 
+
             input_kd = project(d, stride_d, pad_d_lo) + (kd - 1)*dil_d
             input_kh = project(h, stride_h, pad_h_lo) + (kh - 1)*dil_h
             input_kw = project(w, stride_w, pad_w_lo) + (kw - 1)*dil_w
@@ -231,8 +228,8 @@ function im2col!(col::AbstractArray{T,2}, x::AbstractArray{T,4},
             col_reshaped[w, h, d, kidxs..., c] = xval
         end
     end
-    
-    
+
+
     # For each "padded region", we run the fully general version
     @inbounds for (w_region, h_region, d_region) in padded_regions
         for c in 1:C_in,
@@ -263,7 +260,7 @@ function im2col!(col::AbstractArray{T,2}, x::AbstractArray{T,4},
             xval::T = x[input_kw, input_kh, input_kd, c]
             col_reshaped[w, h, d, kidxs..., c] = xval
         end
-    end    
+    end
 end
 
 
@@ -279,8 +276,7 @@ desperate enough yet.
 """
 col2im!
 
-function col2im!(x::AbstractArray{T,4}, col::AbstractArray{T,2},
-                                  cdims::ConvDims) where T
+function col2im!(x::AbstractArray{T,4}, col::AbstractArray{T,2}, cdims::ConvDims) where T
     if spatial_dims(cdims) != 3
         throw(DimensionMismatch("col2im!() only accepts 3d convoluitional inputs"))
     end
@@ -293,7 +289,7 @@ function col2im!(x::AbstractArray{T,4}, col::AbstractArray{T,2},
     dil_w, dil_h, dil_d = dilation(cdims)
     stride_w, stride_h, stride_d = stride(cdims)
     out_width, out_height, out_depth = output_size(cdims)
-    
+
     # TODO: Rewrite this method so we don't have this fill!() at the beginning!
     # Calculate each output pixel once rather than accumulating into it?
     fill!(x, T(0))
@@ -304,7 +300,7 @@ function col2im!(x::AbstractArray{T,4}, col::AbstractArray{T,2},
         out_width,
         out_height,
         out_depth,
-        
+
         # By input patch size
         kernel_w,
         kernel_h,
@@ -322,7 +318,7 @@ function col2im!(x::AbstractArray{T,4}, col::AbstractArray{T,2},
 
             for d in 1:out_depth
                 input_kd = project(d, stride_d, pad_d_lo) + (kd - 1)*dil_d
-                
+
                 # If this d is off the edge, then deal with the entire plane
                 # in one fell swoop, like a ravenous flock of crows.  CAW CAW.
                 if input_kd <= 0 || input_kd > depth
@@ -331,21 +327,21 @@ function col2im!(x::AbstractArray{T,4}, col::AbstractArray{T,2},
 
                 for h in 1:out_height
                     input_kh = project(h, stride_h, pad_h_lo) + (kh - 1)*dil_h
-                    
+
                     # Same for `h`, but in this case it's only a line, not a plane.
                     # This results in slightly less caw'ing.
                     if input_kh <= 0 || input_kh > height
                         continue
                     end
-                
+
                     for w in 1:out_width
                         input_kw = project(w, stride_w, pad_w_lo) + (kw - 1)*dil_w
-                
+
                         # If this `w` is off the edge, only it gets cleared out.
                         if input_kw <= 0 || input_kw > width
                             continue
                         end
-                        
+
                         # Copy the data over
                         kidxs = kernel_index(kw, kh, kd, cdims)
                         cval::T = col_reshaped[w, h, d, kidxs..., c]
