@@ -1,6 +1,6 @@
 # NNlib.jl
 
-[![Build Status](https://github.com/FluxML/NNlib.jl/workflows/CI/badge.svg)](https://github.com/FluxML/NNlib.jl/workflows/CI/badge.svg)
+[![CI](https://github.com/FluxML/NNlib.jl/actions/workflows/ci.yml/badge.svg)](https://github.com/FluxML/NNlib.jl/actions/workflows/ci.yml)
 [![Coverage](https://codecov.io/gh/FluxML/NNlib.jl/branch/master/graph/badge.svg)](https://codecov.io/gh/FluxML/NNlib.jl) 
 [![Documentation](https://img.shields.io/badge/docs-fluxml.ai-blue)](https://fluxml.ai/Flux.jl/stable/models/nnlib/)
 
