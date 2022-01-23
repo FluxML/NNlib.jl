@@ -43,11 +43,11 @@ add1d(x) = reshape(x, 1, size(x)...)
 
 function fix_pooldims_1d(pdims::PoolDims{1,K,S,P,D}) where {K,S,P,D}
     PoolDims{2, K + 1, S + 1, P + 2, D + 1}((1, NNlib.input_size(pdims)...),
-                                            (1, K...),
+                                            (1, NNlib.kernel_size(pdims)...),
                                             NNlib.channels_in(pdims),
-                                            (1, S...),
-                                            (0, 0, P...),
-                                            (1, D...))
+                                            (1, NNlib.stride(pdims)...),
+                                            (0, 0, NNlib.padding(pdims)...),
+                                            (1, NNlib.dilation(pdims)...))
 end
 
 function maxpool!(y::DenseCuArray{T,3}, x::DenseCuArray{T,3}, pdims::PoolDims) where T<:CUDNNFloat
