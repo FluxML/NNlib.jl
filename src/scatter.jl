@@ -70,7 +70,7 @@ julia> NNlib.scatter!(*, fill(0.5, 2, 4), [1 10; 100 1000], [3,2])
  0.5  500.0  50.0  0.5
 ```
 """
-function scatter!(op, dst::AbstractArray, src::AbstractArray, idx::AbstractArray)
+function scatter!(op::OP, dst::AbstractArray, src::AbstractArray, idx::AbstractArray) where OP
     dims = scatter_dims(dst, src, idx)
     colons = Base.ntuple(_->Colon(), dims)
     for k in CartesianIndices(idx)
@@ -127,11 +127,11 @@ julia> NNlib.scatter(*, [10,200,3000], [1,4,2]; init = 10, dstsize = 6)
     10
 ```
 """
-function scatter(op,
+function scatter(op::OP,
                 src::AbstractArray{Tsrc,Nsrc},
                 idx::AbstractArray{Tidx,Nidx};
-                init = nothing, dstsize = nothing) where {Tsrc,Tidx,Nsrc,Nidx}
-    
+                init = nothing, dstsize = nothing) where {Tsrc,Tidx,Nsrc,Nidx,OP}
+
     dims = Nsrc - Nidx
     dstsz = isnothing(dstsize) ? (size(src)[1:dims]..., maximum_dims(idx)...) : dstsize 
     dst = similar(src, Tsrc, dstsz)
