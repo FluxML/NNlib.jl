@@ -1,6 +1,6 @@
 # supported op: +, -, *, /, max, min, &, |, mean
 
-function scatter_kernel!(op, dst, src, idx)
+function scatter_kernel!(op::OP, dst, src, idx) where OP
     index = threadIdx().x + (blockIdx().x - 1) * blockDim().x
 
     @inbounds if index <= length(idx)
@@ -9,7 +9,7 @@ function scatter_kernel!(op, dst, src, idx)
     return nothing
 end
 
-function scatter_kernel!(op, dst, src, idx::CUDA.CuDeviceArray{<:CartesianIndex})
+function scatter_kernel!(op::OP, dst, src, idx::CUDA.CuDeviceArray{<:CartesianIndex}) where OP
     index = threadIdx().x + (blockIdx().x - 1) * blockDim().x
 
     @inbounds if index <= length(idx)
@@ -19,7 +19,7 @@ function scatter_kernel!(op, dst, src, idx::CUDA.CuDeviceArray{<:CartesianIndex}
     return nothing
 end
 
-function scatter_kernel!(op, dst, src, idx, max_idx, max_dims_idx, dims_size)
+function scatter_kernel!(op::OP, dst, src, idx, max_idx, max_dims_idx, dims_size) where OP
     index = threadIdx().x + (blockIdx().x - 1) * blockDim().x
 
     @inbounds if index <= max_idx
@@ -30,7 +30,8 @@ function scatter_kernel!(op, dst, src, idx, max_idx, max_dims_idx, dims_size)
     return nothing
 end
 
-function scatter_kernel!(op, dst, src, idx::CUDA.CuDeviceArray{<:CartesianIndex}, max_idx, max_dims_idx, dims_size)
+function scatter_kernel!(op::OP, dst, src, idx::CUDA.CuDeviceArray{<:CartesianIndex}, 
+            max_idx, max_dims_idx, dims_size) where OP
     index = threadIdx().x + (blockIdx().x - 1) * blockDim().x
 
     @inbounds if index <= max_idx
@@ -42,7 +43,7 @@ function scatter_kernel!(op, dst, src, idx::CUDA.CuDeviceArray{<:CartesianIndex}
     return nothing
 end
 
-function NNlib.scatter!(op, dst::AnyCuArray, src::AnyCuArray, idx::AnyCuArray)
+function NNlib.scatter!(op::OP, dst::AnyCuArray, src::AnyCuArray, idx::AnyCuArray) where OP
     dims = NNlib.scatter_dims(dst, src, idx)
     args = if dims == 0
         max_idx = length(idx)
@@ -72,7 +73,8 @@ end
 
 ## Gradients
 
-function ∇scatter_src_kernel!(op, Δsrc, src, idx, rev_idx, max_idx, T)
+function ∇scatter_src_kernel!(op::OP, Δsrc, src, idx, 
+                rev_idx, max_idx, T::Type{TT})  where {OP,TT}
     index = threadIdx().x + (blockIdx().x - 1) * blockDim().x
 
     @inbounds if index <= max_idx
@@ -91,7 +93,8 @@ function ∇scatter_src_kernel!(op, Δsrc, src, idx, rev_idx, max_idx, T)
     return nothing
 end
 
-function ∇scatter_src_kernel!(op, Δsrc, src, idx::CUDA.CuDeviceArray{<:CartesianIndex}, rev_idx, max_idx, T)
+function ∇scatter_src_kernel!(op::OP, Δsrc, src, idx::CUDA.CuDeviceArray{<:CartesianIndex}, 
+                rev_idx, max_idx, T::Type{TT}) where {OP,TT}
     index = threadIdx().x + (blockIdx().x - 1) * blockDim().x
 
     @inbounds if index <= max_idx
@@ -110,7 +113,8 @@ function ∇scatter_src_kernel!(op, Δsrc, src, idx::CUDA.CuDeviceArray{<:Cartes
     return nothing
 end
 
-function ∇scatter_src_kernel!(op, Δsrc, src, idx, rev_idx, pre_cart_idx, max_dims_idx, max_idx, T)
+function ∇scatter_src_kernel!(op::OP, Δsrc, src, idx, 
+            rev_idx, pre_cart_idx, max_dims_idx, max_idx, T::Type{TT}) where {OP,TT}
     index = threadIdx().x + (blockIdx().x - 1) * blockDim().x
 
     @inbounds if index <= max_idx
@@ -132,7 +136,8 @@ function ∇scatter_src_kernel!(op, Δsrc, src, idx, rev_idx, pre_cart_idx, max_
     return nothing
 end
 
-function ∇scatter_src_kernel!(op, Δsrc, src, idx::CUDA.CuDeviceArray{<:CartesianIndex}, rev_idx, pre_cart_idx, max_dims_idx, max_idx, T)
+function ∇scatter_src_kernel!(op::OP, Δsrc, src, idx::CUDA.CuDeviceArray{<:CartesianIndex},
+                rev_idx, pre_cart_idx, max_dims_idx, max_idx, T::Type{TT}) where {OP,TT}
     index = threadIdx().x + (blockIdx().x - 1) * blockDim().x
 
     @inbounds if index <= max_idx
