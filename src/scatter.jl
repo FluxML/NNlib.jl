@@ -140,7 +140,7 @@ function scatter(op::OP,
     scatter!(op, dst, src, idx)
 end
 
-scatter_empty(op::OP, T) where OP = Base.reduce_empty(op, T)
+scatter_empty(op, T) = Base.reduce_empty(op, T)
 scatter_empty(op::typeof(-), T) = zero(T)
 scatter_empty(op::typeof(/), T) = one(T)
 scatter_empty(op::typeof(min), T) = typemax(T)
