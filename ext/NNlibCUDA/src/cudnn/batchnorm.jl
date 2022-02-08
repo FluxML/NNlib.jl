@@ -59,12 +59,12 @@ function cudnnBNForward!(y::DenseCuArray{T}, g::DenseCuArray{T}, b::DenseCuArray
   yd = cudnnTensorDescriptor(y)
   gd = cudnnTensorDescriptor(CUDNN_TENSOR_NCHW, cudnnDataType(T), Cint(length(dims)), dim4(dims,Val(CUDNN_TENSOR_NCHW)))
 
-  if !track_stats
-    running_mean = CU_NULL
-    running_var = CU_NULL
-  end
 
   if training
+    if !track_stats
+      running_mean = CU_NULL
+      running_var = CU_NULL
+    end
     if cache !== nothing
       mean = zeros(CuArray{T}, dims...)
       ivar = ones(CuArray{T}, dims...)
