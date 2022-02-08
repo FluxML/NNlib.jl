@@ -8,8 +8,8 @@
 
     @testset "track_stats=false" begin
         for training in (false, true)
-            NNlibCUDA.batchnorm(v, v, m, nothing, nothing, 1.0; training=training)
-            NNlibCUDA.∇batchnorm(v, v, m, m, nothing, nothing, 1.0; training=training)
+            NNlibCUDA.batchnorm(v, v, m, nothing, nothing, 1.0; training=training, track_stats=false)
+            NNlibCUDA.∇batchnorm(v, v, m, m, nothing, nothing, 1.0; training=training, track_stats=false)
         end 
     end
 end

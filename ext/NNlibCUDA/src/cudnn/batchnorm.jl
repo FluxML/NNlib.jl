@@ -13,13 +13,14 @@ end
 
 BNCache() = BNCache(nothing, nothing)
 
-@inline _wsize(y) = (fill(1, ndims(y)-2)..., size(y)[end-1], 1)
+@inline _wsize(y) = ntuple(i -> i == ndims(y) - 1 ? 1 : size(y, i), ndims(y))
 
 function batchnorm(g::Nothing, b::Nothing, x::DenseCuArray,
                 running_mean, running_var, momentum;
                 kws...)
-  g = fill!(similar(x, size(ndims(x)-1)), 1)
-  b = fill!(similar(x, size(ndims(x)-1)), 0)
+  affine_sz = _wsize(x)
+  g = fill!(similar(x, affine_sz), 1)
+  b = fill!(similar(x, affine_sz), 0)
   
   batchnorm(g, b, x, running_mean, running_var, momentum;
                      kws...)
@@ -86,8 +87,9 @@ end
 
 function ∇batchnorm(g::Nothing, b::Nothing, x::DenseCuArray, dy::DenseCuArray,
                   running_mean, running_var, momentum; kws...)
-  g = fill!(similar(x, size(ndims(x)-1)), 1)
-  b = fill!(similar(x, size(ndims(x)-1)), 0)
+  affine_sz = _wsize(x)
+  g = fill!(similar(x, affine_sz), 1)
+  b = fill!(similar(x, affine_sz), 0)
   ∇batchnorm(g, b, x, dy, running_mean, running_var, momentum; kws...)
 end
 
@@ -134,7 +136,7 @@ function cudnnBNBackward!(dg::DenseCuArray{T}, g::DenseCuArray{T}, db::DenseCuAr
   gd = cudnnTensorDescriptor(CUDNN_TENSOR_NCHW, cudnnDataType(T), Cint(length(_wsize(x))), dim4(_wsize(x),Val(CUDNN_TENSOR_NCHW)))
   if cache !== nothing
     mean, ivar = cache.mean, cache.ivar
-    # info("mean and ivar are fetched from the cache")
+    @debug "mean and ivar are fetched from the cache"
   else
     mean, ivar = CU_NULL, CU_NULL
   end
@@ -143,23 +145,17 @@ function cudnnBNBackward!(dg::DenseCuArray{T}, g::DenseCuArray{T}, db::DenseCuAr
     eps = CUDNN_BN_MIN_EPSILON
   end
 
-  if training
-    cudnnBatchNormalizationBackward(handle(), CUDNN_BATCHNORM_SPATIAL, 
-          scalingParameter(T, alpha), scalingParameter(T, beta), scalingParameter(T, dalpha), scalingParameter(T, dbeta), 
-          xd, x, dyd, dy, dxd, dx, gd, g, dg, db, eps, 
-          mean, ivar)
-  else
-    cudnnBatchNormalizationBackward(handle(), CUDNN_BATCHNORM_SPATIAL, 
-          scalingParameter(T, alpha), scalingParameter(T, beta), scalingParameter(T, dalpha), scalingParameter(T, dbeta), 
-          xd, x, dyd, dy, dxd, dx, gd, g, dg, db, eps, 
-          running_mean, running_var)  
-  end
+  cudnnBatchNormalizationBackward(handle(), CUDNN_BATCHNORM_SPATIAL, 
+        scalingParameter(T, alpha), scalingParameter(T, beta), scalingParameter(T, dalpha), scalingParameter(T, dbeta), 
+        xd, x, dyd, dy, dxd, dx, gd, g, dg, db, eps, 
+        mean, ivar)
 end
 
 function rrule(::typeof(batchnorm), g, b, x, running_mean, running_var, momentum; kws...)
   y = batchnorm(g, b, x, running_mean, running_var, momentum; kws...) 
   function batchnorm_pullback(Δ)
-    NoTangent(), ∇batchnorm(g, b, x, Δ, running_mean, running_var, momentum; kws...)..., NoTangent(), NoTangent(), NoTangent()
+    dg, db, dx = ∇batchnorm(g, b, x, Δ, running_mean, running_var, momentum; kws...)
+    NoTangent(), something(dg, NoTangent()), something(db, NoTangent()), dx, NoTangent(), NoTangent(), NoTangent()
   end
   y, batchnorm_pullback
 end
