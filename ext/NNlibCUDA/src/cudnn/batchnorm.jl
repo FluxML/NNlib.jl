@@ -44,7 +44,7 @@ function cudnnBNForward!(y::DenseCuArray{T}, g::DenseCuArray{T}, b::DenseCuArray
                         eps = T(1e-5),
                         training = true,
                         affine = true,
-                        track_stats = true) where T<:Union{Float32, Float64}
+                        track_stats = true) where T<:CUDNNFloat
   dims = _wsize(x)
   if eps < CUDNN_BN_MIN_EPSILON
     @warn "eps $eps is too small for CuDNN, setting to CUDNN_BN_MIN_EPSILON=$CUDNN_BN_MIN_EPSILON"
@@ -99,7 +99,7 @@ end
 
 function ∇batchnorm(g::DenseCuArray{T}, b::DenseCuArray{T}, x::DenseCuArray{T, 2}, dy::DenseCuArray{T, 2},
             running_mean, running_var, momentum;
-            kws...) where T<:Union{Float32, Float64}
+            kws...) where T<:CUDNNFloat
   dg, db, dx = ∇batchnorm(g, b, reshape(x, 1, 1, size(x, 1), size(x, 2)), reshape(dy, 1, 1, size(dy, 1),
                           size(dy, 2)), running_mean, running_var, momentum; kws...)
   (dg, db, dropdims(dx, dims = (1, 2)))
@@ -108,7 +108,7 @@ end
 
 function ∇batchnorm(g::DenseCuArray{T}, b::DenseCuArray{T}, x::DenseCuArray{T}, dy::DenseCuArray{T},
                     running_mean, running_var, momentum;
-                    affine=true, kws...) where T<:Union{Float32, Float64}
+                    affine=true, kws...) where T<:CUDNNFloat
   dg = similar(g)
   db = similar(b)
   dx = similar(x)
@@ -127,7 +127,7 @@ function cudnnBNBackward!(dg::DenseCuArray{T}, g::DenseCuArray{T}, db::DenseCuAr
                           momentum; cache = nothing, eps = T(1e-5),
                           alpha = T(1), beta = T(0),
                           dalpha = T(1), dbeta = T(0), training = true,
-                          track_stats = true) where T<:Union{Float32, Float64}
+                          track_stats = true) where T<:CUDNNFloat
   if !track_stats
     running_mean = CU_NULL
     running_var = CU_NULL
