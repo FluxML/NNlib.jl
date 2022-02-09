@@ -26,7 +26,7 @@ end
 # NOTE: CuDNN supports only 4D and 5D Tensors for BatchNorm Operations
 # so reshape a 2D Tensor into 4D
 function batchnorm(g::DenseCuArray{T}, b::DenseCuArray{T}, x::DenseCuArray{T,2},
-                   running_mean, running_var, momentum; kws...) where T<:Union{Float32, Float64}
+                   running_mean, running_var, momentum; kws...) where T<:CUDNNFloat
   x = reshape(x, 1, 1, size(x, 1), size(x, 2))
   y = batchnorm(g, b, x, running_mean, running_var, momentum; kws...)
   return dropdims(y, dims = (1, 2))
