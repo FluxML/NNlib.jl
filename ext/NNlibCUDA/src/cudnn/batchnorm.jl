@@ -33,7 +33,7 @@ function batchnorm(g::DenseCuArray{T}, b::DenseCuArray{T}, x::DenseCuArray{T,2},
 end
 
 function batchnorm(g::DenseCuArray{T}, b::DenseCuArray{T}, x::Union{DenseCuArray{T,4},DenseCuArray{T,5}},
-                   running_mean, running_var, momentum; kws...) where T<:Union{Float32, Float64}
+                   running_mean, running_var, momentum; kws...) where T<:CUDNNFloat
   cudnnBNForward!(similar(x), g, b, x, running_mean, running_var, momentum; kws...)
 end
 
