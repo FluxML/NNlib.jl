@@ -327,19 +327,6 @@ for conv in [:conv, :depthwiseconv]
         end
         return $∇conv_data(x, w, cdims; kw...), $∇conv_data_pullback
     end
-
-    # @eval function rrule(::typeof($∇conv_filter), x, dy, cdims; kw...)
-    #     function $∇conv_filter_pullback(Δ)
-    #         Δ = colmajor(Δ)
-    #         return (
-    #             NoTangent(),
-    #             @thunk($∇conv_data(dy, unthunk(Δ), cdims, kw...)),
-    #             @thunk($conv(x, unthunk(Δ), cdims, kw...)),
-    #             NoTangent(),
-    #         )
-    #     end
-    #     return $∇conv_filter(x, dy, cdims; kw...), $∇conv_filter_pullback
-    # end
 end
 
 function rrule(::typeof(∇conv_filter), x, dy, cdims; kw...)
