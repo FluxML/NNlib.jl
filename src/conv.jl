@@ -331,11 +331,11 @@ end
 
 function rrule(::typeof(∇conv_filter), x, dy, cdims; kw...)
     function ∇conv_filter_pullback(Δ)
-        Δ = colmajor(Δ)
+        Δ1 = colmajor(unthunk(Δ))
         return (
             NoTangent(),
-            @thunk(∇conv_data(dy, unthunk(Δ), cdims, kw...)),
-            @thunk(conv(x, unthunk(Δ), cdims, kw...)),
+            @thunk(∇conv_data(dy, Δ1, cdims, kw...)),
+            @thunk(conv(x, Δ1, cdims, kw...)),
             NoTangent(),
         )
     end
