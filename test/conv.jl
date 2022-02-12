@@ -734,6 +734,10 @@ end
   # else
     gradtest((y, w) -> sum(∇conv_data(y, w, cdims)), y, w)
   # end
+    gradtest((x, y) -> ∇conv_filter(x, y, cdims), x, y)
+    if spatial_rank < 3
+        gradtest((x, y) -> sum(∇conv_filter(x, y, cdims)), x, y)
+    end
 
   dcdims = DepthwiseConvDims(x, w)
   gradtest((x, w) -> depthwiseconv(x, w, dcdims), x, w)

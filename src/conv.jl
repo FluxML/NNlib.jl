@@ -329,6 +329,19 @@ for conv in [:conv, :depthwiseconv]
     end
 end
 
+function rrule(::typeof(∇conv_filter), x, dy, cdims; kw...)
+    function ∇conv_filter_pullback(Δ)
+        Δ1 = colmajor(unthunk(Δ))
+        return (
+            NoTangent(),
+            @thunk(∇conv_data(dy, Δ1, cdims, kw...)),
+            @thunk(conv(x, Δ1, cdims, kw...)),
+            NoTangent(),
+        )
+    end
+    return ∇conv_filter(x, dy, cdims; kw...), ∇conv_filter_pullback
+end
+
 # Use NNPACK if it is available and the operation is supported
 # commented out 'till proper benchmarking and more correctness test are performed
 # if is_nnpack_available()
