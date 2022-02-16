@@ -35,7 +35,7 @@ for (gemm, elt) in gemm_datatype_mappings
                                beta::$(elt), C::Ptr{$elt})
             # Convert our compile-time transpose marker to a char for BLAS
             convtrans(V::Val{false}) = 'N'
-            convtrans(V::Val{true})  = $elt <: Complex ? 'C' : 'T'
+            convtrans(V::Val{true})  = 'C'
 
             if transA == Val(false)
                 lda = M
