@@ -107,7 +107,7 @@ function conv_direct!(
                     kproj(kh, kernel_h, fk),
                     kproj(kd, kernel_d, fk),
                     c_in, c_out]
-            dotprod = muladd(x_val, w_val, dotprod)
+            dotprod = muladd(x_val, conj(w_val), dotprod)
         end
         y[w_idx, h_idx, d_idx, c_out, batch] = alpha*dotprod + beta*y[w_idx, h_idx, d_idx, c_out, batch]
     end
@@ -147,7 +147,7 @@ function conv_direct!(
                             kproj(kh, kernel_h, fk),
                             kproj(kd, kernel_d, fk),
                             c_in, c_out]
-                    dotprod = muladd(x_val, w_val, dotprod)
+                    dotprod = muladd(x_val, conj(w_val), dotprod)
                 end
             end
         end

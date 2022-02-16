@@ -100,7 +100,7 @@ for backend in (Symbol(), :_direct, :_im2col, :_nnpack)
                             dy::AbstractArray{yT,N}, w::AbstractArray{wT,N},
                             cdims::C; kwargs...) where {yT, wT, N, C <: ConvDims}
                 dx = similar(dy, input_size(cdims)..., channels_in(cdims), size(dy, N))
-                return $(Symbol("$(name)$(backend)!"))(dx, dy, w, cdims; kwargs...)
+                return conj($(Symbol("$(name)$(backend)!"))(dx, dy, w, cdims; kwargs...))
             end
         end
     end
@@ -113,7 +113,7 @@ for backend in (Symbol(), :_direct, :_im2col, :_nnpack)
                         cdims::ConvDims; kwargs...) where {xT, yT, N}
             dw = similar(dy, kernel_size(cdims)..., channels_in(cdims) ÷ groupcount(cdims),
                                                     channels_out(cdims))
-            return $(Symbol("∇conv_filter$(backend)!"))(dw, x, dy, cdims; kwargs...)
+            return conj($(Symbol("∇conv_filter$(backend)!"))(dw, x, dy, cdims; kwargs...))
         end
     end
 

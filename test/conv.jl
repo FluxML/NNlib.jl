@@ -359,6 +359,36 @@ ddims(x) = dropdims(x, dims=(ndims(x)-1, ndims(x)))
     end
 end
 
+@testset "Complex Dense Convolution" begin
+    # For now only 1 dimensional 1x1 convolution
+    x = reshape(complex.(Float64[1:4;], Float64[1:4;] .+ 1), 1, 4, 1)
+    w = reshape(complex.(Float64[1:4;] .+ 2, Float64[1:4;] .+ 3), 1, 4, 1)
+    cdims = DenseConvDims(x, w)
+    convs = [NNlib.conv, NNlib.conv_im2col, NNlib.conv_direct,]
+    NNlib.is_nnpack_available() && push!(convs, NNlib.conv_nnpack)
+    for conv in convs
+        if NNlib.is_nnpack_available()
+            if conv == NNlib.conv_nnpack && !NNlib.nnpack_supported_operation(cdims)
+                continue
+            end
+        end
+        @testset "$(conv)" begin
+            @test isapprox(ddims(conv(x, w, cdims)), [vec(w)' * vec(x)], rtol = 1.0e-7)
+        end
+    end
+    dy = NNlib.conv(x, w, cdims)
+    for (∇conv_filter, ∇conv_data) in (
+        (NNlib.∇conv_filter,        NNlib.∇conv_data),
+        (NNlib.∇conv_filter_im2col, NNlib.∇conv_data_im2col),
+        (NNlib.∇conv_filter_direct, NNlib.∇conv_data_direct),
+    )
+        @testset "$(∇conv_filter)/$(∇conv_data)" begin
+            @test isapprox(∇conv_filter(x, dy, cdims), x .* conj(dy), rtol = 1.0e-7)
+            @test isapprox(∇conv_data(dy, w, cdims), conj(dy) .* w, rtol = 1.0e-7)
+        end
+    end
+end
+
 if get(ENV, "NNLIB_TEST_FUZZING", "false") == "true"
     # @info("Skipping Convolutional fuzzing tests, set NNLIB_TEST_FUZZING=true to run them")
     @testset "fuzzing" begin
