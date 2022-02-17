@@ -51,7 +51,7 @@ function conv_im2col!(
         im2col!(col_slice, view(x, :, :, :, :, batch_idx), cdims)
         GC.@preserve col_slice w y begin
             col_ptr = pointer(col_slice)
-            w_ptr = pointer(copy(conj(w)))
+            w_ptr = pointer(w)
             y_ptr = pointer(y, (batch_idx - 1)*M*N + 1)
             gemm!(Val(false), Val(false), M, N, K, alpha, col_ptr, w_ptr, beta, y_ptr)
         end

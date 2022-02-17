@@ -373,7 +373,7 @@ end
             end
         end
         @testset "$(conv)" begin
-            @test isapprox(ddims(conv(x, w, cdims)), [vec(w)' * vec(x)], rtol = 1.0e-7)
+            @test isapprox(ddims(conv(x, w, cdims)), [transpose(vec(w)) * vec(x)], rtol = 1.0e-7)
         end
     end
     dy = NNlib.conv(x, w, cdims)
@@ -383,8 +383,8 @@ end
         (NNlib.∇conv_filter_direct, NNlib.∇conv_data_direct),
     )
         @testset "$(∇conv_filter)/$(∇conv_data)" begin
-            @test isapprox(∇conv_filter(x, dy, cdims), x .* conj(dy), rtol = 1.0e-7)
-            @test isapprox(∇conv_data(dy, w, cdims), conj(dy) .* w, rtol = 1.0e-7)
+            @test isapprox(∇conv_filter(x, dy, cdims), conj(x) .* dy, rtol = 1.0e-7)
+            @test isapprox(∇conv_data(dy, w, cdims), dy .* conj(w), rtol = 1.0e-7)
         end
     end
 end

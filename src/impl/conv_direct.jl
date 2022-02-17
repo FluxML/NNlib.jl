@@ -107,7 +107,7 @@ function conv_direct!(
                     kproj(kh, kernel_h, fk),
                     kproj(kd, kernel_d, fk),
                     c_in, c_out]
-            dotprod = muladd(x_val, conj(w_val), dotprod)
+            dotprod = muladd(x_val, w_val, dotprod)
         end
         y[w_idx, h_idx, d_idx, c_out, batch] = alpha*dotprod + beta*y[w_idx, h_idx, d_idx, c_out, batch]
     end
@@ -147,7 +147,7 @@ function conv_direct!(
                             kproj(kh, kernel_h, fk),
                             kproj(kd, kernel_d, fk),
                             c_in, c_out]
-                    dotprod = muladd(x_val, conj(w_val), dotprod)
+                    dotprod = muladd(x_val, w_val, dotprod)
                 end
             end
         end
@@ -169,7 +169,7 @@ Calculate the gradient imposed upon `x` in the convolution `y = x * w`.
 function ∇conv_data_direct!(dx::AbstractArray{xT,5}, dy::AbstractArray{yT,5},
                             w::AbstractArray{wT,5}, cdims::DenseConvDims;
                             alpha::xT=xT(1), beta=false) where {xT, yT, wT}
-    w = transpose_swapbatch(w[end:-1:1, end:-1:1, end:-1:1, :, :])
+    w = conj(transpose_swapbatch(w[end:-1:1, end:-1:1, end:-1:1, :, :]))
     dy = predilate(dy, stride(cdims))
     ctdims = DenseConvDims(dy, w; padding=transpose_pad(cdims),
                                   dilation=dilation(cdims),
@@ -188,7 +188,7 @@ Calculate the gradient imposed upon `w` in the convolution `y = x * w`.
 function ∇conv_filter_direct!(dw::AbstractArray{wT,5}, x::AbstractArray{xT,5},
                               dy::AbstractArray{yT,5}, cdims::DenseConvDims;
                               alpha::wT=wT(1), beta=false) where {xT, yT, wT}
-    x = transpose_swapbatch(x[end:-1:1, end:-1:1, end:-1:1, :, :])
+    x = conj(transpose_swapbatch(x[end:-1:1, end:-1:1, end:-1:1, :, :]))
     dy = transpose_swapbatch(predilate(dy, stride(cdims)))
     ctdims = DenseConvDims(dy, x; padding=transpose_pad(cdims),
                                     stride=dilation(cdims))
