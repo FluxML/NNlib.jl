@@ -315,12 +315,19 @@ end
     end
 end
 
-@testset "AutoDiff" begin
+## Autodiff tests
+
+has_rule(a) = rrule(a, 1f0) === nothing ? "(no rule)" : ""
+@testset "gradient correctness" begin
     
     local rng = StableRNG(17)
 
-    for f in ACTIVATION_FUNCTIONS
+    @testset "$(f): $(has_rule(f))" for f in ACTIVATION_FUNCTIONS
         f == rrelu && continue # stocastich output
+
+        if rrule(f, 0.1) === nothing  # then there is no rule defined
+            @test_broken rrule(f, 0.1) !== nothing
+        end
         
         # gradtest(f, rand(rng))
         # gradtest(f, (2, 3), check_broadcast=true)
@@ -342,29 +349,34 @@ end
         end
     end 
     
-    gradtest((x, W, b) -> σ.(W*x .+ b), 5, (2,5), 2)
-    gradtest((x, W, b) -> σ.(W*x .+ b), (5,3), (2,5), 2)
-    gradtest((x, W, b) -> relu.(W*x .+ b), 5, (2,5), 2)
-    gradtest((x, W, b) -> relu.(W*x .+ b), (5,3), (2,5), 2)
-    gradtest((x, W, b) -> selu.(W*x .+ b), 5, (2,5), 2)
-    gradtest((x, W, b) -> selu.(W*x .+ b), (5,3), (2,5), 2, atol=1e-4)
-    gradtest((x, W, b) -> elu.(W*x .+ b, 2), 5, (2,5), 2)
-    gradtest((x, W, b) -> elu.(W*x .+ b, 2), (5,3), (2,5), 2, atol=1e-4)
+    @testset "Flux-like usage" begin
+        gradtest((x, W, b) -> σ.(W*x .+ b), 5, (2,5), 2)
+        gradtest((x, W, b) -> σ.(W*x .+ b), (5,3), (2,5), 2)
+        gradtest((x, W, b) -> relu.(W*x .+ b), 5, (2,5), 2)
+        gradtest((x, W, b) -> relu.(W*x .+ b), (5,3), (2,5), 2)
+        gradtest((x, W, b) -> selu.(W*x .+ b), 5, (2,5), 2)
+        gradtest((x, W, b) -> selu.(W*x .+ b), (5,3), (2,5), 2, atol=1e-4)
+        gradtest((x, W, b) -> elu.(W*x .+ b, 2), 5, (2,5), 2)
+        gradtest((x, W, b) -> elu.(W*x .+ b, 2), (5,3), (2,5), 2, atol=1e-4)
 
-    # tests for https://github.com/FluxML/Zygote.jl/issues/758
-    @test gradient(xs -> sum(selu.(xs)), [1_000, 10_000])[1] ≈ [1.0507009873554805, 1.0507009873554805] rtol=1e-8
-    @test gradient(x -> selu(x), 1_000) == (1.0507009873554805,)
-    @test gradient(xs -> sum(elu.(xs, 2)), [1_000, 10_000]) == ([1., 1.],)
-    @test gradient(x -> elu(x, 2), 1_000) == (1.,)
-    @test gradient(x -> elu(x, 2), -1) == (2*exp(-1),)
-    gradtest(x-> selu.(x),[100., 1_000.])
-    gradtest(x -> elu.(x, 3.5),[100., 1_000.])
-    gradtest(x -> elu.(x, 3.5),[1_000., 10_000.])
-    gradtest(x -> selu.(x), [1_000., 10_000.])
-    gradtest(x -> selu.(x), 10, atol=1e-4)
+        gradtest((x, W, b) -> σ.(W*x .+ b), 5, (2,5), 2)
+        gradtest((x, W, b) -> σ.(W*x .+ b), (5,3), (2,5), 2)
+        gradtest((x, W, b) -> logσ.(W*x .+ b), 5, (2,5), 2)
+        gradtest((x, W, b) -> logσ.(W*x .+ b), (5,3), (2,5), 2)
+    end
 
-    gradtest((x, W, b) -> σ.(W*x .+ b), 5, (2,5), 2)
-    gradtest((x, W, b) -> σ.(W*x .+ b), (5,3), (2,5), 2)
-    gradtest((x, W, b) -> logσ.(W*x .+ b), 5, (2,5), 2)
-    gradtest((x, W, b) -> logσ.(W*x .+ b), (5,3), (2,5), 2)
+    @testset "Zygote issue 758" begin
+        # tests for https://github.com/FluxML/Zygote.jl/issues/758
+        @test gradient(xs -> sum(selu.(xs)), [1_000, 10_000])[1] ≈ [1.0507009873554805, 1.0507009873554805] rtol=1e-8
+        @test gradient(x -> selu(x), 1_000) == (1.0507009873554805,)
+        @test gradient(xs -> sum(elu.(xs, 2)), [1_000, 10_000]) == ([1., 1.],)
+        @test gradient(x -> elu(x, 2), 1_000) == (1.,)
+        @test gradient(x -> elu(x, 2), -1) == (2*exp(-1),)
+        gradtest(x-> selu.(x),[100., 1_000.])
+        gradtest(x -> elu.(x, 3.5),[100., 1_000.])
+        gradtest(x -> elu.(x, 3.5),[1_000., 10_000.])
+        gradtest(x -> selu.(x), [1_000., 10_000.])
+        gradtest(x -> selu.(x), 10, atol=1e-4)
+    end
+
 end

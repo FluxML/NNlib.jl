@@ -3,7 +3,7 @@
 # Some of activation functions have its wrapper function for GPU in NNlibCUDA.jl.
 # https://github.com/JuliaGPU/CuArrays.jl/issues/614
 
-const ACTIVATIONS = [
+ACTIVATIONS = [
     :σ, :hardσ, :hardtanh, :relu,
     :leakyrelu, :relu6, :rrelu, :elu, :gelu, :swish, :hardswish, :selu,
     :celu, :softplus, :softsign, :logσ, :logcosh,
@@ -785,24 +785,42 @@ this replacement for some array or element types.
 
 ## Define rrules for some activation functions, along with the
 ## broadcasted rrule activation functions.
-## TODO: add to the lists below all activations.
 
 ## This is a performance hack specifically for Zygote, because it doesn't handle fused
 ## broadcasts well; but it generally should be good (or at least harmless) for any AD, as
 ## it saves ADing the broadcasting machinery.
 ## Related Issue https://github.com/JuliaDiff/ChainRulesCore.jl/issues/271
 
-UNARY_ACTS = [ # f, df
-    (:relu,         :(x > 0)),
-    (:hardtanh,     :(-1 < x < 1)),
-    (:selu,         :(deriv_selu(Ω))),
-    (:σ,            :(conj(Ω * (1 - Ω)))),
-    (:elu,          :(deriv_elu(Ω))),
-    (:softplus,     :(σ(x))),
+## TODO: add to the lists below all activations.
 
+UNARY_ACTS = [ # f, df
+    ## In the same order as above!
+    (:σ,            :(conj(Ω * (1 - Ω)))),
+    (:hardσ,        :(ifelse((Ω>0)&(Ω<1), 1//6, 1//1))),
+    # logσ
+    (:hardtanh,     :((Ω>-1) & (Ω<1))),
+    (:relu,         :(Ω > 0)),
+    (:leakyrelu,    :(ifelse(Ω > 0, 1//1, 1//100))),
+    (:relu6,        :((Ω>0) & (Ω<6))),
+    # rrelu is random, can't write a rule.
+    (:elu,          :(deriv_elu(Ω))),
+    # gelu
+    # swish
+    # (:hardswish,   :(hardσ(x) + x * ((Ω>0)&(Ω<1))/6)),  # wrong! could depend only on Ω
+    # lisht
+    (:selu,         :(deriv_selu(Ω))),
+    # celu
+    (:trelu,        :(Ω > 0)),
+    # softsign
+    (:softplus,     :(σ(x))),
+    # logcosh
+    # mish
+    # (:tanhshrink,    :(1 - conj(1 - (1-Ω)^2))),  # wrong!
+    (:softshrink,    :(Ω != 0)),
+    ## Fast variants are the same!
     (:tanh_fast,    :(conj(1 - Ω^2))),
     (:sigmoid_fast, :(conj(Ω * (1 - Ω)))),
-    ]
+]
 
 for (f, df) in UNARY_ACTS
     @eval @scalar_rule($f(x), $df)
@@ -822,21 +840,23 @@ for (f, df) in UNARY_ACTS
     end
 end
 
+NO_ACT_GRAD = ChainRulesCore.@not_implemented "for simplicitly NNlib assumes the 2nd argument of this activation function is a constant"
+
 BINARY_ACTS = [ # f, df1, df2
-    (:elu, :(deriv_elu(Ω, x2)), :(NoTangent())), # TODO use real deriv instead of DNE
-    ]
+    (:elu, :(deriv_elu(Ω, x2)), NO_ACT_GRAD),
+    (:leakyrelu, :(ifelse(Ω > 0, oftype(x2, 1), x2)), NO_ACT_GRAD),
+    (:softshrink, :(Ω != 0), NO_ACT_GRAD),
+]
 
 for (f, df1, df2) in BINARY_ACTS
     @eval @scalar_rule($f(x1, x2), ($df1, $df2))
 
-    pullback = Symbol(:broadcasted_, f, :_pullback)
+    pullback = Symbol(:broadcasted_, f, :_pullback_2arg)
     @eval function rrule(::typeof(broadcasted),
                          ::typeof($f), 
                          x1::Numeric, x2::Numeric)
         Ω = $f.(x1, x2)
-        function $pullback(Δ) 
-            NoTangent(), NoTangent(), @.(Δ * $df1), @.(Δ * $df2)
-        end
+        $pullback(Δ) = (NoTangent(), NoTangent(), @.(Δ * $df1), @thunk @.(Δ * $df2))
         return Ω, $pullback
     end
 end
