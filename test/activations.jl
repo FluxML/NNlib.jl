@@ -26,16 +26,6 @@ function test_value_int_input_forces_float64(a)
     end
 end
 
-function test_gradient_float_precision_preserving(a)
-    @testset "$(a): " begin
-        for T in [Float16, Float32, Float64]
-            for val in [-10, -1, 0, 1, 10]
-                val = @inferred a'(T(val))
-                @test typeof(val) == T
-            end
-        end
-    end
-end
 
 @test sigmoid(0.0) == 0.5
 @test hardsigmoid(0.0) == 0.5
@@ -318,6 +308,18 @@ end
 ## Autodiff tests
 
 has_rule(a) = rrule(a, 1f0) === nothing ? "(no rule)" : ""
+
+@testset "gradient inference" begin
+    @testset "$(a): $(has_rule(a))" for a in ACTIVATION_FUNCTIONS
+        @testset "$T" for T in [Float16, Float32, Float64]
+            for val in [-10, -1, 0, 1, 10]
+                grad = @inferred gradient(a, T(val))
+                @test typeof(grad[1]) == T
+            end
+        end
+    end
+end
+
 @testset "gradient correctness" begin
     
     local rng = StableRNG(17)
