@@ -33,6 +33,24 @@ julia> softmax([1 2 3; 2 2 2]; dims=2)
  0.0900306  0.244728  0.665241
  0.333333   0.333333  0.333333
 ```
+
+Note that, when used with Flux.jl, `softmax` must not be passed to layers like `Dense`
+which accept an activation function. The activation is broadcasted over the result,
+thus applies to individual numbers. But `softmax` always needs to see the whole column.
+
+```julia
+julia> using Flux
+
+julia> x = randn(Float32, 4, 4, 3, 13);
+
+julia> model = Chain(Conv((4, 4), 3 => 8, tanh), Flux.flatten, Dense(8 => 7), softmax);
+
+julia> model(x) |> size
+(7, 13)
+
+julia> Dense(4 => 7, softmax)(x)
+ERROR: `softmax(x)` called with a number, but it expects an array. 
+```
 """
 softmax(x; dims = 1) = softmax!(similar(x, (float ∘ eltype)(x)), x; dims = dims)
 
