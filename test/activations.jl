@@ -1,7 +1,7 @@
 
 ACTIVATION_FUNCTIONS = [@eval($a) for a in NNlib.ACTIVATIONS]
 
-BINARY_FUNCTIONS = filter(f -> hasmethod(f, Tuple{Float64, Float64}), ACTIVATION_FUNCTIONS)
+BINARY_ACTIVATIONS = filter(f -> hasmethod(f, Tuple{Float64, Float64}), ACTIVATION_FUNCTIONS)
 
 @test sigmoid(0.0) == 0.5
 @test hardsigmoid(0.0) == 0.5
@@ -80,7 +80,7 @@ BINARY_FUNCTIONS = filter(f -> hasmethod(f, Tuple{Float64, Float64}), ACTIVATION
             end
         end
     end
-    @testset "binary $a: " for a in BINARY_FUNCTIONS
+    @testset "binary $a: " for a in BINARY_ACTIVATIONS
         for T in [Float16, Float32, Float64]
             for val in [-10, -1, 0, 1, 10], beta in Any[0.1, 0.5f0, 1]
                 out = @inferred a(T(val), beta)
@@ -95,7 +95,7 @@ end
     for a in ACTIVATION_FUNCTIONS
         @test_throws ErrorException a(x)
     end
-    for a in BINARY_FUNCTIONS
+    for a in BINARY_ACTIVATIONS
         @test_throws ErrorException a(x, 0.1)
     end
 end
@@ -329,7 +329,7 @@ end
         gradtest(f, +2 .+ rand(rng, 2, 2), check_broadcast=true)
         gradtest(f, -2 .- rand(rng, 2, 2), check_broadcast=true)
 
-        if f in BINARY_FUNCTIONS
+        if f in BINARY_ACTIVATIONS
             gradtest(x -> f(x, 0.2), 1 + rand(rng))
             gradtest(x -> f(x, 0.7), 1 + rand(rng))
 
@@ -381,4 +381,33 @@ end
         gradtest(x -> selu.(x), 10, atol=1e-4)
     end
 
+end
+
+@testset "Second derivatives" begin
+    ## Not extensive, but a start!
+    ## More careful tests could look for `nothing` gradients of piecewise functions
+    @testset "$(f): $(has_rule(f))" for f in ACTIVATION_FUNCTIONS
+        f == rrelu && continue
+
+        ## Scalar
+        h = Zygote.hessian_dual(x -> sin(f(x)), 0.23)
+        @test h ≈ Zygote.hessian_reverse(x -> sin(f(x)), 0.23)
+
+        ## Broadcasting
+        x = [-0.9, -0.2, 0.1, 0.3, 1.2]
+        H = Zygote.hessian_dual(x -> sum(abs2, f.(x .+ 0.1)), x)
+        @test H ≈ Zygote.hessian_reverse(x -> sum(abs2, f.(x .+ 0.1)), x)
+    end
+    @testset "$(f): $(has_rule(f))" for f in BINARY_ACTIVATIONS
+        f == rrelu && continue
+
+        ## Scalar
+        h = Zygote.hessian_dual(x -> sin(f(x, 0.3)), 0.45)
+        @test h ≈ Zygote.hessian_reverse(x -> sin(f(x, 0.3)), 0.45)
+
+        ## Broadcasting
+        x = [-0.9, -0.2, 0.1, 0.3, 1.2]
+        H = Zygote.hessian_dual(x -> sum(abs2, f.(x .+ 0.1, 0.3)), x)
+        @test H ≈ Zygote.hessian_reverse(x -> sum(abs2, f.(x .+ 0.1, 0.3)), x)
+    end
 end
