@@ -1,31 +1,7 @@
 using NNlib, Test, Zygote
 using NNlib: ACTIVATIONS
 
-ACTIVATION_FUNCTIONS = 
-    [@eval($a) for a in ACTIVATIONS]
-
-function test_value_float_precision_preserving(a)
-    @testset "$(a): " begin
-        for T in [Float16, Float32, Float64]
-            for val in [-10, -1, 0, 1, 10]
-                val = @inferred a(T(val))
-                @test typeof(val) == T
-            end
-        end
-    end
-end
-
-function test_value_int_input_forces_float64(a)
-    @testset "$(a): " begin
-        for T in [Int32, Int64]
-            for val in [-10, -1, 0, 1, 10]
-                val = @inferred a(T(val))
-                @test typeof(val) == Float64
-            end
-        end
-    end
-end
-
+ACTIVATION_FUNCTIONS = [@eval($a) for a in ACTIVATIONS]
 
 @test sigmoid(0.0) == 0.5
 @test hardsigmoid(0.0) == 0.5
@@ -96,10 +72,17 @@ end
 @test softshrink(-1.0) == -0.5
 
 @testset "Float inference" begin
-    test_value_float_precision_preserving.(ACTIVATION_FUNCTIONS)
+    @testset "$(a): " for a in ACTIVATION_FUNCTIONS
+        for T in [Float16, Float32, Float64]
+            for val in [-10, -1, 0, 1, 10]
+                val = @inferred a(T(val))
+                @test typeof(val) == T
+            end
+        end
+    end
 end
 
-@testset "Array input" begin
+@testset "Array input -> error" begin
     x = rand(5)
     for a in ACTIVATION_FUNCTIONS
         @test_throws ErrorException a(x)
@@ -121,36 +104,31 @@ end
     end
 end
 
-@testset "Test Integer64 and Integer32 inputs will force Float64 outputs" begin
-    test_value_int_input_forces_float64.(filter(x -> (x != relu && x != relu6 && x != hardtanh && x != trelu), ACTIVATION_FUNCTIONS))
+@testset "Integer inputs" begin
+    # These should work without error, for e.g. readme examples,
+    # but no serious use will involve integers, no need for performance.
+    @testset "$a" for a in ACTIVATION_FUNCTIONS
+        @test typeof(a(Int64(1))) <: Real
+        @test typeof(a(Int32(1))) <: Real
+    end
 
-    @testset "relu: " begin
-        # relu doesn't have to force floating point outputs
+    # The following ones can pass integers through. But it's not very important.
+    @testset "relu: Int -> Int" begin
         @test typeof(relu(Int64(1))) == Int64
         @test typeof(relu(Int32(1))) == Int32
     end
-
-    @testset "relu6: " begin
-        # relu6 doesn't have to force floating point outputs
+    @testset "relu6: Int -> Int" begin
         @test typeof(relu6(Int64(1))) == Int64
         @test typeof(relu6(Int32(1))) == Int32
     end
-
-    @testset "hardtanh: " begin
-        # hardtanh doesn't have to force floating point outputs
+    @testset "hardtanh: Int -> Int" begin
         @test typeof(hardtanh(Int64(1))) == Int64
         @test typeof(hardtanh(Int32(1))) == Int32
     end
-
-    @testset "trelu: " begin
-        # trelu doesn't have to force floating point outputs
+    @testset "trelu: Int -> Int" begin
         @test typeof(trelu(Int64(1))) == Int64
         @test typeof(trelu(Int32(1))) == Int32
     end
-end
-
-@testset "Float gradient inference" begin
-    test_gradient_float_precision_preserving.(ACTIVATION_FUNCTIONS)
 end
 
 @testset "elu" begin
@@ -171,6 +149,7 @@ end
 @test leakyrelu(-0.4,0.3) ≈ -0.12
 
 @test relu6(10.0) == 6.0
+
 @test -0.2 <= rrelu(-0.4,0.25,0.5) <= -0.1
 
 @testset "celu" begin
@@ -205,6 +184,7 @@ end
 end
 
 @test hardtanh(10.0) == 1.0
+
 @test lisht(2.5) == 2.5*tanh(2.5)
 
 @testset "trelu" begin
