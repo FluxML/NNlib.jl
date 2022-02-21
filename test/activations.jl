@@ -1,6 +1,8 @@
 
 ACTIVATION_FUNCTIONS = [@eval($a) for a in NNlib.ACTIVATIONS]
 
+BINARY_FUNCTIONS = filter(f -> hasmethod(f, Tuple{Float64, Float64}), ACTIVATION_FUNCTIONS)
+
 @test sigmoid(0.0) == 0.5
 @test hardsigmoid(0.0) == 0.5
 @test hardtanh(0.0) == 0.0
@@ -73,8 +75,16 @@ ACTIVATION_FUNCTIONS = [@eval($a) for a in NNlib.ACTIVATIONS]
     @testset "$(a): " for a in ACTIVATION_FUNCTIONS
         for T in [Float16, Float32, Float64]
             for val in [-10, -1, 0, 1, 10]
-                val = @inferred a(T(val))
-                @test typeof(val) == T
+                out = @inferred a(T(val))
+                @test typeof(out) == T
+            end
+        end
+    end
+    @testset "binary $a: " for a in BINARY_FUNCTIONS
+        for T in [Float16, Float32, Float64]
+            for val in [-10, -1, 0, 1, 10], beta in Any[0.1, 0.5f0, 1]
+                out = @inferred a(T(val), beta)
+                @test typeof(out) == T
             end
         end
     end
@@ -84,6 +94,9 @@ end
     x = rand(5)
     for a in ACTIVATION_FUNCTIONS
         @test_throws ErrorException a(x)
+    end
+    for a in BINARY_FUNCTIONS
+        @test_throws ErrorException a(x, 0.1)
     end
 end
 
@@ -285,9 +298,9 @@ end
 
 ## Autodiff tests
 
-UNARY_FUNCTIONS = [@eval($a) for (a, _) in NNlib.UNARY_ACTS]
+WITH_UNARY_RULE = [@eval($a) for (a, _) in NNlib.UNARY_ACTS]
 
-BINARY_FUNCTIONS = [@eval($a) for (a, _, _) in NNlib.BINARY_ACTS]
+WITH_BINARY_RULE = [@eval($a) for (a, _, _) in NNlib.BINARY_ACTS]
 
 has_rule(a) = rrule(a, 1f0) === nothing ? "(no rule)" : ""
 
@@ -316,23 +329,22 @@ end
         gradtest(f, +2 .+ rand(rng, 2, 2), check_broadcast=true)
         gradtest(f, -2 .- rand(rng, 2, 2), check_broadcast=true)
 
-        if f in UNARY_FUNCTIONS
+        if f in BINARY_FUNCTIONS
+            gradtest(x -> f(x, 0.2), 1 + rand(rng))
+            gradtest(x -> f(x, 0.7), 1 + rand(rng))
+
+            gradtest(x -> f(x, 0.2), -2 + rand(rng))
+            gradtest(x -> f(x, 0.7), -2 + rand(rng))
+        end
+
+        ## Check that rules, including broadcast rules, are defined:
+        if f in WITH_UNARY_RULE
             @test rrule(f, rand()) !== nothing
             @test rrule(broadcasted, f, rand(2)) !== nothing
         end
-        if f in BINARY_FUNCTIONS
-            @testset "binary rule" begin
-                ## Check that rules, including broadcast rules, are defined:
-                @test rrule(f, rand(), rand()) !== nothing
-                @test rrule(broadcasted, f, rand(2), rand()) !== nothing
-
-                ## Correctness tests above don't check 2-arg version.
-                gradtest(x -> f(x, 0.2), 1 + rand(rng))
-                gradtest(x -> f(x, 0.7), 1 + rand(rng))
-
-                gradtest(x -> f(x, 0.2), -2 + rand(rng))
-                gradtest(x -> f(x, 0.7), -2 + rand(rng))
-            end
+        if f in WITH_BINARY_RULE
+            @test rrule(f, rand(), rand()) !== nothing
+            @test rrule(broadcasted, f, rand(2), rand()) !== nothing
         end
     end 
     

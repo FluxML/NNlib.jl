@@ -292,9 +292,9 @@ julia> elu(-10f0, 2)
 -1.9999092f0
 ```
 """
-elu(x, α=1) = ifelse(x ≥ 0, float(x), @fastmath α * (exp(x) - 1)) 
+elu(x, α=1) = ifelse(x ≥ 0, float(x), @fastmath oftf(x, α) * (exp(x) - 1))
 
-deriv_elu(Ω, α=1) = ifelse(Ω ≥ 0, one(Ω), Ω + α)
+deriv_elu(Ω, α=1) = ifelse(Ω ≥ 0, one(Ω), Ω + oftype(Ω, α))
 
 """
     gelu(x) = 0.5x * (1 + tanh(√(2/π) * (x + 0.044715x^3)))
@@ -461,7 +461,7 @@ julia> celu(-10f0)
 -0.9999546f0
 ```
 """
-celu(x, α=1) = ifelse(x ≥ 0, float(x), α * (exp(x/α) - 1))
+celu(x, α=1) = ifelse(x ≥ 0, float(x), oftf(x,α) * (exp(x/oftf(x,α)) - 1))
 
 """
     trelu(x, theta=1) = x > theta ? x : 0
@@ -675,9 +675,9 @@ julia> softshrink.((-10f0, 10f0))
 (-9.5f0, 9.5f0)
 ```
 """
-function softshrink(x, λ=oftf(x, 0.5))
-    lo = x - λ
-    hi = x + λ
+function softshrink(x, λ = 0.5)
+    lo = x - oftf(x, λ)
+    hi = x + oftf(x, λ)
     ifelse(hi > 0, ifelse(lo < 0, zero(hi), lo), hi)
 end
 
