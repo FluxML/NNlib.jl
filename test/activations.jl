@@ -1,7 +1,5 @@
-using NNlib, Test, Zygote
-using NNlib: ACTIVATIONS
 
-ACTIVATION_FUNCTIONS = [@eval($a) for a in ACTIVATIONS]
+ACTIVATION_FUNCTIONS = [@eval($a) for a in NNlib.ACTIVATIONS]
 
 @test sigmoid(0.0) == 0.5
 @test hardsigmoid(0.0) == 0.5
@@ -287,9 +285,13 @@ end
 
 ## Autodiff tests
 
+UNARY_FUNCTIONS = [@eval($a) for (a, _) in NNlib.UNARY_ACTS]
+
+BINARY_FUNCTIONS = [@eval($a) for (a, _, _) in NNlib.BINARY_ACTS]
+
 has_rule(a) = rrule(a, 1f0) === nothing ? "(no rule)" : ""
 
-@testset "gradient inference" begin
+@testset "Gradient inference" begin
     @testset "$(a): $(has_rule(a))" for a in ACTIVATION_FUNCTIONS
         @testset "$T" for T in [Float16, Float32, Float64]
             for val in [-10, -1, 0, 1, 10]
@@ -300,7 +302,7 @@ has_rule(a) = rrule(a, 1f0) === nothing ? "(no rule)" : ""
     end
 end
 
-@testset "gradient correctness" begin
+@testset "Gradient correctness" begin
     
     local rng = StableRNG(17)
 
@@ -311,9 +313,6 @@ end
             @test_broken rrule(f, 0.1) !== nothing
         end
         
-        # gradtest(f, rand(rng))
-        # gradtest(f, (2, 3), check_broadcast=true)
-        
         ## Avoid singular points of some activations
         ## problematic for finite diff methods
         gradtest(f, +2 + rand(rng))
@@ -321,17 +320,28 @@ end
         gradtest(f, +2 .+ rand(rng, 2, 2), check_broadcast=true)
         gradtest(f, -2 .- rand(rng, 2, 2), check_broadcast=true)
 
-        if Symbol(f) in NNlib.UNARY_ACTS
+        if f in UNARY_FUNCTIONS
             @test rrule(f, rand()) !== nothing
             @test rrule(broadcasted, f, rand(2)) !== nothing
         end
-        if Symbol(f) in NNlib.BINARY_ACTS
-            @test rrule(f, rand(), rand()) !== nothing
-            @test rrule(broadcasted, f, rand(2), rand(2)) !== nothing
+        if f in BINARY_FUNCTIONS
+            @testset "binary rule" begin
+                ## Check that rules, including broadcast rules, are defined:
+                @test rrule(f, rand(), rand()) !== nothing
+                @test rrule(broadcasted, f, rand(2), rand(2)) !== nothing
+
+                ## Correctness tests above don't check 2-arg version.
+                gradtest(x -> f(x, 0.2), 1 + rand(rng))
+                gradtest(x -> f(x, 0.7), 1 + rand(rng))
+
+                gradtest(x -> f(x, 0.2), -2 + rand(rng))
+                gradtest(x -> f(x, 0.7), -2 + rand(rng))
+            end
         end
     end 
     
     @testset "Flux-like usage" begin
+        ## This checks some broadcast rules for correctness:
         gradtest((x, W, b) -> σ.(W*x .+ b), 5, (2,5), 2)
         gradtest((x, W, b) -> σ.(W*x .+ b), (5,3), (2,5), 2)
         gradtest((x, W, b) -> relu.(W*x .+ b), 5, (2,5), 2)
@@ -341,14 +351,16 @@ end
         gradtest((x, W, b) -> elu.(W*x .+ b, 2), 5, (2,5), 2)
         gradtest((x, W, b) -> elu.(W*x .+ b, 2), (5,3), (2,5), 2, atol=1e-4)
 
-        gradtest((x, W, b) -> σ.(W*x .+ b), 5, (2,5), 2)
-        gradtest((x, W, b) -> σ.(W*x .+ b), (5,3), (2,5), 2)
         gradtest((x, W, b) -> logσ.(W*x .+ b), 5, (2,5), 2)
         gradtest((x, W, b) -> logσ.(W*x .+ b), (5,3), (2,5), 2)
+
+        ## Binary functions have their own broadcast rules:
+        gradtest((x, W, b) -> leakyrelu.(W*x .+ b, 0.2), 5, (2,5), 2)
+        gradtest((x, W, b) -> leakyrelu.(W*x .+ b, 0.7), (5,3), (2,5), 2)
     end
 
     @testset "Zygote issue 758" begin
-        # tests for https://github.com/FluxML/Zygote.jl/issues/758
+        ## Tests for https://github.com/FluxML/Zygote.jl/issues/758
         @test gradient(xs -> sum(selu.(xs)), [1_000, 10_000])[1] ≈ [1.0507009873554805, 1.0507009873554805] rtol=1e-8
         @test gradient(x -> selu(x), 1_000) == (1.0507009873554805,)
         @test gradient(xs -> sum(elu.(xs, 2)), [1_000, 10_000]) == ([1., 1.],)
