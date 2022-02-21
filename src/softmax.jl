@@ -66,13 +66,14 @@ function softmax!(out::AbstractArray{T}, x::AbstractArray; dims = 1) where {T}
     y = out ./= sum(out; dims = dims)
 end
 
-function ∇softmax(dy::AbstractArray{T}, x::AbstractArray, y::AbstractArray{S}; dims = 1) where {T,S}
+function softmax∇x(dy::AbstractArray{T}, y::AbstractArray{S}; dims = 1) where {T,S}
     dx = if within_grad()
         tmp = dy .* y
         tmp .- y .* sum(tmp; dims)
     else
         # This path is faster, only safe for 1st derivatives though.
-        # Was previously `∇softmax!(dx, dy, x, y; dims)` to allow CUDA overloads, but that was slow.
+        # Was previously `∇softmax!(dx, dy, x, y; dims)` to allow CUDA overloads,
+        # but that was slow: https://github.com/FluxML/NNlibCUDA.jl/issues/30
         out = similar(y, promote_type(T,S))
         out .= dy .* y
         out .= out .- y .* sum(out; dims)
@@ -81,7 +82,7 @@ end
 
 function rrule(::typeof(softmax), x; dims=1)
     y = softmax(x; dims)
-    softmax_pullback(dy) = (NoTangent(), ∇softmax(unthunk(dy), x, y; dims))
+    softmax_pullback(dy) = (NoTangent(), softmax∇x(unthunk(dy), y; dims))
     return y, softmax_pullback
 end
 
@@ -117,14 +118,14 @@ function logsoftmax!(out::AbstractArray{T}, x::AbstractArray; dims = 1) where {T
     out .-= log_
 end
 
-function ∇logsoftmax(dy::AbstractArray, x::AbstractArray, y::AbstractArray; dims = 1)
+function logsoftmax∇x(dy::AbstractArray, y::AbstractArray; dims = 1)
     # This was previously `∇logsoftmax!(dx, dy, x, y; dims)` to allow CUDA overloads, but that was slow.
     dx = dy .- sum(dy; dims) .* exp.(y)
 end
     
 function rrule(::typeof(logsoftmax), x; dims=1)
     y = logsoftmax(x; dims)
-    logsoftmax_pullback(dy) = (NoTangent(), ∇logsoftmax(unthunk(dy), x, y; dims))
+    logsoftmax_pullback(dy) = (NoTangent(), logsoftmax∇x(unthunk(dy), y; dims))
     return y, logsoftmax_pullback
 end
 
