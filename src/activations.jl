@@ -840,7 +840,8 @@ for (f, df) in UNARY_ACTS
     end
 end
 
-NO_ACT_GRAD = ChainRulesCore.@not_implemented "for simplicitly NNlib assumes the 2nd argument of this activation function is a constant"
+# NO_ACT_GRAD = ChainRulesCore.@not_implemented "for simplicitly NNlib assumes the 2nd argument of this activation function is a constant"
+NO_ACT_GRAD = NaN  ## Still reminds you not to use this, but is perhaps more GPU friendly.
 
 BINARY_ACTS = [ # f, df1, df2
     (:elu, :(deriv_elu(Ω, x2)), NO_ACT_GRAD),
@@ -854,9 +855,10 @@ for (f, df1, df2) in BINARY_ACTS
     pullback = Symbol(:broadcasted_, f, :_pullback_2arg)
     @eval function rrule(::typeof(broadcasted),
                          ::typeof($f), 
-                         x1::Numeric, x2::Numeric)
+                         x1::Numeric, x2::Number)
         Ω = $f.(x1, x2)
-        $pullback(Δ) = (NoTangent(), NoTangent(), @.(Δ * $df1), @thunk @.(Δ * $df2))
+        ## Allowing x2::Array would allow size(Ω) != size(x1), which is not handled here:
+        $pullback(Δ) = (NoTangent(), NoTangent(), @.(Δ * $df1), NO_ACT_GRAD)
         return Ω, $pullback
     end
 end

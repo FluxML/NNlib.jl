@@ -308,10 +308,6 @@ end
 
     @testset "$(f): $(has_rule(f))" for f in ACTIVATION_FUNCTIONS
         f == rrelu && continue # stocastich output
-
-        if rrule(f, 0.1) === nothing  # then there is no rule defined
-            @test_broken rrule(f, 0.1) !== nothing
-        end
         
         ## Avoid singular points of some activations
         ## problematic for finite diff methods
@@ -328,7 +324,7 @@ end
             @testset "binary rule" begin
                 ## Check that rules, including broadcast rules, are defined:
                 @test rrule(f, rand(), rand()) !== nothing
-                @test rrule(broadcasted, f, rand(2), rand(2)) !== nothing
+                @test rrule(broadcasted, f, rand(2), rand()) !== nothing
 
                 ## Correctness tests above don't check 2-arg version.
                 gradtest(x -> f(x, 0.2), 1 + rand(rng))
