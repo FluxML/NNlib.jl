@@ -3,7 +3,7 @@
 # Old 2-arg version recomputing forward
 function ∇softmax(Δ, x; dims = 1)
     Base.depwarn("`∇softmax(Δ, x)` without `y = softmax(x)` argument is deprecatcated, as this is inefficient", :∇softmax)
-    ∇softmax(Δ, x, softmax(x, dims); dims)
+    ∇softmax(Δ, x, softmax(x; dims); dims)
 end
 ∇softmax!(Δ, x; dims = 1) = Δ .= ∇softmax(Δ, x; dims)
 ∇softmax!(out, Δ, x; dims = 1) = out .= ∇softmax(Δ, x; dims)
@@ -23,11 +23,11 @@ function ∇softmax!(out::AbstractArray, Δ::AbstractArray,
                     x::AbstractArray, y::AbstractArray; dims = 1)
     Base.depwarn("`∇softmax!` is deprecatcated", :∇softmax!)
     out .= Δ .* y
-    out .= out .- y .* sum(out; dims = dims)
+    out .= out .- y .* sum(out; dims)
 end
 
 function ∇logsoftmax!(out::AbstractArray, Δ::AbstractArray,
                     x::AbstractArray, y::AbstractArray; dims = 1) 
     Base.depwarn("`∇softmax!` is deprecatcated", :∇softmax!)
-    out .= Δ .- sum(Δ, dims = dims) .* exp.(y)
+    out .= Δ .- sum(Δ; dims) .* exp.(y)
 end
