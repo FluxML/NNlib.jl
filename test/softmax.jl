@@ -109,7 +109,6 @@ end
     @test logsumexp(x; dims = 1) ≈ flogsoft(x, dims = 1)
 end
 
-
 @testset "AutoDiff" begin
     for f in (softmax, logsoftmax), d in (:, 1, 2)
         gradtest(f, (3,4); fkwargs = (dims = d,), check_rrule = true)
@@ -117,6 +116,7 @@ end
     gradtest(x -> softmax(x) .* (1:3), 3)
     gradtest(x -> softmax(x) .* (1:3), (3,5), atol = 1e-4)
     gradtest(x -> softmax(x, dims = 2) .* (1:3), (3,5), atol = 1e-4)
+
     gradtest(x -> logsoftmax(x) .* (1:3), 3)
     gradtest(x -> logsoftmax(x) .* (1:3), (3,5))
     gradtest(x -> logsoftmax(x, dims = 2) .* (1:3), (3,5))
@@ -124,4 +124,16 @@ end
     for d  in (:, 1, 2)
         gradtest(logsumexp, (3,4), fkwargs = (dims = d,))
     end
+end
+
+@testset "Second derivatives" begin
+    x = [1 2 3; 6 5 4]
+    H = Zygote.hessian_dual(x -> sum(sin, softmax(x)), x)
+    @test H ≈ Zygote.hessian_reverse(x -> sum(sin, softmax(x)), x)
+
+    H2 = Zygote.hessian_dual(x -> sum(sin, logsoftmax(x)), x)
+    @test H2 ≈ Zygote.hessian_reverse(x -> sum(sin, logsoftmax(x)), x)
+
+    H3 = Zygote.hessian_dual(x -> sum(sin, logsumexp(x)), x)
+    @test H3 ≈ Zygote.hessian_reverse(x -> sum(sin, logsumexp(x)), x)
 end

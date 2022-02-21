@@ -45,32 +45,31 @@ function softmax!(out::AbstractArray{T}, x::AbstractArray; dims = 1) where {T}
     else
         @. out = ifelse(isequal(max_,Inf), ifelse(isequal(x,Inf), 1, 0), exp(x - max_))
     end
-    out ./= sum(out; dims = dims)  # could re-use max_ when dims != (:) and eltype(x) == T.
+    y = out ./= sum(out; dims = dims)
 end
 
-∇softmax(Δ::AbstractArray{T}, x::AbstractArray, y::AbstractArray{S}; dims = 1) where {T,S} = 
-    ∇softmax!(similar(y, promote_type(T, S)), Δ, x, y; dims = dims)
-∇softmax(Δ, x, y; dims = 1) = ∇softmax(unthunk(Δ), x, y, dims = dims)
-
-# Can introduce at the end of deprecation cycle of ∇softmax!(out, Δ, x; dims = 1)
-# ∇softmax!(Δ, x, y; dims = 1) = ∇softmax!(Δ, Δ, x, y; dims = dims)
-
-function ∇softmax!(out::AbstractArray, Δ::AbstractArray, 
-                    x::AbstractArray, y::AbstractArray; dims = 1)
-    out .= Δ .* y
-    out .= out .- y .* sum(out; dims = dims)
+function ∇softmax(dy::AbstractArray{T}, x::AbstractArray, y::AbstractArray{S}; dims = 1) where {T,S}
+    dx = if within_grad()
+        tmp = dy .* y
+        tmp .- y .* sum(tmp; dims)
+    else
+        # This path is faster, only safe for 1st derivatives though.
+        # Was previously `∇softmax!(dx, dy, x, y; dims)` to allow CUDA overloads, but that was slow.
+        out = similar(y, promote_type(T,S))
+        out .= dy .* y
+        out .= out .- y .* sum(out; dims)
+    end
 end
 
-# Old 2-arg version recomputing forward
-∇softmax(Δ, x; dims = 1) = ∇softmax(Δ, x, softmax(x, dims = dims); dims = dims)
-∇softmax!(Δ, x; dims = 1) = ∇softmax!(Δ, Δ, x, softmax(x, dims = dims); dims = dims)
-∇softmax!(out, Δ, x; dims = 1) = ∇softmax!(out, Δ, x, softmax(x, dims = dims); dims = dims)
-
-function rrule(::typeof(softmax), xs; dims=1)
-    y = softmax(xs; dims=dims)
-    softmax_pullback(Δ) = (NoTangent(), ∇softmax(unthunk(Δ), xs, y, dims = dims))
+function rrule(::typeof(softmax), x; dims=1)
+    y = softmax(x; dims)
+    softmax_pullback(dy) = (NoTangent(), ∇softmax(unthunk(dy), x, y; dims))
     return y, softmax_pullback
 end
+
+within_grad() = false
+rrule(::typeof(within_grad)) = true, _ -> (NoTangent(),)
+
 
 """
     logsoftmax(x; dims = 1)
@@ -100,23 +99,14 @@ function logsoftmax!(out::AbstractArray{T}, x::AbstractArray; dims = 1) where {T
     out .-= log_
 end
 
-∇logsoftmax(Δ::AbstractArray{T}, x::AbstractArray, y::AbstractArray{S}; dims = 1) where {T,S} =
-    ∇logsoftmax!(similar(y, promote_type(T, S)), Δ, x, y; dims = dims)
-∇logsoftmax(Δ, x, y; dims = 1)  = ∇logsoftmax(unthunk(Δ), x, y, dims = dims)
-
-# Old 2-arg version recomputing forward
-∇logsoftmax(Δ, x; dims = 1) = ∇logsoftmax(Δ, x, logsoftmax(x, dims = dims); dims = dims)
-∇logsoftmax!(Δ, x; dims = 1) = ∇logsoftmax!(Δ, Δ, x, logsoftmax(x, dims = dims); dims = dims)
-∇logsoftmax!(out, Δ, x; dims = 1) = ∇logsoftmax!(out, Δ, x, logsoftmax(x, dims = dims); dims = dims)
-    
-function ∇logsoftmax!(out::AbstractArray, Δ::AbstractArray,
-                    x::AbstractArray, y::AbstractArray; dims = 1) 
-    out .= Δ .- sum(Δ, dims = dims) .* exp.(y)
+function ∇logsoftmax(dy::AbstractArray, x::AbstractArray, y::AbstractArray; dims = 1)
+    # This was previously `∇logsoftmax!(dx, dy, x, y; dims)` to allow CUDA overloads, but that was slow.
+    dx = dy .- sum(dy; dims) .* exp.(y)
 end
-
-function rrule(::typeof(logsoftmax), xs; dims=1)
-    y = logsoftmax(xs; dims=dims)
-    logsoftmax_pullback(Δ) = (NoTangent(), ∇logsoftmax(unthunk(Δ), xs, y, dims = dims))
+    
+function rrule(::typeof(logsoftmax), x; dims=1)
+    y = logsoftmax(x; dims)
+    logsoftmax_pullback(dy) = (NoTangent(), ∇logsoftmax(unthunk(dy), x, y; dims))
     return y, logsoftmax_pullback
 end
 
