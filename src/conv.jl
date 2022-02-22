@@ -285,8 +285,10 @@ for front_name in (:conv, :∇conv_data, :∇conv_filter,
                         y::AbstractArray{yT,N}, in1::AbstractArray{T1,N},
                         in2::AbstractArray{T2,N}, cdims::ConvDims;
                         kwargs...) where {yT, T1, T2, N}
-            @warn string("Slow fallback implementation invoked for ", $(string(front_name)), "!  ",
+            if yT == Float64  # warn for Float32 + accidental Float64, but don't print warning for ForwardDiff.Dual
+                @warn string("Slow fallback implementation invoked for ", $(string(front_name)), "!  ",
                           "You probably don't want this; check your datatypes.") yT T1 T2 maxlog=1
+            end
             $(Symbol("$(front_name)_direct!"))(y, in1, in2, cdims; kwargs...)
         end
     end
