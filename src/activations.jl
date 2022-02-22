@@ -514,6 +514,8 @@ julia> celu(-10f0)
 """
 celu(x, α=1) = ifelse(x ≥ 0, float(x), oftf(x,α) * (exp(x/oftf(x,α)) - 1))
 
+deriv_celu(Ω, α=1) = ifelse(Ω > 0, oftf(Ω, 1), Ω / oftf(Ω, α) + 1)
+
 """
     trelu(x, theta=1) = x > theta ? x : 0
 
@@ -579,6 +581,8 @@ julia> softsign(100f0)
 ```
 """
 softsign(x) = x / (1 + abs(x))
+
+deriv_softsign(x) = 1 / (1 + abs(x))^2
 
 """
     softplus(x) = log(exp(x) + 1)
@@ -848,7 +852,7 @@ UNARY_ACTS = [ # f, df
     ## In the same order as above!
     (:σ,            :(conj(Ω * (1 - Ω)))),
     (:hardσ,        :(ifelse((Ω>0)&(Ω<1), 1//6, 1//1))),
-    # logσ
+    (:logσ,         :(sigmoid_fast(-x))),
     (:hardtanh,     :((Ω>-1) & (Ω<1))),
     (:relu,         :(Ω > 0)),
     (:leakyrelu,    :(ifelse(Ω > 0, 1//1, 1//100))),
@@ -856,17 +860,17 @@ UNARY_ACTS = [ # f, df
     # rrelu is random, can't write a rule.
     (:elu,          :(deriv_elu(Ω))),
     # gelu
-    # swish
-    # (:hardswish,   :(hardσ(x) + x * ((Ω>0)&(Ω<1))/6)),  # wrong! could depend only on Ω
+    (:swish,        :(Ω + sigmoid_fast(x) * (1 - Ω))),
+    (:hardswish,    :(deriv_hardswish(x))),
     # lisht
     (:selu,         :(deriv_selu(Ω))),
-    # celu
+    (:celu,         :(deriv_celu(Ω))),
     (:trelu,        :(Ω > 0)),
-    # softsign
-    (:softplus,     :(σ(x))),
+    (:softsign,     :(deriv_softsign(x))),  # not really faster
+    (:softplus,     :(sigmoid_fast(x))),
     # logcosh
     # mish
-    # (:tanhshrink,    :(1 - conj(1 - (1-Ω)^2))),  # wrong!
+    (:tanhshrink,    :(tanh_fast(x)^2)),  # slower
     (:softshrink,    :(Ω != 0)),
     ## Fast variants are the same!
     (:tanh_fast,    :(conj(1 - Ω^2))),
@@ -895,9 +899,12 @@ end
 NO_ACT_GRAD = NaN  ## Still reminds you not to use this, but is perhaps more GPU friendly.
 
 BINARY_ACTS = [ # f, df1, df2
-    (:elu, :(deriv_elu(Ω, x2)), NO_ACT_GRAD),
-    (:leakyrelu, :(ifelse(Ω > 0, oftype(x2, 1), x2)), NO_ACT_GRAD),
-    (:softshrink, :(Ω != 0), NO_ACT_GRAD),
+    ## In the same order as above!
+    (:leakyrelu,   :(ifelse(Ω > 0, oftf(Ω, 1), oftf(Ω, x2))), NO_ACT_GRAD),
+    (:elu,         :(deriv_elu(Ω, x2)),      NO_ACT_GRAD),
+    (:celu,        :(deriv_celu(Ω, x2)),     NO_ACT_GRAD),
+    (:trelu,       :(Ω > 0),                 ZeroTangent()),
+    (:softshrink,  :(Ω != 0),                ZeroTangent()),
 ]
 
 for (f, df1, df2) in BINARY_ACTS
