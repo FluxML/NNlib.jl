@@ -866,11 +866,12 @@ UNARY_ACTS = [ # f, df
     (:selu,         :(deriv_selu(Ω))),
     (:celu,         :(deriv_celu(Ω))),
     (:trelu,        :(Ω > 0)),
-    (:softsign,     :(deriv_softsign(x))),  # not really faster
-    (:softplus,     :(sigmoid_fast(x))),
+    (:softsign,     :(deriv_softsign(x))),
+    # (:softplus,     :(sigmoid_fast(x))),
+    (:softplus,     :(1 - @fastmath exp(-Ω))),  # slightly faster
     # logcosh
     # mish
-    (:tanhshrink,    :(tanh_fast(x)^2)),  # slower
+    (:tanhshrink,    :((x - Ω)^2)),
     (:softshrink,    :(Ω != 0)),
     ## Fast variants are the same!
     (:tanh_fast,    :(conj(1 - Ω^2))),
