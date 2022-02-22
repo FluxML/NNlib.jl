@@ -19,6 +19,13 @@ end
 
 ### Deprecated while v0.8 was latest
 
+export ∇softmax,
+    ∇softmax!,
+    logsoftmax,
+    logsoftmax!,
+    ∇logsoftmax,
+    ∇logsoftmax!
+
 function ∇softmax!(out::AbstractArray, Δ::AbstractArray, 
                     x::AbstractArray, y::AbstractArray; dims = 1)
     Base.depwarn("`∇softmax!` is deprecated, just use `softmax∇x(dy, y)`", :∇softmax!)
