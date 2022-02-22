@@ -848,7 +848,7 @@ this replacement for some array or element types.
 
 ## TODO: add to the lists below all activations.
 
-UNARY_ACTS = [ # f, df
+UNARY_ACTS = [ # f, dfdx
     ## In the same order as above!
     (:σ,            :(conj(Ω * (1 - Ω)))),
     (:hardσ,        :(ifelse((Ω>0)&(Ω<1), 1//6, 1//1))),
@@ -867,8 +867,8 @@ UNARY_ACTS = [ # f, df
     (:celu,         :(deriv_celu(Ω))),
     (:trelu,        :(Ω > 0)),
     (:softsign,     :(deriv_softsign(x))),
-    # (:softplus,     :(sigmoid_fast(x))),
-    (:softplus,     :(1 - @fastmath exp(-Ω))),  # slightly faster
+    (:softplus,     :(sigmoid_fast(x))),
+    # (:softplus,     :(1 - @fastmath exp(-Ω))),  # slightly faster, check accuracy?
     # logcosh
     # mish
     (:tanhshrink,    :((x - Ω)^2)),
@@ -878,17 +878,17 @@ UNARY_ACTS = [ # f, df
     (:sigmoid_fast, :(conj(Ω * (1 - Ω)))),
 ]
 
-for (f, df) in UNARY_ACTS
-    @eval @scalar_rule($f(x), $df)
+for (f, dfdx) in UNARY_ACTS
+    @eval @scalar_rule($f(x), $dfdx)
 
     pullback = Symbol(:broadcasted_, f, :_pullback)
     @eval function rrule(::typeof(broadcasted),
                          ::typeof($f), x::Numeric)
         Ω = $f.(x)
-        function $pullback(Δ)
+        function $pullback(dΩ)
             x_thunk = InplaceableThunk(
-                dx -> @.(dx += Δ * $df),
-                @thunk @.(Δ * $df)
+                dx -> @.(dx += dΩ * $dfdx),
+                @thunk @.(dΩ * $dfdx)
             )
             NoTangent(), NoTangent(), x_thunk
         end
@@ -899,7 +899,7 @@ end
 # NO_ACT_GRAD = ChainRulesCore.@not_implemented "for simplicitly NNlib assumes the 2nd argument of this activation function is a constant"
 NO_ACT_GRAD = NaN  ## Still reminds you not to use this, but is perhaps more GPU friendly.
 
-BINARY_ACTS = [ # f, df1, df2
+BINARY_ACTS = [ # f, dfdx1, dfdx2
     ## In the same order as above!
     (:leakyrelu,   :(ifelse(Ω > 0, oftf(Ω, 1), oftf(Ω, x2))), NO_ACT_GRAD),
     (:elu,         :(deriv_elu(Ω, x2)),      NO_ACT_GRAD),
@@ -908,8 +908,8 @@ BINARY_ACTS = [ # f, df1, df2
     (:softshrink,  :(Ω != 0),                ZeroTangent()),
 ]
 
-for (f, df1, df2) in BINARY_ACTS
-    @eval @scalar_rule($f(x1, x2), ($df1, $df2))
+for (f, dfdx1, dfdx2) in BINARY_ACTS
+    @eval @scalar_rule($f(x1, x2), ($dfdx1, $dfdx2))
 
     pullback = Symbol(:broadcasted_, f, :_pullback_2arg)
     @eval function rrule(::typeof(broadcasted),
@@ -917,7 +917,7 @@ for (f, df1, df2) in BINARY_ACTS
                          x1::Numeric, x2::Number)
         Ω = $f.(x1, x2)
         ## Allowing x2::Array would allow size(Ω) != size(x1), which is not handled here:
-        $pullback(Δ) = (NoTangent(), NoTangent(), @.(Δ * $df1), NO_ACT_GRAD)
+        $pullback(dΩ) = (NoTangent(), NoTangent(), @.(dΩ * $dfdx1), NO_ACT_GRAD)
         return Ω, $pullback
     end
 end
