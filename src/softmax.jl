@@ -53,18 +53,18 @@ julia> Dense(4 => 7, softmax)(x)
 ERROR: `softmax(x)` called with a number, but it expects an array. 
 ```
 """
-softmax(x; dims = 1) = softmax!(similar(x, (float ∘ eltype)(x)), x; dims = dims)
+softmax(x::AbstractArray{T}; dims = 1) where {T} = softmax!(similar(x, float(T)), x; dims)
 
-softmax!(x; dims = 1) = softmax!(x, x; dims = dims)
+softmax!(x::AbstractArray; dims = 1) = softmax!(x, x; dims)
 
 function softmax!(out::AbstractArray{T}, x::AbstractArray; dims = 1) where {T}
-    max_ = maximum(x; dims = dims)
+    max_ = maximum(x; dims)
     if all(isfinite, max_)
         out .= exp.(x .- max_)
     else
         @. out = ifelse(isequal(max_,Inf), ifelse(isequal(x,Inf), 1, 0), exp(x - max_))
     end
-    y = out ./= sum(out; dims = dims)
+    out ./= sum(out; dims)
 end
 
 function ∇softmax_data(dy::AbstractArray{T}, y::AbstractArray{S}; dims = 1) where {T,S}
@@ -81,7 +81,7 @@ function ∇softmax_data(dy::AbstractArray{T}, y::AbstractArray{S}; dims = 1) wh
     end
 end
 
-function rrule(::typeof(softmax), x; dims=1)
+function rrule(::typeof(softmax), x; dims = 1)
     y = softmax(x; dims)
     softmax_pullback(dy) = (NoTangent(), ∇softmax_data(unthunk(dy), y; dims))
     return y, softmax_pullback
@@ -104,9 +104,9 @@ It is semantically equivalent to the following:
 
 See also [`softmax`](@ref).
 """
-logsoftmax(x; dims = 1) = logsoftmax!(similar(x, (float ∘ eltype)(x)), x; dims = dims)
+logsoftmax(x::AbstractArray{T}; dims = 1) where {T} = logsoftmax!(similar(x, float(T)), x; dims)
 
-logsoftmax!(x; dims = 1) = logsoftmax!(x, x; dims = dims)
+logsoftmax!(x::AbstractArray; dims = 1) = logsoftmax!(x, x; dims)
 
 function logsoftmax!(out::AbstractArray{T}, x::AbstractArray; dims = 1) where {T}
     max_ = maximum(x; dims = dims)
@@ -124,7 +124,7 @@ function ∇logsoftmax_data(dy::AbstractArray, y::AbstractArray; dims = 1)
     dx = dy .- sum(dy; dims) .* exp.(y)
 end
     
-function rrule(::typeof(logsoftmax), x; dims=1)
+function rrule(::typeof(logsoftmax), x; dims = 1)
     y = logsoftmax(x; dims)
     logsoftmax_pullback(dy) = (NoTangent(), ∇logsoftmax_data(unthunk(dy), y; dims))
     return y, logsoftmax_pullback

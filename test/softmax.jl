@@ -1,4 +1,5 @@
 using Statistics: mean
+using NNlib: ∇softmax_data, ∇logsoftmax_data
 
 @testset "softmax integer input" begin
     @test softmax(Int[0, 0]) == [0.5, 0.5]
@@ -34,10 +35,10 @@ end
     @test logsoftmax(xs) ≈ [-999 -1998 -2997; 0 0 0.0]
 
     y = logsoftmax(xs)
-    @test ∇logsoftmax(ones(Float32, size(xs)), xs, y) ≈ Float32[1 1 1; -1 -1 -1]
+    @test ∇logsoftmax_data(ones(Float32, size(xs)), y) ≈ Float32[1 1 1; -1 -1 -1]
     
     y = softmax(xs)
-    @test ∇softmax(ones(Float32, size(xs)), xs, y) ≈ zeros(Float32, size(xs))
+    @test ∇softmax_data(ones(Float32, size(xs)), y) ≈ zeros(Float32, size(xs))
 
     # These values precalculated using PyTorch's nn.LogSoftmax
     xs = [
@@ -52,10 +53,10 @@ end
     ]
     
     y = logsoftmax(xs)
-    @test ∇logsoftmax(ones(size(xs)), xs, y) ≈ ys rtol = 1e-6
+    @test ∇logsoftmax_data(ones(size(xs)), y) ≈ ys rtol = 1e-6
     
     y = softmax(xs)
-    @test ∇softmax(ones(size(xs)), xs, y) ≈ zeros(size(xs)) atol = 1e-6
+    @test ∇softmax_data(ones(size(xs)), y) ≈ zeros(size(xs)) atol = 1e-6
 end
 
 @testset "softmax with Inf, NaN" begin
@@ -91,12 +92,12 @@ end
         @testset "$fn(Float64, $(size(xs)))" for fn in [zeros, ones, rand]
             Δ = fn(Float64, size(xs))
             y = softmax(xs) 
-            ∇softmax!(out, Δ, xs, y)
-            @test out ≈ ∇softmax(Δ, xs, y)  rtol = 1e-6
+            ∇softmax!(out, Δ, xs, y)  # deprecated
+            @test out ≈ ∇softmax_data(Δ, y)  rtol = 1e-6
             
             y = logsoftmax(xs)
-            ∇logsoftmax!(out, Δ, xs, y)
-            @test out ≈ ∇logsoftmax(Δ, xs, y)  rtol = 1e-6
+            ∇logsoftmax!(out, Δ, xs, y)  # deprecated
+            @test out ≈ ∇logsoftmax_data(Δ, y)  rtol = 1e-6
         end
     end
 end
