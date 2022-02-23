@@ -67,7 +67,7 @@ function softmax!(out::AbstractArray{T}, x::AbstractArray; dims = 1) where {T}
     y = out ./= sum(out; dims = dims)
 end
 
-function softmax∇x(dy::AbstractArray{T}, y::AbstractArray{S}; dims = 1) where {T,S}
+function ∇softmax_data(dy::AbstractArray{T}, y::AbstractArray{S}; dims = 1) where {T,S}
     dx = if within_grad()
         tmp = dy .* y
         tmp .- y .* sum(tmp; dims)
@@ -83,7 +83,7 @@ end
 
 function rrule(::typeof(softmax), x; dims=1)
     y = softmax(x; dims)
-    softmax_pullback(dy) = (NoTangent(), softmax∇x(unthunk(dy), y; dims))
+    softmax_pullback(dy) = (NoTangent(), ∇softmax_data(unthunk(dy), y; dims))
     return y, softmax_pullback
 end
 
@@ -119,14 +119,14 @@ function logsoftmax!(out::AbstractArray{T}, x::AbstractArray; dims = 1) where {T
     out .-= log_
 end
 
-function logsoftmax∇x(dy::AbstractArray, y::AbstractArray; dims = 1)
+function ∇logsoftmax_data(dy::AbstractArray, y::AbstractArray; dims = 1)
     # This was previously `∇logsoftmax!(dx, dy, x, y; dims)` to allow CUDA overloads, but that was slow.
     dx = dy .- sum(dy; dims) .* exp.(y)
 end
     
 function rrule(::typeof(logsoftmax), x; dims=1)
     y = logsoftmax(x; dims)
-    logsoftmax_pullback(dy) = (NoTangent(), logsoftmax∇x(unthunk(dy), y; dims))
+    logsoftmax_pullback(dy) = (NoTangent(), ∇logsoftmax_data(unthunk(dy), y; dims))
     return y, logsoftmax_pullback
 end
 
