@@ -60,9 +60,9 @@ softmax!(x::AbstractArray; dims = 1) = softmax!(x, x; dims)
 function softmax!(out::AbstractArray{T}, x::AbstractArray; dims = 1) where {T}
     max_ = maximum(x; dims)
     if all(isfinite, max_)
-        out .= exp.(x .- max_)
+        @fastmath out .= exp.(x .- max_)
     else
-        @. out = ifelse(isequal(max_,Inf), ifelse(isequal(x,Inf), 1, 0), exp(x - max_))
+        @fastmath @. out = ifelse(isequal(max_,Inf), ifelse(isequal(x,Inf), 1, 0), exp(x - max_))
     end
     out ./= sum(out; dims)
 end
@@ -109,13 +109,13 @@ logsoftmax(x::AbstractArray{T}; dims = 1) where {T} = logsoftmax!(similar(x, flo
 logsoftmax!(x::AbstractArray; dims = 1) = logsoftmax!(x, x; dims)
 
 function logsoftmax!(out::AbstractArray{T}, x::AbstractArray; dims = 1) where {T}
-    max_ = maximum(x; dims = dims)
+    max_ = maximum(x; dims)
     if all(isfinite, max_)
         out .= x .- max_
     else
         @. out = ifelse(isequal(max_,Inf), ifelse(isequal(x,Inf), 0, -Inf), x - max_)
     end
-    log_ = log.(sum(exp, out; dims = dims))
+    @fastmath log_ = log.(sum(exp, out; dims))
     out .-= log_
 end
 
@@ -140,7 +140,7 @@ See also [`logsoftmax`](@ref).
 """
 function logsumexp(x::AbstractArray; dims = :)
     max_ = maximum(x; dims = dims)
-    max_ .+ log.(sum(exp.(x .- max_); dims = dims))
+    @fastmath max_ .+ log.(sum(exp.(x .- max_); dims = dims))
 end
 
 # Informative error message if any of the softmax variants is called with a number
