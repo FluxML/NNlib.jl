@@ -133,14 +133,23 @@ end
 """
     logsumexp(x; dims = :)
 
-Computes `log.(sum(exp.(x); dims = dims))` in a numerically stable
-way.
+Computes `log.(sum(exp.(x); dims))` in a numerically stable way.
+Without `dims` keyword this returns a scalar.
 
 See also [`logsoftmax`](@ref).
 """
 function logsumexp(x::AbstractArray; dims = :)
-    max_ = maximum(x; dims = dims)
-    @fastmath max_ .+ log.(sum(exp.(x .- max_); dims = dims))
+    max_ = maximum(x; dims)
+    @fastmath max_ .+ log.(sum(exp.(x .- max_); dims))
+end
+
+function rrule(::typeof(logsumexp), x; dims = :)
+    # The gradient is `softmax`, but both compute `tmp` so it's worth saving.
+    max_ = maximum(x; dims)
+    @fastmath tmp = exp.(x .- max_)
+    @fastmath y = max_ .+ log.(sum(tmp; dims))
+    logsumexp_pullback(dy) = (NoTangent(), unthunk(dy) .* tmp ./ sum(tmp; dims))
+    return y, logsumexp_pullback
 end
 
 # Informative error message if any of the softmax variants is called with a number
