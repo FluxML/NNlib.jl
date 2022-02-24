@@ -3,7 +3,7 @@
 # Some of activation functions have its wrapper function for GPU in NNlibCUDA.jl.
 # https://github.com/JuliaGPU/CuArrays.jl/issues/614
 
-const ACTIVATIONS = [
+ACTIVATIONS = [
     :σ, :hardσ, :hardtanh, :relu,
     :leakyrelu, :relu6, :rrelu, :elu, :gelu, :swish, :hardswish, :selu,
     :celu, :softplus, :softsign, :logσ, :logcosh,
@@ -32,6 +32,8 @@ The ascii name `sigmoid` is also exported.
 See also [`sigmoid_fast`](@ref).
 
 ```
+julia> using UnicodePlots
+
 julia> lineplot(sigmoid, -5, 5, height=7)
           ┌────────────────────────────────────────┐     
         1 │⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⡇⠀⠀⠀⠀⠀⠀⣀⡠⠤⠖⠒⠒⠋⠉⠉⠉⠉⠉⠉│ σ(x)
@@ -292,9 +294,9 @@ julia> elu(-10f0, 2)
 -1.9999092f0
 ```
 """
-elu(x, α=1) = ifelse(x ≥ 0, float(x), @fastmath α * (exp(x) - 1)) 
+elu(x, α=1) = ifelse(x ≥ 0, float(x), @fastmath oftf(x, α) * (exp(x) - 1))
 
-deriv_elu(Ω, α=1) = ifelse(Ω ≥ 0, one(Ω), Ω + α)
+deriv_elu(Ω, α=1) = ifelse(Ω ≥ 0, one(Ω), Ω + oftype(Ω, α))
 
 """
     gelu(x) = 0.5x * (1 + tanh(√(2/π) * (x + 0.044715x^3)))
@@ -314,6 +316,21 @@ julia> lineplot(gelu, -2, 2, height=7)
            └────────────────────────────────────────┘        
            ⠀-2⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀2⠀        
            ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀x⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀        
+
+julia> lineplot(gelu, -5, 0, height=7);
+
+julia> lineplot!(ans, swish)
+             ┌────────────────────────────────────────┐         
+           0 │⠉⠉⠉⠉⠉⠉⠉⠉⠉⠉⠉⠉⠉⠉⠉⠉⠉⠉⠒⠒⠤⣄⡀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢸│ gelu(x) 
+             │⠑⠒⠢⠤⣄⡀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠉⠓⢄⡀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⡇│ swish(x)
+             │⠀⠀⠀⠀⠀⠈⠉⠒⠤⣀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠑⢆⡀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣸⠁│         
+   f(x)      │⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠉⠒⢄⡀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠑⢄⠀⠀⠀⠀⠀⠀⠀⠀⢠⡇⠀│         
+             │⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠉⠓⢄⡀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠓⣄⠀⠀⠀⠀⠀⢠⡞⠀⠀│         
+             │⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠉⠦⡀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠓⢄⣀⣀⡤⢣⠃⠀⠀│         
+        -0.2 │⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠈⠓⣄⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢠⠇⠀⠀⠀│         
+             └────────────────────────────────────────┘         
+             ⠀-5⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀0⠀         
+             ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀x⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀         
 ```
 """
 function gelu(x)
@@ -353,25 +370,46 @@ julia> lineplot(swish, -2, 2, height=7)
 """
     hardswish(x) = x * hardσ(x)
 
-Hard-Swish activation function
-See (["Searching for MobileNetV3"](https://arxiv.org/abs/1905.02244)).
+Hard-Swish activation function.
+See ["Searching for MobileNetV3"](https://arxiv.org/abs/1905.02244).
 
 ```
-julia> lineplot(hardswish, -2, 2, height = 7)
-           ┌────────────────────────────────────────┐           
-         2 │⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⡇⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣀│ hardswish(x)
-           │⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⡇⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣀⡤⠖⠋⠁│           
-           │⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⡇⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⣀⠤⠒⠋⠁⠀⠀⠀⠀│           
-   f(x)    │⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⡇⠀⠀⠀⠀⣀⡠⠤⠒⠋⠁⠀⠀⠀⠀⠀⠀⠀⠀⠀│           
-           │⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⣤⣤⡤⡧⠴⠶⠯⠭⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤│           
-           │⠒⠲⠤⠤⠤⠤⠤⠤⠖⠒⠒⠒⠒⠊⠉⠉⠉⠀⠀⠀⡇⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀│           
-        -1 │⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⡇⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀│           
-           └────────────────────────────────────────┘           
-           ⠀-2⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀2⠀           
-           ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀x⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀        
+julia> lineplot(hardswish, -2, 5, height = 7)
+           ┌────────────────────────────────────────┐             
+         5 │⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⡇⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣀⡤⠔⠒⠉│ hardswish(x)
+           │⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⡇⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣀⡠⠔⠒⠉⠁⠀⠀⠀⠀│             
+           │⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⡇⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣀⠤⠖⠉⠁⠀⠀⠀⠀⠀⠀⠀⠀⠀│             
+   f(x)    │⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⡇⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⡠⠔⠊⠁⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀│             
+           │⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⡇⠀⠀⠀⠀⠀⢀⣀⠤⠖⠋⠁⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀│             
+           │⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣇⣤⣤⣖⣚⣉⣁⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀│             
+        -1 │⠉⠒⠒⠒⠒⠉⠉⠉⠉⠁⠀⡇⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀│             
+           └────────────────────────────────────────┘             
+           ⠀-2⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀5⠀             
+           ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀x⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀             
+
+julia> lineplot(hardswish, -4, 0, height = 7);
+
+julia> lineplot!(ans, swish)
+             ┌────────────────────────────────────────┐             
+           0 │⠉⠉⠉⠉⠉⠉⠉⠉⠉⠉⢣⡀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⡜│ hardswish(x)
+             │⠒⠒⠢⠤⢄⣀⡀⠀⠀⠀⠀⠱⡄⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⠎⠀│ swish(x)    
+             │⠀⠀⠀⠀⠀⠀⠈⠉⠑⠒⠦⢄⣘⢄⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⡴⠃⠀⠀│             
+   f(x)      │⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠉⠑⡖⠦⢄⣀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣀⢔⠏⠁⠀⠀⠀│             
+             │⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠈⠣⣄⠀⠉⠑⠒⠦⠤⢄⣀⣀⣀⣀⡠⠤⠖⣊⠕⠁⠀⠀⠀⠀⠀│             
+             │⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠓⠤⡀⠀⠀⠀⠀⠀⠀⠀⠀⢀⡤⠖⠁⠀⠀⠀⠀⠀⠀⠀│             
+        -0.4 │⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠈⠉⠒⠢⠤⠤⠔⠒⠋⠁⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀│             
+             └────────────────────────────────────────┘             
+             ⠀-4⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀0⠀             
+             ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀x⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀             
+
+julia> hardswish.(-5:5)'
+1×11 adjoint(::Vector{Float64}) with eltype Float64:
+ -0.0  -0.0  -0.0  -0.333333  -0.333333  0.0  0.666667  1.66667  3.0  4.0  5.0
 ```
 """
 @inline hardswish(x) = x * hardσ(x)
+
+deriv_hardswish(x) = ifelse(x < -3, oftf(x,0), ifelse(x > 3, oftf(x,1), x/3 + 1//2))
 
 """
     lisht(x) = x * tanh(x)
@@ -392,6 +430,19 @@ julia> lineplot(lisht, -2, 2, height=7)
           └────────────────────────────────────────┘         
           ⠀-2⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀2⠀         
           ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀x⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀         
+
+julia> lineplot!(ans, logcosh)
+          ┌────────────────────────────────────────┐           
+        2 │⠢⣄⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⡇⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣀⠔│ lisht(x)  
+          │⠀⠈⠑⢦⡀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⡇⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⡤⠊⠁⠀│ logcosh(x)
+          │⠢⣄⠀⠀⠈⠣⣄⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⡇⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣀⠔⠁⠀⠀⣀⠔│           
+   f(x)   │⠀⠈⠑⠢⣀⠀⠀⠑⢆⡀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⡇⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⡠⠊⠁⠀⣀⠔⠊⠁⠀│           
+          │⠀⠀⠀⠀⠀⠉⠢⢄⡀⠉⠢⡄⠀⠀⠀⠀⠀⠀⠀⠀⡇⠀⠀⠀⠀⠀⠀⠀⢀⠔⠋⠀⡠⠔⠋⠁⠀⠀⠀⠀│           
+          │⠀⠀⠀⠀⠀⠀⠀⠀⠉⠓⠦⣌⡓⢄⡀⠀⠀⠀⠀⠀⡇⠀⠀⠀⠀⢀⡠⠖⣁⠤⠒⠉⠀⠀⠀⠀⠀⠀⠀⠀│           
+        0 │⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠉⠓⠪⠷⣦⣄⣀⣀⣇⣀⣀⣤⠶⠕⠒⠉⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀│           
+          └────────────────────────────────────────┘           
+          ⠀-2⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀2⠀           
+          ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀x⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀           
 ```
 """
 lisht(x) = x * tanh_fast(x)
@@ -406,17 +457,17 @@ Scaled exponential linear units.
 See ["Self-Normalizing Neural Networks"](https://arxiv.org/abs/1706.02515).
 
 ```
-julia> lineplot(selu, -2, 2, height=7)
+julia> lineplot(selu, -3, 2, height=7)
            ┌────────────────────────────────────────┐        
-         3 │⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⡇⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀│ selu(x)
-           │⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⡇⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣀⡠⠤⠔⠒│        
-           │⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⡇⠀⠀⠀⠀⠀⠀⠀⣀⣀⠤⠔⠒⠋⠉⠀⠀⠀⠀⠀│        
-   f(x)    │⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⡇⢀⣀⡤⠤⠒⠊⠉⠁⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀│        
-           │⠉⠉⠉⠉⠉⠉⠉⠉⠉⠉⠉⠉⠉⠉⠉⠉⣉⡩⠭⠛⡏⠉⠉⠉⠉⠉⠉⠉⠉⠉⠉⠉⠉⠉⠉⠉⠉⠉⠉⠉│        
-           │⠀⠀⠀⠀⠀⠀⠀⣀⣀⣀⡤⠤⠔⠒⠊⠉⠁⠀⠀⠀⡇⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀│        
-        -2 │⠒⠒⠉⠉⠉⠉⠉⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⡇⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀│        
+         3 │⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⡇⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀│ selu(x)
+           │⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⡇⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣀⡤⠤⠒│        
+           │⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⡇⠀⠀⠀⠀⠀⢀⣀⠤⠖⠊⠉⠀⠀⠀⠀│        
+   f(x)    │⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⡇⣀⡠⠤⠒⠋⠁⠀⠀⠀⠀⠀⠀⠀⠀⠀│        
+           │⠉⠉⠉⠉⠉⠉⠉⠉⠉⠉⠉⠉⠉⠉⠉⠉⠉⠉⠉⠉⠉⣉⠭⠛⡏⠉⠉⠉⠉⠉⠉⠉⠉⠉⠉⠉⠉⠉⠉⠉│        
+           │⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⣀⣀⡤⠤⠒⠊⠉⠀⠀⠀⡇⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀│        
+        -2 │⠤⠤⠖⠒⠒⠒⠒⠒⠒⠒⠉⠉⠉⠁⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⡇⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀│        
            └────────────────────────────────────────┘        
-           ⠀-2⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀2⠀        
+           ⠀-3⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀2⠀        
            ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀x⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀        
 
 julia> selu(-10f0)
@@ -461,7 +512,9 @@ julia> celu(-10f0)
 -0.9999546f0
 ```
 """
-celu(x, α=1) = ifelse(x ≥ 0, float(x), α * (exp(x/α) - 1))
+celu(x, α=1) = ifelse(x ≥ 0, float(x), oftf(x,α) * (exp(x/oftf(x,α)) - 1))
+
+deriv_celu(Ω, α=1) = ifelse(Ω > 0, oftf(Ω, 1), Ω / oftf(Ω, α) + 1)
 
 """
     trelu(x, theta=1) = x > theta ? x : 0
@@ -528,6 +581,8 @@ julia> softsign(100f0)
 ```
 """
 softsign(x) = x / (1 + abs(x))
+
+deriv_softsign(x) = 1 / (1 + abs(x))^2
 
 """
     softplus(x) = log(exp(x) + 1)
@@ -675,9 +730,9 @@ julia> softshrink.((-10f0, 10f0))
 (-9.5f0, 9.5f0)
 ```
 """
-function softshrink(x, λ=oftf(x, 0.5))
-    lo = x - λ
-    hi = x + λ
+function softshrink(x, λ = 0.5)
+    lo = x - oftf(x, λ)
+    hi = x + oftf(x, λ)
     ifelse(hi > 0, ifelse(lo < 0, zero(hi), lo), hi)
 end
 
@@ -785,36 +840,55 @@ this replacement for some array or element types.
 
 ## Define rrules for some activation functions, along with the
 ## broadcasted rrule activation functions.
-## TODO: add to the lists below all activations.
 
 ## This is a performance hack specifically for Zygote, because it doesn't handle fused
 ## broadcasts well; but it generally should be good (or at least harmless) for any AD, as
 ## it saves ADing the broadcasting machinery.
 ## Related Issue https://github.com/JuliaDiff/ChainRulesCore.jl/issues/271
 
-UNARY_ACTS = [ # f, df
-    (:relu,         :(x > 0)),
-    (:hardtanh,     :(-1 < x < 1)),
-    (:selu,         :(deriv_selu(Ω))),
-    (:σ,            :(conj(Ω * (1 - Ω)))),
-    (:elu,          :(deriv_elu(Ω))),
-    (:softplus,     :(σ(x))),
+## TODO: add to the lists below all activations.
 
+UNARY_ACTS = [ # f, dfdx
+    ## In the same order as above!
+    (:σ,            :(conj(Ω * (1 - Ω)))),
+    (:hardσ,        :(ifelse((Ω>0)&(Ω<1), 1//6, 1//1))),
+    (:logσ,         :(sigmoid_fast(-x))),
+    (:hardtanh,     :((Ω>-1) & (Ω<1))),
+    (:relu,         :(Ω > 0)),
+    (:leakyrelu,    :(ifelse(Ω > 0, 1//1, 1//100))),
+    (:relu6,        :((Ω>0) & (Ω<6))),
+    # rrelu is random, can't write a rule.
+    (:elu,          :(deriv_elu(Ω))),
+    # gelu
+    (:swish,        :(Ω + sigmoid_fast(x) * (1 - Ω))),
+    (:hardswish,    :(deriv_hardswish(x))),
+    # lisht
+    (:selu,         :(deriv_selu(Ω))),
+    (:celu,         :(deriv_celu(Ω))),
+    (:trelu,        :(Ω > 0)),
+    (:softsign,     :(deriv_softsign(x))),
+    (:softplus,     :(sigmoid_fast(x))),
+    # (:softplus,     :(1 - @fastmath exp(-Ω))),  # slightly faster, check accuracy?
+    # logcosh
+    # mish
+    (:tanhshrink,    :((x - Ω)^2)),
+    (:softshrink,    :(Ω != 0)),
+    ## Fast variants are the same!
     (:tanh_fast,    :(conj(1 - Ω^2))),
     (:sigmoid_fast, :(conj(Ω * (1 - Ω)))),
-    ]
+]
 
-for (f, df) in UNARY_ACTS
-    @eval @scalar_rule($f(x), $df)
+for (f, dfdx) in UNARY_ACTS
+    @eval @scalar_rule($f(x), $dfdx)
 
     pullback = Symbol(:broadcasted_, f, :_pullback)
     @eval function rrule(::typeof(broadcasted),
                          ::typeof($f), x::Numeric)
         Ω = $f.(x)
-        function $pullback(Δ)
+        function $pullback(dΩ)
             x_thunk = InplaceableThunk(
-                dx -> @.(dx += Δ * $df),
-                @thunk @.(Δ * $df)
+                dx -> @.(dx += dΩ * $dfdx),
+                @thunk @.(dΩ * $dfdx)
             )
             NoTangent(), NoTangent(), x_thunk
         end
@@ -822,21 +896,28 @@ for (f, df) in UNARY_ACTS
     end
 end
 
-BINARY_ACTS = [ # f, df1, df2
-    (:elu, :(deriv_elu(Ω, x2)), :(NoTangent())), # TODO use real deriv instead of DNE
-    ]
+# NO_ACT_GRAD = ChainRulesCore.@not_implemented "for simplicitly NNlib assumes the 2nd argument of this activation function is a constant"
+NO_ACT_GRAD = NaN  ## Still reminds you not to use this, but is perhaps more GPU friendly.
 
-for (f, df1, df2) in BINARY_ACTS
-    @eval @scalar_rule($f(x1, x2), ($df1, $df2))
+BINARY_ACTS = [ # f, dfdx1, dfdx2
+    ## In the same order as above!
+    (:leakyrelu,   :(ifelse(Ω > 0, oftf(Ω, 1), oftf(Ω, x2))), NO_ACT_GRAD),
+    (:elu,         :(deriv_elu(Ω, x2)),      NO_ACT_GRAD),
+    (:celu,        :(deriv_celu(Ω, x2)),     NO_ACT_GRAD),
+    (:trelu,       :(Ω > 0),                 ZeroTangent()),
+    (:softshrink,  :(Ω != 0),                NO_ACT_GRAD),
+]
 
-    pullback = Symbol(:broadcasted_, f, :_pullback)
+for (f, dfdx1, dfdx2) in BINARY_ACTS
+    @eval @scalar_rule($f(x1, x2), ($dfdx1, $dfdx2))
+
+    pullback = Symbol(:broadcasted_, f, :_pullback_2arg)
     @eval function rrule(::typeof(broadcasted),
                          ::typeof($f), 
-                         x1::Numeric, x2::Numeric)
+                         x1::Numeric, x2::Number)
         Ω = $f.(x1, x2)
-        function $pullback(Δ) 
-            NoTangent(), NoTangent(), @.(Δ * $df1), @.(Δ * $df2)
-        end
+        ## Allowing x2::Array would allow size(Ω) != size(x1), which is not handled here:
+        $pullback(dΩ) = (NoTangent(), NoTangent(), @.(dΩ * $dfdx1), NO_ACT_GRAD)
         return Ω, $pullback
     end
 end

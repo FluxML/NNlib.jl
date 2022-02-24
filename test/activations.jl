@@ -1,41 +1,7 @@
-using NNlib, Test, Zygote
-using NNlib: ACTIVATIONS
 
-ACTIVATION_FUNCTIONS = 
-    [@eval($a) for a in ACTIVATIONS]
+ACTIVATION_FUNCTIONS = [@eval($a) for a in NNlib.ACTIVATIONS]
 
-function test_value_float_precision_preserving(a)
-    @testset "$(a): " begin
-        for T in [Float16, Float32, Float64]
-            for val in [-10, -1, 0, 1, 10]
-                val = @inferred a(T(val))
-                @test typeof(val) == T
-            end
-        end
-    end
-end
-
-function test_value_int_input_forces_float64(a)
-    @testset "$(a): " begin
-        for T in [Int32, Int64]
-            for val in [-10, -1, 0, 1, 10]
-                val = @inferred a(T(val))
-                @test typeof(val) == Float64
-            end
-        end
-    end
-end
-
-function test_gradient_float_precision_preserving(a)
-    @testset "$(a): " begin
-        for T in [Float16, Float32, Float64]
-            for val in [-10, -1, 0, 1, 10]
-                val = @inferred a'(T(val))
-                @test typeof(val) == T
-            end
-        end
-    end
-end
+BINARY_ACTIVATIONS = filter(f -> hasmethod(f, Tuple{Float64, Float64}), ACTIVATION_FUNCTIONS)
 
 @test sigmoid(0.0) == 0.5
 @test hardsigmoid(0.0) == 0.5
@@ -106,13 +72,31 @@ end
 @test softshrink(-1.0) == -0.5
 
 @testset "Float inference" begin
-    test_value_float_precision_preserving.(ACTIVATION_FUNCTIONS)
+    @testset "$(a): " for a in ACTIVATION_FUNCTIONS
+        for T in [Float16, Float32, Float64]
+            for val in [-10, -1, 0, 1, 10]
+                out = @inferred a(T(val))
+                @test typeof(out) == T
+            end
+        end
+    end
+    @testset "binary $a: " for a in BINARY_ACTIVATIONS
+        for T in [Float16, Float32, Float64]
+            for val in [-10, -1, 0, 1, 10], beta in Any[0.1, 0.5f0, 1]
+                out = @inferred a(T(val), beta)
+                @test typeof(out) == T
+            end
+        end
+    end
 end
 
-@testset "Array input" begin
+@testset "Array input -> error" begin
     x = rand(5)
     for a in ACTIVATION_FUNCTIONS
         @test_throws ErrorException a(x)
+    end
+    for a in BINARY_ACTIVATIONS
+        @test_throws ErrorException a(x, 0.1)
     end
 end
 
@@ -131,36 +115,31 @@ end
     end
 end
 
-@testset "Test Integer64 and Integer32 inputs will force Float64 outputs" begin
-    test_value_int_input_forces_float64.(filter(x -> (x != relu && x != relu6 && x != hardtanh && x != trelu), ACTIVATION_FUNCTIONS))
+@testset "Integer inputs" begin
+    # These should work without error, for e.g. readme examples,
+    # but no serious use will involve integers, no need for performance.
+    @testset "$a" for a in ACTIVATION_FUNCTIONS
+        @test typeof(a(Int64(1))) <: Real
+        @test typeof(a(Int32(1))) <: Real
+    end
 
-    @testset "relu: " begin
-        # relu doesn't have to force floating point outputs
+    # The following ones can pass integers through. But it's not very important.
+    @testset "relu: Int -> Int" begin
         @test typeof(relu(Int64(1))) == Int64
         @test typeof(relu(Int32(1))) == Int32
     end
-
-    @testset "relu6: " begin
-        # relu6 doesn't have to force floating point outputs
+    @testset "relu6: Int -> Int" begin
         @test typeof(relu6(Int64(1))) == Int64
         @test typeof(relu6(Int32(1))) == Int32
     end
-
-    @testset "hardtanh: " begin
-        # hardtanh doesn't have to force floating point outputs
+    @testset "hardtanh: Int -> Int" begin
         @test typeof(hardtanh(Int64(1))) == Int64
         @test typeof(hardtanh(Int32(1))) == Int32
     end
-
-    @testset "trelu: " begin
-        # trelu doesn't have to force floating point outputs
+    @testset "trelu: Int -> Int" begin
         @test typeof(trelu(Int64(1))) == Int64
         @test typeof(trelu(Int32(1))) == Int32
     end
-end
-
-@testset "Float gradient inference" begin
-    test_gradient_float_precision_preserving.(ACTIVATION_FUNCTIONS)
 end
 
 @testset "elu" begin
@@ -181,6 +160,7 @@ end
 @test leakyrelu(-0.4,0.3) ≈ -0.12
 
 @test relu6(10.0) == 6.0
+
 @test -0.2 <= rrelu(-0.4,0.25,0.5) <= -0.1
 
 @testset "celu" begin
@@ -215,6 +195,7 @@ end
 end
 
 @test hardtanh(10.0) == 1.0
+
 @test lisht(2.5) == 2.5*tanh(2.5)
 
 @testset "trelu" begin
@@ -315,15 +296,31 @@ end
     end
 end
 
-@testset "AutoDiff" begin
+## Autodiff tests
+
+WITH_UNARY_RULE = [@eval($a) for (a, _) in NNlib.UNARY_ACTS]
+
+WITH_BINARY_RULE = [@eval($a) for (a, _, _) in NNlib.BINARY_ACTS]
+
+has_rule(a) = rrule(a, 1f0) === nothing ? "(no rule)" : ""
+
+@testset "Gradient inference" begin
+    @testset "$(a): $(has_rule(a))" for a in ACTIVATION_FUNCTIONS
+        @testset "$T" for T in [Float16, Float32, Float64]
+            for val in [-10, -1, 0, 1, 10]
+                grad = @inferred gradient(a, T(val))
+                @test typeof(grad[1]) == T
+            end
+        end
+    end
+end
+
+@testset "Gradient correctness" begin
     
     local rng = StableRNG(17)
 
-    for f in ACTIVATION_FUNCTIONS
+    @testset "$(f): $(has_rule(f))" for f in ACTIVATION_FUNCTIONS
         f == rrelu && continue # stocastich output
-        
-        # gradtest(f, rand(rng))
-        # gradtest(f, (2, 3), check_broadcast=true)
         
         ## Avoid singular points of some activations
         ## problematic for finite diff methods
@@ -332,39 +329,85 @@ end
         gradtest(f, +2 .+ rand(rng, 2, 2), check_broadcast=true)
         gradtest(f, -2 .- rand(rng, 2, 2), check_broadcast=true)
 
-        if Symbol(f) in NNlib.UNARY_ACTS
+        if f in BINARY_ACTIVATIONS
+            gradtest(x -> f(x, 0.2), 1 + rand(rng))
+            gradtest(x -> f(x, 0.7), 1 + rand(rng))
+
+            gradtest(x -> f(x, 0.2), -2 + rand(rng))
+            gradtest(x -> f(x, 0.7), -2 + rand(rng))
+        end
+
+        ## Check that rules, including broadcast rules, are defined:
+        if f in WITH_UNARY_RULE
             @test rrule(f, rand()) !== nothing
             @test rrule(broadcasted, f, rand(2)) !== nothing
         end
-        if Symbol(f) in NNlib.BINARY_ACTS
+        if f in WITH_BINARY_RULE
             @test rrule(f, rand(), rand()) !== nothing
-            @test rrule(broadcasted, f, rand(2), rand(2)) !== nothing
+            @test rrule(broadcasted, f, rand(2), rand()) !== nothing
         end
     end 
     
-    gradtest((x, W, b) -> σ.(W*x .+ b), 5, (2,5), 2)
-    gradtest((x, W, b) -> σ.(W*x .+ b), (5,3), (2,5), 2)
-    gradtest((x, W, b) -> relu.(W*x .+ b), 5, (2,5), 2)
-    gradtest((x, W, b) -> relu.(W*x .+ b), (5,3), (2,5), 2)
-    gradtest((x, W, b) -> selu.(W*x .+ b), 5, (2,5), 2)
-    gradtest((x, W, b) -> selu.(W*x .+ b), (5,3), (2,5), 2, atol=1e-4)
-    gradtest((x, W, b) -> elu.(W*x .+ b, 2), 5, (2,5), 2)
-    gradtest((x, W, b) -> elu.(W*x .+ b, 2), (5,3), (2,5), 2, atol=1e-4)
+    @testset "Flux-like usage" begin
+        ## This checks some broadcast rules for correctness:
+        gradtest((x, W, b) -> σ.(W*x .+ b), 5, (2,5), 2)
+        gradtest((x, W, b) -> σ.(W*x .+ b), (5,3), (2,5), 2)
+        gradtest((x, W, b) -> relu.(W*x .+ b), 5, (2,5), 2)
+        gradtest((x, W, b) -> relu.(W*x .+ b), (5,3), (2,5), 2)
+        gradtest((x, W, b) -> selu.(W*x .+ b), 5, (2,5), 2)
+        gradtest((x, W, b) -> selu.(W*x .+ b), (5,3), (2,5), 2, atol=1e-4)
+        gradtest((x, W, b) -> elu.(W*x .+ b, 2), 5, (2,5), 2)
+        gradtest((x, W, b) -> elu.(W*x .+ b, 2), (5,3), (2,5), 2, atol=1e-4)
 
-    # tests for https://github.com/FluxML/Zygote.jl/issues/758
-    @test gradient(xs -> sum(selu.(xs)), [1_000, 10_000])[1] ≈ [1.0507009873554805, 1.0507009873554805] rtol=1e-8
-    @test gradient(x -> selu(x), 1_000) == (1.0507009873554805,)
-    @test gradient(xs -> sum(elu.(xs, 2)), [1_000, 10_000]) == ([1., 1.],)
-    @test gradient(x -> elu(x, 2), 1_000) == (1.,)
-    @test gradient(x -> elu(x, 2), -1) == (2*exp(-1),)
-    gradtest(x-> selu.(x),[100., 1_000.])
-    gradtest(x -> elu.(x, 3.5),[100., 1_000.])
-    gradtest(x -> elu.(x, 3.5),[1_000., 10_000.])
-    gradtest(x -> selu.(x), [1_000., 10_000.])
-    gradtest(x -> selu.(x), 10, atol=1e-4)
+        gradtest((x, W, b) -> logσ.(W*x .+ b), 5, (2,5), 2)
+        gradtest((x, W, b) -> logσ.(W*x .+ b), (5,3), (2,5), 2)
 
-    gradtest((x, W, b) -> σ.(W*x .+ b), 5, (2,5), 2)
-    gradtest((x, W, b) -> σ.(W*x .+ b), (5,3), (2,5), 2)
-    gradtest((x, W, b) -> logσ.(W*x .+ b), 5, (2,5), 2)
-    gradtest((x, W, b) -> logσ.(W*x .+ b), (5,3), (2,5), 2)
+        ## Binary functions have their own broadcast rules:
+        gradtest((x, W, b) -> leakyrelu.(W*x .+ b, 0.2), 5, (2,5), 2)
+        gradtest((x, W, b) -> leakyrelu.(W*x .+ b, 0.7), (5,3), (2,5), 2)
+    end
+
+    @testset "Zygote issue 758" begin
+        ## Tests for https://github.com/FluxML/Zygote.jl/issues/758
+        @test gradient(xs -> sum(selu.(xs)), [1_000, 10_000])[1] ≈ [1.0507009873554805, 1.0507009873554805] rtol=1e-8
+        @test gradient(x -> selu(x), 1_000) == (1.0507009873554805,)
+        @test gradient(xs -> sum(elu.(xs, 2)), [1_000, 10_000]) == ([1., 1.],)
+        @test gradient(x -> elu(x, 2), 1_000) == (1.,)
+        @test gradient(x -> elu(x, 2), -1) == (2*exp(-1),)
+        gradtest(x-> selu.(x),[100., 1_000.])
+        gradtest(x -> elu.(x, 3.5),[100., 1_000.])
+        gradtest(x -> elu.(x, 3.5),[1_000., 10_000.])
+        gradtest(x -> selu.(x), [1_000., 10_000.])
+        gradtest(x -> selu.(x), 10, atol=1e-4)
+    end
+
+end
+
+@testset "Second derivatives" begin
+    ## Not extensive, but a start!
+    ## More careful tests could look for `nothing` gradients of piecewise functions
+    @testset "$(f): $(has_rule(f))" for f in ACTIVATION_FUNCTIONS
+        f == rrelu && continue
+
+        ## Scalar
+        h = Zygote.hessian_dual(x -> sin(f(x)), 0.23)
+        @test h ≈ Zygote.hessian_reverse(x -> sin(f(x)), 0.23)
+
+        ## Broadcasting
+        x = [-0.9, -0.2, 0.1, 0.3, 1.2]
+        H = Zygote.hessian_dual(x -> sum(abs2, f.(x .+ 0.1)), x)
+        @test H ≈ Zygote.hessian_reverse(x -> sum(abs2, f.(x .+ 0.1)), x)
+    end
+    @testset "$(f): $(has_rule(f))" for f in BINARY_ACTIVATIONS
+        f == rrelu && continue
+
+        ## Scalar
+        h = Zygote.hessian_dual(x -> sin(f(x, 0.3)), 0.45)
+        @test h ≈ Zygote.hessian_reverse(x -> sin(f(x, 0.3)), 0.45)
+
+        ## Broadcasting
+        x = [-0.9, -0.2, 0.1, 0.3, 1.2]
+        H = Zygote.hessian_dual(x -> sum(abs2, f.(x .+ 0.1, 0.3)), x)
+        @test H ≈ Zygote.hessian_reverse(x -> sum(abs2, f.(x .+ 0.1, 0.3)), x)
+    end
 end
