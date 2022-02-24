@@ -905,7 +905,7 @@ BINARY_ACTS = [ # f, dfdx1, dfdx2
     (:elu,         :(deriv_elu(Ω, x2)),      NO_ACT_GRAD),
     (:celu,        :(deriv_celu(Ω, x2)),     NO_ACT_GRAD),
     (:trelu,       :(Ω > 0),                 ZeroTangent()),
-    (:softshrink,  :(Ω != 0),                ZeroTangent()),
+    (:softshrink,  :(Ω != 0),                NO_ACT_GRAD),
 ]
 
 for (f, dfdx1, dfdx2) in BINARY_ACTS
