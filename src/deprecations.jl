@@ -3,7 +3,7 @@
 
 function ∇softmax(Δ, x; dims = 1)
     # This 2-arg version recomputes the forward pass, which is slow.
-    # Removed in 0.7, but only prints a warning during 0.8:
+    # Removed from use in 0.7, but only prints a warning during 0.8:
     Base.depwarn("`∇softmax(Δ, x)` without `y = softmax(x)` argument is deprecated, as this is inefficient, please use `∇softmax_data(dy, y)`", :∇softmax)
     ∇softmax(Δ, x, softmax(x; dims); dims)
 end
