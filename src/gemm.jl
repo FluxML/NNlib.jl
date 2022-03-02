@@ -6,7 +6,7 @@ using LinearAlgebra.BLAS: BlasInt, @blasfunc
 
 if VERSION >= v"1.7-"
     using LinearAlgebra.BLAS: libblastrampoline
-    libblas = libblastrampoline
+    const libblas = libblastrampoline
 else
     using LinearAlgebra.BLAS: libblas
 end
