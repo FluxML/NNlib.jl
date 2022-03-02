@@ -2,7 +2,7 @@
 ## Borrowed from Knet.jl, adapted for compile-time constants
 
 using LinearAlgebra
-using LinearAlgebra.BLAS: libblas, BlasInt, @blasfunc
+using LinearAlgebra.BLAS: libblastrampoline, BlasInt, @blasfunc
 
 using Compat: get_num_threads, set_num_threads # needs Compat 3.13, for any Julia < 1.6
 
@@ -48,7 +48,7 @@ for (gemm, elt) in gemm_datatype_mappings
                 ldb = N
             end
             ldc = M
-            ccall((@blasfunc($(gemm)), libblas), Nothing,
+            ccall((@blasfunc($(gemm)), libblastrampoline), Nothing,
                   (Ref{UInt8}, Ref{UInt8}, Ref{BlasInt}, Ref{BlasInt},
                    Ref{BlasInt}, Ref{$elt}, Ptr{$elt}, Ref{BlasInt},
                    Ptr{$elt}, Ref{BlasInt}, Ref{$elt}, Ptr{$elt},
@@ -106,7 +106,7 @@ for (gemm, elt) in gemm_datatype_mappings
                         ptrBk = ptrB + (k-1) * strB * sizeof($elt)
                         ptrCk = ptrC + (k-1) * strC * sizeof($elt)
 
-                        ccall((@blasfunc($(gemm)), libblas), Nothing,
+                        ccall((@blasfunc($(gemm)), libblastrampoline), Nothing,
                               (Ref{UInt8}, Ref{UInt8}, Ref{BlasInt}, Ref{BlasInt},
                                Ref{BlasInt}, Ref{$elt}, Ptr{$elt}, Ref{BlasInt},
                                Ptr{$elt}, Ref{BlasInt}, Ref{$elt}, Ptr{$elt},
@@ -128,7 +128,7 @@ for (gemm, elt) in gemm_datatype_mappings
                     ptrBk = ptrB + (k-1) * strB * sizeof($elt)
                     ptrCk = ptrC + (k-1) * strC * sizeof($elt)
 
-                    ccall((@blasfunc($(gemm)), libblas), Nothing,
+                    ccall((@blasfunc($(gemm)), libblastrampoline), Nothing,
                           (Ref{UInt8}, Ref{UInt8}, Ref{BlasInt}, Ref{BlasInt},
                            Ref{BlasInt}, Ref{$elt}, Ptr{$elt}, Ref{BlasInt},
                            Ptr{$elt}, Ref{BlasInt}, Ref{$elt}, Ptr{$elt},
