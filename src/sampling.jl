@@ -1,5 +1,3 @@
-export grid_sample, ∇grid_sample
-
 @inline in_bounds(h, w, H, W) = 1 ≤ h ≤ H && 1 ≤ w ≤ W
 # Borders are considered out-of-bounds for gradient.
 @inline clip_coordinate(coordinate, dim_size) = min(dim_size, max(1, coordinate))

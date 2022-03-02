@@ -1,7 +1,3 @@
-export conv, conv!, ∇conv_data, ∇conv_data!, ∇conv_filter, ∇conv_filter!, depthwiseconv,
-        depthwiseconv!, ∇depthwiseconv_data, ∇depthwiseconv_data!, ∇depthwiseconv_filter,
-        ∇depthwiseconv_filter!
-
 ## Convolution API
 #
 #  We provide the following generic methods, for 3d, 4d, and 5d tensors, calculating 1d,

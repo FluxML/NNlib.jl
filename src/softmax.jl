@@ -1,13 +1,3 @@
-export softmax,
-    softmax!,
-    ∇softmax,
-    ∇softmax!,
-    logsoftmax,
-    logsoftmax!,
-    ∇logsoftmax,
-    ∇logsoftmax!,
-    logsumexp
-
 """
     softmax(x; dims = 1)
 

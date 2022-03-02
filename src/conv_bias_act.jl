@@ -1,5 +1,3 @@
-export conv_bias_act, conv_bias_act!
-
 function conv_bias_act(x::AbstractArray{xT,N}, w::AbstractArray{wT,N},
                 cdims::ConvDims, b::AbstractArray{bT,N}, σ=identity; kwargs...) where {xT, wT, bT, N}
     y = similar(x, promote_type(xT, wT, bT), output_size(cdims)..., channels_out(cdims), size(x,N))

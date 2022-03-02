@@ -1,5 +1,3 @@
-export maxpool, maxpool!, meanpool, meanpool!, ∇maxpool, ∇maxpool!, ∇meanpool, ∇meanpool!
-
 ## Pooling API
 #
 #  We provide the following generic methods, for 3d, 4d, and 5d tensors, calculating 1d,
