@@ -12,7 +12,7 @@ using LinearAlgebra
 using LinearAlgebra: BlasFloat, Transpose, Adjoint, AdjOrTransAbsMat
 using LinearAlgebra.BLAS: BlasInt, @blasfunc
 
-const libblas = Base.libblas_name
+const libblas = "libblastrampoline"
 
 const IntOrIntTuple = Union{Integer, NTuple{N,<:Integer} where N}
 const Numeric = Union{AbstractArray{<:T}, T} where {T<:Number}
