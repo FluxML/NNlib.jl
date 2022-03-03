@@ -1,5 +1,3 @@
-using LinearAlgebra
-
 import Base: -
 import Adapt: adapt_structure, adapt
 

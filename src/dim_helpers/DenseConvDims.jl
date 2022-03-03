@@ -1,5 +1,3 @@
-export DenseConvDims
-
 """
     DenseConvDims
 

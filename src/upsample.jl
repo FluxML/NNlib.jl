@@ -1,9 +1,3 @@
-export upsample_nearest, ∇upsample_nearest,
-    upsample_linear, ∇upsample_linear,
-    upsample_bilinear, ∇upsample_bilinear,
-    upsample_trilinear, ∇upsample_trilinear,
-    pixel_shuffle
-
 """
     upsample_nearest(x, scale::NTuple{S,Int})
     upsample_nearest(x; size::NTuple{S,Int})
