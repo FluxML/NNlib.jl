@@ -4,8 +4,6 @@
 using LinearAlgebra
 using LinearAlgebra.BLAS: BlasInt, @blasfunc
 
-const libblas = Base.libblas_name
-
 using Compat: get_num_threads, set_num_threads # needs Compat 3.13, for any Julia < 1.6
 
 """
