@@ -1,5 +1,3 @@
-export DepthwiseConvDims
-
 """
     DepthwiseConvDims
 

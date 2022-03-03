@@ -1,11 +1,3 @@
-
-export batched_mul, batched_mul!, ⊠,  batched_vec
-export batched_transpose, batched_adjoint
-
-include("./batchedadjtrans.jl")
-
-using LinearAlgebra: BlasFloat, Transpose, Adjoint, AdjOrTransAbsMat
-
 _unbatch(A) = A
 _unbatch(A::BatchedAdjOrTrans) = parent(A)
 

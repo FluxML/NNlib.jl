@@ -1,4 +1,3 @@
-using NNlib: sigmoid
 """
     glu(x, dim = 1)
 

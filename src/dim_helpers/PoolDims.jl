@@ -1,5 +1,3 @@
-export PoolDims
-
 """
     PoolDims(x_size::NTuple{M}, k::Union{NTuple{L, Int}, Int};
             stride=k, padding=0, dilation=1)  where {M, L}

@@ -1,5 +1,3 @@
-export pad_constant, pad_repeat, pad_reflect, pad_zeros
-
 """
     pad_zeros(x, pad::Tuple; [dims])
     pad_zeros(x, pad::Int; [dims])

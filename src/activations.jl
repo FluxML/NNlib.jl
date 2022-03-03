@@ -11,13 +11,6 @@ ACTIVATIONS = [
     :tanh_fast, :sigmoid_fast,
 ]
 
-for f in ACTIVATIONS
-    @eval export $(f)
-end
-
-# Aliases
-export sigmoid, hardsigmoid, logsigmoid, thresholdrelu
-
 # of type float (to allow for integer inputs)
 oftf(x, y) = oftype(float(x), y)
 

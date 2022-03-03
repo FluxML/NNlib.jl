@@ -1,5 +1,3 @@
-using Statistics
-
 # Pooling is so similar, we abstract over meanpooling and maxpooling, simply replacing
 # the inner loop operation and a few initialization parameters.
 for name in (:max, :mean)
