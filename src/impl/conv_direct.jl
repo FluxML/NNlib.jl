@@ -1,5 +1,4 @@
 ## This file contains direct Julia implementations of 2d and 3d convolutions
-using Base.Threads
 
 # Helper functions for restricting x/w overreach
 function clamp_lo(x, w)

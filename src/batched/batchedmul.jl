@@ -1,5 +1,3 @@
-using LinearAlgebra: BlasFloat, Transpose, Adjoint, AdjOrTransAbsMat
-
 _unbatch(A) = A
 _unbatch(A::BatchedAdjOrTrans) = parent(A)
 

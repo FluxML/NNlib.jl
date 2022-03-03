@@ -5,7 +5,12 @@ using Requires
 using ChainRulesCore
 import ChainRulesCore: rrule
 using Base.Broadcast: broadcasted
+using Base.Threads
+using Statistics
 using Statistics: mean
+using LinearAlgebra
+using LinearAlgebra: BlasFloat, Transpose, Adjoint, AdjOrTransAbsMat
+using LinearAlgebra.BLAS: libblas, BlasInt, @blasfunc
 
 const IntOrIntTuple = Union{Integer, NTuple{N,<:Integer} where N}
 const Numeric = Union{AbstractArray{<:T}, T} where {T<:Number}
