@@ -4,12 +4,7 @@
 using LinearAlgebra
 using LinearAlgebra.BLAS: BlasInt, @blasfunc
 
-@static if VERSION >= v"1.7-"
-    using LinearAlgebra.BLAS: libblastrampoline
-    const libblas = libblastrampoline
-else
-    using LinearAlgebra.BLAS: libblas
-end
+const libblas = Base.libblas_name
 
 using Compat: get_num_threads, set_num_threads # needs Compat 3.13, for any Julia < 1.6
 
