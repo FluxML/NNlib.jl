@@ -1,9 +1,6 @@
 ## Low level gemm! call with pointers
 ## Borrowed from Knet.jl, adapted for compile-time constants
 
-using LinearAlgebra
-using LinearAlgebra.BLAS: BlasInt, @blasfunc
-
 using Compat: get_num_threads, set_num_threads # needs Compat 3.13, for any Julia < 1.6
 
 """
