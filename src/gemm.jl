@@ -4,7 +4,7 @@
 using LinearAlgebra
 using LinearAlgebra.BLAS: BlasInt, @blasfunc
 
-if VERSION >= v"1.7-"
+@static if VERSION >= v"1.7-"
     using LinearAlgebra.BLAS: libblastrampoline
     const libblas = libblastrampoline
 else
