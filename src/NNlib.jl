@@ -37,6 +37,7 @@ include("softmax.jl")
 export softmax, softmax!, ∇softmax, ∇softmax!, logsoftmax, 
     logsoftmax!, ∇logsoftmax, ∇logsoftmax!, logsumexp
 
+include("batched/batchedadjtrans.jl")
 include("batched/batchedmul.jl")
 export batched_mul, batched_mul!, ⊠,  batched_vec,
     batched_transpose, batched_adjoint

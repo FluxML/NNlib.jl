@@ -1,5 +1,3 @@
-include("./batchedadjtrans.jl")
-
 using LinearAlgebra: BlasFloat, Transpose, Adjoint, AdjOrTransAbsMat
 
 _unbatch(A) = A
