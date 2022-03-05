@@ -18,6 +18,7 @@ jobs:
         os: [ubuntu-latest]
         package:
           - {user: FluxML, repo: Flux.jl, group: All}
+          - {user: FluxML, repo: Tracker.jl, group: All}
           - {user: denizyuret, repo: Knet.jl, group: All}
           - {user: dfdx, repo: Avalon.jl, group: All}
           - {user: JuliaOptimalTransport, repo: OptimalTransport.jl, group: All}
