@@ -195,14 +195,16 @@ julia> lineplot(x -> leakyrelu(x, 0.5), -2, 2, height=7)
            ⠀-2⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀2⠀       
            ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀x⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀       
 
-julia> leakyrelu(-10f0, 1//5)
+julia> leakyrelu(-10f0, 0.2)
 -2.0f0
 
-julia> leakyrelu(-10f0, 1//20)
+julia> leakyrelu(-10f0, 0.02)
 -0.5f0
 ```
 """
-leakyrelu(x, a=oftf(x, 0.01)) = ifelse(x>0, float(x), oftf(x, a*x))  # max(a*x, x) is 3x slower
+leakyrelu(x, a=oftf(x, leakyrelu_a)) = ifelse(x>0, float(x), oftf(x, a*x))  # max(a*x, x) is 3x slower
+
+const leakyrelu_a = 0.01  # also used in gradient below
 
 """
     relu6(x) = min(max(0, x), 6)
@@ -844,11 +846,11 @@ this replacement for some array or element types.
 UNARY_ACTS = [ # f, dfdx
     ## In the same order as above!
     (:σ,            :(conj(Ω * (1 - Ω)))),
-    (:hardσ,        :(ifelse((Ω>0)&(Ω<1), 1//6, 1//1))),
+    (:hardσ,        :(ifelse((Ω>0)&(Ω<1), oftf(Ω, 1/6), oftf(Ω, 1)))),
     (:logσ,         :(sigmoid_fast(-x))),
     (:hardtanh,     :((Ω>-1) & (Ω<1))),
     (:relu,         :(Ω > 0)),
-    (:leakyrelu,    :(ifelse(Ω > 0, 1//1, 1//100))),
+    (:leakyrelu,    :(ifelse(Ω > 0, oftf(Ω, 1), oftf(Ω, leakyrelu_a)))),
     (:relu6,        :((Ω>0) & (Ω<6))),
     # rrelu is random, can't write a rule.
     (:elu,          :(deriv_elu(Ω))),
