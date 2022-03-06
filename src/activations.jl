@@ -256,7 +256,7 @@ julia> extrema(rrelu.(fill(-10f0, 1000)))
 (-3.3316886f0, -1.2548422f0)
 ```
 """
-function rrelu(x::T, l=1//8, u=1//3) where T<:Number
+function rrelu(x::T, l=oftf(x,1/8), u=oftf(x,1/3)) where T<:Number
     a = (u - l) * rand(float(T)) + l
     return leakyrelu(x, a)
 end
@@ -404,7 +404,7 @@ julia> hardswish.(-5:5)'
 """
 @inline hardswish(x) = x * hardσ(x)
 
-deriv_hardswish(x) = ifelse(x < -3, oftf(x,0), ifelse(x > 3, oftf(x,1), x/3 + 1//2))
+deriv_hardswish(x) = ifelse(x < -3, oftf(x,0), ifelse(x > 3, oftf(x,1), x/3 + oftf(x,1/2)))
 
 """
     lisht(x) = x * tanh(x)
