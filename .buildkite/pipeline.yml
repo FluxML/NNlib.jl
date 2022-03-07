@@ -36,6 +36,8 @@ steps:
     agents:
       queue: "juliagpu"
       cuda: "*"
+    env:
+      NNLIB_TEST_CUDA: true
     timeout_in_minutes: 60
 
   # - label: "GPU julia nightly"
