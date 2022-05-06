@@ -227,7 +227,7 @@ end
 @testset "tanh_fast & sigmoid_fast: Float64" begin
     
     x64 = 1e-6:1e-4:5
-    xbig = 6:3:200.0
+    xbig = vcat(6:3:200.0, 1000, 10^6, typemax(Float64))
     
     @testset "tanh" begin
         mean_eps(tanh, tanh, x64)  # 0.06582
@@ -263,7 +263,7 @@ end
 @testset "tanh_fast & sigmoid_fast: Float32" begin
     
     x32 = 1f-6:1f-4:5
-    xbig32 = 6:3:200f0
+    xbig32 = vcat(6:3:200f0, 1000, typemax(Float32))
 
     @testset "tanh" begin
         mean_eps(tanh, tanh, x32)  # 0.065

@@ -780,7 +780,7 @@ end
     # Instead, we switch to a polynomial, which is very accurate within its range:
     x2 = x * x
     ypoly = x * evalpoly(x2, (1.0, -0.33333333333324583, 0.13333333325511604, -0.05396823125794372, 0.02186660872609521, -0.008697141630499953))
-    ifelse(x2 > 900.0, sign(y), ifelse(x2 < 0.017, oftype(y, ypoly), y))
+    ifelse(x2 > 900.0, sign(x), ifelse(x2 < 0.017, ypoly, y))
 end
 
 # These approximations are very badly behaved for Float16; none are fast.
