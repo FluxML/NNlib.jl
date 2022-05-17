@@ -7,9 +7,27 @@
 end
 
 @testset "forward diff" begin
-    f(x) = logσ.(x)
+    f = (x) -> logσ.(x)
     ds = Dual.(rand(5),1)
     @test f(ds) ≈ collect(f(CuArray(ds)))
+    f = (x) -> tanh.(x)
+    ds = Dual.(rand(5),1)
+    @test f(ds) ≈ collect(f(CuArray(ds)))
+    f = (x) -> σ.(x)
+    ds = Dual.(rand(5),1)
+    @test f(ds) ≈ collect(f(CuArray(ds)))
+    f = (x) -> elu.(x)
+    ds = Dual.(rand(5),1)
+    @test f(ds) ≈ collect(f(CuArray(ds)))
+    f = (x) -> relu.(x)
+    ds = Dual.(rand(5),1)
+    @test f(ds) ≈ collect(f(CuArray(ds)))
+end
+
+@testset "complex" begin
+    f = (x) -> tanh.(x)
+    cs = rand(ComplexF64, 5)
+    @test f(cs) ≈ collect(f(CuArray(cs)))
 end
 
 @testset "softplus" begin 
