@@ -25,7 +25,7 @@ end
 end
 
 @testset "complex" begin
-    f = (x) -> tanh.(x)
+    f(x) = tanh.(x)
     cs = rand(ComplexF64, 5)
     @test f(cs) ≈ collect(f(CuArray(cs)))
 end
