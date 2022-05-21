@@ -18,13 +18,13 @@ for (f, op) in [
     @eval begin
         # in-place
         function Base.materialize!(dst::DenseCuArray{<:CUDNNFloat},
-                                   bc::Broadcast.Broadcasted{<:Any,<:Any,typeof($f),<:Tuple{DenseCuArray}})
+                                   bc::Broadcast.Broadcasted{<:Any,<:Any,typeof($f),<:Tuple{DenseCuArray{<:CUDNNFloat}}})
             $op(bc.args[1], dst)
             return dst
         end
 
         # out of place
-        function Base.materialize(bc::Broadcast.Broadcasted{<:Any,<:Any,typeof($f),<:Tuple{DenseCuArray}})
+        function Base.materialize(bc::Broadcast.Broadcasted{<:Any,<:Any,typeof($f),<:Tuple{DenseCuArray{<:CUDNNFloat}}})
             ElType = Broadcast.combine_eltypes(bc.f, bc.args)
             dst = similar(bc, ElType)
             $op(bc.args[1], dst)
