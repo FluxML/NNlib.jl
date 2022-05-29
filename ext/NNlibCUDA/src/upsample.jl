@@ -52,11 +52,45 @@
     end
 end
 
+function NNlib.upsample_linear_kernel!(y::CuArray{T,N}, x::CuArray{T,N}; align_corners=true) where {T,N}
+    out_size = prod(size(y)[1:N-2])
+
+    if align_corners
+        ratios = ntuple(i -> T((size(x,i)-1) / (size(y,i)-1)), N-2)
+    else
+        ratios = ntuple(i -> T(size(x,i) / size(y,i)), N-2)
+    end
+
+    kernel = @cuda launch=false upsample_linear_cuda_kernel!(out_size, ratios..., x, y, align_corners)
+    config = launch_configuration(kernel.fun; max_threads=256)
+    threads = Base.min(out_size, config.threads)
+    blocks = cld(out_size, threads)
+    kernel(out_size, ratios..., x, y, align_corners; threads=threads, blocks=blocks)
+    return y
+end
+
+function NNlib.∇upsample_linear_kernel!(dx::CuArray{T,N}, Δ::CuArray{T,N}; align_corners=true) where {T,N}
+    in_size = prod(size(Δ)[1:N-2])
+
+    if align_corners
+        ratios = ntuple(i -> T((size(dx,i)-1) / (size(Δ,i)-1)), N-2)  # reversed compared to forward pass
+    else
+        ratios = ntuple(i -> T(size(dx,i) / size(Δ,i)), N-2)
+    end
+
+    kernel = @cuda launch=false ∇upsample_linear_cuda_kernel!(in_size, ratios..., Δ, dx, align_corners)
+    config = launch_configuration(kernel.fun; max_threads=256)
+    threads = Base.min(in_size, config.threads)
+    blocks = cld(in_size, threads)
+    kernel(in_size, ratios..., Δ, dx, align_corners; threads=threads, blocks=blocks)
+    return dx
+end
+
 
 ###########
 # linear
 ###########
-function upsample_linear_wcn_kernel!(n_elem, rwidth, x, y, align_corners)
+function upsample_linear_cuda_kernel!(n_elem, rwidth, x::CuDeviceArray{<:Any, 3}, y::CuDeviceArray{<:Any, 3}, align_corners)
     index = (threadIdx().x - 1) + (blockIdx().x - 1) * blockDim().x
 
     if index < n_elem
@@ -86,7 +120,7 @@ function upsample_linear_wcn_kernel!(n_elem, rwidth, x, y, align_corners)
 end
 
 # Δ is the gradient backpropagated from downstream layers
-function ∇upsample_linear_wcn_kernel!(n_elem, rwidth, Δ, dx, align_corners)
+function ∇upsample_linear_cuda_kernel!(n_elem, rwidth, Δ::CuDeviceArray{<:Any, 3}, dx::CuDeviceArray{<:Any, 3}, align_corners)
     index = (threadIdx().x - 1) + (blockIdx().x - 1) * blockDim().x
 
     if index < n_elem
@@ -115,44 +149,11 @@ function ∇upsample_linear_wcn_kernel!(n_elem, rwidth, Δ, dx, align_corners)
     return nothing
 end
 
-function NNlib.upsample_linear_wcn!(y::CuArray{T,3}, x::CuArray{T,3}; align_corners=true) where T
-    out_size = size(y)[1] # w
-
-    if align_corners
-        ratios = ntuple(i -> T((size(x,i)-1) / (size(y,i)-1)), 1)
-    else
-        ratios = ntuple(i -> T(size(x,i) / size(y,i)), 1)
-    end
-
-    kernel = @cuda launch=false upsample_linear_wcn_kernel!(out_size, ratios..., x, y, align_corners)
-    config = launch_configuration(kernel.fun; max_threads=256)
-    threads = Base.min(out_size, config.threads)
-    blocks = cld(out_size, threads)
-    kernel(out_size, ratios..., x, y, align_corners; threads=threads, blocks=blocks)
-    return y
-end
-
-function NNlib.∇upsample_linear_wcn!(dx::CuArray{T,3}, Δ::CuArray{T,3}; align_corners=true) where T
-    in_size = size(Δ)[1]
-    if align_corners
-        ratios = ntuple(i -> T((size(dx,i)-1) / (size(Δ,i)-1)), 1)  # reversed compared to forward pass
-    else
-        ratios = ntuple(i -> T(size(dx,i) / size(Δ,i)), 1)
-    end
-
-    kernel = @cuda launch=false ∇upsample_linear_wcn_kernel!(in_size, ratios..., Δ, dx, align_corners)
-    config = launch_configuration(kernel.fun; max_threads=256)
-    threads = Base.min(in_size, config.threads)
-    blocks = cld(in_size, threads)
-    kernel(in_size, ratios..., Δ, dx, align_corners; threads=threads, blocks=blocks)
-    return dx
-end
-
 
 ###########
 # bilinear
 ###########
-function upsample_bilinear_whcn_kernel!(n_elem, rwidth, rheight, x, y, align_corners)
+function upsample_linear_cuda_kernel!(n_elem, rwidth, rheight, x::CuDeviceArray{<:Any, 4}, y::CuDeviceArray{<:Any, 4}, align_corners)
     index = (threadIdx().x - 1) + (blockIdx().x - 1) * blockDim().x
 
     if index < n_elem
@@ -194,7 +195,7 @@ function upsample_bilinear_whcn_kernel!(n_elem, rwidth, rheight, x, y, align_cor
 end
 
 # Δ is the gradient backpropagated from downstream layers
-function ∇upsample_bilinear_whcn_kernel!(n_elem, rwidth, rheight, Δ, dx, align_corners)
+function ∇upsample_linear_cuda_kernel!(n_elem, rwidth, rheight, Δ::CuDeviceArray{<:Any, 4}, dx::CuDeviceArray{<:Any, 4}, align_corners)
     index = (threadIdx().x - 1) + (blockIdx().x - 1) * blockDim().x
 
     if index < n_elem
@@ -237,44 +238,11 @@ function ∇upsample_bilinear_whcn_kernel!(n_elem, rwidth, rheight, Δ, dx, alig
     return nothing
 end
 
-function NNlib.upsample_bilinear_whcn!(y::CuArray{T,4}, x::CuArray{T,4}; align_corners=true) where T
-    out_size = prod(size(y)[1:2]) # w*h
-
-    if align_corners
-        ratios = ntuple(i -> T((size(x,i)-1) / (size(y,i)-1)), 2)
-    else
-        ratios = ntuple(i -> T(size(x,i) / size(y,i)), 2)
-    end
-
-    kernel = @cuda launch=false upsample_bilinear_whcn_kernel!(out_size, ratios..., x, y, align_corners)
-    config = launch_configuration(kernel.fun; max_threads=256)
-    threads = Base.min(out_size, config.threads)
-    blocks = cld(out_size, threads)
-    kernel(out_size, ratios..., x, y, align_corners; threads=threads, blocks=blocks)
-    return y
-end
-
-function NNlib.∇upsample_bilinear_whcn!(dx::CuArray{T,4}, Δ::CuArray{T,4}; align_corners=true) where T
-    in_size = prod(size(Δ)[1:2])
-    if align_corners
-        ratios = ntuple(i -> T((size(dx,i)-1) / (size(Δ,i)-1)), 2)  # reversed compared to forward pass
-    else
-        ratios = ntuple(i -> T(size(dx,i) / size(Δ,i)), 2)
-    end
-
-    kernel = @cuda launch=false ∇upsample_bilinear_whcn_kernel!(in_size, ratios..., Δ, dx, align_corners)
-    config = launch_configuration(kernel.fun; max_threads=256)
-    threads = Base.min(in_size, config.threads)
-    blocks = cld(in_size, threads)
-    kernel(in_size, ratios..., Δ, dx, align_corners; threads=threads, blocks=blocks)
-    return dx
-end
-
 
 ###########
 # trilinear
 ###########
-function upsample_trilinear_whdcn_kernel!(n_elem, rwidth, rheight, rdepth, x, y, align_corners)
+function upsample_linear_cuda_kernel!(n_elem, rwidth, rheight, rdepth, x::CuDeviceArray{<:Any, 5}, y::CuDeviceArray{<:Any, 5}, align_corners)
     index = (threadIdx().x - 1) + (blockIdx().x - 1) * blockDim().x
 
     if index < n_elem
@@ -337,7 +305,7 @@ function upsample_trilinear_whdcn_kernel!(n_elem, rwidth, rheight, rdepth, x, y,
 end
 
 # Δ is the gradient backpropagated from downstream layers
-function ∇upsample_trilinear_whdcn_kernel!(n_elem, rwidth, rheight, rdepth, Δ, dx, align_corners)
+function ∇upsample_linear_cuda_kernel!(n_elem, rwidth, rheight, rdepth, Δ::CuDeviceArray{<:Any, 5}, dx::CuDeviceArray{<:Any, 5}, align_corners)
     index = (threadIdx().x - 1) + (blockIdx().x - 1) * blockDim().x
 
     if index < n_elem
@@ -388,38 +356,4 @@ function ∇upsample_trilinear_whdcn_kernel!(n_elem, rwidth, rheight, rdepth, Δ
         end
     end # if
     return nothing
-end
-
-function NNlib.upsample_trilinear_whdcn!(y::CuArray{T,5}, x::CuArray{T,5}; align_corners=true) where T
-    out_size = prod(size(y)[1:3]) # w*h*d
-
-    if align_corners
-        ratios = ntuple(i -> T((size(x,i)-1) / (size(y,i)-1)), 3)
-    else
-        ratios = ntuple(i -> T(size(x,i) / size(y,i)), 3)
-    end
-
-    kernel = @cuda launch=false upsample_trilinear_whdcn_kernel!(out_size, ratios..., x, y, align_corners)
-    config = launch_configuration(kernel.fun; max_threads=256)
-    threads = Base.min(out_size, config.threads)
-    blocks = cld(out_size, threads)
-    kernel(out_size, ratios..., x, y, align_corners; threads=threads, blocks=blocks)
-    return y
-end
-
-function NNlib.∇upsample_trilinear_whdcn!(dx::CuArray{T,5}, Δ::CuArray{T,5}; align_corners=true) where T
-    in_size = prod(size(Δ)[1:3])
-
-    if align_corners
-        ratios = ntuple(i -> T((size(dx,i)-1) / (size(Δ,i)-1)), 3)  # reversed compared to forward pass
-    else
-        ratios = ntuple(i -> T(size(dx,i) / size(Δ,i)), 3)
-    end
-
-    kernel = @cuda launch=false ∇upsample_trilinear_whdcn_kernel!(in_size, ratios..., Δ, dx, align_corners)
-    config = launch_configuration(kernel.fun; max_threads=256)
-    threads = Base.min(in_size, config.threads)
-    blocks = cld(in_size, threads)
-    kernel(in_size, ratios..., Δ, dx, align_corners; threads=threads, blocks=blocks)
-    return dx
 end
