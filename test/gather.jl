@@ -1,4 +1,5 @@
 using NNlib: gather, gather!
+using CUDA
 
 @testset "gather scalar index" begin 
     T = Float32
@@ -148,4 +149,19 @@ end
 
     gradtest(xs -> gather!(dst, xs, index), src)
     gradtest(xs -> gather(xs, index), src)
+end
+
+@testest "gather on empty CUDA array" begin
+        T = Float64
+
+        src =  CUDA.ones(T, 0, 5)
+        index = CuArray([1 2 3 4;
+                4 2 1 3;
+                3 5 5 3])
+        
+        y = gather(src, index)
+        @test y isa CuArray{T,3}
+        @test isempty(y)
+        @test size(y) == (0, size(index)...)
+        end
 end
