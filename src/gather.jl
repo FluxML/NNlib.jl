@@ -21,6 +21,8 @@ or multiple `dst` columns.
 See [`gather`](@ref) for an allocating version.
 """
 function gather!(dst::AbstractArray, src::AbstractArray, idx::AbstractArray)
+    isempty(dst) && throw(ArgumentError("dst does not support empty array of size $(size(dst))."))
+    isempty(src) && throw(ArgumentError("src does not support empty array of size $(size(src))."))
     dims = scatter_dims(src, dst, idx)
     colons = ntuple(i -> Colon(), dims)
     for k in CartesianIndices(idx)
@@ -70,7 +72,7 @@ julia> NNlib.gather([1 2 3; 4 5 6], [1,3,1,3,1])
 function gather(src::AbstractArray{Tsrc, Nsrc}, 
                 idx::AbstractArray{Tidx, Nidx}) where 
                     {Tsrc, Nsrc, Nidx, Tidx}
-
+    isempty(src) && throw(ArgumentError("src does not support empty array of size $(size(src))."))
     M = typelength(Tidx) 
     dstsize = (size(src)[1:Nsrc-M]..., size(idx)...)
     dst = similar(src, Tsrc, dstsize)

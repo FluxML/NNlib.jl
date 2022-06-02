@@ -18,6 +18,8 @@ using NNlib: gather, gather!
     @test y == output
     @test gather!(T.(zero(index)), src, index) == output
     @test_throws ArgumentError gather!(zeros(T, 3, 5), src, index)
+    @test_throws ArgumentError gather!(zeros(T, 0, 5), src, index)
+    @test_throws ArgumentError gather!(T.(zero(index)), zeros(T, 0, 5), index)
     
     index2 = [1 2 3 4;
               4 2 1 3;
@@ -37,6 +39,7 @@ using NNlib: gather, gather!
     @test y isa Array{T,3}
     @test size(y) == size(index)
     @test y == output
+    @test_throws ArgumentError gather(zeros(T, 0, 5), index)
 
 
     ## 2d src, 2d index of ints -> 3d output
