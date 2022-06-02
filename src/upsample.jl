@@ -134,8 +134,19 @@ function upsample_linear(x::AbstractArray{T,<:Any}; size) where T<:Integer
     return round.(T, res)
 end
 
+# compatibility layer for old versions of NNlibCUDA
+# old versions overload upsample_linear_wcn, new versions overload upsample_linear_kernel
+# can be removed from NNlib 0.9, i.e. revert https://github.com/FluxML/NNlib.jl/pull/414
+# IF https://github.com/FluxML/NNlibCUDA.jl/pull/49 has been merged
+upsample_linear_kernel!(y::AbstractArray{<:Any,3}, x::AbstractArray{<:Any,3}) = upsample_linear_wcn!(y,x)
+upsample_linear_kernel!(y::AbstractArray{<:Any,4}, x::AbstractArray{<:Any,4}) = upsample_bilinear_whcn!(y,x)
+upsample_linear_kernel!(y::AbstractArray{<:Any,5}, x::AbstractArray{<:Any,5}) = upsample_trilinear_whdcn!(y,x)
+∇upsample_linear_kernel!(y::AbstractArray{<:Any,3}, x::AbstractArray{<:Any,3}) = ∇upsample_linear_wcn!(y,x)
+∇upsample_linear_kernel!(y::AbstractArray{<:Any,4}, x::AbstractArray{<:Any,4}) = ∇upsample_bilinear_whcn!(y,x)
+∇upsample_linear_kernel!(y::AbstractArray{<:Any,5}, x::AbstractArray{<:Any,5}) = ∇upsample_trilinear_whdcn!(y,x)
+
 # linearly upsamples first dim of 3D array
-function upsample_linear_kernel!(output::AbstractArray{T,3}, input::AbstractArray{T,3}) where T
+function upsample_linear_wcn!(output::AbstractArray{T,3}, input::AbstractArray{T,3}) where T
     size(input)[2:3] == size(output)[2:3] || error("Number of input and output channels and batches must match. Got input $(size(input)) and output $(size(output))")
     in_w, channels, batches = size(input)
     # treat batch and channel dimension as one for better parallelization granularity
@@ -161,7 +172,7 @@ end
 
 # bilinear
 # linearly upsamples first two dims of 4D array
-function upsample_linear_kernel!(output::AbstractArray{T,4}, input::AbstractArray{T,4}) where T
+function upsample_bilinear_whcn!(output::AbstractArray{T,4}, input::AbstractArray{T,4}) where T
     size(input)[3:4] == size(output)[3:4] || error("Number of input and output channels and batches must match. Got input $(size(input)) and output $(size(output))")
     in_w, in_h, channels, batches = size(input)
     # treat batch and channel dimension as one for better parallelization granularity
@@ -194,7 +205,7 @@ end
 
 # trilinear
 # linearly upsamples first three dims of 5D array
-function upsample_linear_kernel!(output::AbstractArray{T,5}, input::AbstractArray{T,5}) where T
+function upsample_trilinear_whdcn!(output::AbstractArray{T,5}, input::AbstractArray{T,5}) where T
     size(input)[4:5] == size(output)[4:5] || error("Number of input and output channels and batches must match. Got input $(size(input)) and output $(size(output))")
     in_w, in_h, in_d, channels, batches = size(input)
     # treat batch and channel dimension as one for better parallelization granularity
@@ -254,7 +265,7 @@ function ∇upsample_linear(Δ::AbstractArray{T,N}; size::NTuple{<:Any,Integer})
 end
 
 # linear
-function ∇upsample_linear_kernel!(dx::AbstractArray{T,3}, Δ::AbstractArray{T,3}) where T
+function ∇upsample_linear_wcn!(dx::AbstractArray{T,3}, Δ::AbstractArray{T,3}) where T
     size(dx)[2:3] == size(Δ)[2:3] || error("Number of input and output channels and batches must match. Got input $(size(input)) and output $(size(output))")
     in_w, channels, batches = size(dx)
 
@@ -280,7 +291,7 @@ function ∇upsample_linear_kernel!(dx::AbstractArray{T,3}, Δ::AbstractArray{T,
 end
 
 # bilinear
-function ∇upsample_linear_kernel!(dx::AbstractArray{T,4}, Δ::AbstractArray{T,4}) where T
+function ∇upsample_bilinear_whcn!(dx::AbstractArray{T,4}, Δ::AbstractArray{T,4}) where T
     size(dx)[3:4] == size(Δ)[3:4] || error("Number of input and output channels and batches must match. Got input $(size(input)) and output $(size(output))")
     in_w, in_h, channels, batches = size(dx)
 
@@ -312,7 +323,7 @@ function ∇upsample_linear_kernel!(dx::AbstractArray{T,4}, Δ::AbstractArray{T,
 end
 
 # trilinear
-function ∇upsample_linear_kernel!(dx::AbstractArray{T,5}, Δ::AbstractArray{T,5}) where T
+function ∇upsample_trilinear_whdcn!(dx::AbstractArray{T,5}, Δ::AbstractArray{T,5}) where T
     size(dx)[4:5] == size(Δ)[4:5] || error("Number of input and output channels and batches must match. Got dx $(size(dx)) and Δ $(size(Δ))")
     in_w, in_h, in_d, channels, batches = size(dx)
     # treat batch and channel dimension as one for better parallelization granularity
