@@ -1,7 +1,7 @@
 ## Low level gemm! call with pointers
 ## Borrowed from Knet.jl, adapted for compile-time constants
 
-using Compat: get_num_threads, set_num_threads # needs Compat 3.13, for any Julia < 1.6
+using LinearAlgebra.BLAS: get_num_threads, set_num_threads
 
 """
     gemm!()
