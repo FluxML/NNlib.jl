@@ -42,6 +42,8 @@
 
 # Forward and backward pass have been tested to produce the same output
 # as pytorch with align_corners=True - it works modulo bit noise.
+# pytorch's default is align_corners=False, because otherwise the gradients depend on the
+# image size, which should be avoided -> this should be considered here as well
 
 @inline function compute_source_index(ratio::T, dst_index, align_corners) where T
     if align_corners
