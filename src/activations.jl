@@ -731,10 +731,9 @@ function softshrink(x, λ = 0.5)
     ifelse(hi > 0, ifelse(lo < 0, zero(hi), lo), hi)
 end
 
-# Provide an informative error message if activation functions are called with an array
+# Define broadcasts for activation functions on arrays
 for f in ACTIVATIONS
-    @eval $(f)(x::AbstractArray, args...) =
-      error("Use broadcasting (`", $(string(f)), ".(x)`) to apply activation functions to arrays.")
+  @eval $(f)(x::AbstractArray, args...) = $(f).(x, args...)
 end
 
 ## Faster, less accurate, versions of some.
