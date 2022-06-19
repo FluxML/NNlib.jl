@@ -93,10 +93,14 @@ end
 @testset "Array input -> error" begin
     x = rand(5)
     for a in ACTIVATION_FUNCTIONS
-        @test_throws ErrorException a(x)
+        @test size(a(x)) == size(x)
+        grad = Zygote.gradient(p -> sum(a(p)), x)
+        @test size(grad[1]) == size(x)
     end
     for a in BINARY_ACTIVATIONS
-        @test_throws ErrorException a(x, 0.1)
+        @test size(a(x, 0.1)) == size(x)
+        grad = Zygote.gradient(p -> sum(a(p, 0.1)), x)
+        @test size(grad[1]) == size(x)
     end
 end
 
