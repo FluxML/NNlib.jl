@@ -102,3 +102,5 @@ end
 
 adapt_structure(to, x::BatchedAdjoint) = BatchedAdjoint(adapt(to, parent(x)))
 adapt_structure(to, x::BatchedTranspose) = BatchedTranspose(adapt(to, parent(x)))
+
+Broadcast.BroadcastStyle(::Type{<:BatchedAdjOrTrans{T, S}}) where {T, S} = Broadcast.BroadcastStyle(S)
