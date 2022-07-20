@@ -79,6 +79,7 @@ include("gather.jl")
 include("scatter.jl")
 include("utils.jl")
 include("sampling.jl")
+export grid_sample
 include("functions.jl")
 
 ## Include implementations
