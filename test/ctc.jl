@@ -6,7 +6,7 @@ using LinearAlgebra
 # Custom function to check numerical gradient of ctc loss,
 # based on `ngradient` in `Tracker.jl`
 function ctc_ngradient(x, y)
-  f = Flux.Losses.ctc_loss
+  f = ctc_loss
   grads = zero(x)
   for i in 1:length(x)
     δ = sqrt(eps())
