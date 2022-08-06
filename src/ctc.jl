@@ -3,7 +3,8 @@
 ## CPU implementation
 
 """
-  logaddexp(a, b)
+    logaddexp(a, b)
+
 Adds log-space `a` and `b` such that the result equals `log(exp(a)+exp(b))`
 """
 function logaddexp(a, b)
@@ -105,7 +106,8 @@ function ∇ctc_loss(ŷ::AbstractArray, y, out)
 end
 
 """
-  ctc_loss(ŷ, y)
+    ctc_loss(ŷ, y)
+
 Computes the connectionist temporal classification loss between `ŷ`
 and `y`.
 `ŷ` must be a classes-by-time matrices, i.e., each row
