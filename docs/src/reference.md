@@ -117,4 +117,5 @@ ctc_loss
 
 ```@docs
 logsumexp
+NNlib.glu
 ```
