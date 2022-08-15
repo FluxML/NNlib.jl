@@ -877,7 +877,7 @@ for (f, dfdx) in UNARY_ACTS
 
     pullback = Symbol(:broadcasted_, f, :_pullback)
     @eval function rrule(::typeof(broadcasted),
-                         ::typeof($f), x::Numeric)
+                         ::typeof($f), x::Union{Numeric, Broadcast.Broadcasted})
         Ω = $f.(x)
         function $pullback(dΩ)
             x_thunk = InplaceableThunk(
@@ -908,7 +908,7 @@ for (f, dfdx1, dfdx2) in BINARY_ACTS
     pullback = Symbol(:broadcasted_, f, :_pullback_2arg)
     @eval function rrule(::typeof(broadcasted),
                          ::typeof($f), 
-                         x1::Numeric, x2::Number)
+                         x1::Union{Numeric, Broadcast.Broadcasted}, x2::Number)
         Ω = $f.(x1, x2)
         ## Allowing x2::Array would allow size(Ω) != size(x1), which is not handled here:
         $pullback(dΩ) = (NoTangent(), NoTangent(), @.(dΩ * $dfdx1), NO_ACT_GRAD)
