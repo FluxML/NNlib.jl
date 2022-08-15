@@ -319,6 +319,14 @@ has_rule(a) = rrule(a, 1f0) === nothing ? "(no rule)" : ""
     end
 end
 
+using Base.Broadcast: broadcasted
+
+@testset "lazy broadcasting" begin
+    # ChainRules returns a Broadcasted, check these rules accept it
+    @test rrule(broadcasted, relu, rrule(broadcasted, +, [1,2], 3)[1]) != nothing
+    @test rrule(broadcasted, leakyrelu, rrule(broadcasted, +, [1,2], 3)[1], 0.2) != nothing
+end
+
 @testset "Gradient correctness" begin
     
     local rng = StableRNG(17)
