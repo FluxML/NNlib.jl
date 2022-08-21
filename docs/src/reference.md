@@ -35,12 +35,16 @@ trelu
 
 ## Softmax
 
+`Flux`'s `logitcrossentropy` uses `NNlib.softmax` internally.
+
 ```@docs
 softmax
-logsoftmax 
+logsoftmax
 ```
 
 ## Pooling
+
+`Flux`'s `AdaptiveMaxPool`, `AdaptiveMeanPool`, `GlobalMaxPool`, `GlobalMeanPool`, `MaxPool`, and `MeanPool` use `NNlib.PoolDims`, `NNlib.maxpool`, and `NNlib.meanpool` as their backend.
 
 ```@docs
 PoolDims
@@ -59,15 +63,19 @@ pad_zeros
 
 ## Convolution
 
+`Flux`'s `Conv` and `CrossCor` layers use `NNlib.DenseConvDims` and `NNlib.conv` internally. 
+
 ```@docs
 conv
 ConvDims
 depthwiseconv
 DepthwiseConvDims
-DenseConvDims
+DenseConvDims -
 ```
 
 ## Upsampling
+
+`Flux`'s `Upsample` layer uses `NNlib.upsample_nearest`, `NNlib.upsample_bilinear`, and `NNlib.upsample_trilinear` as its backend. Additionally, `Flux`'s `PixelShuffle` layer uses `NNlib.pixel_shuffle` as its backend.
 
 ```@docs
 upsample_nearest
@@ -83,6 +91,8 @@ pixel_shuffle
 
 ## Batched Operations
 
+`Flux`'s `Bilinear` layer uses `NNlib.batched_mul` internally.
+
 ```@docs
 batched_mul
 batched_mul!
@@ -92,6 +102,8 @@ batched_vec
 ```
 
 ## Gather and Scatter
+
+`Flux`'s `Embedding` layer uses `NNlib.gather` as its backend.
 
 ```@docs
 NNlib.gather
