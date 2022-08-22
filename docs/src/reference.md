@@ -70,7 +70,7 @@ conv
 ConvDims
 depthwiseconv
 DepthwiseConvDims
-DenseConvDims -
+DenseConvDims
 ```
 
 ## Upsampling
