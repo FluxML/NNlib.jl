@@ -1,3 +1,8 @@
+@testset "within_gradient" begin
+    @test NNlib.within_gradient([1.0]) === false
+    @test gradient(x -> NNlib.within_gradient(x) * x, 2.0) == (1.0,)
+end
+
 @testset "maximum_dims" begin
     ind1 = [1,2,3,4,5,6]
     @test NNlib.maximum_dims(ind1) == (6,)

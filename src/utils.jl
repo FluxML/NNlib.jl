@@ -1,4 +1,19 @@
 """
+    within_gradient(x) --> Bool
+
+Returns `false` except when used inside a `gradient` call, when it returns `true`.
+Useful for Flux regularisation layers which behave differently during training and inference.
+
+Works with any ChainRules-based differentiation package, in which case `x` is ignored.
+But Tracker.jl overloads `with_gradient(x::TrackedArray)`, thus for widest use you should
+pass it an array whose gradient is of interest.
+"""
+within_gradient(x) = false
+
+ChainRulesCore.rrule(::typeof(within_gradient), x) = true, _ -> (NoTangent(), NoTangent())
+
+
+"""
     safe_div(x, y)
 
 Safely divide `x` by `y`. If `y` is zero, return `x` directly.
