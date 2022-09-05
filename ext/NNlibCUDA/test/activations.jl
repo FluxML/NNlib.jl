@@ -7,9 +7,20 @@
 end
 
 @testset "forward diff" begin
-    f(x) = logσ.(x)
-    ds = Dual.(rand(5),1)
-    @test f(ds) ≈ collect(f(CuArray(ds)))
+    for f in NNlib.ACTIVATIONS
+        if f ∉ [:rrelu]
+            @eval gputest(x -> $f.(x), Dual.(rand(5), 1))
+        end
+    end
+end
+
+# Broadcasting over complex CuArray works without NNlibCUDA, this test checks that
+# NNlibCUDA does not cause such operations to take a fast path which does not support
+# complex numbers (e.g. CUDNN)
+@testset "complex" begin
+    f(x) = tanh.(x)
+    cs = rand(ComplexF64, 5)
+    @test f(cs) ≈ collect(f(CuArray(cs)))
 end
 
 @testset "softplus" begin 
