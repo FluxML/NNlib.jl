@@ -8,6 +8,12 @@ using NNlib: DenseConvDims
     @test ∇conv_data(c, b, cdims) ≈ collect(∇conv_data(dc, db, cdims))
     @test ∇conv_filter(a, c, cdims) ≈ collect(∇conv_filter(da, dc, cdims))
 
+    # Test Conv Bias Activation
+    bias = rand(Float64, 1, 1, 4, 1)
+    dbias = CuArray(bias)
+    @test conv_bias_act(a, b, cdims, bias, NNlib.relu) ≈ collect(conv_bias_act(da, db, cdims, dbias, NNlib.relu))
+    @test conv_bias_act(a, b, cdims, bias, identity) ≈ collect(conv_bias_act(da, db, cdims, dbias, identity))
+
     # Test for agreement between CPU NNlib and CuDNN versions, across a variety of kwargs
     options = Dict{Any, Any}.((
         (), (:dilation => 2), (:flipkernel => true), (:stride => 2),
