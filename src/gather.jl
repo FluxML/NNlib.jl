@@ -61,10 +61,10 @@ julia> NNlib.gather([1,20,300,4000], [2,4,2])
  4000
    20
 
-julia> NNlib.gather([1 2 3; 4 5 6], [1,3,1,3,1])
-2×5 Matrix{Int64}:
- 1  3  1  3  1
- 4  6  4  6  4
+julia> NNlib.gather([1 2 3; 4 5 6]/10, [1,3,1,3,1])
+2×5 Matrix{Float64}:
+ 0.1  0.3  0.1  0.3  0.1
+ 0.4  0.6  0.4  0.6  0.4
 ```
 """
 function gather(src::AbstractArray{Tsrc, Nsrc}, 
