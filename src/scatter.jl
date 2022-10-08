@@ -106,25 +106,25 @@ See [`scatter!`](@ref) for full details on how `idx` works.
 
 # Examples
 ```jldoctest
-julia> NNlib.scatter(+, [10,100,1000], [3,1,2])
-3-element Vector{Int64}:
-  100
- 1000
-   10
+julia> NNlib.scatter(+, [10,100,1000.0], [3,1,2])
+3-element Vector{Float64}:
+  100.0
+ 1000.0
+   10.0
 
-julia> NNlib.scatter(+, [1 2 3 4; 5 6 7 8], [2,1,1,5])
-2×5 Matrix{Int64}:
-  5  1  0  0  4
- 13  5  0  0  8
+julia> NNlib.scatter(+, [1 2 3 4; 5 6 7 8.0], [2,1,1,5])
+2×5 Matrix{Float64}:
+  5.0  1.0  0.0  0.0  4.0
+ 13.0  5.0  0.0  0.0  8.0
 
-julia> NNlib.scatter(*, [10,200,3000], [1,4,2]; init = 10, dstsize = 6)
-6-element Vector{Int64}:
-   100
- 30000
-    10
-  2000
-    10
-    10
+julia> NNlib.scatter(*, [10,200,3000.0], [1,4,2]; init = 10, dstsize = 6)
+6-element Vector{Float64}:
+   100.0
+ 30000.0
+    10.0
+  2000.0
+    10.0
+    10.0
 ```
 """
 function scatter(op::OP,
