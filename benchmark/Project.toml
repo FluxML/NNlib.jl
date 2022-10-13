@@ -1,0 +1,14 @@
+[deps]
+ArgParse = "c7e460c6-2fb9-53a9-8c5b-16f535851c63"
+BenchmarkCI = "20533458-34a3-403d-a444-e18f38190b5b"
+BenchmarkTools = "6e4b80f9-dd63-53aa-95a3-0cdb28fa8baf"
+NNlib = "872c559c-99b0-510c-b3b7-b6c96a88d5cd"
+PkgBenchmark = "32113eaa-f34f-5b0d-bd6c-c81e245fc73d"
+
+[compat]
+# No compat bounds for NNlib because we may test breaking versions
+ArgParse = "1"
+BenchmarkCI = "0.1"
+BenchmarkTools = "1.3"
+PkgBenchmark = "0.2"
+julia = "1.6"
