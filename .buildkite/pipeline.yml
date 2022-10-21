@@ -40,6 +40,21 @@ steps:
       NNLIB_TEST_CUDA: true
     timeout_in_minutes: 60
 
+  - label: "Benchmarks"
+    plugins:
+      - JuliaCI/julia#v1:
+          version: 1
+    env:
+      JULIA_NUM_THREADS: 4
+    command:
+      - julia --project=benchmark -e 'using Pkg; Pkg.develop(PackageSpec(path=pwd())); Pkg.instantiate()'
+      - julia --project=benchmark benchmark/runbenchmarks.jl
+      - printf '%b\n' "$(cat benchmark/report.md)" | buildkite-agent annotate --style 'info'
+    agents:
+      queue: "juliagpu"
+    if: build.pull_request.labels includes "benchmark"
+    timeout_in_minutes: 30
+
   # - label: "GPU julia nightly"
   #   plugins:
   #     - JuliaCI/julia#v1:
