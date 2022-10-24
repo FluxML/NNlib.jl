@@ -1,7 +1,8 @@
 name: TagBot
 on:
-  schedule:
-    - cron: 0 * * * *
+  issue_comment:  # https://discourse.julialang.org/t/ann-required-updates-to-tagbot-yml/49249
+    types:
+      - created
 jobs:
   TagBot:
     runs-on: ubuntu-latest
