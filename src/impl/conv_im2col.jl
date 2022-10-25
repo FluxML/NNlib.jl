@@ -60,15 +60,16 @@ function conv_im2col!(
 end
 
 """
-    ∇conv_filter_im2col!(dw, x, dy, cdims, col=similar(dw); alpha=1, beta=0)
+    ∇conv_filter_im2col!(dw, x, dy, cdims, col=similar(dw, ∇filter_im2col_dims(cdims));
+                         alpha=1, beta=0)
 
 Conv backward pass onto the weights using im2col and GEMM; stores the result in `dw`.
-See the documentation for `conv_im2col!()` for explanation of optional parameters.
+See [`conv_im2col!`](@ref) for explanation of optional parameters.
 """
 function ∇conv_filter_im2col!(
                 dw::AbstractArray{T,5}, x::AbstractArray{T,5},
                 dy::AbstractArray{T,5}, cdims::DenseConvDims;
-                col::AbstractArray{T,3} = similar(dw, im2col_dims(cdims)),
+                col::AbstractArray{T,3} = similar(dw, ∇filter_im2col_dims(cdims)),
                 alpha::T=T(1), beta::T=T(0)) where {T}
     check_dims(size(x), size(dw), size(dy), cdims)
 
@@ -115,7 +116,7 @@ end
     ∇conv_data_im2col!(dx, w, dy, cdims, col=similar(dx); alpha=1, beta=0)
 
 Conv2d backward pass onto the input using im2col and GEMM; stores the result in `dx`.
-See the documentation for `conv_im2col!()` for explanation of other parameters.
+See [`conv_im2col!`](@ref) for explanation of optional parameters.
 """
 function ∇conv_data_im2col!(
                 dx::AbstractArray{T,5}, dy::AbstractArray{T,5},
