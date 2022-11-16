@@ -1,8 +1,8 @@
-using CUDA.CUDNN: handle, with_workspace, cudnnTensorDescriptor, cudnnFilterDescriptor,
-                  cudnnDataType, math_mode, CUDNN_DEFAULT_REORDER, CUDNN_CROSS_CORRELATION,
-                  CUDNN_NOT_PROPAGATE_NAN, CUDNN_TENSOR_NCHW, dim4
+using cuDNN: handle, with_workspace, cudnnTensorDescriptor, cudnnFilterDescriptor,
+             cudnnDataType, math_mode, CUDNN_DEFAULT_REORDER, CUDNN_CROSS_CORRELATION,
+             CUDNN_NOT_PROPAGATE_NAN, CUDNN_TENSOR_NCHW, dim4
 
-cudnnversion() = CUDA.CUDNN.version()
+cudnnversion() = cuDNN.version()
 
 function nnlibPadding(dims)
     pd = NNlib.padding(dims)
