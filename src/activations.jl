@@ -615,7 +615,7 @@ julia> softplus(16f0)
 16.0f0
 ```
 """
-softplus(x) = log1p(exp(-abs(x))) + max(x, 0)
+softplus(x) = log1p(exp(-abs(x))) + relu(x)
 
 """
     logcosh(x)
