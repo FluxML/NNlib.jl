@@ -23,7 +23,7 @@ An inverse to `unfold` can be obtained by using `fold` and accounting for scalin
 For example,
 
 ```jldoctest
-julia> kernel_size, pad = (3, 3, 1, 1), 1
+julia> kernel_size, pad = (3, 3, 1, 1), 1;
 
 julia> x = reshape(1:64, 8, 8, 1, 1) |> collect;
 
@@ -48,6 +48,7 @@ julia> d = fold(unfold(ones(eltype(x), size(x)...), kernel_size; pad=pad), size(
 
 julia> x == z./d
 true
+
 ```
 Uses NNlib.col2im! as backend.
 """
