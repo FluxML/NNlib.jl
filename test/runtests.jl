@@ -52,6 +52,10 @@ include("test_utils.jl")
         include("ctc.jl")
     end
 
+    @testset "Fold/Unfold" begin
+        include("fold.jl")
+    end
+
     @testset "Inference" begin
         include("inference.jl")
     end

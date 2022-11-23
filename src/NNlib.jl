@@ -61,6 +61,9 @@ export conv, conv!, ∇conv_data, ∇conv_data!, ∇conv_filter,
 include("conv_bias_act.jl")
 export conv_bias_act, conv_bias_act!
 
+include("fold.jl")
+export unfold, unfold!, fold, fold!
+
 include("ctc.jl")
 export ctc_loss
 
