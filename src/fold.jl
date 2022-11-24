@@ -17,12 +17,9 @@ and a potential inverse of `unfold`.
 The below example demonstrates that `unfold` uses the same sliding windows as `conv`.
 In general [`batched_mul`](@ref) + `unfold` should not be used to achieve convolution.
 ```jldoctest
-julia> x = [100; 2; 3; 40; 5; 6; 700;;;];  # 1D data, 1 channel, batch of 1
+julia> x = reshape([100 2 3 40 5 6 700], 7, 1, 1);  # 1D data, 1 channel, batch of 1
 
-julia> size(x)
-(7, 1, 1)
-
-julia> w = [1;0;-1;;;];  # 1D conv kernel of length 3
+julia> w = reshape([1 0 -1], 3, 1, 1);  # 1D conv kernel of length 3
 
 julia> kws = (pad=1, stride=2, flipped=true);  # use same args for conv and unfold
 
@@ -71,7 +68,7 @@ See also [`unfold`](@ref).
 
 # Example
 ```jldoctest
-julia> x = [100; 2; 3; 40; 5; 6; 700;;;];  # 1D data, 1 channel, batch of 1
+julia> x = reshape([100 2 3 40 5 6 700], 7, 1, 1);  # 1D data, 1 channel, batch of 1
 
 julia> y = unfold(x, (3,1,1))  # sliding window of size 3
 5×3×1 Array{Int64, 3}:
