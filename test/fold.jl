@@ -30,9 +30,11 @@ end
     x = rand(rng, repeat([5], spatial_rank)..., 3, 2)
     w = rand(rng, repeat([3], spatial_rank)..., 3, 3)
     cdims = DenseConvDims(x, w)
-    gradtest(x -> sum(unfold(x, cdims)), x)
+    gradtest(x -> unfold(x, cdims), x)
+    test_rrule(unfold, x, cdims)
     
     y = unfold(x, cdims)
-    gradtest(y -> sum(fold(y, size(x), cdims)), y)
+    gradtest(y -> fold(y, size(x), cdims), y)
+    test_rrule(fold, y, size(x), cdims)
 end
 

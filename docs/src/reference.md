@@ -71,6 +71,8 @@ ConvDims
 depthwiseconv
 DepthwiseConvDims
 DenseConvDims
+unfold
+fold
 ```
 
 ## Upsampling

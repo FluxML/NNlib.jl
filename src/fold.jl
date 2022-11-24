@@ -1,13 +1,57 @@
 
 """
-    unfold(x, kernel_size; stride = 1, pad = 0, dilation = 0, flipped = false)
+    unfold(x, kernel_size; stride = 1, pad = 0, dilation = 0, flipped = true)
 
-Places sliding windows of x into a container tensor of size (num_windows, window_size, batchsize).
-The window size is determined by the prod(spatial dims of kernel)*input_channels.
-The number of sliding windows will match those of convolution (conv) with the same kernel_size and arguments.
-Uses NNlib.im2col! as backend.
+Places sliding windows of x into a container tensor of size `(num_windows,
+window_size, batchsize)`. The window size is determined by the `prod(spatial dims
+of kernel)*input_channels`. The number of sliding windows will match those of
+convolution (`conv`) with the same kernel_size and arguments. Note that
+by default `conv` flips the spatial dimensions of its kernel (default
+`flipped=false`), whereas `unfold` does not (default `flipped=true`). 
+Uses `NNlib.im2col!` as backend. 
+
+See also [`fold`](@ref), the adjoint/transpose operator 
+and a potential inverse of `unfold`.
+
+# Example
+The below example demonstrates that `unfold` uses the same sliding windows as `conv`.
+In general [`batched_mul`](@ref) + `unfold` should not be used to achieve convolution.
+```jldoctest
+julia> x = [100; 2; 3; 40; 5; 6; 700;;;];  # 1D data, 1 channel, batch of 1
+
+julia> size(x)
+(7, 1, 1)
+
+julia> w = [1;0;-1;;;];  # 1D conv kernel of length 3
+
+julia> kws = (pad=1, stride=2, flipped=true);  # use same args for conv and unfold
+
+julia> z = unfold(x, size(w); kws...) 
+4×3×1 Array{Int64, 3}:
+[:, :, 1] =
+  0  100   2
+  2    3  40
+ 40    5   6
+  6  700   0
+
+julia> y1 = conv(x, w; kws...)
+4×1×1 Array{Int64, 3}:
+[:, :, 1] =
+  -2
+ -38
+  34
+   6
+
+julia> y2 = z ⊠ w  # ⊠ (\\boxtimes) is NNlib.batched_mul
+4×1×1 Array{Int64, 3}:
+[:, :, 1] =
+  -2
+ -38
+  34
+   6
+```
 """
-function unfold(x::AbstractArray{T, N}, kernel_size::NTuple{K}; stride = 1, pad = 0, dilation = 1, flipped = false) where {T, K, N}
+function unfold(x::AbstractArray{T, N}, kernel_size::NTuple{K}; stride = 1, pad = 0, dilation = 1, flipped = true) where {T, K, N}
     stride = expand(Val(N - 2), stride)
     padding = expand(Val(N - 2), pad)
     dilation = expand(Val(N - 2), dilation)
@@ -16,43 +60,64 @@ function unfold(x::AbstractArray{T, N}, kernel_size::NTuple{K}; stride = 1, pad 
 end
 
 """
-    fold(y, output_size, kernel_size; stride = 1, pad = 0, dilation = 0, flipped = false)
+    fold(y, output_size, kernel_size; stride = 1, pad = 0, dilation = 0, flipped = true)
 
-Accumulates sliding windows from the output of unfold into a container tensor of size `output_size`.
-An inverse to `unfold` can be obtained by using `fold` and accounting for scaling issues. 
-For example,
+The adjoint/transpose operator of `unfold`. It accumulates sliding windows from
+the output of `unfold` into a container tensor of size `output_size`. An inverse
+to `unfold` may be obtained (in some cases) by using `fold` and accounting for scaling issues 
+with a divisor (see example). Uses `NNlib.col2im!` as backend. 
 
+See also [`unfold`](@ref).
+
+# Example
 ```jldoctest
-julia> kernel_size, pad = (3, 3, 1, 1), 1;
+julia> x = [100; 2; 3; 40; 5; 6; 700;;;];  # 1D data, 1 channel, batch of 1
 
-julia> x = reshape(1:64, 8, 8, 1, 1) |> collect;
+julia> y = unfold(x, (3,1,1))  # sliding window of size 3
+5×3×1 Array{Int64, 3}:
+[:, :, 1] =
+ 100   2    3
+   2   3   40
+   3  40    5
+  40   5    6
+   5   6  700
 
-julia> y = unfold(x, kernel_size; pad=pad);
+julia> z = fold(y, size(x), (3,1,1))  # sum of contributions in y. 100 appears once, 40 three times
+7×1×1 Array{Int64, 3}:
+[:, :, 1] =
+ 100
+   4
+   9
+ 120
+  15
+  12
+ 700
 
-julia> size(y)
-(64, 9, 1)
+julia> divisor = fold(unfold(ones(size(x)...), (3,1,1)), size(x), (3,1,1))
+7×1×1 Array{Float64, 3}:
+[:, :, 1] =
+ 1.0
+ 2.0
+ 3.0
+ 3.0
+ 3.0
+ 2.0
+ 1.0
 
-julia> z = fold(y, size(x), kernel_size; pad=pad);
-
-julia> d = fold(unfold(ones(eltype(x), size(x)...), kernel_size; pad=pad), size(x), kernel_size; pad=pad)
-8×8×1×1 Array{Int64, 4}:
-[:, :, 1, 1] =
- 4  6  6  6  6  6  6  4
- 6  9  9  9  9  9  9  6
- 6  9  9  9  9  9  9  6
- 6  9  9  9  9  9  9  6
- 6  9  9  9  9  9  9  6
- 6  9  9  9  9  9  9  6
- 6  9  9  9  9  9  9  6
- 4  6  6  6  6  6  6  4
-
-julia> x == z./d
-true
-
+julia> z ./ divisor 
+7×1×1 Array{Float64, 3}:
+[:, :, 1] =
+ 100.0
+   2.0
+   3.0
+  40.0
+   5.0
+   6.0
+ 700.0
 ```
-Uses NNlib.col2im! as backend.
+In general, an inverse to `unfold` does not exist if `divisor` contains zeros.
 """
-function fold(x::AbstractArray{T, 3}, output_size::NTuple{N}, kernel_size::NTuple{K}; stride = 1, pad = 0, dilation = 1, flipped = false) where {T, K, N}
+function fold(x::AbstractArray{T, 3}, output_size::NTuple{N}, kernel_size::NTuple{K}; stride = 1, pad = 0, dilation = 1, flipped = true) where {T, K, N}
     stride = expand(Val(N - 2), stride)
     padding = expand(Val(N - 2), pad)
     dilation = expand(Val(N - 2), dilation)
