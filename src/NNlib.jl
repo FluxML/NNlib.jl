@@ -1,7 +1,7 @@
 module NNlib
 
 import Atomix
-import ChainRulesCore: rrule
+import ChainRulesCore: rrule, @ignore_derivatives
 
 using Base.Broadcast: broadcasted
 using Base.Threads
@@ -16,7 +16,6 @@ using Pkg
 using Random
 using Requires
 using Statistics
-using Statistics: mean
 
 const libblas = Base.libblas_name
 
