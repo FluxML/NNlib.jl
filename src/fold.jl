@@ -23,7 +23,7 @@ julia> w = reshape([1 0 -1], 3, 1, 1);  # 1D conv kernel of length 3
 
 julia> kws = (pad=1, stride=2, flipped=true);  # use same args for conv and unfold
 
-julia> z = unfold(x, size(w); kws...) 
+julia> z = NNlib.unfold(x, size(w); kws...) 
 4×3×1 Array{Int64, 3}:
 [:, :, 1] =
   0  100   2
@@ -70,7 +70,7 @@ See also [`unfold`](@ref).
 ```jldoctest
 julia> x = reshape([100 2 3 40 5 6 700], 7, 1, 1);  # 1D data, 1 channel, batch of 1
 
-julia> y = unfold(x, (3,1,1))  # sliding window of size 3
+julia> y = NNlib.unfold(x, (3,1,1))  # sliding window of size 3
 5×3×1 Array{Int64, 3}:
 [:, :, 1] =
  100   2    3
@@ -79,7 +79,7 @@ julia> y = unfold(x, (3,1,1))  # sliding window of size 3
   40   5    6
    5   6  700
 
-julia> z = fold(y, size(x), (3,1,1))  # sum of contributions in y. 100 appears once, 40 three times
+julia> z = NNlib.fold(y, size(x), (3,1,1))  # sum of contributions in y. 100 appears once, 40 three times
 7×1×1 Array{Int64, 3}:
 [:, :, 1] =
  100
@@ -90,7 +90,7 @@ julia> z = fold(y, size(x), (3,1,1))  # sum of contributions in y. 100 appears o
   12
  700
 
-julia> divisor = fold(unfold(ones(size(x)...), (3,1,1)), size(x), (3,1,1))
+julia> divisor = NNlib.fold(NNlib.unfold(ones(size(x)...), (3,1,1)), size(x), (3,1,1))
 7×1×1 Array{Float64, 3}:
 [:, :, 1] =
  1.0
