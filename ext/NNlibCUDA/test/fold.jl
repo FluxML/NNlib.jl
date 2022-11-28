@@ -25,7 +25,7 @@
             x = rand(Float64, fill(8, spatial_rank)..., C_in, batch_size)
             w = rand(Float64, fill(2, spatial_rank)..., C_in, C_out)
             cdims = DenseConvDims(x, w; opts...)
-            y = unfold(x, cdims)
+            y = NNlib.unfold(x, cdims)
 
             # test equivalence of fold/unfold across GPU/CPU
             gputest(x -> NNlib.unfold(x, cdims), x) 
