@@ -37,7 +37,7 @@ function fold_kernel!(x::AbstractArray{T}, col, col_size, input_size, output_siz
         w, h, d = @. ((w, h, d) - 1)*stride - pad_lo + 1 + ((kw, kh, kd) - 1)*dilation
 
         # check out of bounds
-        if any((w, h, d) .<= 0 .|| (w, h, d) .> input_size)
+        if any((w, h, d) .<= 0 .| (w, h, d) .> input_size)
             return nothing
         end
 
