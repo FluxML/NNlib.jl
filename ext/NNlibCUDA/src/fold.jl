@@ -14,7 +14,7 @@ function unfold_kernel!(col::AbstractArray{T}, x, col_size, input_size, output_s
         end
 
         # check out of bounds
-        if any((w, h, d) .<= 0 .|| (w, h, d) .> input_size)
+        if any((w, h, d) .<= 0 .| (w, h, d) .> input_size)
             col[i, kw, kh, kd, c, b] = T(0)
             return nothing
         end
