@@ -14,7 +14,7 @@ function unfold_kernel!(col::AbstractArray{T}, x, col_size, input_size, output_s
         end
 
         # check out of bounds
-        if any((w, h, d) .<= 0 .| (w, h, d) .> input_size)
+        if !all(checkindex.(Bool, UnitRange.(1, input_size), (w, h, d)))
             col[i, kw, kh, kd, c, b] = T(0)
             return nothing
         end
@@ -37,7 +37,7 @@ function fold_kernel!(x::AbstractArray{T}, col, col_size, input_size, output_siz
         w, h, d = @. ((w, h, d) - 1)*stride - pad_lo + 1 + ((kw, kh, kd) - 1)*dilation
 
         # check out of bounds
-        if any((w, h, d) .<= 0 .| (w, h, d) .> input_size)
+        if !all(checkindex.(Bool, UnitRange.(1, input_size), (w, h, d)))
             return nothing
         end
 
