@@ -1,4 +1,4 @@
-using NNlib, Test, Statistics, Random
+using NNlib, Test, Statistics, Random, LinearAlgebra
 using ChainRulesCore, ChainRulesTestUtils
 using Base.Broadcast: broadcasted
 import FiniteDifferences
@@ -13,10 +13,8 @@ include("test_utils.jl")
 @testset verbose=true "NNlib.jl" begin
     if CUDA.functional()
         if get(ENV, "NNLIB_TEST_CUDA", "false") == "true"
-            import Pkg
-            using NNlibCUDA
             @testset "CUDA" begin
-                Pkg.test("NNlibCUDA")
+                include("cuda/runtests.jl")
             end
         else
             @info "Skipping CUDA tests, set NNLIB_TEST_CUDA=true to run them"

@@ -1,7 +1,4 @@
 ## Activation functions
-#
-# Some of activation functions have its wrapper function for GPU in NNlibCUDA.jl.
-# https://github.com/JuliaGPU/CuArrays.jl/issues/614
 
 ACTIVATIONS = [
     :σ, :hardσ, :hardtanh, :relu,

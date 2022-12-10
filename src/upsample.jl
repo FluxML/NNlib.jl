@@ -135,8 +135,7 @@ end
 
 # compatibility layer for old versions of NNlibCUDA
 # old versions overload upsample_linear_wcn, new versions overload upsample_linear_kernel
-# can be removed from NNlib 0.9, i.e. revert https://github.com/FluxML/NNlib.jl/pull/414
-# IF https://github.com/FluxML/NNlibCUDA.jl/pull/49 has been merged
+# TODO deprecate the old functions for removal in NNlib 0.9
 upsample_linear_kernel!(y::AbstractArray{<:Any,3}, x::AbstractArray{<:Any,3}) = upsample_linear_wcn!(y,x)
 upsample_linear_kernel!(y::AbstractArray{<:Any,4}, x::AbstractArray{<:Any,4}) = upsample_bilinear_whcn!(y,x)
 upsample_linear_kernel!(y::AbstractArray{<:Any,5}, x::AbstractArray{<:Any,5}) = upsample_trilinear_whdcn!(y,x)

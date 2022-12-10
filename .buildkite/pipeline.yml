@@ -8,15 +8,7 @@ steps:
           codecov: true
           dirs:
             - src
-#     commands:
-#       - julia --project=test -e """
-#         Pkg.develop(url = \"https://github.com/FluxML/NNlibCUDA.jl\")
-#         Pkg.instantiate()
-#         Pkg.build()
-#         Pkg.status()
-#         Pkg.test()
-#         Pkg.test(\"NNlibCUDA\")
-#         """
+            - ext
     agents:
       queue: "juliagpu"
       cuda: "*"
@@ -33,6 +25,7 @@ steps:
           codecov: true
           dirs:
             - src
+            - ext
     agents:
       queue: "juliagpu"
       cuda: "*"
