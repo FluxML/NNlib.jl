@@ -61,6 +61,11 @@ export conv, conv!, ∇conv_data, ∇conv_data!, ∇conv_filter,
 include("conv_bias_act.jl")
 export conv_bias_act, conv_bias_act!
 
+include("fold.jl")
+
+include("ctc.jl")
+export ctc_loss
+
 include("pooling.jl")
 export maxpool, maxpool!, meanpool, meanpool!, 
     ∇maxpool, ∇maxpool!, ∇meanpool, ∇meanpool!

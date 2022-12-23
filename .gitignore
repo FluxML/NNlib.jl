@@ -13,3 +13,6 @@ deps.jl
 .vscode/
 /Manifest.toml
 lib/NNlibCUDA/Manifest.toml
+benchmark/Manifest.toml
+benchmark/*.json
+benchmark/report.md

@@ -5,8 +5,7 @@
     depthwiseconv_im2col!(y, x, w, cdims, col=similar(x); alpha=1, beta=0)
 
 Perform a depthwise convolution using im2col and GEMM, store the result in `y`.
-
-See `conv_im2col!()` for an explanation of optional parameters.
+See [`conv_im2col!`](@ref) for explanation of optional parameters.
 """
 depthwiseconv_im2col!
 
@@ -48,17 +47,18 @@ function depthwiseconv_im2col!(
 end
 
 """
-    ∇depthwiseconv_filter_im2col!(dw, w, dy, cdims, col=similar(dw); alpha=1, beta)
+    ∇depthwiseconv_filter_im2col!(dw, w, dy, cdims, col=similar(dw, ∇filter_im2col_dims(cdims));
+                                  alpha=1, beta=0)
 
-Depthwise conv2d backward pass onto the weights using im2col and GEMM.
-See the documentation for `conv_im2col!()` for explanation of optional parameters.
+Depthwise conv backward pass onto the weights using im2col and GEMM.
+See [`conv_im2col!`](@ref) for explanation of optional parameters.
 """
 ∇depthwiseconv_filter_im2col!
 
 function ∇depthwiseconv_filter_im2col!(
                 dw::AbstractArray{T,5}, x::AbstractArray{T,5},
                 dy::AbstractArray{T,5}, cdims::DepthwiseConvDims;
-                col::AbstractArray{T,3} = similar(dw, im2col_dims(cdims)),
+                col::AbstractArray{T,3} = similar(dw, ∇filter_im2col_dims(cdims)),
                 alpha::T=T(1), beta::T=T(0)) where T
     check_dims(size(x), size(dw), size(dy), cdims)
 
@@ -66,9 +66,13 @@ function ∇depthwiseconv_filter_im2col!(
     N = channel_multiplier(cdims)
     K = prod(output_size(cdims))
 
-    @threads for batch_idx in 1:size(x)[end]
+    for batch_idx in 1:size(x, 5)
+        # Because we accumulate over batches in this loop, we must set `beta` equal
+        # to `1.0` after the first sample.
+        beta′ = batch_idx == 1 ? beta : T(1)
+
         # col_slice is a thread-local workspace
-        col_slice = view(col, :, :, threadid())
+        col_slice = view(col, :, :, 1)
         im2col!(col_slice, view(x, :, :, :, :, batch_idx), cdims)
 
         # We do a separate convolution for each channel in x, as we must
@@ -78,22 +82,18 @@ function ∇depthwiseconv_filter_im2col!(
                 col_ptr = pointer(col_slice, (c_in - 1)*M*K + 1)
                 dy_ptr = pointer(dy, (batch_idx - 1)*N*K*channels_in(cdims) + (c_in - 1)*K*N + 1)
                 dw_ptr = pointer(dw, (c_in - 1)*M*N + 1)
-                gemm!(Val(true), Val(false), M, N, K, alpha, col_ptr, dy_ptr, beta, dw_ptr)
+                gemm!(Val(true), Val(false), M, N, K, alpha, col_ptr, dy_ptr, beta′, dw_ptr)
             end
         end
-
-        # Because we accumulate over batches in this loop, we must set `beta` equal
-        # to `1.0` from this point on.
-        beta = T(1)
     end
     return dw
 end
 
 """
-    depthwiseconv2d_Δx_im2col!(dx, w, dy, cdims, col=similar(dx); alpha=1, beta=0)
+    ∇depthwiseconv_data_im2col!(dx, w, dy, cdims, col=similar(dx); alpha=1, beta=0)
 
 Depwthwise conv2d backward pass onto the input using im2col and GEMM.
-See the documentation for `conv_im2col!()` for explanation of optional parameters.
+See [`conv_im2col!`](@ref) for explanation of optional parameters.
 """
 ∇depthwiseconv_data_im2col!
 

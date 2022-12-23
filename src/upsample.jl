@@ -104,8 +104,7 @@ can be directly specified with a keyword argument.
 
 The size of the output is equal to
 `(scale*S1, S2, S3)`, where `S1, S2, S3 = size(x)`.
-"""
-# the user facing function
+"""  # the user facing function
 function upsample_linear(x::AbstractArray{<:Any,N}, scale::NTuple{M,Real}) where {N,M}
     M == N-2 || error("The scale argument should be an NTuple with length $(N-2), but it has length $M.")
     outsize = ntuple(i -> floor(Int, scale[i] * Base.size(x, i)), N-2)

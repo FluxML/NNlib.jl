@@ -77,6 +77,25 @@ function im2col_dims(c::ConvDims)
     )
 end
 
+"""
+    ∇filter_im2col_dims(c::ConvDims)
+
+Like [`im2col_dims`](@ref), but saves some memory because multiple (Julia) threads are
+not required for the filter gradient calculation.
+
+Note: in the future, this may return `Dims{2}` instead of `Dims{3}`.
+"""
+function ∇filter_im2col_dims(c::ConvDims)
+    return (
+        # Output size
+        prod(output_size(c)),
+        # Size of single dotproduct within convolution
+        prod(kernel_size(c))*channels_in(c),
+        # No threading, this is just here for backwards compat
+        1
+    )
+end
+
 # Protect your skin, kids.  Also do common validation of stride, padding, etc...
 function check_spdf(x_size::NTuple{N}, w_size::NTuple{N}, stride, padding, dilation) where {N}
     # Number of spatial dimensions in `x` and `w`.

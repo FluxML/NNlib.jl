@@ -737,7 +737,7 @@ end
 end
 
 # https://github.com/FluxML/NNlib.jl/pull/171
-@testset "conv_direct! - Check Sizes" begin 
+@testset "conv_direct! - Check Sizes" begin
     x_size = (6, 7, 8, 5, 3)
     y_size = (5, 6, 7, 4, 3)
     w_size = (2, 2, 2, 5, 4)
@@ -759,25 +759,15 @@ end
 
   y = conv(x, w, cdims)
   gradtest((y, w) -> ∇conv_data(y, w, cdims), y, w)
-  # if spatial_rank == 3
-  #   @test_broken gradtest((y, w) -> sum(∇conv_data(y, w, cdims)), y, w)
-  # else
-    gradtest((y, w) -> sum(∇conv_data(y, w, cdims)), y, w)
-  # end
-    gradtest((x, y) -> ∇conv_filter(x, y, cdims), x, y)
-    if spatial_rank < 3
-        gradtest((x, y) -> sum(∇conv_filter(x, y, cdims)), x, y)
-    end
+  gradtest((y, w) -> sum(∇conv_data(y, w, cdims)), y, w)
+  gradtest((x, y) -> ∇conv_filter(x, y, cdims), x, y)
+  gradtest((x, y) -> sum(∇conv_filter(x, y, cdims)), x, y)
 
   dcdims = DepthwiseConvDims(x, w)
   gradtest((x, w) -> depthwiseconv(x, w, dcdims), x, w)
 
   # FIXME fails
-  # y = depthwiseconv(x, w, dcdims)
-  # gradtest((y, w) -> ∇depthwiseconv_data(y, w, dcdims), y, w)
-  # if spatial_rank == 3
-  #   @test_broken gradtest((y, w) -> sum(∇depthwiseconv_data(y, w, dcdims)), y, w)
-  # else
-  @test_skip gradtest((y, w) -> sum(∇depthwiseconv_data(y, w, dcdims)), y, w)
-  # end
+  y = depthwiseconv(x, w, dcdims)
+  gradtest((y, w) -> ∇depthwiseconv_data(y, w, dcdims), y, w)
+  gradtest((y, w) -> sum(∇depthwiseconv_data(y, w, dcdims)), y, w)
 end

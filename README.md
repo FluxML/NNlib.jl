@@ -1,9 +1,16 @@
+<img align="right" width="200px" src="https://github.com/FluxML/NNlib.jl/raw/master/docs/src/assets/logo.png">
+
 # NNlib.jl
 
+[![Documentation][docs-dev-img]][docs-dev-url]
 [![CI](https://github.com/FluxML/NNlib.jl/actions/workflows/ci.yml/badge.svg)](https://github.com/FluxML/NNlib.jl/actions/workflows/ci.yml)
 [![Coverage](https://codecov.io/gh/FluxML/NNlib.jl/branch/master/graph/badge.svg)](https://codecov.io/gh/FluxML/NNlib.jl) 
-[![Documentation](https://img.shields.io/badge/docs-fluxml.ai-blue)](https://fluxml.ai/Flux.jl/stable/models/nnlib/)
 
+[docs-stable-img]: https://img.shields.io/badge/docs-stable-blue.svg
+[docs-stable-url]: https://fluxml.ai/NNlib.jl/stable/
+
+[docs-dev-img]: https://img.shields.io/badge/docs-latest-blue.svg
+[docs-dev-url]: https://fluxml.ai/NNlib.jl/dev/
 
 This package provides a library of functions useful for neural networks, such as softmax, sigmoid, batched multiplication, convolutions and pooling. Many of these are used by [Flux.jl](https://github.com/FluxML/Flux.jl), which loads this package, but they may be used independently.
 
