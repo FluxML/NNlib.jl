@@ -1,14 +1,14 @@
 # Pooling is so similar, we abstract over meanpooling and maxpooling, simply replacing
 # the inner loop operation and a few initialization parameters.
-for name in (:max, :mean)
+for name in (:max, :mean, :lp)
     @eval function $((Symbol("$(name)pool_direct!")))(
                     y::AbstractArray{T, 5}, x::AbstractArray{T, 5},
-                    pdims::PoolDims; alpha::T=T(1), beta::T=T(0)) where T
+                    pdims::PoolDims; alpha::T=T(1), beta::T=T(0), kwargs...) where T
         $((Symbol("$(name)pool_direct!")))(
             y, x, pdims,
             Val(kernel_size(pdims)), Val(channels_out(pdims)),
             Val(padding(pdims)), Val(dilation(pdims)), Val(stride(pdims));
-            alpha, beta)
+            alpha, beta, kwargs...)
         return y
     end
 
@@ -17,7 +17,7 @@ for name in (:max, :mean)
         pdims::PoolDims,
         # kernel size, channels out, padding, dilation, stride
         ::Val{K}, ::Val{C}, ::Val{P}, ::Val{D}, ::Val{S};
-        alpha::T=T(1), beta::T=T(0),
+        alpha::T=T(1), beta::T=T(0), kwargs...
     ) where {T, K, C, P, D, S}
         @assert beta == T(0) "beta not supported yet"
         check_dims(size(x), size(y), pdims)
@@ -41,10 +41,15 @@ for name in (:max, :mean)
             alpha = alpha / prod(K)
         end
 
+        p = if $(name != :lp) 0 else
+            !haskey(kwargs, :p) && error("lppool must pass p")
+            kwargs[:p]
+        end
+
         # Each loop, we initialize `m` to something, set that here.
         m_init = if $(name == :max)
             T <: AbstractFloat ? nextfloat(typemin(T)) : typemin(T)
-        elseif $(name == :mean)
+        elseif $(name == :mean) || $(name == :lp)
             T(0)
         else
             error("Unimplemented codegen path")
@@ -78,10 +83,14 @@ for name in (:max, :mean)
                     end
                 elseif $(name == :mean)
                     m += x[input_kw, input_kh, input_kd, c, batch_idx]
+                elseif $(name == :lp)
+                    m += x[input_kw, input_kh, input_kd, c, batch_idx]^p
                 else
                     error("Unimplemented codegen path")
                 end
             end
+
+            m = $(name == :lp) ? m^(1 / p) : m
 
             y[w, h, d, c, batch_idx] = alpha * m # + beta * y[w, h, d, c, batch_idx]
             end
@@ -128,12 +137,15 @@ for name in (:max, :mean)
                                 end
                             elseif $(name == :mean)
                                 m += x[input_kw, input_kh, input_kd, c, batch_idx]
+                            elseif $(name == :lp)
+                                m += x[input_kw, input_kh, input_kd, c, batch_idx]^p
                             else
                                 error("Unimplemented codegen path")
                             end
                         end
                     end
                 end
+                $(name == :lp) && (m = m^(1 / p))
                 y[w, h, d, c, batch_idx] = alpha * m # + beta * y[w, h, d, c, batch_idx]
                 end
                 end
@@ -159,7 +171,7 @@ for name in (:max, :mean)
                     dx::AbstractArray{T,5}, dy::AbstractArray{T,5},
                     y::AbstractArray{T,5}, x::AbstractArray{T,5},
                     pdims::PoolDims, ::Val{K}; # == kernel_size(pdims)
-                    alpha::T=T(1), beta::T=T(0)) where {T, K}
+                    alpha::T=T(1), beta::T=T(0), kwargs...) where {T, K}
         check_dims(size(x), size(dy), pdims)
 
         width, height, depth = input_size(pdims)
@@ -178,12 +190,20 @@ for name in (:max, :mean)
 
         # If we're doing mean pooling, we represent division by kernel size by rolling
         # it into the `alpha` multiplier.
-        if $(name == :mean)
+        if $(name == :mean) || $(name == :lp)
             alpha = alpha / prod(K)
+        end
+
+        p = if $(name != :lp) 0 else
+            !haskey(kwargs, :p) && error("lppool must pass p")
+            kwargs[:p]
         end
 
         # Start with the central region
         w_region, h_region, d_region = central_region
+        display(d_region)
+        display(h_region)
+        display(w_region)
         @inbounds for batch_idx in 1:size(x, 5), c in 1:out_c
             for d in d_region
             pd = project(d, stride_d, pad_d_lo)
@@ -226,6 +246,8 @@ for name in (:max, :mean)
                 elseif $(name == :mean)
                     # Either does meanpool :(
                     dx[input_kw, input_kh, input_kd, c, batch_idx] += dy_idx * alpha
+                elseif $(name == :lp)
+                    dx[input_kw, input_kh, input_kd, c, batch_idx] += (dy_idx^p * alpha)^(1/p)
                 else
                     error("Unimplemented codegen path")
                 end
@@ -286,6 +308,8 @@ for name in (:max, :mean)
                                 end
                             elseif $(name == :mean)
                                 dx[input_kw, input_kh, input_kd, c, batch_idx] += dy_idx * alpha #+ beta * dx[x_idxs...]
+                            elseif $(name == :lp)
+                                dx[input_kw, input_kh, input_kd, c, batch_idx] += (dy_idx^p * alpha)^(1/p)
                             else
                                 error("Unimplemented codegen path")
                             end

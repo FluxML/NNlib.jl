@@ -26,6 +26,7 @@ for (front_name, backend) in (
         # This maps from public, front-facing name, to internal backend name
         :maxpool  => :direct,
         :meanpool => :direct,
+        :lppool => :direct,
     )
 
     # We only define 3d pooling primitives, we reshape lower down to get 1d and 2d pooling
@@ -42,6 +43,7 @@ end
 for (front_name, backend) in (
         :∇maxpool  => :direct,
         :∇meanpool => :direct,
+        :∇lppool => :direct,
     )
     @eval begin
         function $(Symbol("$(front_name)!"))(
@@ -57,7 +59,7 @@ end
 # Our strategy for pooling is to reshape to an array with three spatial dimensions, which
 # makes things MUCH EASIER for us on the backend side, and is in general pretty fast,
 # since we can specialize on sizes.
-for front_name in (:maxpool, :meanpool)
+for front_name in (:maxpool, :meanpool, :lppool)
     for backend in (Symbol(), :_direct)
         for N in (3, 4)
             @eval begin
@@ -103,7 +105,7 @@ end
 # Finally, let's generate auto-allocating versions of all our functions, for all backends:
 for backend in (Symbol(), :_direct, :_nnpack)
     # First make auto-allocating versions of the basic pooling calls:
-    for name in (:maxpool, :meanpool)
+    for name in (:maxpool, :meanpool, :lppool)
         @eval begin
             function $(Symbol("$(name)$(backend)"))(
                             x::AbstractArray{xT,N},
@@ -165,8 +167,14 @@ function meanpool(x, k::NTuple{N, Integer}; pad=0, stride=k) where N
     return meanpool(x, pdims)
 end
 
+function lppool(x, p::Number, k::NTuple{N, Integer}; pad=0, stride=k) where N
+    pad = expand(Val(N), pad)
+    stride = expand(Val(N), stride)
+    pdims = PoolDims(x, k; padding=pad, stride=stride)
+    return lppool(x, pdims; p=p)
+end
 
-for pool in [:maxpool, :meanpool]
+for pool in [:maxpool, :meanpool, :lppool]
     ∇pool = Symbol(:∇, pool)
     pullback = Symbol(pool, :_pullback)
     @eval function rrule(::typeof($pool), x, pdims::PoolDims; kw...)
