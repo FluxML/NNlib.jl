@@ -201,9 +201,6 @@ for name in (:max, :mean, :lp)
 
         # Start with the central region
         w_region, h_region, d_region = central_region
-        display(d_region)
-        display(h_region)
-        display(w_region)
         @inbounds for batch_idx in 1:size(x, 5), c in 1:out_c
             for d in d_region
             pd = project(d, stride_d, pad_d_lo)
@@ -247,7 +244,8 @@ for name in (:max, :mean, :lp)
                     # Either does meanpool :(
                     dx[input_kw, input_kh, input_kd, c, batch_idx] += dy_idx * alpha
                 elseif $(name == :lp)
-                    dx[input_kw, input_kh, input_kd, c, batch_idx] += (dy_idx^p * alpha)^(1/p)
+                    grad = x[input_kw, input_kh, input_kd, c, batch_idx]^(p-1) * y_idx^(1-p)
+                    dx[input_kw, input_kh, input_kd, c, batch_idx] += dy_idx * grad
                 else
                     error("Unimplemented codegen path")
                 end
@@ -309,7 +307,8 @@ for name in (:max, :mean, :lp)
                             elseif $(name == :mean)
                                 dx[input_kw, input_kh, input_kd, c, batch_idx] += dy_idx * alpha #+ beta * dx[x_idxs...]
                             elseif $(name == :lp)
-                                dx[input_kw, input_kh, input_kd, c, batch_idx] += (dy_idx^p * alpha)^(1/p)
+                                grad = x[input_kw, input_kh, input_kd, c, batch_idx]^(p-1) * y_idx^(1-p)
+                                dx[input_kw, input_kh, input_kd, c, batch_idx] += dy_idx * grad
                             else
                                 error("Unimplemented codegen path")
                             end
