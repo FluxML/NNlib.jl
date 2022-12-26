@@ -17,25 +17,41 @@ typelength(::Type{CartesianIndex{M}}) where M = M
 Performs dimensional consistency checks and return the 
 dimensionality of the scattered objects.
 """
+
 function scatter_dims(X::AbstractArray{Tx,Nx}, 
                      Y::AbstractArray{Ty,Ny},
-                     idx::AbstractArray{Tidx,Nidx}) where {Tx,Ty,Tidx,Nx,Ny,Nidx}
-    M = typelength(Tidx)
-    dims = scatter_dims(Nx, Ny, M, Nidx)
-    size(X)[1:dims] == size(Y)[1:dims] || throw(ArgumentError("Incompatible input shapes."))
-    size(Y)[dims+1:end] == size(idx) || throw(ArgumentError("Incompatible input shapes."))
-    return dims
+                     idx::AbstractArray{Tidx,Nidx},
+                     dims::Union{Nothing, Integer} = nothing) where {Tx,Ty,Tidx,Nx,Ny,Nidx}
+    nsrcin = typelength(Tidx)
+    ndstin = Nidx
+    nbefore, nafter = scatter_dims(Nx, Ny, nsrcin, ndstin, dims)
+    size(Y)[1:nbefore] == size(X)[1:nbefore] || throw(ArgumentError("Incompatible input shapes."))
+    size(Y)[nbefore+1:nbefore+ndstin] == size(idx) || throw(ArgumentError("Incompatible input shapes."))
+    size(Y)[nbefore+ndstin+1:end] == size(X)[nbefore+nsrcin+1:end] || throw(ArgumentError("Incompatible input shapes."))
+    return nbefore, nafter
 end
 
-function scatter_dims(Nx, Ny, M, Nidx)
-    @assert Nx - M == Ny - Nidx "Incompatible input shapes of (dst, src, idx) = ($Nx, $Ny, $Nidx)."
-    dims = Nx - M
-    dims < 0 && throw(ArgumentError("dims must be non-negative but got dims=$dims."))
-    return dims
+function scatter_dims(Nx, Ny, nsrcin, ndstin, dims = nothing)
+    @assert Nx - nsrcin == Ny - ndstin "Incompatible input shapes of (dst, src, idx, Tidx) = ($Nx, $Ny, $ndstin, $nsrcin)."
+    
+    if dims === nothing
+        nbefore = Nx - nsrcin
+        nbefore < 0 && throw(ArgumentError("nbefore must be non-negative but got $nbefore."))
+        nafter = 0
+        return nbefore, nafter
+    else
+        nbefore = dims - 1
+        nafter = Ny - ndstin - nbefore
+        nbefore < 0 && throw(ArgumentError("nbefore must be non-negative but got $nbefore."))
+        nafter < 0 && throw(ArgumentError("nafter must be non-negative but got $nafter."))
+        return nbefore, nafter
+    end
 end
 
 _view(X, colons, k) = view(X, colons..., k...)
 _view(X, colons, k::Union{Integer, CartesianIndex}) = view(X, colons..., k)
+_view(X, colbefore, k, colafter) = view(X, colbefore..., k..., colafter...)
+_view(X, colbefore, k::Union{Integer, CartesianIndex}, colafter) = view(X, colbefore..., k, colafter...)
 
 """
     NNlib.scatter!(op, dst, src, idx)
@@ -78,7 +94,7 @@ function scatter!(op::OP, dst::AbstractArray, src::AbstractArray, idx::AbstractA
         src_v = _view(src, colons, k)
         dst_v .= (op).(dst_v, src_v)
     end
-    dst
+    return dst
 end
 
 function scatter!(op::typeof(mean), dst::AbstractArray, src::AbstractArray, idx::AbstractArray)

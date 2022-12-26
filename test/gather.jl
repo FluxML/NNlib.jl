@@ -149,3 +149,18 @@ end
     gradtest(xs -> gather!(dst, xs, index), src)
     gradtest(xs -> gather(xs, index), src)
 end
+
+using NNlib: gather!, gather
+
+@testset "gather! dims" begin
+
+        src = reshape([1:15;], 3, 5)
+        index = [1, 3, 2, 2]
+        dst = zeros(Int, 4, 5)
+        gather!(dst, src, index, dims=1)
+
+        @test dst ==   [1  4  7  10  13
+                        3  6  9  12  15
+                        2  5  8  11  14
+                        2  5  8  11  14]
+end
