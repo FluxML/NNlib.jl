@@ -102,7 +102,7 @@ julia> src = reshape([1:15;], 3, 5)
  2  5  8  11  14
  3  6  9  12  15
 
-julia> gather(src, [1, 2], [2, 4])
+julia> NNlib.gather(src, [1, 2], [2, 4])
 2-element Vector{Int64}:
   4
  11
