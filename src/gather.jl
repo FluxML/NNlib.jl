@@ -108,12 +108,14 @@ julia> gather(src, [1, 2], [2, 4])
  11
 ```
 """
-function gather(src::AbstractArray{Tsrc, Nsrc}, 
-                IJK::AbstractVector{<:Integer}...) where {Nsrc, Tsrc}
+function gather(src::AbstractArray{Tsrc, Nsrc},
+                I::AbstractVector{<:Integer},
+                J::AbstractVector{<:Integer},
+                Ks::AbstractVector{<:Integer}...) where {Nsrc, Tsrc}
 
-    return gather(src, to_cartesian_index(IJK))
+    return gather(src, to_cartesian_index(I, J, Ks...))
 end
 
-to_cartesian_index(IJK) = CartesianIndex.(IJK...)
+to_cartesian_index(IJK...) = CartesianIndex.(IJK...)
 
-@non_differentiable to_cartesian_index(idx::AbstractVector{<:Integer}...)
+@non_differentiable to_cartesian_index(::Any...)
