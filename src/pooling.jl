@@ -8,11 +8,15 @@
 #     - maxpool!(y, x, pdims)
 #     - meanpool(x, pdims)
 #     - meanpool!(y, x, pdims)
+#     - lppool(x, pdims)
+#     - lppool!(y, x, pdims)
 #   - Pooling input backprop
 #     - ∇maxpool(dy, y, x, pdims)
 #     - ∇maxpool!(dx, dy, y, x, pdims)
 #     - ∇meanpool(dy, y, x, pdims)
 #     - ∇meanpool!(dx, dy, y, x pdims)
+#     - ∇lppool(dy, y, x, pdims)
+#     - ∇lppool!(dx, dy, y, x pdims)
 #
 #   All methods require a `PoolDims` object to define the dimensions and optional
 #   elements of the convolution (stride, dilation, etc...), which is easily constructable
@@ -167,12 +171,19 @@ function meanpool(x, k::NTuple{N, Integer}; pad=0, stride=k) where N
     return meanpool(x, pdims)
 end
 
+
+"""
+    lppool(x, p::Number, k::NTuple; pad=0, stride=k)
+
+Perform Lp pool operation with `p`-norm and `window size `k` on input tensor `x`
+"""
 function lppool(x, p::Number, k::NTuple{N, Integer}; pad=0, stride=k) where N
     pad = expand(Val(N), pad)
     stride = expand(Val(N), stride)
     pdims = PoolDims(x, k; padding=pad, stride=stride)
     return lppool(x, pdims; p=p)
 end
+
 
 for pool in [:maxpool, :meanpool, :lppool]
     ∇pool = Symbol(:∇, pool)

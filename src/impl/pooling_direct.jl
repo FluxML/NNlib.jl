@@ -84,12 +84,14 @@ for name in (:max, :mean, :lp)
                 elseif $(name == :mean)
                     m += x[input_kw, input_kh, input_kd, c, batch_idx]
                 elseif $(name == :lp)
+                    # y = (∑ x^p)^(1/p), here to calculate (∑ x^p)
                     m += x[input_kw, input_kh, input_kd, c, batch_idx]^p
                 else
                     error("Unimplemented codegen path")
                 end
             end
 
+            # for lppool, y = (∑ x^p)^(1/p)
             m = $(name == :lp) ? m^(1 / p) : m
 
             y[w, h, d, c, batch_idx] = alpha * m # + beta * y[w, h, d, c, batch_idx]
@@ -244,6 +246,7 @@ for name in (:max, :mean, :lp)
                     # Either does meanpool :(
                     dx[input_kw, input_kh, input_kd, c, batch_idx] += dy_idx * alpha
                 elseif $(name == :lp)
+                    # y = (∑ x^p)^(1/p), ∂y/∂x = x^(p-1) × y^(1-p)
                     grad = x[input_kw, input_kh, input_kd, c, batch_idx]^(p-1) * y_idx^(1-p)
                     dx[input_kw, input_kh, input_kd, c, batch_idx] += dy_idx * grad
                 else
