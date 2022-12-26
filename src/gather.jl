@@ -54,6 +54,7 @@ or multiple `dst` columns.
 See [`gather!`](@ref) for an in-place version.
 
 # Examples
+
 ```jldoctest
 julia> NNlib.gather([1,20,300,4000], [2,4,2])
 3-element Vector{Int64}:
@@ -83,5 +84,36 @@ function rrule(::typeof(gather!), dst::AbstractArray, src::AbstractArray, idx::A
     y = gather!(dst, src, idx)
     src_size = size(src)
     gather!_pullback(Δ) = (NoTangent(), NoTangent(), ∇gather_src(unthunk(Δ), src_size, idx), NoTangent())
-    y, gather!_pullback
+    return y, gather!_pullback
 end
+
+"""
+    gather(src, IJK...)
+
+Convert the tuple of integer vectors `IJK` to a tuple of `CartesianIndex` and 
+call `gather` on it: `gather(src, CartesianIndex.(IJK...))`.
+
+# Examples
+
+```jldoctest
+julia> src = reshape([1:15;], 3, 5)
+3×5 Matrix{Int64}:
+ 1  4  7  10  13
+ 2  5  8  11  14
+ 3  6  9  12  15
+
+julia> gather(src, [1, 2], [2, 4])
+2-element Vector{Int64}:
+  4
+ 11
+```
+"""
+function gather(src::AbstractArray{Tsrc, Nsrc}, 
+                IJK::AbstractVector{<:Integer}...) where {Nsrc, Tsrc}
+
+    return gather(src, to_cartesian_index(IJK))
+end
+
+to_cartesian_index(IJK) = CartesianIndex.(IJK...)
+
+@non_differentiable to_cartesian_index(idx::AbstractVector{<:Integer}...)
