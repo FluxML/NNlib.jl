@@ -42,7 +42,7 @@ for name in (:max, :mean, :lp)
         end
 
         p = if $(name != :lp) 0 else
-            !haskey(kwargs, :p) && error("lppool must pass p")
+            !haskey(kwargs, :p) && error("lppool needs keyword argument `p`")
             kwargs[:p]
         end
 
@@ -92,7 +92,7 @@ for name in (:max, :mean, :lp)
             end
 
             # for lppool, y = (∑ x^p)^(1/p)
-            m = $(name == :lp) ? m^(1 / p) : m
+            m = $(name == :lp) ? m^(T(1) / p) : m
 
             y[w, h, d, c, batch_idx] = alpha * m # + beta * y[w, h, d, c, batch_idx]
             end
@@ -147,7 +147,7 @@ for name in (:max, :mean, :lp)
                         end
                     end
                 end
-                $(name == :lp) && (m = m^(1 / p))
+                $(name == :lp) && (m = m^(T(1) / p))
                 y[w, h, d, c, batch_idx] = alpha * m # + beta * y[w, h, d, c, batch_idx]
                 end
                 end
@@ -192,7 +192,7 @@ for name in (:max, :mean, :lp)
 
         # If we're doing mean pooling, we represent division by kernel size by rolling
         # it into the `alpha` multiplier.
-        if $(name == :mean) || $(name == :lp)
+        if $(name == :mean)
             alpha = alpha / prod(K)
         end
 

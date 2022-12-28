@@ -205,9 +205,9 @@ For each element `x` in (k × k) window, lppool computes `(∑ x^p)^(1 / p)` as 
 !!! warning
 
     Theoretically, when `p -> ∞`, lppool(x, p, k) ≈ maxpool(x, k).
-    But it's not correct in julia. Given a normal valuable `x`,
+    But it's not correct in julia. Given an arbitrary Number `n`,
     ```jldoctest
-    julia> x = 10
+    julia> n = 10
     10
 
     julia> ans^Inf
