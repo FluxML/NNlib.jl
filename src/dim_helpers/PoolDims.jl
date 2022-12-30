@@ -25,6 +25,12 @@ function PoolDims(
     _check_kernel(k::NTuple, ::Int) = k
 
     kernel = _check_kernel(k, M - 2)
+    length(x_size) == length(kernel) + 2 || error(
+        "PoolDims expects ndim(x) == length(k)+2 or length(size(x)) == length(kernel)+2,
+        dimension of x_size is $(length(x_size)),
+        length of k need $(length(x_size) - 2),
+        but now it's $(length(kernel))"
+    )
     spdf_kernel = NTuple{M, Int}([kernel..., 1, 1])
 
     sstride, ppadding, ddilation = check_spdf(

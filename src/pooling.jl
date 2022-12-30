@@ -156,10 +156,6 @@ Perform max pool operation with window size `k` on input tensor `x`.
 * `stride`: Stride for each spatial axis. `k` as default if not present.
 """
 function maxpool(x, k::NTuple{N, Integer}; pad=0, stride=k) where N
-    ndims(x) == length(k) + 2 || error("maxpool expects ndims(x) == length(k)+2,
-                                        dimension of x is $(ndims(x)),
-                                        length of k need $(ndims(x) - 2),
-                                        but now it's $(length(k))")
     pad = expand(Val(N), pad)
     stride = expand(Val(N), stride)
     pdims = PoolDims(x, k; padding=pad, stride=stride)
@@ -177,10 +173,6 @@ Perform mean pool operation with window size `k` on input tensor `x`.
 * `stride`: Stride for each spatial axis. `k` as default if not present.
 """
 function meanpool(x, k::NTuple{N, Integer}; pad=0, stride=k) where N
-    ndims(x) == length(k) + 2 || error("meanpool expects ndims(x) == length(k)+2,
-                                        dimension of x is $(ndims(x)),
-                                        length of k need $(ndims(x) - 2),
-                                        but now it's $(length(k))")
     pad = expand(Val(N), pad)
     stride = expand(Val(N), stride)
     pdims = PoolDims(x, k; padding=pad, stride=stride)
@@ -219,10 +211,6 @@ For each element `x` in (k × k) window, lppool computes `(∑ x^p)^(1 / p)` as 
     Please use `meanpool` and `maxpool` directly when needed.
 """
 function lppool(x, p::Number, k::NTuple{N, Integer}; pad=0, stride=k) where N
-    ndims(x) == length(k) + 2 || error("lppool expects ndims(x) == length(k)+2,
-                                        dimension of x is $(ndims(x)),
-                                        length of k need $(ndims(x) - 2),
-                                        but now it's $(length(k))")
     pad = expand(Val(N), pad)
     stride = expand(Val(N), stride)
     pdims = PoolDims(x, k; padding=pad, stride=stride)
