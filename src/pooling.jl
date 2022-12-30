@@ -8,15 +8,15 @@
 #     - maxpool!(y, x, pdims)
 #     - meanpool(x, pdims)
 #     - meanpool!(y, x, pdims)
-#     - lppool(x, pdims)
-#     - lppool!(y, x, pdims)
+#     - normpool(x, pdims)
+#     - normpool!(y, x, pdims)
 #   - Pooling input backprop
 #     - ∇maxpool(dy, y, x, pdims)
 #     - ∇maxpool!(dx, dy, y, x, pdims)
 #     - ∇meanpool(dy, y, x, pdims)
 #     - ∇meanpool!(dx, dy, y, x pdims)
-#     - ∇lppool(dy, y, x, pdims)
-#     - ∇lppool!(dx, dy, y, x pdims)
+#     - ∇normpool(dy, y, x, pdims)
+#     - ∇normpool!(dx, dy, y, x pdims)
 #
 #   All methods require a `PoolDims` object to define the dimensions and optional
 #   elements of the convolution (stride, dilation, etc...), which is easily constructable
@@ -30,7 +30,7 @@ for (front_name, backend) in (
         # This maps from public, front-facing name, to internal backend name
         :maxpool  => :direct,
         :meanpool => :direct,
-        :lppool => :direct,
+        :normpool => :direct,
     )
 
     # We only define 3d pooling primitives, we reshape lower down to get 1d and 2d pooling
@@ -47,7 +47,7 @@ end
 for (front_name, backend) in (
         :∇maxpool  => :direct,
         :∇meanpool => :direct,
-        :∇lppool => :direct,
+        :∇normpool => :direct,
     )
     @eval begin
         function $(Symbol("$(front_name)!"))(
@@ -63,7 +63,7 @@ end
 # Our strategy for pooling is to reshape to an array with three spatial dimensions, which
 # makes things MUCH EASIER for us on the backend side, and is in general pretty fast,
 # since we can specialize on sizes.
-for front_name in (:maxpool, :meanpool, :lppool)
+for front_name in (:maxpool, :meanpool, :normpool)
     for backend in (Symbol(), :_direct)
         for N in (3, 4)
             @eval begin
@@ -109,7 +109,7 @@ end
 # Finally, let's generate auto-allocating versions of all our functions, for all backends:
 for backend in (Symbol(), :_direct, :_nnpack)
     # First make auto-allocating versions of the basic pooling calls:
-    for name in (:maxpool, :meanpool, :lppool)
+    for name in (:maxpool, :meanpool, :normpool)
         @eval begin
             function $(Symbol("$(name)$(backend)"))(
                             x::AbstractArray{xT,N},
@@ -181,44 +181,29 @@ end
 
 
 """
-    lppool(x, p::Number, k::NTuple{N, Integer}; pad=0, stride=k)
+    normpool(x, p::Number, k::NTuple{N, Integer}; pad=0, stride=k)
 
-Perform Lp pool operation with value of the Lp norm `p` and `window size `k` on input tensor `x`.
+Perform Lp pool operation with value of the Lp norm `p` and window size `k` on input tensor `x`, also known as LPPool in pytorch.
 
 * `x` and `k`: Usually, ndim(x) ∈ [3, 5], length(k) ∈ [1, 3], s.t. ndim(x) == length(k) + 2
+* `p` is restricted to (0, Inf). Out-of-range `p` leads to undefined behavior.
 * `pad`: See [`pad_zeros`](@ref) for details.
 * `stride`: Stride for each spatial axis. `k` as default if not present.
 
-For each element `x` in (k × k) window, lppool computes `(∑ x^p)^(1 / p)` as output.
+For each element `x` in (k × k) window, normpool computes `(∑ x^p)^(1 / p)` as output.
 
-* When p = 1, lppool(x, p, k) ./ prod(k) ≈ meanpool(x, k)
-* When p = 2, lppool(x, p, k).^2 ./ prod(k) ≈ meanpool(x.^2, k)
-
-!!! warning
-
-    Theoretically, when `p -> ∞`, lppool(x, p, k) ≈ maxpool(x, k).
-    But it's not correct in julia. Given an arbitrary Number `n`,
-    ```jldoctest
-    julia> n = 10
-    10
-
-    julia> ans^Inf
-    Inf
-
-    julia> ans^(1/Inf)
-    1.0
-    ```
-    Please use `meanpool` and `maxpool` directly when needed.
+* When p = 1, normpool(x, p, k) ./ prod(k) ≈ meanpool(x, k)
+* When p = 2, normpool(x, p, k).^2 ./ prod(k) ≈ meanpool(x.^2, k)
 """
-function lppool(x, p::Number, k::NTuple{N, Integer}; pad=0, stride=k) where N
+function normpool(x, p::Number, k::NTuple{N, Integer}; pad=0, stride=k) where N
     pad = expand(Val(N), pad)
     stride = expand(Val(N), stride)
     pdims = PoolDims(x, k; padding=pad, stride=stride)
-    return lppool(x, pdims; p=p)
+    return normpool(x, pdims; p=p)
 end
 
 
-for pool in [:maxpool, :meanpool, :lppool]
+for pool in [:maxpool, :meanpool, :normpool]
     ∇pool = Symbol(:∇, pool)
     pullback = Symbol(pool, :_pullback)
     @eval function rrule(::typeof($pool), x, pdims::PoolDims; kw...)

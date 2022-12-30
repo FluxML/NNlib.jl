@@ -44,13 +44,13 @@ logsoftmax
 
 ## Pooling
 
-`Flux`'s `AdaptiveMaxPool`, `AdaptiveMeanPool`, `GlobalMaxPool`, `GlobalMeanPool`, `MaxPool`, `MeanPool` and `LPPool` use `NNlib.PoolDims`, `NNlib.maxpool`, `NNlib.meanpool` and `NNlib.lppool` as their backend.
+`Flux`'s `AdaptiveMaxPool`, `AdaptiveMeanPool`, `GlobalMaxPool`, `GlobalMeanPool`, `MaxPool`, `MeanPool` and `normpool` use `NNlib.PoolDims`, `NNlib.maxpool`, `NNlib.meanpool` and `NNlib.normpool` as their backend.
 
 ```@docs
 PoolDims
 maxpool
 meanpool
-lppool
+normpool
 ```
 
 ## Padding
