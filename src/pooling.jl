@@ -196,6 +196,7 @@ For each element `x` in (k × k) window, normpool computes `(∑ x^p)^(1 / p)` a
 * When p = 2, normpool(x, p, k).^2 ./ prod(k) ≈ meanpool(x.^2, k)
 """
 function normpool(x, p::Number, k::NTuple{N, Integer}; pad=0, stride=k) where N
+    (isinf(p) || p < 0) && error("p value of Lp norm pool expect to be in (0, Inf), but p is $(p) now.")
     pad = expand(Val(N), pad)
     stride = expand(Val(N), stride)
     pdims = PoolDims(x, k; padding=pad, stride=stride)
