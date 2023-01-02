@@ -20,7 +20,7 @@ See also [`logsoftmax`](@ref).
 ```jldoctest
 julia> softmax([1, 2, 3])
 3-element Vector{Float64}:
- 0.09003057317038046
+ 0.09003057317038045
  0.24472847105479764
  0.6652409557748218
 
@@ -64,7 +64,8 @@ function softmax!(out::AbstractArray{T}, x::AbstractArray; dims = 1) where {T}
     else
         @fastmath @. out = ifelse(isequal(max_,Inf), ifelse(isequal(x,Inf), 1, 0), exp(x - max_))
     end
-    out ./= sum!(max_, out)
+    tmp = dims isa Colon ? sum(out) : sum!(max_, out)
+    out ./= tmp
 end
 
 function ∇softmax_data(dy::AbstractArray{T}, y::AbstractArray{S}; dims = 1) where {T,S}
