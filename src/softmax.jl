@@ -58,7 +58,7 @@ softmax(x::AbstractArray{T}; dims = 1) where {T} = softmax!(similar(x, float(T))
 softmax!(x::AbstractArray; dims = 1) = softmax!(x, x; dims)
 
 function softmax!(out::AbstractArray{T}, x::AbstractArray; dims = 1) where {T}
-    max_ = @fastmath reduce(max, x; dims, init = T(-Inf))
+    max_ = fast_maximum(x; dims)
     if all(isfinite, max_)
         @fastmath out .= exp.(x .- max_)
     else
@@ -76,7 +76,7 @@ function ∇softmax_data(dy::AbstractArray{T}, y::AbstractArray{S}; dims = 1) wh
         # This path is faster, only safe for 1st derivatives though.
         # Was previously `∇softmax!(dx, dy, x, y; dims)` to allow CUDA overloads,
         # but that was slow: https://github.com/FluxML/NNlibCUDA.jl/issues/30
-        out = similar(y, promote_type(T,S))
+        out = similar(y, promote_type(T,S))  # sure to be mutable
         out .= dy .* y
         out .= out .- y .* sum(out; dims)
     end
@@ -91,6 +91,7 @@ end
 within_grad() = false
 rrule(::typeof(within_grad)) = true, _ -> (NoTangent(),)
 
+fast_maximum(x::AbstractArray{T}; dims) where {T} = @fastmath reduce(max, x; dims, init = float(T)(-Inf))
 
 """
     logsoftmax(x; dims = 1)
@@ -110,13 +111,14 @@ logsoftmax(x::AbstractArray{T}; dims = 1) where {T} = logsoftmax!(similar(x, flo
 logsoftmax!(x::AbstractArray; dims = 1) = logsoftmax!(x, x; dims)
 
 function logsoftmax!(out::AbstractArray{T}, x::AbstractArray; dims = 1) where {T}
-    max_ = maximum(x; dims)
+    max_ = fast_maximum(x; dims)
     if all(isfinite, max_)
         out .= x .- max_
     else
         @. out = ifelse(isequal(max_,Inf), ifelse(isequal(x,Inf), 0, -Inf), x - max_)
     end
-    @fastmath log_ = log.(sum(exp, out; dims))
+    tmp = dims isa Colon ? sum(out) : sum!(max_, out)
+    @fastmath log_ = log.(tmp)
     out .-= log_
 end
 
