@@ -17,7 +17,7 @@ See also [`logsoftmax`](@ref).
 
 # Examples
 
-```jldoctest softmax; filter = r"[+-]?([0-9]*[.])?[0-9]+(f[+-]*[0-9])?
+```jldoctest; filter = r"[+-]?([0-9]*[.])?[0-9]+(f[+-]*[0-9])?"
 julia> softmax([1, 2, 3])
 3-element Vector{Float64}:
  0.09003057317038046
