@@ -117,8 +117,7 @@ function logsoftmax!(out::AbstractArray{T}, x::AbstractArray; dims = 1) where {T
     else
         @. out = ifelse(isequal(max_,Inf), ifelse(isequal(x,Inf), 0, -Inf), x - max_)
     end
-    tmp = dims isa Colon ? sum(out) : sum!(max_, out)
-    @fastmath log_ = log.(tmp)
+    @fastmath log_ = log.(sum(exp, out; dims))
     out .-= log_
 end
 
