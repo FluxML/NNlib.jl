@@ -58,13 +58,13 @@ softmax(x::AbstractArray{T}; dims = 1) where {T} = softmax!(similar(x, float(T))
 softmax!(x::AbstractArray; dims = 1) = softmax!(x, x; dims)
 
 function softmax!(out::AbstractArray{T}, x::AbstractArray; dims = 1) where {T}
-    max_ = maximum(x; dims)
+    max_ = @fastmath reduce(max, x; dims, init = T(-Inf))
     if all(isfinite, max_)
         @fastmath out .= exp.(x .- max_)
     else
         @fastmath @. out = ifelse(isequal(max_,Inf), ifelse(isequal(x,Inf), 1, 0), exp(x - max_))
     end
-    out ./= sum(out; dims)
+    out ./= sum!(max_, out)
 end
 
 function ∇softmax_data(dy::AbstractArray{T}, y::AbstractArray{S}; dims = 1) where {T,S}
