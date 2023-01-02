@@ -101,6 +101,7 @@ end
             @info "Skipping CUDA tests, set NNLIB_TEST_CUDA=true to run them"
         end
 
+<<<<<<< HEAD
         if get(ENV, "NNLIB_TEST_AMDGPU", "false") == "true"
             import Pkg
             test_info = Pkg.project()
@@ -127,6 +128,7 @@ end
 
         @testset "Activation Functions" begin
             include("activations.jl")
+            include("bias_act.jl")
         end
 
         @testset "Attention" begin
