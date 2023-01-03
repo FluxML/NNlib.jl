@@ -18,9 +18,9 @@ end
 
 Calculates sample mean and (uncorrected) variance of `x` along `dims`.
 
-  - `dims=(1,...,N-2,N)` for BatchNorm
-  - `dims=(1,...,N-2)` for InstanceNorm and GroupNorm
-  - `dims=(1,...,S)` where S < N for LayerNorm/Flux.jl/stable/
+  - `dims=(1,...,N-2,N)` for batchnorm
+  - `dims=(1,...,N-2)` for instancenorm and groupnorm
+  - `dims=(1,...,S)` where S < N for layernorm
 
 This is more efficient than calling `mean(x; dims)` and `var(x; dims)` separately,
 because it can share some computation across both.
@@ -54,8 +54,8 @@ _apply_scale_bias(x, scale, bias) = x .* scale .+ bias
 
 Shared code path for all built-in norm functions.
 
-`μ` and `σ²` should be calculated on the fly using [`norm_stats`](@ref),
-or extracted from an existing collection such as [`RunningStats`](@ref).
+`μ` and `σ²` should be calculated on the fly using [`NNlib.norm_stats`](@ref),
+or extracted from an existing collection such as [`NNlib.RunningStats`](@ref).
 `bias` and `scale` are consistent with cuDNN and Flux.Scale.
 We opt for `scale` over `weight` to avoid confusion with dense layers.
 If the size of the statistics and affine parameters differ,
@@ -79,7 +79,7 @@ Contains running mean and variance estimates for stateful norm functions.
 If the parameters are mutable, they will be updated in-place.
 Otherwise, they will be replaced wholesale.
 
-See also [`update_running_stats!`](@ref).
+See also [`NNlib.update_running_stats!`](@ref).
 """
 mutable struct RunningStats{M <: AbstractArray, V <: AbstractArray, MT <: Real}
     mean::M
@@ -129,10 +129,10 @@ end
                           reduce_dims) where {N}
 
 Performs a moving average update for layers with tracked statistics.
-`μ` and `σ²` are the sample mean and variance, most likely from [`norm_stats`](@ref).
-`reduce_dims` should also match the `dims` argument of [`norm_stats`](@ref).
+`μ` and `σ²` are the sample mean and variance, most likely from [`NNlib.norm_stats`](@ref).
+`reduce_dims` should also match the `dims` argument of [`NNlib.norm_stats`](@ref).
 
-See also [`RunningStats`](@ref).
+See also [`NNlib.RunningStats`](@ref).
 """
 function update_running_stats!(stats::RunningStats, x, μ, σ², reduce_dims::Dims)
     V = eltype(σ²)
@@ -168,7 +168,7 @@ Normalizes `x` along the first `S` dimensions.
 
 For an additional learned affine transform, provide a `S`-dimensional `scale` and `bias`.
 
-See also [`batchnorm`](@ref), [`instancenorm`](@ref), and [`groupnorm`](@ref).
+See also [`NNlib.batchnorm`](@ref), [`NNlib.instancenorm`](@ref), and [`NNlib.groupnorm`](@ref).
 
 # Examples
 
@@ -205,14 +205,14 @@ Functional [Batch Normalization](https://arxiv.org/abs/1502.03167) operation.
 Normalizes `x` along each ``D_1×...×D_{N-2}×1×D_N`` input slice,
 where `N-1` is the "channel" (or "feature", for 2D inputs) dimension.
 
-Provide a [`RunningStats`](@ref) to fix a estimated mean and variance.
+Provide a [`NNlib.RunningStats`](@ref) to fix a estimated mean and variance.
 `batchnorm` will renormalize the input using these statistics during inference,
 and update them using batch-level statistics when training.
 To override this behaviour, manually set a value for `training`.
 
 If specified, `scale` and `bias` will be applied as an additional learned affine transform.
 
-See also [`layernorm`](@ref), [`instancenorm`](@ref), and [`groupnorm`](@ref).
+See also [`NNlib.layernorm`](@ref), [`NNlib.instancenorm`](@ref), and [`NNlib.groupnorm`](@ref).
 """
 function batchnorm(x::AbstractArray{<:Any, N},
                    running_stats::Union{RunningStats, Nothing} = nothing,
@@ -247,7 +247,7 @@ To override this behaviour, manually set a value for `training`.
 
 If specified, `scale` and `bias` will be applied as an additional learned affine transform.
 
-See also [`layernorm`](@ref), [`batchnorm`](@ref), and [`groupnorm`](@ref).
+See also [`NNlib.layernorm`](@ref), [`NNlib.batchnorm`](@ref), and [`NNlib.groupnorm`](@ref).
 """
 function instancenorm(x::AbstractArray{<:Any, N},
                       running_stats::Union{RunningStats, Nothing} = nothing,
@@ -281,7 +281,7 @@ The number of channels must be an integer multiple of the number of groups.
 
 If specified, `scale` and `bias` will be applied as an additional learned affine transform.
 
-See also [`layernorm`](@ref), [`batchnorm`](@ref), and [`instancenorm`](@ref).
+See also [`NNlib.layernorm`](@ref), [`NNlib.batchnorm`](@ref), and [`NNlib.instancenorm`](@ref).
 
 # Examples
 
