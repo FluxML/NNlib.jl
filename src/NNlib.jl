@@ -40,6 +40,9 @@ for f in ACTIVATIONS
 end
 export sigmoid, hardsigmoid, logsigmoid, thresholdrelu # Aliases
 
+include("dropout.jl")
+export dropout, dropout!
+
 include("softmax.jl")
 export softmax, softmax!, ∇softmax, ∇softmax!, logsoftmax, 
     logsoftmax!, ∇logsoftmax, ∇logsoftmax!, logsumexp

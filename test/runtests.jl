@@ -52,6 +52,10 @@ include("test_utils.jl")
         include("ctc.jl")
     end
 
+    @testset "Dropout" begin
+        include("dropout.jl")
+    end
+
     @testset "Fold/Unfold" begin
         include("fold.jl")
     end
