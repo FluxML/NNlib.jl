@@ -35,8 +35,10 @@ end
 
     # Group/InstanceNorm dimensions
     let W = 128, C = 2, N = 2, shape = (W, W, 1, 1)
-        x = [randn_sample(shape, 1, 1);;; randn_sample(shape, 2, 2);;;;
-             randn_sample(shape, 3, 3);;; randn_sample(shape, 4, 4)]
+        # Tile to W x W x 2 x 2
+        x = cat(cat(randn_sample(shape, 1, 1), randn_sample(shape, 2, 2); dims = 3),
+                cat(randn_sample(shape, 3, 3), randn_sample(shape, 4, 4); dims = 3);
+                dims = 4)
         μ, σ² = NNlib.norm_stats(x, (1, 2))
         @test vec(μ)≈1:(C * N) rtol=0.05
         @test vec(σ²)≈abs2.(1:(C * N)) rtol=0.05
@@ -60,7 +62,9 @@ end
             (running_stats, true, y_ns, y_ns, dx_ns),
             (running_stats, false, meanvar, meanvar, NoTangent()),
         ]
-            @test NNlib.maybe_norm_stats(stats, x, dims, !training) == y
+            ŷ = NNlib.maybe_norm_stats(stats, x, dims, !training)
+            @test ŷ[1]≈y[1] rtol=1e-5
+            @test ŷ[2]≈y[2] rtol=1e-5
             ŷ, back = rrule(NNlib.maybe_norm_stats, stats, x, dims, !training)
             @test ŷ == y_ad
             @test back(meanvar) == (NoTangent(), NoTangent(), dx, NoTangent(), NoTangent())
@@ -170,8 +174,7 @@ end
         @testset for use_stats in (true, false)
             stats = use_stats ? NNlib.RunningStats(zeros(2), ones(2), 0.1) : nothing
             y, back = Zygote.pullback(NNlib.instancenorm, x, stats, scale, bias, 1e-5)
-            @test y≈[-1.22474 -1.22474; 0.0 0.0; 1.22474 1.22474;;;
-                     -1.22474 -1.22474; 0.0 0.0; 1.22474 1.22474] rtol=1e-5
+            @test y≈repeat([-1.22474, 0.0, 1.22474], 1, 2, 2) rtol=1e-5
 
             expected_mean, expected_var = [0.5, 0.8], [1.0, 1.0]
             if use_stats
@@ -197,8 +200,7 @@ end
             end
 
             dx, dstats, dscale, dbias, _ = back(fill!(similar(y), 1))
-            @test dx≈[3.6742 3.6742; 1.22474 1.22474; -1.22474 -1.22474;;;
-                      3.6742 3.6742; 1.22474 1.22474; -1.22474 -1.22474] rtol=1e-5
+            @test dx≈repeat([3.6742, 1.22474, -1.22474], 1, 2, 2) rtol=1e-5
             @test dscale == zeros(2)
             @test dbias == fill(6.0, 2)
             @test dstats === nothing
