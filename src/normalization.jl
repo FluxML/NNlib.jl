@@ -138,7 +138,7 @@ function update_running_stats!(stats::RunningStats, x, μ, σ², reduce_dims::Di
     V = eltype(σ²)
     momentum = stats.momentum
     res_mtm = one(V) - momentum
-    m = prod(size(x, i) for i in reduce_dims)
+    m = prod(size(x, i) for i in reduce_dims; init = 1)
     correction = m / (m - one(V))
 
     running_mean, running_var = stats.mean, stats.variance
