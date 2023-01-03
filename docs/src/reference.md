@@ -71,8 +71,8 @@ ConvDims
 depthwiseconv
 DepthwiseConvDims
 DenseConvDims
-unfold
-fold
+NNlib.unfold
+NNlib.fold
 ```
 
 ## Upsampling
