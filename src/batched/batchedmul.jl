@@ -5,8 +5,10 @@ _unbatch(A::BatchedAdjOrTrans) = parent(A)
     batched_mul(A, B) -> C
     A ⊠ B  # \\boxtimes
 
-Batched matrix multiplication. Result has `C[:,:,k] == A[:,:,k] * B[:,:,k]` for all `k`.
-If `size(B,3) == 1` then instead `C[:,:,k] == A[:,:,k] * B[:,:,1]`, and similarly for `A`.
+Batched matrix multiplication. Result has `C[:,:,k...] == A[:,:,k...] * B[:,:,k...]` where `k...` represent 
+any indices in the last dimensions.
+
+If `ndims(A) == ndims(B) == 3` and `size(B,3) == 1` then instead `C[:,:,k] == A[:,:,k] * B[:,:,1]`, and similarly for `A`.
 
 To transpose each matrix, apply `batched_transpose` to the array,
 or `batched_adjoint` for conjugate-transpose:
@@ -42,6 +44,15 @@ This will be copied, as doing so is faster than `batched_mul_generic!`.
 Both this `copy` and `batched_mul_generic!` produce `@debug` messages,
 and setting for instance `ENV["JULIA_DEBUG"] = NNlib` will display them.
 """
+function batched_mul(x::AbstractArray{T1,N}, y::AbstractArray{T2,N}) where {T1,T2,N}
+    batch_size = size(x)[3:end]
+    @assert batch_size == size(y)[3:end] "batch size has to be the same for the two arrays."
+    x2 = reshape(x, size(x, 1), size(x, 2), :)
+    y2 = reshape(y, size(y, 1), size(y, 2), :)
+    z = batched_mul(x2, y2)
+    return reshape(z, size(z, 1), size(z, 2), batch_size...)
+  end
+
 function batched_mul(A::AbstractArray{T1, 3}, B::AbstractArray{T2, 3}) where {T1, T2}
     size(A, 3) == size(B, 3) || size(A, 3) == 1 || size(B, 3) == 1 ||
         throw(DimensionMismatch("batch size mismatch: A != B"))

@@ -41,6 +41,9 @@ for f in ACTIVATIONS
 end
 export sigmoid, hardsigmoid, logsigmoid, thresholdrelu # Aliases
 
+include("attention.jl")
+export dot_product_attention, dot_product_attention_scores, make_causal_mask
+
 include("dropout.jl")
 export dropout, dropout!
 
