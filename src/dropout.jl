@@ -72,23 +72,25 @@ end
 
 # This is the easy case in that we can safely use the output array for random numbers.
 function _dropout!(rng::AbstractRNG, dst::AbstractArray, src::AbstractArray, p::Real, dims::Colon)
-    val = convert(eltype(dst), 1/(1-p))
+    T = real(eltype(dst))
+    val = convert(T, 1/(1-p))
     rand!(rng, dst)
     ## This is what we want, but it hits a SIMD bug, solved by _fast_broadcast!
     # dst .= (dst.>p) .* val .* src
     _fast_broadcast!(dst, src) do q, x
-        (q>p) * val * x
+        ((real(q)>p) * val) * x
     end
     dst
 end
 
 # For other dims, we we do need to allocate something.
 function _dropout!(rng::AbstractRNG, dst::AbstractArray, src::AbstractArray, p::Real, dims)
-    tmp = similar(dst, ntuple(d -> d in dims ? size(src,d) : 1, ndims(src)))
+    T = real(eltype(dst))
+    tmp = similar(dst, T, ntuple(d -> d in dims ? size(src,d) : 1, ndims(src)))
     rand!(rng, tmp)
-    val = convert(eltype(dst), 1/(1-p))
+    val = convert(T, 1/(1-p))
     ## One-pass strategy -- faster on GPU
-    dst .= (tmp.>p) .* val .* src
+    dst .= ((tmp.>p) .* val) .* src
     ## Two-pass strategy -- slightly faster on some CPUs?
     # _fast_broadcast!(tmp) do q
     #     (q>p) * val
@@ -99,7 +101,7 @@ end
 # The gradient needs to keep the random choices made, thus store at least a BitArray,
 # but the following way turns out to be faster & simpler:
 function ChainRulesCore.rrule(::typeof(dropout), rng::AbstractRNG, A::AbstractArray, p::Real; dims = :)
-    T = float(eltype(A))
+    T = float(real(eltype(A)))
     val = convert(T, 1/(1-p))
     keep = if dims isa Colon
         similar(A, T) 
@@ -107,10 +109,10 @@ function ChainRulesCore.rrule(::typeof(dropout), rng::AbstractRNG, A::AbstractAr
         similar(A, T, ntuple(d -> d in dims ? size(A,d) : 1, ndims(A)))
     end
     rand!(rng, keep)
-    Y = @. (keep>p) * A * val
+    Y = @. ((keep>p) * val) * A
     function dropout_back(Δ)
         dY = unthunk(Δ)
-        dA = @. (keep>p) * dY * val
+        dA = @. ((keep>p) * val) * dY
         (NoTangent(), NoTangent(), dA, NoTangent())
     end
     return Y, dropout_back
