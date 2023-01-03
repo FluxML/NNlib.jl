@@ -39,6 +39,10 @@ include("test_utils.jl")
         include("activations.jl")
     end
 
+    @testset "Attention" begin
+        include("activations.jl")
+    end
+
     @testset "Batched Multiplication" begin
         include("batchedmul.jl")
     end
