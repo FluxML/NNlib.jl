@@ -58,9 +58,17 @@ using Zygote, StableRNGs, ChainRulesCore
         @test Zygote.hessian_reverse(f1, [1.0,2.0,3.0]) == zeros(3, 3)
     end
 
+    # Bang
+    y1 = fill!(similar(x1), NaN)
+    @test dropout!(y1, x1, 0.0) == x1
+    @test y1 == x1
+    @test dropout!(rng, y1, x1, 1) == zero(x1)
+    @test y1 == zero(x1)
+
     # Errors
     @test_throws ArgumentError dropout(x1, -1)
     @test_throws ArgumentError dropout(x1, 2)
+    @test_throws ArgumentError dropout!(y1, x1, 3)
 end
 
 @testset "dropout + CUDA" begin

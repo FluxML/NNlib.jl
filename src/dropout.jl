@@ -57,11 +57,12 @@ end
 This does exactly `B .= dropout(A, p; dims)`,
 or rather, it's the implementation of out-of-place [`dropout`](@ref).
 """
-function dropout!(dst::AbstractArray, src::AbstractArray, p::Real; dims=:)
+dropout!(B::AbstractArray, A::AbstractArray, p::Real; dims = :) = dropout!(_rng_from_array(B), B, A, p; dims)
+
+function dropout!(rng::AbstractRNG, dst::AbstractArray, src::AbstractArray, p::Real; dims=:)
     size(dst) == size(src) || throw(DimensionMismatch("dropout! expects output array the same size as input"))
     0 <= p <= 1 || throw(ArgumentError("dropout expects a probability 0 <= p <= 1"))
     if p > 0
-        rng = _rng_from_array(A)
         pT = convert(real(eltype(dst)), p)
         _dropout!(rng, dst, src, pT, dims)
     else
