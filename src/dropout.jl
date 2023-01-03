@@ -1,4 +1,3 @@
-using Random, ChainRulesCore
 
 """
     dropout([rng], A, p; dims=:)
@@ -14,14 +13,14 @@ Optional first argument is the random number generator used.
 
 # Examples
 ```
-julia> dropout(ones(2, 10), 1/5)
+julia> dropout(ones(2, 10), 0.2)
 2×10 Matrix{Float64}:
  1.25  1.25  0.0   1.25  1.25  1.25  1.25  1.25  1.25  1.25
  1.25  1.25  1.25  0.0   1.25  1.25  0.0   1.25  1.25  1.25
 
-julia> mean(dropout(ones(10^4, 5), 0.3), dims=1)
+julia> mean(dropout(ones(10^4, 5), 0.2), dims=1)
 1×5 Matrix{Float64}:
- 0.996  1.00171  1.00629  0.998714  0.992429
+ 0.998  1.00075  0.99125  0.99575  1.00075
 
 julia> dropout(ones(5, 5), 0.7, dims=1)  # whole row the same
 5×5 Matrix{Float64}:
@@ -66,6 +65,7 @@ function dropout!(dst::AbstractArray, src::AbstractArray, p::Real; dims=:)
         pT = convert(real(eltype(dst)), p)
         _dropout!(rng, dst, src, pT, dims)
     else
+        # This fast path isn't free, but no concerns about types changing:
         copyto!(dst, src)
     end
 end
@@ -74,7 +74,8 @@ end
 function _dropout!(rng::AbstractRNG, dst::AbstractArray, src::AbstractArray, p::Real, dims::Colon)
     val = convert(eltype(dst), 1/(1-p))
     rand!(rng, dst)
-    # dst .= (dst.>p) .* val .* src  # hits a SIMD bug
+    ## This is what we want, but it hits a SIMD bug, solved by _fast_broadcast!
+    # dst .= (dst.>p) .* val .* src
     _fast_broadcast!(dst, src) do q, x
         (q>p) * val * x
     end
@@ -86,13 +87,13 @@ function _dropout!(rng::AbstractRNG, dst::AbstractArray, src::AbstractArray, p::
     tmp = similar(dst, ntuple(d -> d in dims ? size(src,d) : 1, ndims(src)))
     rand!(rng, tmp)
     val = convert(eltype(dst), 1/(1-p))
-    # One-pass strategy:
-    # dst .= (tmp.>p) .* val .* src
-    # Two-pass strategy:
-    _fast_broadcast!(tmp) do q
-        (q>p) * val
-    end
-    dst .= tmp .* src
+    ## One-pass strategy -- faster on GPU
+    dst .= (tmp.>p) .* val .* src
+    ## Two-pass strategy -- slightly faster on some CPUs?
+    # _fast_broadcast!(tmp) do q
+    #     (q>p) * val
+    # end
+    # dst .= tmp .* src
 end
 
 # The gradient needs to keep the random choices made, thus store at least a BitArray,
@@ -114,6 +115,10 @@ function ChainRulesCore.rrule(::typeof(dropout), rng::AbstractRNG, A::AbstractAr
     end
     return Y, dropout_back
 end
+# Possibly TODO: another approach to the gradient would be to copy the RNG
+# and then re-generate the same mask, instead of storing it. This saves memory
+# and seems about as fast, but needs a method `copy(::CUDA.RNG)` and careful checking.
+# https://github.com/FluxML/NNlib.jl/pull/454#issuecomment-1369357402
 
 """
     _fast_broadcast!(f, x, y, z...)
@@ -141,12 +146,9 @@ end
     _rng_from_array(x)
 
 Return the random number generator most appropriate for `x`:
-`CUDA.default_rng()` for `CuArray`,
-else `Random.default_rng()`
+`CUDA.default_rng()` for `CuArray`, else `Random.default_rng()`
 """
 _rng_from_array(::AbstractArray) = Random.default_rng()
-# _rng_from_array(::CuArray) = CUDA.default_rng()
 
 @non_differentiable _rng_from_array(::Any)
-
 

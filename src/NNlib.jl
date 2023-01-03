@@ -6,6 +6,7 @@ using ChainRulesCore
 import ChainRulesCore: rrule
 using Base.Broadcast: broadcasted
 using Base.Threads
+using Random
 using Statistics
 using Statistics: mean
 using LinearAlgebra
