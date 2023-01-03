@@ -67,7 +67,8 @@ function norm_helper(x, μ, σ², scale::Union{AbstractArray, Nothing},
         error("both scale and bias must be provided or left as nothing")
     end
     scale′, bias′ = _maybe_reshape(scale, affine_size), _maybe_reshape(bias, affine_size)
-    return _apply_scale_bias((x .- μ) ./ sqrt.(σ² .+ ϵ), scale′, bias′)
+    denom = inv.(sqrt.(σ² .+ ϵ))
+    return _apply_scale_bias((x .- μ) .* denom, scale′, bias′)
 end
 
 """
@@ -76,12 +77,11 @@ end
 Contains running mean and variance estimates for stateful norm functions.
 `momentum` controls the strength of the moving average update.
 
-If the parameters are mutable, they will be updated in-place.
-Otherwise, they will be replaced wholesale.
+Parameters should be mutable and will be updated in-place.
 
 See also [`update_running_stats!`](@ref).
 """
-mutable struct RunningStats{M <: AbstractArray, V <: AbstractArray, MT <: Real}
+struct RunningStats{M <: AbstractArray, V <: AbstractArray, MT <: Real}
     mean::M
     variance::V
     momentum::MT
@@ -142,16 +142,9 @@ function update_running_stats!(stats::RunningStats, x, μ, σ², reduce_dims::Di
     correction = m / (m - one(V))
 
     running_mean, running_var = stats.mean, stats.variance
-    if ChainRulesCore.is_inplaceable_destination(running_mean)
-        stats.mean .= res_mtm .* running_mean .+ momentum .* vec(μ)
-    else
-        stats.mean = res_mtm .* running_mean .+ momentum .* vec(μ)
-    end
-    if ChainRulesCore.is_inplaceable_destination(running_var)
-        stats.variance .= res_mtm .* running_var .+ momentum .* correction .* vec(σ²)
-    else
-        stats.variance = res_mtm .* running_var .+ momentum .* correction .* vec(σ²)
-    end
+    stats.mean .= res_mtm .* running_mean .+ momentum .* vec(μ)
+    stats.variance .= res_mtm .* running_var .+ momentum .* correction .* vec(σ²)
+    return
 end
 
 # Convenience functions
@@ -190,7 +183,7 @@ function layernorm(x::AbstractArray{<:Any, N}, ::Val{S}, scale = nothing, bias =
         throw(DimensionMismatch("got $S reduction dims for $N-dimensional array"))
     end
     μ, σ² = norm_stats(x, ntuple(identity, S))
-    return norm_helper(x, μ, σ², scale, bias, ϵ, size(x)[1:S])
+    return norm_helper(x, μ, σ², scale, bias, ϵ, size(x)[1:S]::Dims{S})
 end
 
 """
