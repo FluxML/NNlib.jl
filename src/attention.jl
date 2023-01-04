@@ -97,15 +97,15 @@ function dot_product_attention_scores(q::AA4{T}, k::AA4{T};
 end
 
 """ 
-    make_causal_mask(x)
+    make_causal_mask(x, dims=2)
 
-Return a boolean square matrix `m` of the same type as `x` and of side `size(x,2)`.
+Return a boolean square matrix `m` of the same type as `x` and of side `size(x, dims)`.
 Its elements are set such that `m[i, j] == i ≤ j`. 
 
 Can be used to mask the attention scores in [`dot_product_attention`](@ref).
 """
-function make_causal_mask(x::AbstractArray)
-  len = size(x, 2)
+function make_causal_mask(x::AbstractArray; dims::Int=2)
+  len = size(x, dims)
   mask = triu(trues_like(x, (len, len)))
   return mask
 end

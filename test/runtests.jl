@@ -40,7 +40,7 @@ include("test_utils.jl")
     end
 
     @testset "Attention" begin
-        include("activations.jl")
+        include("attention.jl")
     end
 
     @testset "Batched Multiplication" begin
