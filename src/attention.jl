@@ -37,19 +37,26 @@ function dot_product_attention(q::AA{N}, k::AA{N}, v::AA{N}; nheads=1, kws...) w
     
     q, k, v = map(x -> reshape(x, size(x, 1), size(x, 2), :), (q, k, v))
 
-    # Multihead attention. TODO create fastpath for singlehead attention.
-    q, k, v = split_heads.((q, k, v), nheads)
-    x, α = _dot_product_attention(q, k, v; kws...)
-    x = join_heads(x)
+    x, α = dot_product_attention(q, k, v; nheads, kws...)
 
     x = reshape(x, size(x, 1), size(x, 2), batch_size...)
     α = reshape(α, size(α)[1:3]..., batch_size...)
     return x, α
 end
 
-function _dot_product_attention(q::AA4, k::AA4, v::AA4; 
-        fdrop=identity, bias=nothing, mask=nothing)
+function dot_product_attention(q::AA3, k::AA3, v::AA3; nheads=1, kws...)
+    # Multihead attention. TODO create fastpath for singlehead attention.
+    q, k, v = split_heads.((q, k, v), nheads)
+    x, α = _dot_product_attention(q, k, v; kws...)
+    return join_heads(x), α
+end
 
+function _dot_product_attention(q::AA4, k::AA4, v::AA4; 
+            fdrop=identity, bias=nothing, mask=nothing)
+    # [q] = [qk_dim ÷ nheads, nheads, q_len, batch_size]
+    # [k] = [qk_dim ÷ nheads, nheads, kv_len, batch_size]
+    # [v] = [v_dim ÷ nheads, nheads, kv_len, batch_size]
+    
     α = dot_product_attention_scores(q, k; fdrop, bias, mask)
     # [α] = [kv_len, q_len, nheads, batch_size]
     
