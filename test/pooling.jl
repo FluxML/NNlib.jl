@@ -248,7 +248,7 @@ meanpool_answer_dict = Dict(
     )
 )
 
-normpool_answer_dict = Dict(
+lpnormpool_answer_dict = Dict(
     1 => Dict(
         "y"           => [2.019312856150994, 4.221163518110637],
         "y_nostride"  => [
@@ -363,8 +363,8 @@ end
 
 for rank in (1, 2)
     for (pool, ∇pool, answer_dict) in (
-            (normpool, ∇normpool, normpool_answer_dict),
-            (NNlib.normpool_direct, NNlib.∇normpool_direct, normpool_answer_dict),)
+            (lpnormpool, ∇lpnormpool, lpnormpool_answer_dict),
+            (NNlib.lpnormpool_direct, NNlib.∇lpnormpool_direct, lpnormpool_answer_dict),)
         @testset "$(pool)$(rank)d" begin
             y = answer_dict[rank]["y"]
             y_nostride = answer_dict[rank]["y_nostride"]

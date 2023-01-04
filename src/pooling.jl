@@ -8,15 +8,15 @@
 #     - maxpool!(y, x, pdims)
 #     - meanpool(x, pdims)
 #     - meanpool!(y, x, pdims)
-#     - normpool(x, pdims)
-#     - normpool!(y, x, pdims)
+#     - lpnormpool(x, pdims)
+#     - lpnormpool!(y, x, pdims)
 #   - Pooling input backprop
 #     - ∇maxpool(dy, y, x, pdims)
 #     - ∇maxpool!(dx, dy, y, x, pdims)
 #     - ∇meanpool(dy, y, x, pdims)
 #     - ∇meanpool!(dx, dy, y, x pdims)
-#     - ∇normpool(dy, y, x, pdims)
-#     - ∇normpool!(dx, dy, y, x pdims)
+#     - ∇lpnormpool(dy, y, x, pdims)
+#     - ∇lpnormpool!(dx, dy, y, x pdims)
 #
 #   All methods require a `PoolDims` object to define the dimensions and optional
 #   elements of the convolution (stride, dilation, etc...), which is easily constructable
@@ -30,7 +30,7 @@ for (front_name, backend) in (
         # This maps from public, front-facing name, to internal backend name
         :maxpool  => :direct,
         :meanpool => :direct,
-        :normpool => :direct,
+        :lpnormpool => :direct,
     )
 
     # We only define 3d pooling primitives, we reshape lower down to get 1d and 2d pooling
@@ -47,7 +47,7 @@ end
 for (front_name, backend) in (
         :∇maxpool  => :direct,
         :∇meanpool => :direct,
-        :∇normpool => :direct,
+        :∇lpnormpool => :direct,
     )
     @eval begin
         function $(Symbol("$(front_name)!"))(
@@ -63,7 +63,7 @@ end
 # Our strategy for pooling is to reshape to an array with three spatial dimensions, which
 # makes things MUCH EASIER for us on the backend side, and is in general pretty fast,
 # since we can specialize on sizes.
-for front_name in (:maxpool, :meanpool, :normpool)
+for front_name in (:maxpool, :meanpool, :lpnormpool)
     for backend in (Symbol(), :_direct)
         for N in (3, 4)
             @eval begin
@@ -109,7 +109,7 @@ end
 # Finally, let's generate auto-allocating versions of all our functions, for all backends:
 for backend in (Symbol(), :_direct, :_nnpack)
     # First make auto-allocating versions of the basic pooling calls:
-    for name in (:maxpool, :meanpool, :normpool)
+    for name in (:maxpool, :meanpool, :lpnormpool)
         @eval begin
             function $(Symbol("$(name)$(backend)"))(
                             x::AbstractArray{xT,N},
@@ -181,7 +181,7 @@ end
 
 
 """
-    normpool(x, p::Number, k::NTuple{N, Integer}; pad=0, stride=k)
+    lpnormpool(x, p::Number, k::NTuple{N, Integer}; pad=0, stride=k)
 
 Perform Lp pool operation with value of the Lp norm `p` and window size `k` on input tensor `x`, also known as LPPool in pytorch.
 
@@ -190,21 +190,21 @@ Perform Lp pool operation with value of the Lp norm `p` and window size `k` on i
 * `pad`: See [`pad_zeros`](@ref) for details.
 * `stride`: Stride for each spatial axis. `k` as default if not present.
 
-For each element `x` in (k × k) window, normpool computes `(∑ x^p)^(1 / p)` as output.
+For each element `x` in (k × k) window, lpnormpool computes `(∑ x^p)^(1 / p)` as output.
 
-* When p = 1, normpool(x, p, k) ./ prod(k) ≈ meanpool(x, k)
-* When p = 2, normpool(x, p, k).^2 ./ prod(k) ≈ meanpool(x.^2, k)
+* When p = 1, lpnormpool(x, p, k) ./ prod(k) ≈ meanpool(x, k)
+* When p = 2, lpnormpool(x, p, k).^2 ./ prod(k) ≈ meanpool(x.^2, k)
 """
-function normpool(x, p::Number, k::NTuple{N, Integer}; pad=0, stride=k) where N
+function lpnormpool(x, p::Number, k::NTuple{N, Integer}; pad=0, stride=k) where N
     (isinf(p) || p < 0) && error("p value of Lp norm pool expect to be in (0, Inf), but p is $(p) now.")
     pad = expand(Val(N), pad)
     stride = expand(Val(N), stride)
     pdims = PoolDims(x, k; padding=pad, stride=stride)
-    return normpool(x, pdims; p=p)
+    return lpnormpool(x, pdims; p=p)
 end
 
 
-for pool in [:maxpool, :meanpool, :normpool]
+for pool in [:maxpool, :meanpool, :lpnormpool]
     ∇pool = Symbol(:∇, pool)
     pullback = Symbol(pool, :_pullback)
     @eval function rrule(::typeof($pool), x, pdims::PoolDims; kw...)

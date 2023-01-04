@@ -1,6 +1,6 @@
 # Pooling is so similar, we abstract over meanpooling and maxpooling, simply replacing
 # the inner loop operation and a few initialization parameters.
-for name in (:max, :mean, :norm)
+for name in (:max, :mean, :lpnorm)
     @eval function $((Symbol("$(name)pool_direct!")))(
                     y::AbstractArray{T, 5}, x::AbstractArray{T, 5},
                     pdims::PoolDims; alpha::T=T(1), beta::T=T(0), kwargs...) where T
@@ -41,15 +41,15 @@ for name in (:max, :mean, :norm)
             alpha = alpha / prod(K)
         end
 
-        p = if $(name != :norm) 0 else
-            !haskey(kwargs, :p) && error("normpool needs keyword argument `p`")
+        p = if $(name != :lpnorm) 0 else
+            !haskey(kwargs, :p) && error("lpnormpool needs keyword argument `p`")
             kwargs[:p]
         end
 
         # Each loop, we initialize `m` to something, set that here.
         m_init = if $(name == :max)
             T <: AbstractFloat ? nextfloat(typemin(T)) : typemin(T)
-        elseif $(name == :mean) || $(name == :norm)
+        elseif $(name == :mean) || $(name == :lpnorm)
             T(0)
         else
             error("Unimplemented codegen path")
@@ -83,7 +83,7 @@ for name in (:max, :mean, :norm)
                     end
                 elseif $(name == :mean)
                     m += x[input_kw, input_kh, input_kd, c, batch_idx]
-                elseif $(name == :norm)
+                elseif $(name == :lpnorm)
                     # y = (∑ x^p)^(1/p), here to calculate (∑ x^p)
                     m += x[input_kw, input_kh, input_kd, c, batch_idx]^p
                 else
@@ -91,8 +91,8 @@ for name in (:max, :mean, :norm)
                 end
             end
 
-            # for normpool, y = (∑ x^p)^(1/p)
-            m = $(name == :norm) ? m^(T(1) / p) : m
+            # for lpnormpool, y = (∑ x^p)^(1/p)
+            m = $(name == :lpnorm) ? m^(T(1) / p) : m
 
             y[w, h, d, c, batch_idx] = alpha * m # + beta * y[w, h, d, c, batch_idx]
             end
@@ -139,7 +139,7 @@ for name in (:max, :mean, :norm)
                                 end
                             elseif $(name == :mean)
                                 m += x[input_kw, input_kh, input_kd, c, batch_idx]
-                            elseif $(name == :norm)
+                            elseif $(name == :lpnorm)
                                 m += x[input_kw, input_kh, input_kd, c, batch_idx]^p
                             else
                                 error("Unimplemented codegen path")
@@ -147,7 +147,7 @@ for name in (:max, :mean, :norm)
                         end
                     end
                 end
-                $(name == :norm) && (m = m^(T(1) / p))
+                $(name == :lpnorm) && (m = m^(T(1) / p))
                 y[w, h, d, c, batch_idx] = alpha * m # + beta * y[w, h, d, c, batch_idx]
                 end
                 end
@@ -196,8 +196,8 @@ for name in (:max, :mean, :norm)
             alpha = alpha / prod(K)
         end
 
-        p = if $(name != :norm) 0 else
-            !haskey(kwargs, :p) && error("normpool must pass p")
+        p = if $(name != :lpnorm) 0 else
+            !haskey(kwargs, :p) && error("lpnormpool must pass p")
             kwargs[:p]
         end
 
@@ -245,7 +245,7 @@ for name in (:max, :mean, :norm)
                 elseif $(name == :mean)
                     # Either does meanpool :(
                     dx[input_kw, input_kh, input_kd, c, batch_idx] += dy_idx * alpha
-                elseif $(name == :norm)
+                elseif $(name == :lpnorm)
                     # y = (∑ x^p)^(1/p), ∂y/∂x = x^(p-1) × y^(1-p)
                     grad = x[input_kw, input_kh, input_kd, c, batch_idx]^(p-1) * y_idx^(1-p)
                     dx[input_kw, input_kh, input_kd, c, batch_idx] += dy_idx * grad
@@ -309,7 +309,7 @@ for name in (:max, :mean, :norm)
                                 end
                             elseif $(name == :mean)
                                 dx[input_kw, input_kh, input_kd, c, batch_idx] += dy_idx * alpha #+ beta * dx[x_idxs...]
-                            elseif $(name == :norm)
+                            elseif $(name == :lpnorm)
                                 grad = x[input_kw, input_kh, input_kd, c, batch_idx]^(p-1) * y_idx^(1-p)
                                 dx[input_kw, input_kh, input_kd, c, batch_idx] += dy_idx * grad
                             else

@@ -93,7 +93,7 @@ for rank in (2,),
     for (pool, ∇pool, name) in (
             (NNlib.maxpool!, NNlib.∇maxpool!, "maxpool"),
             (NNlib.meanpool!, NNlib.∇meanpool!, "meanpool"),
-            (NNlib.normpool!, NNlib.∇normpool!, "normpool"),
+            (NNlib.lpnormpool!, NNlib.∇lpnormpool!, "lpnormpool"),
         )
 
         t_fwd  = @benchmark $(pool)( $y, $x, $pdims)
