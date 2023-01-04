@@ -184,6 +184,7 @@ end
     lpnormpool(x, p::Number, k::NTuple{N, Integer}; pad=0, stride=k)
 
 Perform Lp pool operation with value of the Lp norm `p` and window size `k` on input tensor `x`, also known as LPPool in pytorch.
+This pooling operator from [Learned-Norm Pooling for Deep Feedforward and Recurrent Neural Networks](https://arxiv.org/abs/1311.1780).
 
 * `x` and `k`: Usually, ndim(x) ∈ [3, 5], length(k) ∈ [1, 3], s.t. ndim(x) == length(k) + 2
 * `p` is restricted to (0, Inf). Out-of-range `p` leads to undefined behavior.
