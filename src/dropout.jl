@@ -1,12 +1,12 @@
 
 """
-    dropout([rng], A, p; dims=:)
+    dropout([rng], A, p; [dims])
 
 Returns an array in which each element of `A` is either replaced with zero,
 with probability `p`, or else multiplied by `1/(1-p)`.
 
 By default every element is treated independently.
-With `dims=1`, a choice is made for every value of the 1st index
+With keyword `dims=1`, a choice is made for every value of the 1st index
 i.e. each row of a matrix is either zero or not.
 
 Optional first argument is the random number generator used.
@@ -41,7 +41,7 @@ function dropout(rng::AbstractRNG, A::AbstractArray, p::Real; dims = :)
     T = float(eltype(A))
     0 <= p <= 1 || throw(ArgumentError("dropout expects a probability 0 <= p <= 1"))
     if p > 0
-        dst = similar(A, T)
+        dst = similar(A, T, size(A))
         pT = convert(real(T), p)
         _dropout!(rng, dst, A, pT, dims)
     else
@@ -105,7 +105,7 @@ function ChainRulesCore.rrule(::typeof(dropout), rng::AbstractRNG, A::AbstractAr
     T = float(real(eltype(A)))
     val = convert(T, 1/(1-p))
     keep = if dims isa Colon
-        similar(A, T) 
+        similar(A, T, size(A))
     else
         similar(A, T, ntuple(d -> d in dims ? size(A,d) : 1, ndims(A)))
     end
