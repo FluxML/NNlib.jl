@@ -48,7 +48,7 @@ function dot_product_attention(q::AA{N}, k::AA{N}, v::AA{N}; nheads=1, kws...) w
 end
 
 function _dot_product_attention(q::AA4, k::AA4, v::AA4; 
-        fdrop=nothing, bias=nothing, mask=nothing)
+        fdrop=identity, bias=nothing, mask=nothing)
 
     α = dot_product_attention_scores(q, k; fdrop, bias, mask)
     # [α] = [kv_len, q_len, nheads, batch_size]
@@ -68,7 +68,6 @@ end
 Return the attention scores for the [`dot_product_attention`](@ref).
 
 Input arrays must have dimensions `(num_features ÷ nheads, nheads, sequence_length, batch_size)`.
-
 """
 function dot_product_attention_scores(q::AA4{T}, k::AA4{T}; 
             fdrop=identity, mask=nothing, bias=nothing) where T
