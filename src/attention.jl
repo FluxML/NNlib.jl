@@ -22,7 +22,8 @@ See also [`dot_product_attention_scores`](@ref) if you only need the attention s
 - `value`: Value array of size `(v_dim, kv_len, batch_size...)`.
 - `bias`: Either `nothing` or an array broadcastable to size `(kv_len, q_len, nheads, batch_size)`.
           It will be added to the attention scores before applying the softmax. Default `nothing`.
-- `fdrop`: A dropout function or layer to apply on the attention scores. Default `identity` (no dropout). 
+- `fdrop`: A dropout function or layer to be applied on the attention scores right after the softmax. 
+           Default `identity` (no dropout). 
 - `mask`: Either `nothing` or a boolean array broadcastable to size `(kv_len, q_len, nheads, batch_size)`.
           The mask is applied to the attention scores before the softmax.
           Can also be set to `mask=:causal` to apply a causal mask. Default `nothing`.
