@@ -3,7 +3,7 @@ const AA4{T} = AbstractArray{T,4}
 const AA{N,T} = AbstractArray{T,N}
 
 """
-    dot_product_attention(query, key, value [bias]; fdrop, mask, nheads])
+    dot_product_attention(query, key, value, [bias]; [fdrop, mask, nheads])
 
 Multihead dot product attention used in transformer architectures. 
 
@@ -24,7 +24,7 @@ See also [`dot_product_attention_scores`](@ref) if you only need the attention s
           It will be added to the attention scores before applying the softmax. Default `nothing`.
 - `fdrop`: A dropout function or layer to apply on the attention scores. Default `identity` (no dropout). 
 - `mask`: Either `nothing` or a boolean array broadcastable to size `(kv_len, q_len, nheads, batch_size)`.
-          The mask be applied to the attention scores before applying the softmax.
+          The mask is applied to the attention scores before the softmax.
           Can also be set to `mask=:causal` to apply a causal mask. Default `nothing`.
 - `nheads`: Number of heads to split the input arrays into. Default `1`.
 
