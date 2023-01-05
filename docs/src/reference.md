@@ -152,4 +152,5 @@ ctc_loss
 logsumexp
 NNlib.glu
 NNlib.within_gradient
+bias_act!
 ```
