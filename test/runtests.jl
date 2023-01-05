@@ -2,6 +2,7 @@ using NNlib, Test, Statistics, Random
 using ChainRulesCore, ChainRulesTestUtils
 using Base.Broadcast: broadcasted
 import FiniteDifferences
+import ForwardDiff
 import Zygote
 using Zygote: gradient
 using StableRNGs

@@ -1,6 +1,7 @@
 @testset "within_gradient" begin
     @test NNlib.within_gradient([1.0]) === false
     @test gradient(x -> NNlib.within_gradient(x) * x, 2.0) == (1.0,)
+    @test NNlib.within_gradient([ForwardDiff.Dual(1.0, 2)]) === true
 end
 
 @testset "maximum_dims" begin

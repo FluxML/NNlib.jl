@@ -7,6 +7,7 @@ Useful for Flux regularisation layers which behave differently during training a
 Works with any ChainRules-based differentiation package, in which case `x` is ignored.
 But Tracker.jl overloads `with_gradient(x::TrackedArray)`, thus for widest use you should
 pass it an array whose gradient is of interest.
+There is also an overload for ForwardDiff.jl's `Dual` types (and arrays of them).
 """
 within_gradient(x) = false
 
