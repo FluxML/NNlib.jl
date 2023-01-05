@@ -132,4 +132,5 @@ ctc_loss
 ```@docs
 logsumexp
 NNlib.glu
+NNlib.within_gradient
 ```
