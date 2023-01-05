@@ -6,6 +6,7 @@ using ChainRulesCore
 import ChainRulesCore: rrule
 using Base.Broadcast: broadcasted
 using Base.Threads
+using Random
 using Statistics
 using Statistics: mean
 using LinearAlgebra
@@ -39,6 +40,9 @@ for f in ACTIVATIONS
     @eval export $(f)
 end
 export sigmoid, hardsigmoid, logsigmoid, thresholdrelu # Aliases
+
+include("dropout.jl")
+export dropout, dropout!
 
 include("softmax.jl")
 export softmax, softmax!, ∇softmax, ∇softmax!, logsoftmax, 
