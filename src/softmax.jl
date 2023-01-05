@@ -69,7 +69,7 @@ function softmax!(out::AbstractArray{T}, x::AbstractArray; dims = 1) where {T}
 end
 
 function ∇softmax_data(dy::AbstractArray{T}, y::AbstractArray{S}; dims = 1) where {T,S}
-    dx = if within_grad()
+    dx = if within_gradient(y)
         tmp = dy .* y
         tmp .- y .* sum(tmp; dims)
     else
@@ -87,9 +87,6 @@ function rrule(::typeof(softmax), x; dims = 1)
     softmax_pullback(dy) = (NoTangent(), ∇softmax_data(unthunk(dy), y; dims))
     return y, softmax_pullback
 end
-
-within_grad() = false
-rrule(::typeof(within_grad)) = true, _ -> (NoTangent(),)
 
 fast_maximum(x::AbstractArray{T}; dims) where {T} = @fastmath reduce(max, x; dims, init = float(T)(-Inf))
 
