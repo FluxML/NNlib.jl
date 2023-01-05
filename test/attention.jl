@@ -56,3 +56,12 @@ end
     y, α = dot_product_attention(q, k, v; nheads=2, fdrop = x -> fdrop(x, 0.5))
     @test 0.6 > mean(>(0), α) > 0.4
 end
+
+@testset "bias" begin
+    q = rand(4, 5, 1)
+    k = v = rand(4, 3, 1)
+    bias = randn(3, 5)
+    y, α = dot_product_attention(q, k, v, bias; nheads=2)
+    @test size(α) == (3, 5, 2, 1) 
+    @test size(y) == (4, 5, 1)
+end
