@@ -53,15 +53,21 @@ ChainRulesCore.rrule(::typeof(within_gradient), x) = true, _ -> (NoTangent(), No
 """
     safe_div(x, y)
 
-Safely divide `x` by `y`. If `y` is zero, return `x` directly.
+Returns `x/y` unless `y==0`, in which case it just returns `x`.
+(Used internally by `scatter`.)
 """
 safe_div(x, y) = ifelse(iszero(y), x, x/y)
 
 """
     maximum_dims(dims)
 
-Return the maximum value for each dimension. An array of dimensions `dims` is accepted.
-The maximum of each dimension in the element is computed.
+Given an array of `CartesianIndex{N}` or `NTuple{N,Int}`,
+returns a tuple containing the maximum of the 1st entries,
+the 2nd, and so on up to `N`.
+
+Given an array of integers, returns `(maximum(dims),)`.
+
+(These arguments are what [`scatter`](@ref NNlib.scatter) understands.)
 """
 maximum_dims(dims::AbstractArray{<:Integer}) = (maximum(dims), )
 maximum_dims(dims::AbstractArray{NTuple{N, T}}) where {N,T} = ntuple(i -> maximum(x->x[i], dims), N)
