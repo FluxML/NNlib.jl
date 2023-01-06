@@ -1,3 +1,5 @@
+NNlib._rng_from_array(::CuArray) = CUDA.default_rng()
+
 function divide_kernel!(xs, ys, max_idx)
     index = threadIdx().x + (blockIdx().x - 1) * blockDim().x
 

@@ -10,6 +10,7 @@ CUDA.allowscalar(false)
 @testset "NNlibCUDA" begin
 include("test_utils.jl")
 include("activations.jl")
+include("dropout.jl")
 include("batchedadjtrans.jl")
 include("batchedmul.jl")
 include("upsample.jl")
