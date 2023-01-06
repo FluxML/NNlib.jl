@@ -151,9 +151,11 @@ expand(N, i::Integer) = ntuple(_ -> i, N)
 
 Perform max pool operation with window size `k` on input tensor `x`.
 
-* `x` and `k`: Usually, ndim(x) ∈ [3, 5], length(k) ∈ [1, 3], s.t. ndim(x) == length(k) + 2
+Arguments:
+
+* `x` and `k`: Expects `ndim(x) ∈ 3:5`, and always `length(k) == ndim(x) - 2`
 * `pad`: See [`pad_zeros`](@ref) for details.
-* `stride`: Stride for each spatial axis. `k` as default if not present.
+* `stride`: Either a tuple with the same length as `k`, or one integer for all directions. Default is `k`.
 """
 function maxpool(x, k::NTuple{N, Integer}; pad=0, stride=k) where N
     pad = expand(Val(N), pad)
@@ -168,9 +170,11 @@ end
 
 Perform mean pool operation with window size `k` on input tensor `x`.
 
-* `x` and `k`: Usually, ndim(x) ∈ [3, 5], length(k) ∈ [1, 3], s.t. ndim(x) == length(k) + 2
+Arguments:
+
+* `x` and `k`: Expects `ndim(x) ∈ 3:5``, and always `length(k) == ndim(x) - 2`
 * `pad`: See [`pad_zeros`](@ref) for details.
-* `stride`: Stride for each spatial axis. `k` as default if not present.
+* `stride`: Either a tuple with the same length as `k`, or one integer for all directions. Default is `k`.
 """
 function meanpool(x, k::NTuple{N, Integer}; pad=0, stride=k) where N
     pad = expand(Val(N), pad)
@@ -186,18 +190,19 @@ end
 Perform Lp pool operation with value of the Lp norm `p` and window size `k` on input tensor `x`, also known as LPPool in pytorch.
 This pooling operator from [Learned-Norm Pooling for Deep Feedforward and Recurrent Neural Networks](https://arxiv.org/abs/1311.1780).
 
-* `x` and `k`: Usually, ndim(x) ∈ [3, 5], length(k) ∈ [1, 3], s.t. ndim(x) == length(k) + 2
-* `p` is restricted to (0, Inf). Out-of-range `p` leads to undefined behavior.
+Arguments:
+
+* `x` and `k`: Expects `ndim(x) ∈ 3:5``, and always `length(k) == ndim(x) - 2`
+* `p` is restricted to `0 < p < Inf`.
 * `pad`: See [`pad_zeros`](@ref) for details.
-* `stride`: Stride for each spatial axis. `k` as default if not present.
+* `stride`: Either a tuple with the same length as `k`, or one integer for all directions. Default is `k`.
 
-For each element `x` in (k × k) window, lpnormpool computes `(∑ x^p)^(1 / p)` as output.
+For all elements `x` in a size `k` window, lpnormpool computes `(∑ᵢ xᵢ^p)^(1 / p)` as an element of the output.
 
-* When p = 1, lpnormpool(x, p, k) ./ prod(k) ≈ meanpool(x, k)
-* When p = 2, lpnormpool(x, p, k).^2 ./ prod(k) ≈ meanpool(x.^2, k)
+Thus `lpnormpool(x, 1, k) ./ prod(k) ≈ meanpool(x, k)` and `lpnormpool(x, 2, k).^2 ./ prod(k) ≈ meanpool(x.^2, k)`.
 """
 function lpnormpool(x, p::Number, k::NTuple{N, Integer}; pad=0, stride=k) where N
-    (isinf(p) || p < 0) && error("p value of Lp norm pool expect to be in (0, Inf), but p is $(p) now.")
+    (isinf(p) || p < 0) && error("p value of Lp norm pool expects `0 < p < Inf`, but p is $(p) now.")
     pad = expand(Val(N), pad)
     stride = expand(Val(N), stride)
     pdims = PoolDims(x, k; padding=pad, stride=stride)
