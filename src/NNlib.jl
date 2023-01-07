@@ -71,8 +71,8 @@ include("ctc.jl")
 export ctc_loss
 
 include("pooling.jl")
-export maxpool, maxpool!, meanpool, meanpool!, 
-    ∇maxpool, ∇maxpool!, ∇meanpool, ∇meanpool!
+export maxpool, maxpool!, meanpool, meanpool!, lpnormpool, lpnormpool!,
+    ∇maxpool, ∇maxpool!, ∇meanpool, ∇meanpool!, ∇lpnormpool, ∇lpnormpool!
 
 include("padding.jl")
 export pad_constant, pad_repeat, pad_reflect, pad_zeros

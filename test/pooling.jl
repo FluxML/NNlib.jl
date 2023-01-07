@@ -248,6 +248,70 @@ meanpool_answer_dict = Dict(
     )
 )
 
+lpnormpool_answer_dict = Dict(
+    1 => Dict(
+        "y"           => [2.019312856150994, 4.221163518110637],
+        "y_nostride"  => [
+            2.080083823051904, 3.2710663101885897,
+            4.497941445275415, 5.738793548317167
+        ],
+        "y_pad"       => [1.0, 3.605551275463989, 6.4031242374328485],
+        "dx"          => [
+            0.17258020254042603, 1.9525221042381296,
+            1.2774501198988355, 3.496467771732918, 0.0
+        ],
+        "dx_nostride" => [
+            0.48074985676913606, 3.1458422620080637,
+            4.752311710531486, 6.345225258061685, 4.356316321455918
+        ],
+        "dx_pad"       => [1.0, 2.0, 3.0, 4.0, 5.0],
+        "p"           => 4.5,
+        "p_nostride"  => 3.0,
+        "p_pad"       => 2.0
+    ),
+    2 => Dict(
+        "y"           => [
+            8.71909  24.9703;
+            11.7336  28.3804
+        ],
+        "y_nostride"  => [
+            11.1128  23.134   35.5704;
+            13.4219  25.6082  38.0707;
+            15.8033  28.0907  40.5735;
+            18.2249  30.5795  43.0782
+        ],
+        "y_pad"       => [
+            1.0      11.3616  16.0;
+            3.19158  15.9662  21.3545;
+            5.56869  18.7771  23.7903
+        ],
+        "dx"          => [
+            0.33866   4.97727  7.30092  12.8076;
+            0.957876  6.27208  8.31879  14.0269;
+            1.51693   6.6057   8.79844  14.3351;
+            2.33547   7.8822   9.83293  15.5461;
+            0.0       0.0      0.0      0.0 
+        ],
+        "dx_nostride" => [
+            3.33359  19.9471  35.7329  23.8564;
+            9.89551  44.627   76.2257  50.0307;
+           13.231    50.9101  82.5686  53.2022;
+           16.4888   57.223   88.9133  56.3742;
+            9.54591  30.9869  46.8371  29.3524
+        ],
+        "dx_pad"      => [
+            1.0       2.30261  10.4791   16.0;
+            0.992125  2.0321    7.81903  12.075;
+            2.73398   2.83743   9.5512   13.9299;
+            2.43512   2.98652   9.0132   13.5608;
+            4.25398   3.8865   10.7099   15.4161
+        ],
+        "p"           => 2.5,
+        "p_nostride"  => 1.5,
+        "p_pad"       => 3.5
+    )
+)
+
 for rank in (1, 2, 3)
     @testset "pool$(rank)d" begin
         for (pool, ∇pool, answer_dict) in (
@@ -293,6 +357,48 @@ for rank in (1, 2, 3)
                 @test ddims(y_hat) == y_pad
                 @test ddims(∇pool(y_hat, y_hat, x, pdims)) == dx_pad
             end
+        end
+    end
+end
+
+for rank in (1, 2)
+    for (pool, ∇pool, answer_dict) in (
+            (lpnormpool, ∇lpnormpool, lpnormpool_answer_dict),
+            (NNlib.lpnormpool_direct, NNlib.∇lpnormpool_direct, lpnormpool_answer_dict),)
+        @testset "$(pool)$(rank)d" begin
+            y = answer_dict[rank]["y"]
+            y_nostride = answer_dict[rank]["y_nostride"]
+            y_pad = answer_dict[rank]["y_pad"]
+            dx = answer_dict[rank]["dx"]
+            dx_nostride = answer_dict[rank]["dx_nostride"]
+            dx_pad = answer_dict[rank]["dx_pad"]
+            p = answer_dict[rank]["p"]
+            p_nostride = answer_dict[rank]["p_nostride"]
+            p_pad = answer_dict[rank]["p_pad"]
+
+            x = reshape(Float64[1:prod(size(dx));], size(dx)..., 1, 1)
+
+            ddims(x) = dropdims(x, dims=(rank + 1, rank + 2))
+
+            @test pool(x, PoolDims(x, 1); p=p) ≈ x atol = 1e-3
+
+            # Test vanilla pooling
+            pdims = PoolDims(x, 2)
+            y_hat = pool(x, pdims; p=p)
+            @test ddims(y_hat) ≈ y atol = 1e-3
+            @test ddims(∇pool(y_hat, y_hat, x, pdims; p=p)) ≈ dx atol = 1e-3
+
+            # Strided pooling
+            pdims = PoolDims(x, 2; stride=1)
+            y_hat = pool(x, pdims; p=p_nostride)
+            @test ddims(y_hat) ≈ y_nostride atol = 1e-3
+            @test ddims(∇pool(y_hat, y_hat, x, pdims; p=p_nostride)) ≈ dx_nostride atol = 1e-3
+
+            # Padded pooling
+            pdims = PoolDims(x, 2; padding=1)
+            y_hat = pool(x, pdims; p=p_pad)
+            @test ddims(y_hat) ≈ y_pad atol = 1e-3
+            @test ddims(∇pool(y_hat, y_hat, x, pdims; p=p_pad)) ≈ dx_pad atol = 1e-3
         end
     end
 end
