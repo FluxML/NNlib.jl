@@ -62,8 +62,8 @@ safe_div(x, y) = ifelse(iszero(y), x, x/y)
     maximum_dims(dims)
 
 Given an array of `CartesianIndex{N}` or `NTuple{N,Int}`,
-returns a tuple containing the maximum of the 1st entries,
-the 2nd, and so on up to `N`.
+returns a tuple containing the maximum of all the 1st entries,
+all the 2nd entries, and so on up to `N`.
 
 Given an array of integers, returns `(maximum(dims),)`.
 
