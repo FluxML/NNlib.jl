@@ -119,11 +119,14 @@ unsqueeze(x) = reshape(x, 1, size(x)...)
 
 This does `x .= f.(x, y, z...)`, but works around
 an issue with broadcasting that prevents SIMD in such cases.
-Can be removed once https://github.com/JuliaLang/julia/issues/43153 is fixed.
+Can perhaps be removed once https://github.com/JuliaLang/julia/issues/43153 is fixed.
 
-Not intended for general use. Uses `@inbounds` but does not check sizes!
+Has an `rrule` to avoid mutation within derivatives.
 
-Has an `rrule` to avoid mutation within derivatives. This assumes that `f` has no derivative!
+!!! warning
+    Not intended for general use.
+    Uses `@inbounds` but does not check sizes!
+    Assumes that `f` has no derivative!
 """
 function _fast_broadcast!(f::F, x::Array, yz...) where {F<:Function}
     bc = Broadcast.instantiate(Broadcast.broadcasted(f, x, yz...))
