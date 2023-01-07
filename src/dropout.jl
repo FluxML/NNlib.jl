@@ -38,6 +38,7 @@ julia> mean(dropout(ones(10^4, 5), 0.3, dims=1), dims=1)
 dropout(A::AbstractArray, p::Real; dims = :) = dropout(_rng_from_array(A), A, p; dims)
 
 function dropout(rng::AbstractRNG, A::AbstractArray, p::Real; dims = :)
+    _rng_compat_array(rng, A)
     T = float(eltype(A))
     0 <= p <= 1 || throw(ArgumentError("dropout expects a probability 0 <= p <= 1"))
     if p > 0
@@ -52,7 +53,7 @@ function dropout(rng::AbstractRNG, A::AbstractArray, p::Real; dims = :)
 end
 
 """
-    dropout!(B, A, p; dims=:)
+    dropout!(B, A, p; [dims])
 
 This does exactly `B .= dropout(A, p; dims)`,
 or rather, it's the implementation of out-of-place [`dropout`](@ref).
@@ -62,6 +63,7 @@ dropout!(B::AbstractArray, A::AbstractArray, p::Real; dims = :) = dropout!(_rng_
 function dropout!(rng::AbstractRNG, dst::AbstractArray, src::AbstractArray, p::Real; dims=:)
     size(dst) == size(src) || throw(DimensionMismatch("dropout! expects output array the same size as input"))
     0 <= p <= 1 || throw(ArgumentError("dropout expects a probability 0 <= p <= 1"))
+    _rng_compat_array(rng, A)
     if p > 0
         pT = convert(real(eltype(dst)), p)
         _dropout!(rng, dst, src, pT, dims)
@@ -155,3 +157,6 @@ _rng_from_array(::AbstractArray) = Random.default_rng()
 
 @non_differentiable _rng_from_array(::Any)
 
+# This exists because `rand!(default_rng(), CUDA.rand(3))` ignores the RNG,
+# and Flux would prefer an error. NNlibCUDA will overload it to produce that.
+_rng_compat_array(::AbstractRNG, ::AbstractArray) = nothing
