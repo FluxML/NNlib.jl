@@ -29,14 +29,23 @@ contains only `Ω` (the output) not `x`.
     It is intended mainly for Flux layers, in which the previous operation is
     known to be safe, e.g. `bias_act!(σ, weight * input, bias)` for a `Dense` layer.
 """
-bias_act!(σ::Function, x::AbstractArray, b) = fast_act(σ, x).(x .+ b)  # fallback
-
 bias_act!(σ::Function, x::StridedArray{<:AbstractFloat}, b::AbstractArray{<:Union{Bool, AbstractFloat}}) =
     _fast_broadcast!(fast_act(σ, x)∘(+), x, b)  # works around a SIMD bug
 
-bias_act!(::typeof(identity), x::StridedArray{<:AbstractFloat}, b::Bool) =
-    (@assert !b "bias=true is not accepted; layer constructors shoud guarantee this";  x)
+function bias_act!(σ::Function, x::StridedArray{<:AbstractFloat}, b::Bool)
+    b === true && error("bias=true is not accepted; layer constructors shoud guarantee this")
+    _fast_broadcast!(fast_act(σ, x), x)
+end
 
+function bias_act!(::typeof(identity), x::StridedArray{<:AbstractFloat}, b::Bool)
+    b === true && error("bias=true is not accepted; layer constructors shoud guarantee this")
+    x  # pass-through
+end
+
+function bias_act!(σ::Function, x::AbstractArray, b)
+    b === true && error("bias=true is not accepted; layer constructors shoud guarantee this")
+    fast_act(σ, x).(x .+ b)  # fallback
+end
 
 function ChainRulesCore.rrule(cfg::RCR, ::typeof(bias_act!), σ::F, x::AbstractArray{T,N}, b::B) where {F,T,N,B}
     biasgrad = if eltype(B) !== Bool
