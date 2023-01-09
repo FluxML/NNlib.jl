@@ -102,6 +102,43 @@ end
     end
 end
 
+@testset "softmax with mask" begin
+    x1 = [1, 2, 3.0]
+    @test softmax(x1; mask = [true, true, false]) ≈ vcat(softmax(x1[1:2]), 0)
+    @test softmax(x1; mask = [false, true, true]) ≈ vcat(0, softmax(x1[2:3]))
+    @test softmax(x1, mask=[false, false, false]) ≈ softmax([-Inf, -Inf, -Inf]) nans=true  # all NaN, not ideal
+
+    x2 = randn(4,5)
+    m2 = x2 .< 0
+    x2inf = ifelse.(m2, x2, -Inf)
+    @test softmax(x2, mask=m2) ≈  softmax(x2inf)  
+    @test softmax(x2, mask=m2; dims=2) ≈  softmax(x2inf; dims=2)
+
+    m3 = [true, false, true, false]
+    x3inf = ifelse.(m3, x2, -Inf)
+    @test softmax(x2, mask=m3) ≈ softmax(x3inf)  
+    @test_broken softmax(x2, mask=m3; dims=2) ≈ softmax(x3inf; dims=2)  # whole row is NaN, not ideal
+    @test softmax(x2, mask=m3; dims=2) ≈ softmax(x3inf; dims=2) nans=true
+
+    # Path allowing Inf -- not good if Inf gets masked
+    x4 = randn(4,5); x4[1] = Inf; x4[end] = Inf
+    m2[1] = true  # make sure we mask one out, one not
+    m2[end] = false
+    x4inf = ifelse.(m2, x4, -Inf)
+    @test_broken softmax(x4, mask=m2) ≈ softmax(x4inf)  # last col is NaN
+
+    # Gradients
+    @test gradtest(softmax, x1; fkwargs=(; mask=[true, true, false]))
+    @test gradtest(softmax, x2; fkwargs=(; mask=m2))
+    @test gradtest(softmax, x2; fkwargs=(; dims=2, mask=m2))
+    @test gradtest(softmax, x2; fkwargs=(; dims=1, mask=m3))
+
+    # Input checks
+    @test_throws DimensionMismatch softmax(x1; mask = [true, true])  # too short
+    @test_throws ErrorException softmax(x1; mask = [1,1,1]) # not Bool
+    @test_throws ErrorException softmax(x1; mask = false)  # true is default, false is not OK
+end
+
 @testset "logsumexp" begin
     flogsoft(x; dims) = mean(x .- logsoftmax(x; dims = dims), dims = dims)
 

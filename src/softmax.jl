@@ -1,6 +1,6 @@
 
 """
-    softmax(x; dims = 1)
+    softmax(x; dims = 1, [mask])
 
 [Softmax](https://en.wikipedia.org/wiki/Softmax_function) turns input array `x`
 into probability distributions that sum to 1 along the dimensions specified by `dims`.
@@ -35,6 +35,24 @@ julia> softmax([1 2 3; 2 2 2]; dims=2)
  0.333333   0.333333  0.333333
 ```
 
+Accepts via keyword `mask` a boolean array. Setting a mask entry to `false` is
+equivalent to setting `x` to `-Inf`, and gives a zero in the output.
+The `mask` can be the same size as `x`, or any smaller size for which `mask .+ x` works.
+
+```jldoctest
+julia> mask = Bool[1 1 1 0 0; 0 1 1 1 0; 0 0 1 1 1]
+3×5 Matrix{Bool}:
+ 1  1  1  0  0
+ 0  1  1  1  0
+ 0  0  1  1  1
+
+julia> softmax(repeat([1,2,3], 1, 5); mask)
+3×5 Matrix{Float64}:
+ 1.0  0.268941  0.0900306  0.0       0.0
+ 0.0  0.731059  0.244728   0.268941  0.0
+ 0.0  0.0       0.665241   0.731059  1.0
+```
+
 Note that, when used with Flux.jl, `softmax` must not be passed to layers like `Dense`
 which accept an activation function. The activation is broadcasted over the result,
 thus applies to individual numbers. But `softmax` always needs to see the whole column.
@@ -53,38 +71,39 @@ julia> Dense(4 => 7, softmax)(x)
 ERROR: `softmax(x)` called with a number, but it expects an array. 
 ```
 """
-softmax(x::AbstractArray{T}; dims = 1) where {T} = softmax!(similar(x, float(T)), x; dims)
+softmax(x::AbstractArray{T}; kw...) where {T} = softmax!(similar(x, float(T)), x; kw...)
 
-softmax!(x::AbstractArray; dims = 1) = softmax!(x, x; dims)
+softmax!(x::AbstractArray; kw...) = softmax!(x, x; kw...)
 
-function softmax!(out::AbstractArray{T}, x::AbstractArray; dims = 1) where {T}
+function softmax!(out::AbstractArray{T}, x::AbstractArray; dims = 1, mask = true) where {T}
+    mask isa AbstractArray{Bool} || mask === true || error("invalid mask, only boolean arrays are accepted")
     max_ = fast_maximum(x; dims)
     if all(isfinite, max_)
-        @fastmath out .= exp.(x .- max_)
+        @fastmath out .= mask .* exp.(x .- max_)
     else
-        @fastmath @. out = ifelse(isequal(max_,Inf), ifelse(isequal(x,Inf), 1, 0), exp(x - max_))
+        @fastmath @. out = mask .* ifelse(isequal(max_,Inf), ifelse(isequal(x,Inf), 1, 0), exp(x - max_))
     end
     tmp = dims isa Colon ? sum(out) : sum!(max_, out)
     out ./= tmp
 end
 
-function ∇softmax_data(dy::AbstractArray{T}, y::AbstractArray{S}; dims = 1) where {T,S}
+function ∇softmax_data(dy::AbstractArray{T}, y::AbstractArray{S}; dims = 1, mask = true) where {T,S}
     dx = if within_gradient(y)
-        tmp = dy .* y
+        tmp = dy .* y .* mask
         tmp .- y .* sum(tmp; dims)
     else
         # This path is faster, only safe for 1st derivatives though.
         # Was previously `∇softmax!(dx, dy, x, y; dims)` to allow CUDA overloads,
         # but that was slow: https://github.com/FluxML/NNlibCUDA.jl/issues/30
         out = similar(y, promote_type(T,S))  # sure to be mutable
-        out .= dy .* y
+        out .= dy .* y .* mask
         out .= out .- y .* sum(out; dims)
     end
 end
 
-function rrule(::typeof(softmax), x; dims = 1)
-    y = softmax(x; dims)
-    softmax_pullback(dy) = (NoTangent(), ∇softmax_data(unthunk(dy), y; dims))
+function rrule(::typeof(softmax), x; dims = 1, mask = true)
+    y = softmax(x; dims, mask)
+    softmax_pullback(dy) = (NoTangent(), ∇softmax_data(unthunk(dy), y; dims, mask))
     return y, softmax_pullback
 end
 
