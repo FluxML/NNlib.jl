@@ -8,9 +8,10 @@ const AA{N,T} = AbstractArray{T,N}
 Multihead dot product attention used in transformer architectures. 
 
 The input arrays must have the first two dimensions given by the number of features
-and the sequece length, then an arbitrary number of batch dimensions or none.
+and the sequence length, then an arbitrary number of batch dimensions or none.
 
-Returns the attention output array of size `(v_dim, q_len, batch_size...)` and the attention scores.
+
+Returns the attention output array of size `(v_dim, q_len, batch_size...)` and the attention scores
 of size `(kv_len, q_len, nheads, batch_size...)`.
 
 See also [`dot_product_attention_scores`](@ref) if you only need the attention scores.
@@ -25,8 +26,8 @@ See also [`dot_product_attention_scores`](@ref) if you only need the attention s
 - `fdrop`: A dropout function or layer to be applied on the attention scores right after the softmax. 
            Default `identity` (no dropout). 
 - `mask`: Either `nothing` or a boolean array broadcastable to size `(kv_len, q_len, nheads, batch_size)`.
-          The mask is applied to the attention scores before the softmax.
-          Can also be set to `mask=:causal` to apply a causal mask. Default `nothing`.
+          The mask is applied to the attention scores just before the softmax.
+          See [`make_causal_mask`](@ref) fore creating causal masks. Default `nothing`.
 - `nheads`: Number of heads to split the input arrays into. Default `1`.
 
 # Examples
@@ -102,9 +103,6 @@ function dot_product_attention_scores(q::AA4{T}, k::AA4{T}, bias=nothing;
     end
 
     if mask !== nothing
-        if mask === :causal
-            mask = make_causal_mask(logits)
-        end
         neginf = typemin(eltype(logits))
         logits = ifelse.(mask, logits, neginf)
     end

@@ -48,9 +48,6 @@ end
         α = dot_product_attention_scores(x, x; mask)
         @test all((α[:,:,1,1].> 0) .== mask)
         @test all((α[:,:,2,1].> 0) .== mask)
-
-        α2 = dot_product_attention_scores(x, x; mask=:causal)
-        @test α2 ≈ α        
     end
 end
 
@@ -68,4 +65,12 @@ end
     y, α = dot_product_attention(q, k, v, bias; nheads=2)
     @test size(α) == (3, 5, 2, 1) 
     @test size(y) == (4, 5, 1)
+end
+
+@testset "gradient" begin
+    q = rand(4, 5, 1)
+    k = v = rand(4, 3, 1)
+    bias = randn(3, 5)
+    y, α = dot_product_attention(q, k, v, bias; nheads=2)
+    gradtest((x...) -> dot_product_attention(x...; nheads=2)[1], q, k, v, bias)
 end
