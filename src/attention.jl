@@ -131,7 +131,7 @@ falses_like(x::AbstractArray, sz=size(x)) = fill!(similar(x, Bool, sz), false)
 split_heads(x, nheads) = reshape(x, size(x, 1) ÷ nheads, nheads, size(x)[2:end]...)
 join_heads(x) = reshape(x, :, size(x)[3:end]...)
 
-@non_differentiable make_causal_mask(x)
+@non_differentiable make_causal_mask(::Any...)
 @non_differentiable trues_like(::Any...)
 @non_differentiable falses_like(::Any...)
 
