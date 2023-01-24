@@ -172,13 +172,12 @@ julia> batched_vec(A,b) |> size
 (16, 32)
 ```
 """
-function batched_vec(A::AbstractArray{T,3} where T, B::AbstractMatrix)
-    # If B is transposed, then stride=1 is the batch dim, so we will end up copying anyway:
-    if B isa AdjOrTransAbsMat{<:BlasFloat, <:StridedMatrix}
-        return batched_vec(A, copy(B))
-    end
+batched_vec(A::AbstractArray{T,3} where T, B::AbstractMatrix) =
     reshape(batched_mul(A, reshape(B, size(B,1), 1, size(B,2))), size(A,1), size(A,3))
-end
+
+# If B is transposed, then stride=1 is the batch dim, so we will end up copying anyway:
+batched_vec(A::AbstractArray{T,3} where T, B::AdjOrTransAbsMat{<:BlasFloat, <:StridedMatrix}) =
+    batched_vec(A, copy(B))
 
 batched_vec(A::AbstractArray{T,3} where T, b::AbstractVector) =
     reshape(batched_mul(A, reshape(b, length(b), 1, 1)), size(A,1), size(A,3))
