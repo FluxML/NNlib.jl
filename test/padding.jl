@@ -99,5 +99,53 @@ end
   @test pad_reflect(x, (2, 2, 2, 2), dims=(1,3)) ≈
           pad_reflect(x, 2, dims=(1,3))
       
-  gradtest(x -> pad_repeat(x, (2,2,2,2)), rand(2,2,2))
+  # pad_reflect needs larger test input as padding must 
+  # be strictly less than array size in that dimension
+  gradtest(x -> pad_reflect(x, (2,2,2,2)), rand(3,3,3))
+end
+
+@testset "padding symmetric" begin
+  y = pad_symmetric(reshape(1:9, 3, 3), (2,2), dims=2)
+  @test y ==  [ 4  1  1  4  7  7  4
+                5  2  2  5  8  8  5
+                6  3  3  6  9  9  6]
+
+  y = pad_symmetric(reshape(1:9, 3, 3), (2,2,2,2))
+  @test y ==   [5  2  2  5  8  8  5
+                4  1  1  4  7  7  4
+                4  1  1  4  7  7  4
+                5  2  2  5  8  8  5
+                6  3  3  6  9  9  6
+                6  3  3  6  9  9  6
+                5  2  2  5  8  8  5]
+
+  x = rand(4, 4, 4)  
+  
+  @test pad_symmetric(x, (2, 2, 2, 2), dims=(1,3)) ≈
+          pad_symmetric(x, 2, dims=(1,3))
+      
+  gradtest(x -> pad_symmetric(x, (2,2,2,2)), rand(2,2,2))
+end
+
+@testset "padding circular" begin
+  y = pad_circular(reshape(1:9, 3, 3), (2,2), dims=2)
+  @test y ==  [ 4  7  1  4  7  1  4
+                5  8  2  5  8  2  5
+                6  9  3  6  9  3  6]
+
+  y = pad_circular(reshape(1:9, 3, 3), (2,2,2,2))
+  @test y ==   [5  8  2  5  8  2  5
+                6  9  3  6  9  3  6
+                4  7  1  4  7  1  4
+                5  8  2  5  8  2  5
+                6  9  3  6  9  3  6
+                4  7  1  4  7  1  4
+                5  8  2  5  8  2  5]
+ 
+  x = rand(4, 4, 4)  
+  
+  @test pad_circular(x, (2, 2, 2, 2), dims=(1,3)) ≈
+          pad_circular(x, 2, dims=(1,3))
+      
+  gradtest(x -> pad_circular(x, (2,2,2,2)), rand(2,2,2))
 end
