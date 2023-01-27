@@ -169,7 +169,7 @@ of some length `2n` that specifies the left and right padding size
 for each of the dimensions in `dims`. If `dims` is not given, 
 it defaults to the first `n` dimensions.
 
-For integer `pad` input instead, it is applied on both sides
+If `pad` is an integer, it is applied on both sides
 on every dimension in `dims`. In this case, `dims` 
 defaults to the first `ndims(x)-2` dimensions 
 (i.e. excludes the channel and batch dimension). 
@@ -230,10 +230,10 @@ of some length `2n` that specifies the left and right padding size
 for each of the dimensions in `dims`. If `dims` is not given, 
 it defaults to the first `n` dimensions.
 
-For integer `pad` input instead, it is applied on both sides
+If `pad` is an integer, it is applied on both sides
 on every dimension in `dims`. In this case, `dims` 
 defaults to the first `ndims(x)-2` dimensions 
-(i.e. excludes the channel and batch dimension).
+(i.e. excludes the channel and batch dimension). 
 
 See also [`pad_repeat`](@ref), [`pad_symmetric`](@ref), [`pad_circular`](@ref), and [`pad_constant`](@ref).
 
@@ -288,10 +288,10 @@ of some length `2n` that specifies the left and right padding size
 for each of the dimensions in `dims`. If `dims` is not given, 
 it defaults to the first `n` dimensions.
 
-For integer `pad` input instead, it is applied on both sides
+If `pad` is an integer, it is applied on both sides
 on every dimension in `dims`. In this case, `dims` 
 defaults to the first `ndims(x)-2` dimensions 
-(i.e. excludes the channel and batch dimension).
+(i.e. excludes the channel and batch dimension). 
 
 See also [`pad_repeat`](@ref), [`pad_reflect`](@ref), [`pad_circular`](@ref), and [`pad_constant`](@ref).
 
@@ -302,7 +302,7 @@ julia> r = reshape(1:9, 3, 3)
  2  5  8
  3  6  9
 
-julia> NNlib.pad_symmetric(r, (1,2,1,2))
+julia> pad_symmetric(r, (1,2,1,2))
 6×6 Matrix{Int64}:
  1  1  4  7  7  4
  1  1  4  7  7  4
@@ -343,13 +343,13 @@ of some length `2n` that specifies the left and right padding size
 for each of the dimensions in `dims`. If `dims` is not given, 
 it defaults to the first `n` dimensions.
 
-For integer `pad` input instead, it is applied on both sides
+If `pad` is an integer, it is applied on both sides
 on every dimension in `dims`. In this case, `dims` 
 defaults to the first `ndims(x)-2` dimensions 
-(i.e. excludes the channel and batch dimension).
+(i.e. excludes the channel and batch dimension). 
 
-The pad length in any dimension must not exceed the
-size of `x` in that dimension.
+The pad length on either side in any dimension must not exceed the
+size of `x` in that dimension, i.e. `pad_circular` is not able to create abitrary sized tilings of `x`.
 
 See also [`pad_repeat`](@ref), [`pad_reflect`](@ref), [`pad_symmetric`](@ref), and [`pad_constant`](@ref).
 
@@ -360,7 +360,7 @@ julia> r = reshape(1:9, 3, 3)
  2  5  8
  3  6  9
 
-julia> NNlib.pad_circular(r, (1,2,1,2))
+julia> pad_circular(r, (1,2,1,2))
 6×6 Matrix{Int64}:
  9  3  6  9  3  6
  7  1  4  7  1  4
