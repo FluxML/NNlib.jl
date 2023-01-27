@@ -185,7 +185,7 @@ end
 
 
 """
-    lpnormpool(x, p::T, k::NTuple{N, Integer}; pad=0, stride=k)
+    lpnormpool(x, p::Real, k::NTuple{N, Integer}; pad=0, stride=k)
 
 Perform Lp pool operation with value of the Lp norm `p` and window size `k` on input tensor `x`, also known as LPPool in pytorch.
 This pooling operator from [Learned-Norm Pooling for Deep Feedforward and Recurrent Neural Networks](https://arxiv.org/abs/1311.1780).
@@ -201,13 +201,11 @@ For all elements `x` in a size `k` window, lpnormpool computes `(∑ᵢ xᵢ^p)^
 
 Thus `lpnormpool(x, 1, k) ./ prod(k) ≈ meanpool(x, k)` and `lpnormpool(x, 2, k).^2 ./ prod(k) ≈ meanpool(x.^2, k)`.
 """
-function lpnormpool(x, p::T, k::NTuple{N, Integer}; pad=0, stride=k) where {N,T<:Number}
-    (isinf(p) || p < 0) && error("p value of Lp norm pool expects `0 < p < Inf`, but p is $(p) now.")
-    (typeof(p) <: Integer) || (p = convert(eltype(x), p)) # p needn't convert only if typeof(p) <: Integer
-    pad = expand(Val(N), pad)
-    stride = expand(Val(N), stride)
-    pdims = PoolDims(x, k; padding=pad, stride=stride)
-    return lpnormpool(x, pdims; p=p)
+function lpnormpool(x, p::Real, k::NTuple{N, Integer}; pad=0, stride=k) where {N}
+    pow = p isa Integer ? p : convert(float(eltype(x)), p)
+    (isinf(pow) || pow < 0) && error("p value of Lp norm pool expects `0 < p < Inf`, but p is $(pow) now.")
+    pdims = PoolDims(x, k; padding=expand(Val(N), pad), stride=expand(Val(N), stride))
+    return lpnormpool(x, pdims; p=pow)
 end
 
 
