@@ -75,7 +75,7 @@ export maxpool, maxpool!, meanpool, meanpool!, lpnormpool, lpnormpool!,
     ∇maxpool, ∇maxpool!, ∇meanpool, ∇meanpool!, ∇lpnormpool, ∇lpnormpool!
 
 include("padding.jl")
-export pad_constant, pad_repeat, pad_reflect, pad_zeros
+export pad_constant, pad_repeat, pad_reflect, pad_zeros, pad_symmetric, pad_circular
 
 include("upsample.jl")
 export upsample_nearest, ∇upsample_nearest,

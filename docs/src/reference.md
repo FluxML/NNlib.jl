@@ -57,8 +57,10 @@ lpnormpool
 
 ```@docs
 pad_reflect
-pad_constant
+pad_symmetric
+pad_circular
 pad_repeat
+pad_constant
 pad_zeros
 ```
 
