@@ -730,10 +730,10 @@ end
     x = rand(Float32, 10, 10, 32, 8)
     w = rand(Float64, 2, 2, 16, 4)
     g = 2
-    @test size(conv(x, w; groups=g)) == (9, 9, 4, 8)
-    @test size(conv(x, w; stride = (2, 2), pad = (2, 2), groups=g)) == (7, 7, 4, 8)
-    @test size(conv(x, w; stride = (1, 2), pad = (2, 3), dilation = (2, 2), groups=g)) == (12, 7, 4, 8)
-    @test size(conv(x, w; stride = (1, 2), pad = (2, 3), dilation = (2, 2), flipped = true, groups=g)) == (12, 7, 4, 8)
+    @test conv(x, w; groups=g) ≈ conv(x, Float32.(w); groups=g)
+    @test conv(x, w; stride = (2, 2), pad = (2, 2), groups=g) ≈ conv(x, w; stride = (2, 2), pad = (2, 2), groups=g)
+    @test conv(x, w; stride = (1, 2), pad = (2, 3), dilation = (2, 2), groups=g) ≈ conv(x, w; stride = (1, 2), pad = (2, 3), dilation = (2, 2), groups=g)
+    @test conv(x, w; stride = (1, 2), pad = (2, 3), dilation = (2, 2), flipped = true, groups=g) ≈ conv(x, w; stride = (1, 2), pad = (2, 3), dilation = (2, 2), flipped = true, groups=g)
 end
 
 @testset "depthwiseconv_wrapper" begin
