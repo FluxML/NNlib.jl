@@ -274,8 +274,7 @@ end
 # We always support a fallback, non-accelerated path, where we use the direct, but
 # slow, implementations.  These should not typically be used, hence the `@warn`,
 # but let's go ahead and define them first:
-for front_name in (:conv, :∇conv_data, :∇conv_filter,
-                   :depthwiseconv, :∇depthwiseconv_data, :∇depthwiseconv_filter)
+for front_name in (:depthwiseconv, :∇depthwiseconv_data, :∇depthwiseconv_filter)
     @eval begin
         function $(Symbol("$(front_name)!"))(
                         y::AbstractArray{yT,N}, in1::AbstractArray{T1,N},
@@ -286,6 +285,46 @@ for front_name in (:conv, :∇conv_data, :∇conv_filter,
                           "You probably don't want this; check your datatypes.") yT T1 T2 maxlog=1
             end
             $(Symbol("$(front_name)_direct!"))(y, in1, in2, cdims; kwargs...)
+        end
+    end
+end
+
+for (front_name, backend) in (
+    # This maps from public, front-facing name, to internal backend name
+    :conv                   => :direct,
+    :∇conv_data             => :direct, 
+    :∇conv_filter           => :direct,
+)
+
+    # We only define 3d conv primitives, we reshape lower down to get 1d and 2d convolution
+    @eval begin
+        # im2col-accelerated function forwarding definition
+        function $(Symbol("$(front_name)!"))(
+                        out::AbstractArray{yT,N}, in1::AbstractArray{T1,N},
+                        in2::AbstractArray{T2,N}, cdims::C;
+                        kwargs...) where {yT, T1, T2, N, C <: ConvDims}
+            if yT == Float64  # warn for Float32 + accidental Float64, but don't print warning for ForwardDiff.Dual
+                @warn string("Slow fallback implementation invoked for ", $(string(front_name)), "!  ",
+                        "You probably don't want this; check your datatypes.") yT T1 T2 maxlog=1
+            end
+
+            x_cs = Iterators.partition(1:size(in1, 4),
+                                    channels_in(cdims) ÷ groupcount(cdims))
+            w_cs = Iterators.partition(1:size(in2, 5),
+                                    channels_out(cdims) ÷ groupcount(cdims))
+            cdims2 = basetype(C)(cdims,
+                                G = 1,
+                                C_in = channels_in(cdims) ÷ groupcount(cdims),
+                                C_out = channels_out(cdims) ÷ groupcount(cdims))
+
+            Threads.@sync for (xc, wc) in zip(x_cs, w_cs)
+                x = @view in1[ntuple(i -> i == 4 ? xc : Colon(), 5)...]
+                w = @view in2[ntuple(i -> i == 5 ? wc : Colon(), 5)...]
+                y = @view out[ntuple(i -> i == 4 ? wc : Colon(), 5)...]
+                Threads.@spawn $(Symbol("$(front_name)_$(backend)!"))(y, x, w, cdims2; kwargs...)
+            end
+
+            return out
         end
     end
 end
