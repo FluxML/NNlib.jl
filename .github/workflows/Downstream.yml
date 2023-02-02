@@ -23,7 +23,7 @@ jobs:
           - {user: dfdx, repo: Avalon.jl, group: All}
           - {user: JuliaOptimalTransport, repo: OptimalTransport.jl, group: All}
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
       # for OptimalTransport.jl
       - name: Install python
         uses: actions/setup-python@v2
@@ -38,7 +38,7 @@ jobs:
           arch: x64
       - uses: julia-actions/julia-buildpkg@latest
       - name: Clone Downstream
-        uses: actions/checkout@v2
+        uses: actions/checkout@v3
         with:
           repository: ${{ matrix.package.user }}/${{ matrix.package.repo }}
           path: downstream
