@@ -2,10 +2,10 @@
 # Activation
 
 using Base.Broadcast
-using CUDA.CUDNN: cudnnActivationForward!, cudnnOpTensor!,
-            CUDNN_ACTIVATION_TANH,CUDNN_ACTIVATION_SIGMOID,CUDNN_ACTIVATION_ELU,
-            CUDNN_ACTIVATION_RELU,CUDNN_ACTIVATION_CLIPPED_RELU,CUDNN_OP_TENSOR_MAX,
-            CUDNN_ACTIVATION_IDENTITY
+using cuDNN: cudnnActivationForward!, cudnnOpTensor!,
+             CUDNN_ACTIVATION_TANH, CUDNN_ACTIVATION_SIGMOID, CUDNN_ACTIVATION_ELU,
+             CUDNN_ACTIVATION_RELU, CUDNN_ACTIVATION_CLIPPED_RELU, CUDNN_OP_TENSOR_MAX,
+             CUDNN_ACTIVATION_IDENTITY
 
 for (f, op) in [
     CUDA.tanh       => (src,dst)->cudnnActivationForward!(dst, src, mode=CUDNN_ACTIVATION_TANH),
@@ -15,7 +15,7 @@ for (f, op) in [
     # NNlib.relu6     => (src,dst)->cudnnActivationForward!(dst, src, mode=CUDNN_ACTIVATION_CLIPPED_RELU, coef=6.0),
     # NNlib.leakyrelu => (src,dst)->cudnnOpTensor!(dst, src, src; op=CUDNN_OP_TENSOR_MAX, alpha1=0.01),
     ]
-    
+
     @eval begin
         # in-place
         function Base.materialize!(dst::DenseCuArray{<:CUDNNFloat},

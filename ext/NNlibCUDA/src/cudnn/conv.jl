@@ -2,11 +2,11 @@
 using NNlib: DenseConvDims
 import NNlib: conv!, ∇conv_filter!, ∇conv_data!, conv_bias_act!
 
-using CUDA.CUDNN: scalingParameter, CUDNN_CONVOLUTION, convdims,
-                  cudnnConvolutionDescriptor, cudnnConvolutionBwdDataAlgoPerf,
-                  cudnnConvolutionForward!, cudnnConvolutionBwdFilterAlgoPerf,
-                  cudnnConvolutionBackwardData, cudnnConvolutionBackwardFilter,
-                  cudnnConvolutionBackwardBias
+using cuDNN: scalingParameter, CUDNN_CONVOLUTION, convdims,
+             cudnnConvolutionDescriptor, cudnnConvolutionBwdDataAlgoPerf,
+             cudnnConvolutionForward!, cudnnConvolutionBwdFilterAlgoPerf,
+             cudnnConvolutionBackwardData, cudnnConvolutionBackwardFilter,
+             cudnnConvolutionBackwardBias
 
 const CUDNNFloat = Union{Float16,Float32,Float64}
 
@@ -24,22 +24,22 @@ function cudnnConvolutionDescriptorAndPaddedInput(cdims::DenseConvDims, x::Dense
     # which side of x to pad. Oh, and we use a CartesianIndex as we will mainly use this to index in x
     pad_manual = CartesianIndex(ntuple(i -> i > sdims ? 0 : pad[2(i-1)+1] - pad[2(i-1)+2], ndims(x)))
 
-    # How much we can let cudnn pad: The smallest padding amount between pad_left and pad_right, pad_top 
+    # How much we can let cudnn pad: The smallest padding amount between pad_left and pad_right, pad_top
     # and pad_bottom etc. respectively
-    pad_cudnn = ntuple(i -> min(pad[2(i-1)+1], pad[2(i-1)+2]), sdims) 
+    pad_cudnn = ntuple(i -> min(pad[2(i-1)+1], pad[2(i-1)+2]), sdims)
 
     x_padded_size = ntuple(i -> i <= sdims ? size(x, i) + abs(pad_manual[i]) : size(x ,i), ndims(x))
     x_padded = similar(x, x_padded_size)
     fill!(x_padded, 0)
     # This is a bit yucky, but we are basically figuring out where in x_padded we shall insert x
-    # Haven't benchmarked if this has any advantages over a more readable solution, e.g. writing dim 
+    # Haven't benchmarked if this has any advantages over a more readable solution, e.g. writing dim
     # by dim to an array in a loop
     xIs = CartesianIndices(x)
     xI_first = first(xIs)
     xI_last = last(xIs)
     xIs_pad = max(xI_first, xI_first + pad_manual) : max(xI_last, xI_last + pad_manual)
-    x_padded[xIs_pad] = x 
-    
+    x_padded[xIs_pad] = x
+
     return cudnnConvolutionDescriptor(cdims, x_padded, pad_cudnn), x_padded, _x -> _x[xIs_pad]
 end
 
@@ -101,7 +101,7 @@ function ∇conv_data!(dx::DenseCuArray{T}, dy::DenseCuArray{T}, w::DenseCuArray
     with_workspace(p.memory) do workspace
         cudnnConvolutionBackwardData(handle(), alpha, wDesc, w, yDesc, dy, convDesc, p.algo, workspace, sizeof(workspace), beta, xDesc, dx)
     end
-    return depad(dx) 
+    return depad(dx)
 end
 
 function ∇conv_filter!(dw::DenseCuArray{T}, x::DenseCuArray{T}, dy::DenseCuArray{T},

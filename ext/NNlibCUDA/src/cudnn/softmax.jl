@@ -1,9 +1,9 @@
 import NNlib: softmax, softmax!, ∇softmax, ∇softmax!,
               logsoftmax, logsoftmax!, ∇logsoftmax, ∇logsoftmax!
 
-using CUDA.CUDNN: CUDNN_SOFTMAX_LOG, CUDNN_SOFTMAX_MODE_CHANNEL, 
-                CUDNN_SOFTMAX_FAST, CUDNN_SOFTMAX_ACCURATE, cudnnSoftmaxForward!,
-                cudnnSoftmaxBackward
+using cuDNN: CUDNN_SOFTMAX_LOG, CUDNN_SOFTMAX_MODE_CHANNEL,
+             CUDNN_SOFTMAX_FAST, CUDNN_SOFTMAX_ACCURATE, cudnnSoftmaxForward!,
+             cudnnSoftmaxBackward
 
 # Softmax
 
@@ -43,8 +43,8 @@ function _∇logsoftmax!(dx::T, dy::T, x::T, y::T; dims) where {T<:DenseCuArray}
     dx .= dy .- sum(dy; dims) .* exp.(y)
 end
 
-# Trick by @norci to use cudnn for softmax dims args that are contiguous: 
-# If dims=(dmin:dmax) then CUDNN_SOFTMAX_MODE_CHANNEL does the trick with reshape 
+# Trick by @norci to use cudnn for softmax dims args that are contiguous:
+# If dims=(dmin:dmax) then CUDNN_SOFTMAX_MODE_CHANNEL does the trick with reshape
 #    (1, prod(size(x)[1:dmin-1]), prod(size(x)[dmin:dmax]), :)
 # softmaxdims returns nothing when the backup implementation should be used.
 
@@ -79,7 +79,7 @@ function ∇softmax!(dx::T, dy::T, x::T, y::T; dims=1) where {R,T<:DenseCuArray{
     s === nothing && return _∇softmax!(dx, dy, x, y; dims)
     xDesc = cudnnTensorDescriptor(reshape(x,s))
     alpha, beta = scalingParameter(R,1), scalingParameter(R,0)
-    cudnnSoftmaxBackward(handle(), softmaxalgo(), CUDNN_SOFTMAX_MODE_CHANNEL, 
+    cudnnSoftmaxBackward(handle(), softmaxalgo(), CUDNN_SOFTMAX_MODE_CHANNEL,
                          alpha, xDesc, y, xDesc, dy, beta, xDesc, dx)
     return dx
 end
@@ -96,7 +96,7 @@ function ∇logsoftmax!(dx::T, dy::T, x::T, y::T; dims=1) where {R,T<:DenseCuArr
     s === nothing && return _∇logsoftmax!(dx, dy, x, y; dims)
     xDesc = cudnnTensorDescriptor(reshape(x,s))
     alpha, beta = scalingParameter(R,1), scalingParameter(R,0)
-    cudnnSoftmaxBackward(handle(), CUDNN_SOFTMAX_LOG, CUDNN_SOFTMAX_MODE_CHANNEL, 
+    cudnnSoftmaxBackward(handle(), CUDNN_SOFTMAX_LOG, CUDNN_SOFTMAX_MODE_CHANNEL,
                          alpha, xDesc, y, xDesc, dy, beta, xDesc, dx)
     return dx
 end

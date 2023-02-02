@@ -12,7 +12,7 @@
         gputest(NNlib.∇logsoftmax_data, dy, y2; dims=dims)
 
         # From NNlib 0.8.3, ∇softmax! is not used in the gradient.
-        # But NNlibCUDA still knows how to call CUDNN routines, let's test they agree:
+        # But NNlibCUDA still knows how to call cuDNN routines, let's test they agree:
         @test NNlib.∇softmax_data(dy, y; dims=dims) ≈ collect(∇softmax!(similar(cu(x)), cu(dy), cu(x), cu(y); dims=dims)) atol=1e-4
         @test NNlib.∇logsoftmax_data(dy, y2; dims=dims) ≈ collect(∇logsoftmax!(similar(cu(x)), cu(dy), cu(x), cu(y2); dims=dims)) atol=1e-4
         # (Note that ∇softmax! does not depend on x, it's just there to disambiguate from an even older signature.)

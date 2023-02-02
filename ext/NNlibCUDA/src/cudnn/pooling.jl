@@ -1,9 +1,9 @@
-using CUDA.CUDNN: cudnnPoolingMode_t, CUDNN_POOLING_MAX, 
-                  CUDNN_POOLING_AVERAGE_COUNT_INCLUDE_PADDING,
-                  cudnnPoolingForward!, pooldims, cudnnPoolingBackward
-          
+using cuDNN: cudnnPoolingMode_t, CUDNN_POOLING_MAX,
+             CUDNN_POOLING_AVERAGE_COUNT_INCLUDE_PADDING,
+             cudnnPoolingForward!, pooldims, cudnnPoolingBackward
+
 import NNlib: maxpool!, ∇maxpool!, meanpool!, ∇meanpool!
-import CUDA.CUDNN: cudnnPoolingDescriptor
+import cuDNN: cudnnPoolingDescriptor
 
 function cudnnPoolingDescriptor(pdims::PoolDims, x::DenseCuArray{T}, mode::cudnnPoolingMode_t) where T
     window, padding, stride = NNlib.kernel_size(pdims), nnlibPadding(pdims), NNlib.stride(pdims)

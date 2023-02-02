@@ -1,6 +1,6 @@
-using CUDA.CUDNN: CUDNN_BN_MIN_EPSILON, cudnnBatchNormalizationBackward,
-                  cudnnBatchNormalizationForwardInference, CUDNN_BATCHNORM_SPATIAL,
-                  cudnnBatchNormalizationForwardTraining
+using cuDNN: CUDNN_BN_MIN_EPSILON, cudnnBatchNormalizationBackward,
+             cudnnBatchNormalizationForwardInference, CUDNN_BATCHNORM_SPATIAL,
+             cudnnBatchNormalizationForwardTraining
 
 
 # TODO: replace with new cudnn normalization interface
@@ -116,7 +116,7 @@ function ∇batchnorm(g::DenseCuArray{T}, b::DenseCuArray{T}, x::DenseCuArray{T}
   if affine
     (dg, db, dx)
   else
-    # CUDNN always calculates dg and db, therefore we just have to drop them
+    # cuDNN always calculates dg and db, therefore we just have to drop them
     (nothing, nothing, dx)
   end
 end
