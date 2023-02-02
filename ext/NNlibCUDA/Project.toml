@@ -13,6 +13,7 @@ cuDNN = "02a925ec-e4fe-4b08-9a7e-0d78e3d38ccd"
 
 [compat]
 Adapt = "3.3"
+cuDNN = "1"
 CUDA = "4"
 NNlib = "0.8.15"
 julia = "1.6"
