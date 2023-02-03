@@ -98,18 +98,25 @@ function dot_product_attention_scores(q::AA4{T}, k::AA4{T}, bias=nothing;
     logits = batched_mul(kt, qt)
     # [logits] = [kv_len, q_len, nheads, batch_size]
 
-    if bias !== nothing
-        logits = logits .+ bias
-    end
-
-    if mask !== nothing
-        neginf = typemin(eltype(logits))
-        logits = ifelse.(mask, logits, neginf)
-    end
-
+    logits = apply_attn_bias(logits, bias)
+    logits = apply_attn_mask(logits, mask)
+    
     α = softmax(logits, dims=1)
     return fdrop(α)
 end
+
+apply_attn_bias(logits, bias::Nothing) = logits
+
+apply_attn_bias(logits, bias) = logits .+ bias
+
+
+apply_attn_mask(logits, mask::Nothing) = logits
+
+function apply_attn_mask(logits, mask)
+    neginf = typemin(eltype(logits))
+    ifelse.(mask, logits, neginf)
+end
+
 
 """ 
     make_causal_mask(x, dims=2)
