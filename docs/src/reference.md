@@ -33,6 +33,14 @@ tanhshrink
 trelu
 ```
 
+## Attention 
+
+```@docs
+dot_product_attention
+dot_product_attention_scores
+make_causal_mask
+```
+
 ## Softmax
 
 `Flux`'s `logitcrossentropy` uses `NNlib.softmax` internally.
