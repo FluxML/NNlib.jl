@@ -171,26 +171,33 @@ end
 # These are the GEMM types we will accelerate with `im2col`
 const G = Union{[x[2] for x in gemm_datatype_mappings]...}
 
-for (front_name, backend) in (
-        # This maps from public, front-facing name, to internal backend name
-        :conv                   => :im2col,
-    )
-
+for (front_name, backend, signature) in (
+    # This maps from public, front-facing name, to internal backend name
+    (:conv, :im2col, ((:T, 5), (:T, 5), (:T, 5), :C, (:(T <: G), :(C <: ConvDims)))),
+    (:conv, :direct, ((:yT, :N), (:T1, :N), (:T2, :N), :C, (:yT, :T1, :T2, :N, :(C <: ConvDims)))),
+)
     # We only define 3d conv primitives, we reshape lower down to get 1d and 2d convolution
     @eval begin
-        # im2col-accelerated function forwarding definition
+        
         function $(Symbol("$(front_name)!"))(
-                        out::AbstractArray{T,5}, in1::AbstractArray{T,5},
-                        in2::AbstractArray{T,5}, cdims::C; kwargs...) where {T <: $G, C <: ConvDims}
+                        out::AbstractArray{$(signature[1][1]), $(signature[1][2])},
+                        in1::AbstractArray{$(signature[2][1]), $(signature[1][2])},
+                        in2::AbstractArray{$(signature[3][1]), $(signature[1][2])},
+                        cdims::$(signature[4]),
+                        kwargs...) where {$(signature[5]...)}
+            if $(string(backend)) == "direct" && yT == Float64  # warn for Float32 + accidental Float64, but don't print warning for ForwardDiff.Dual
+                @warn string("Slow fallback implementation invoked for ", $(string(front_name)), "!  ",
+                        "You probably don't want this; check your datatypes.") yT T1 T2 maxlog=1
+            end
 
             x_cs = Iterators.partition(1:size(in1, 4),
-                                       channels_in(cdims) ÷ groupcount(cdims))
+                                    channels_in(cdims) ÷ groupcount(cdims))
             w_cs = Iterators.partition(1:size(in2, 5),
-                                       channels_out(cdims) ÷ groupcount(cdims))
+                                    channels_out(cdims) ÷ groupcount(cdims))
             cdims2 = basetype(C)(cdims,
-                                 G = 1,
-                                 C_in = channels_in(cdims) ÷ groupcount(cdims),
-                                 C_out = channels_out(cdims) ÷ groupcount(cdims))
+                                G = 1,
+                                C_in = channels_in(cdims) ÷ groupcount(cdims),
+                                C_out = channels_out(cdims) ÷ groupcount(cdims))
 
             Threads.@sync for (xc, wc) in zip(x_cs, w_cs)
                 x = @view in1[ntuple(i -> i == 4 ? xc : Colon(), 5)...]
@@ -205,51 +212,89 @@ for (front_name, backend) in (
 end
 
 # im2col-accelerated function forwarding definition
-function ∇conv_data!(out::AbstractArray{T,5}, in1::AbstractArray{T,5},
-                     in2::AbstractArray{T,5}, cdims::C; kwargs...) where {T <: G, C <: ConvDims}
+for (front_name, backend, signature) in (
+    # This maps from public, front-facing name, to internal backend name
+    (:∇conv_data, :im2col, ((:T, 5), (:T, 5), (:T, 5), :C, (:(T <: G), :(C <: ConvDims)))),
+    (:∇conv_data, :direct, ((:yT, :N), (:T1, :N), (:T2, :N), :C, (:yT, :T1, :T2, :N, :(C <: ConvDims)))),
+)
+    # We only define 3d conv primitives, we reshape lower down to get 1d and 2d convolution
+    @eval begin
+        # println($(Symbol(["$(i)" for i in "$(signature[5])"]...))...)
+        function $(Symbol("$(front_name)!"))(
+                        out::AbstractArray{$(signature[1][1]), $(signature[1][2])},
+                        in1::AbstractArray{$(signature[2][1]), $(signature[1][2])},
+                        in2::AbstractArray{$(signature[3][1]), $(signature[1][2])},
+                        cdims::$(signature[4]),
+                        kwargs...) where {$(signature[5]...)}
+            if $(string(backend)) == "direct" && yT == Float64  # warn for Float32 + accidental Float64, but don't print warning for ForwardDiff.Dual
+                @warn string("Slow fallback implementation invoked for ", $(string(front_name)), "!  ",
+                        "You probably don't want this; check your datatypes.") yT T1 T2 maxlog=1
+            end
 
-    dx_cs = Iterators.partition(1:size(out, 4),
-                                channels_in(cdims) ÷ groupcount(cdims))
-    w_cs = Iterators.partition(1:size(in2, 5),
-                               channels_out(cdims) ÷ groupcount(cdims))
-    dy_cs = Iterators.partition(1:size(in1, 4),
-                                channels_out(cdims) ÷ groupcount(cdims))
-    cdims2 = basetype(C)(cdims,
-                         G = 1,
-                         C_in = channels_in(cdims) ÷ groupcount(cdims),
-                         C_out = channels_out(cdims) ÷ groupcount(cdims))
 
-    Threads.@sync for (xc, yc, wc) in zip(dx_cs, dy_cs, w_cs)
-        dxv = @view out[ntuple(i -> i == 4 ? xc : Colon(), 5)...]
-        dyv = @view in1[ntuple(i -> i == 4 ? yc : Colon(), 5)...]
-        wv = @view in2[ntuple(i -> i == 5  ? wc : Colon(), 5)...]
-        Threads.@spawn ∇conv_data_im2col!(dxv, dyv, wv, cdims2; kwargs...)
+            dx_cs = Iterators.partition(1:size(out, 4),
+                                        channels_in(cdims) ÷ groupcount(cdims))
+            w_cs = Iterators.partition(1:size(in2, 5),
+                                    channels_out(cdims) ÷ groupcount(cdims))
+            dy_cs = Iterators.partition(1:size(in1, 4),
+                                        channels_out(cdims) ÷ groupcount(cdims))
+            cdims2 = basetype(C)(cdims,
+                                G = 1,
+                                C_in = channels_in(cdims) ÷ groupcount(cdims),
+                                C_out = channels_out(cdims) ÷ groupcount(cdims))
+
+            Threads.@sync for (xc, yc, wc) in zip(dx_cs, dy_cs, w_cs)
+                dxv = @view out[ntuple(i -> i == 4 ? xc : Colon(), 5)...]
+                dyv = @view in1[ntuple(i -> i == 4 ? yc : Colon(), 5)...]
+                wv = @view in2[ntuple(i -> i == 5  ? wc : Colon(), 5)...]
+                Threads.@spawn $(Symbol("$(front_name)_$(backend)!"))(dxv, dyv, wv, cdims2; kwargs...)
+            end
+
+            return out
+        end
     end
-
-    return out
 end
 
-function ∇conv_filter!(out::AbstractArray{T,5}, in1::AbstractArray{T,5},
-                       in2::AbstractArray{T,5}, cdims::C; kwargs...) where {T <: G, C <: ConvDims}
-    dw_cs = Iterators.partition(1:size(out, 5),
-                                channels_out(cdims) ÷ groupcount(cdims))
-    dy_cs = Iterators.partition(1:size(in2, 4),
-                                channels_out(cdims) ÷ groupcount(cdims))
-    x_cs = Iterators.partition(1:size(in1, 4),
-                               channels_in(cdims) ÷ groupcount(cdims))
-    cdims2 = basetype(C)(cdims,
-                         G = 1,
-                         C_in = channels_in(cdims) ÷ groupcount(cdims),
-                         C_out = channels_out(cdims) ÷ groupcount(cdims))
+for (front_name, backend, signature) in (
+    # This maps from public, front-facing name, to internal backend name
+    (:∇conv_filter, :im2col, ((:T, 5), (:T, 5), (:T, 5), :C, (:(T <: G), :(C <: ConvDims)))),
+    (:∇conv_filter, :direct, ((:yT, :N), (:T1, :N), (:T2, :N), :C, (:yT, :T1, :T2, :N, :(C <: ConvDims)))),
+)
+    # We only define 3d conv primitives, we reshape lower down to get 1d and 2d convolution
+    @eval begin
+        # println($(Symbol(["$(i)" for i in "$(signature[5])"]...))...)
+        function $(Symbol("$(front_name)!"))(
+                        out::AbstractArray{$(signature[1][1]), $(signature[1][2])},
+                        in1::AbstractArray{$(signature[2][1]), $(signature[1][2])},
+                        in2::AbstractArray{$(signature[3][1]), $(signature[1][2])},
+                        cdims::$(signature[4]),
+                        kwargs...) where {$(signature[5]...)}
+            if $(string(backend)) == "direct" && yT == Float64  # warn for Float32 + accidental Float64, but don't print warning for ForwardDiff.Dual
+                @warn string("Slow fallback implementation invoked for ", $(string(front_name)), "!  ",
+                        "You probably don't want this; check your datatypes.") yT T1 T2 maxlog=1
+            end
 
-    Threads.@sync for (wc, xc, yc) in zip(dw_cs, x_cs, dy_cs)
-        x = @view in1[ntuple(i -> i == 4 ? xc : Colon(), 5)...]
-        dy = @view in2[ntuple(i -> i == 4 ? yc : Colon(), 5)...]
-        dw = @view out[ntuple(i -> i == 5 ? yc : Colon(), 5)...]
-        Threads.@spawn ∇conv_filter_im2col!(dw, x, dy, cdims2; kwargs...)
+            dw_cs = Iterators.partition(1:size(out, 5),
+                                        channels_out(cdims) ÷ groupcount(cdims))
+            dy_cs = Iterators.partition(1:size(in2, 4),
+                                        channels_out(cdims) ÷ groupcount(cdims))
+            x_cs = Iterators.partition(1:size(in1, 4),
+                                    channels_in(cdims) ÷ groupcount(cdims))
+            cdims2 = basetype(C)(cdims,
+                                G = 1,
+                                C_in = channels_in(cdims) ÷ groupcount(cdims),
+                                C_out = channels_out(cdims) ÷ groupcount(cdims))
+
+            Threads.@sync for (wc, xc, yc) in zip(dw_cs, x_cs, dy_cs)
+                x = @view in1[ntuple(i -> i == 4 ? xc : Colon(), 5)...]
+                dy = @view in2[ntuple(i -> i == 4 ? yc : Colon(), 5)...]
+                dw = @view out[ntuple(i -> i == 5 ? yc : Colon(), 5)...]
+                Threads.@spawn $(Symbol("$(front_name)_$(backend)!"))(dw, x, dy, cdims2; kwargs...)
+            end
+
+            return out
+        end
     end
-
-    return out
 end
 
 
@@ -289,101 +334,61 @@ for front_name in (:depthwiseconv, :∇depthwiseconv_data, :∇depthwiseconv_fil
     end
 end
 
-for (front_name, backend) in (
-    # This maps from public, front-facing name, to internal backend name
-    :conv                   => :direct,
-    # :∇conv_data             => :direct, 
-    # :∇conv_filter           => :direct,
-)
+# # direct function forwarding definition
+# function ∇conv_data!(out::AbstractArray{yT,N}, in1::AbstractArray{T1,N},
+#                      in2::AbstractArray{T2,N}, cdims::C; kwargs...) where {yT, T1, T2, N, C <: ConvDims}
+#     if yT == Float64  # warn for Float32 + accidental Float64, but don't print warning for ForwardDiff.Dual
+#         @warn string("Slow fallback implementation invoked for ", string(front_name), "!  ",
+#                 "You probably don't want this; check your datatypes.") yT T1 T2 maxlog=1
+#     end
 
-    # We only define 3d conv primitives, we reshape lower down to get 1d and 2d convolution
-    @eval begin
-        # im2col-accelerated function forwarding definition
-        function $(Symbol("$(front_name)!"))(
-                        out::AbstractArray{yT,N}, in1::AbstractArray{T1,N},
-                        in2::AbstractArray{T2,N}, cdims::C;
-                        kwargs...) where {yT, T1, T2, N, C <: ConvDims}
-            if yT == Float64  # warn for Float32 + accidental Float64, but don't print warning for ForwardDiff.Dual
-                @warn string("Slow fallback implementation invoked for ", $(string(front_name)), "!  ",
-                        "You probably don't want this; check your datatypes.") yT T1 T2 maxlog=1
-            end
+#     dx_cs = Iterators.partition(1:size(out, 4),
+#                 channels_in(cdims) ÷ groupcount(cdims))
+#     w_cs = Iterators.partition(1:size(in2, 5),
+#                 channels_out(cdims) ÷ groupcount(cdims))
+#     dy_cs = Iterators.partition(1:size(in1, 4),
+#                 channels_out(cdims) ÷ groupcount(cdims))
+#     cdims2 = basetype(C)(cdims,
+#             G = 1,
+#             C_in = channels_in(cdims) ÷ groupcount(cdims),
+#             C_out = channels_out(cdims) ÷ groupcount(cdims))
 
-            x_cs = Iterators.partition(1:size(in1, 4),
-                                    channels_in(cdims) ÷ groupcount(cdims))
-            w_cs = Iterators.partition(1:size(in2, 5),
-                                    channels_out(cdims) ÷ groupcount(cdims))
-            cdims2 = basetype(C)(cdims,
-                                G = 1,
-                                C_in = channels_in(cdims) ÷ groupcount(cdims),
-                                C_out = channels_out(cdims) ÷ groupcount(cdims))
+#     Threads.@sync for (xc, yc, wc) in zip(dx_cs, dy_cs, w_cs)
+#         dxv = @view out[ntuple(i -> i == 4 ? xc : Colon(), 5)...]
+#         dyv = @view in1[ntuple(i -> i == 4 ? yc : Colon(), 5)...]
+#         wv = @view in2[ntuple(i -> i == 5  ? wc : Colon(), 5)...]
+#         Threads.@spawn ∇conv_data_direct!(dxv, dyv, wv, cdims2; kwargs...)
+#     end
 
-            Threads.@sync for (xc, wc) in zip(x_cs, w_cs)
-                x = @view in1[ntuple(i -> i == 4 ? xc : Colon(), 5)...]
-                w = @view in2[ntuple(i -> i == 5 ? wc : Colon(), 5)...]
-                y = @view out[ntuple(i -> i == 4 ? wc : Colon(), 5)...]
-                Threads.@spawn $(Symbol("$(front_name)_$(backend)!"))(y, x, w, cdims2; kwargs...)
-            end
+#     return out
+# end
 
-            return out
-        end
-    end
-end
+# function ∇conv_filter!(out::AbstractArray{yT,N}, in1::AbstractArray{T1,N},
+#                        in2::AbstractArray{T2,N}, cdims::C; kwargs...) where {yT, T1, T2, N, C <: ConvDims}
+#     if yT == Float64  # warn for Float32 + accidental Float64, but don't print warning for ForwardDiff.Dual
+#         @warn string("Slow fallback implementation invoked for ", string(front_name), "!  ",
+#                 "You probably don't want this; check your datatypes.") yT T1 T2 maxlog=1
+#     end
+#     dw_cs = Iterators.partition(1:size(out, 5),
+#                 channels_out(cdims) ÷ groupcount(cdims))
+#     dy_cs = Iterators.partition(1:size(in2, 4),
+#                 channels_out(cdims) ÷ groupcount(cdims))
+#     x_cs = Iterators.partition(1:size(in1, 4),
+#                 channels_in(cdims) ÷ groupcount(cdims))
+#     cdims2 = basetype(C)(cdims,
+#             G = 1,
+#             C_in = channels_in(cdims) ÷ groupcount(cdims),
+#             C_out = channels_out(cdims) ÷ groupcount(cdims))
 
-# direct function forwarding definition
-function ∇conv_data!(out::AbstractArray{yT,N}, in1::AbstractArray{T1,N},
-                     in2::AbstractArray{T2,N}, cdims::C; kwargs...) where {yT, T1, T2, N, C <: ConvDims}
-    if yT == Float64  # warn for Float32 + accidental Float64, but don't print warning for ForwardDiff.Dual
-        @warn string("Slow fallback implementation invoked for ", string(front_name), "!  ",
-                "You probably don't want this; check your datatypes.") yT T1 T2 maxlog=1
-    end
+#     Threads.@sync for (wc, xc, yc) in zip(dw_cs, x_cs, dy_cs)
+#         x = @view in1[ntuple(i -> i == 4 ? xc : Colon(), 5)...]
+#         dy = @view in2[ntuple(i -> i == 4 ? yc : Colon(), 5)...]
+#         dw = @view out[ntuple(i -> i == 5 ? yc : Colon(), 5)...]
+#         Threads.@spawn ∇conv_filter_direct!(dw, x, dy, cdims2; kwargs...)
+#     end
 
-    dx_cs = Iterators.partition(1:size(out, 4),
-                channels_in(cdims) ÷ groupcount(cdims))
-    w_cs = Iterators.partition(1:size(in2, 5),
-                channels_out(cdims) ÷ groupcount(cdims))
-    dy_cs = Iterators.partition(1:size(in1, 4),
-                channels_out(cdims) ÷ groupcount(cdims))
-    cdims2 = basetype(C)(cdims,
-            G = 1,
-            C_in = channels_in(cdims) ÷ groupcount(cdims),
-            C_out = channels_out(cdims) ÷ groupcount(cdims))
-
-    Threads.@sync for (xc, yc, wc) in zip(dx_cs, dy_cs, w_cs)
-        dxv = @view out[ntuple(i -> i == 4 ? xc : Colon(), 5)...]
-        dyv = @view in1[ntuple(i -> i == 4 ? yc : Colon(), 5)...]
-        wv = @view in2[ntuple(i -> i == 5  ? wc : Colon(), 5)...]
-        Threads.@spawn ∇conv_data_direct!(dxv, dyv, wv, cdims2; kwargs...)
-    end
-
-    return out
-end
-
-function ∇conv_filter!(out::AbstractArray{yT,N}, in1::AbstractArray{T1,N},
-                       in2::AbstractArray{T2,N}, cdims::C; kwargs...) where {yT, T1, T2, N, C <: ConvDims}
-    if yT == Float64  # warn for Float32 + accidental Float64, but don't print warning for ForwardDiff.Dual
-        @warn string("Slow fallback implementation invoked for ", string(front_name), "!  ",
-                "You probably don't want this; check your datatypes.") yT T1 T2 maxlog=1
-    end
-    dw_cs = Iterators.partition(1:size(out, 5),
-                channels_out(cdims) ÷ groupcount(cdims))
-    dy_cs = Iterators.partition(1:size(in2, 4),
-                channels_out(cdims) ÷ groupcount(cdims))
-    x_cs = Iterators.partition(1:size(in1, 4),
-                channels_in(cdims) ÷ groupcount(cdims))
-    cdims2 = basetype(C)(cdims,
-            G = 1,
-            C_in = channels_in(cdims) ÷ groupcount(cdims),
-            C_out = channels_out(cdims) ÷ groupcount(cdims))
-
-    Threads.@sync for (wc, xc, yc) in zip(dw_cs, x_cs, dy_cs)
-        x = @view in1[ntuple(i -> i == 4 ? xc : Colon(), 5)...]
-        dy = @view in2[ntuple(i -> i == 4 ? yc : Colon(), 5)...]
-        dw = @view out[ntuple(i -> i == 5 ? yc : Colon(), 5)...]
-        Threads.@spawn ∇conv_filter_direct!(dw, x, dy, cdims2; kwargs...)
-    end
-
-    return out
-end
+#     return out
+# end
 
 for Dims in [:DenseConvDims, :DepthwiseConvDims, :PoolDims]
     @eval @non_differentiable $Dims(::Any...)
