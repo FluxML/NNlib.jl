@@ -223,7 +223,6 @@ for (front_name, backend, signature) in (
 )
     # We only define 3d conv primitives, we reshape lower down to get 1d and 2d convolution
     @eval begin
-        # println($(Symbol(["$(i)" for i in "$(signature[5])"]...))...)
         function $(Symbol("$(front_name)!"))(
                         out::AbstractArray{$(signature[1][1]), $(signature[1][2])},
                         in1::AbstractArray{$(signature[2][1]), $(signature[1][2])},
