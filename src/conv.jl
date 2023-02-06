@@ -322,7 +322,7 @@ for (front_name, backend, signature) in (
                         out::AbstractArray{$(signature[1][1]), $(signature[1][2])},
                         in1::AbstractArray{$(signature[2][1]), $(signature[1][2])},
                         in2::AbstractArray{$(signature[3][1]), $(signature[1][2])},
-                        cdims::$(signature[4]),
+                        cdims::$(signature[4]);
                         kwargs...) where {$(signature[5]...)}
             if $(string(backend)) == "direct" && yT == Float64  # warn for Float32 + accidental Float64, but don't print warning for ForwardDiff.Dual
                 @warn string("Slow fallback implementation invoked for ", $(string(front_name)), "!  ",
