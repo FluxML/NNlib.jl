@@ -18,13 +18,14 @@ AMDGPU = "21141c5a-9bdb-4563-92ae-f87d6854732e"
 AMDGPUExt = "AMDGPU"
 
 [compat]
-AMDGPU = "0.4.5"
+AMDGPU = "0.4.7"
 Adapt = "2, 3.2"
 ChainRulesCore = "1.13"
 Requires = "0.5, 1.0"
 julia = "1.6"
 
 [extras]
+AMDGPU = "21141c5a-9bdb-4563-92ae-f87d6854732e"
 CUDA = "052768ef-5323-5732-b1bb-66c8b64840ba"
 ChainRulesTestUtils = "cdddcdb0-9152-4a09-a978-84456f9df70a"
 Documenter = "e30172f5-a6a5-5a46-863b-614d45cd2de4"
@@ -39,4 +40,4 @@ UnicodePlots = "b8865327-cd53-5732-bb35-84acbb429228"
 Zygote = "e88e6eb3-aa80-5325-afca-941959d7151f"
 
 [targets]
-test = ["ChainRulesTestUtils", "AMDGPU", "CUDA", "Documenter", "FiniteDifferences", "ForwardDiff", "Logging", "NNlibCUDA", "Random", "StableRNGs", "Test", "UnicodePlots", "Zygote"]
+test = ["ChainRulesTestUtils", "CUDA", "Documenter", "FiniteDifferences", "ForwardDiff", "Logging", "NNlibCUDA", "Random", "StableRNGs", "Test", "UnicodePlots", "Zygote"]
