@@ -71,10 +71,10 @@ steps:
       rocmgpu: "*"
     command:
       - julia -e """
-        using TOML
-        conf = TOML.parse(read(\"Project.toml\", String))
-        push!(conf[\"targets\"][\"test\"], \"AMDGPU\")
-        open(io -> TOML.print(io, conf), \"Project.toml\", \"w\")
+        using TOML;
+        conf = TOML.parse(read(\"Project.toml\", String));
+        push!(conf[\"targets\"][\"test\"], \"AMDGPU\");
+        open(io -> TOML.print(io, conf), \"Project.toml\", \"w\");
         """
     timeout_in_minutes: 30
     env:
