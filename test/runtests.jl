@@ -26,6 +26,19 @@ include("test_utils.jl")
         @info "Insufficient version or CUDA not found; Skipping CUDA tests"
     end
 
+    if get(ENV, "NNLIB_TEST_AMDGPU", "false") == "true"
+        using AMDGPU
+        if AMDGPU.functional() && AMDGPU.functional(:MIOpen)
+            @testset "AMDGPU" begin
+                include("amd/runtests.jl")
+            end
+        else
+            @info "AMDGPU.jl package is not functional. Skipping AMDGPU tests."
+        end
+    else
+        @info "Skipping AMDGPU tests, set NNLIB_TEST_CUDA=true to run them."
+    end
+
     if VERSION < v"1.6"
         @info "skipping doctests, on Julia $VERSION"
     else
