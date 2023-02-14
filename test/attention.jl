@@ -36,7 +36,7 @@ end
 @testset "mask" begin
     q = rand(4, 2, 3, 1)
     k = rand(4, 2, 5, 1)
-    
+
     mask = rand(Bool, (5, 3))
     α = dot_product_attention_scores(q, k; mask)
     @test all((α[:,:,1,1].> 0) .== mask)
@@ -53,7 +53,7 @@ end
 
 @testset "dropout" begin
     q = k = v = rand(10, 10, 10)
-    fdrop(x, p) = (rand!(similar(x)) .> p) .* x ./ (1-p) 
+    fdrop(x, p) = (rand!(similar(x)) .> p) .* x ./ (1-p)
     y, α = dot_product_attention(q, k, v; nheads=2, fdrop = x -> fdrop(x, 0.5))
     @test 0.6 > mean(>(0), α) > 0.4
 end
@@ -63,7 +63,7 @@ end
     k = v = rand(4, 3, 1)
     bias = randn(3, 5)
     y, α = dot_product_attention(q, k, v, bias; nheads=2)
-    @test size(α) == (3, 5, 2, 1) 
+    @test size(α) == (3, 5, 2, 1)
     @test size(y) == (4, 5, 1)
 end
 
