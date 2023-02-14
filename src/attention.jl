@@ -5,7 +5,7 @@ const AA{N,T} = AbstractArray{T,N}
 """
     dot_product_attention(query, key, value, [bias]; [fdrop, mask, nheads])
 
-Multihead dot product attention used in transformer architectures. 
+Multihead dot product attention used in transformer architectures.
 
 The input arrays must have the first two dimensions given by the number of features
 and the sequence length, then an arbitrary number of batch dimensions or none.
@@ -23,15 +23,15 @@ See also [`dot_product_attention_scores`](@ref) if you only need the attention s
 - `value`: Value array of size `(v_dim, kv_len, batch_size...)`.
 - `bias`: Either `nothing` or an array broadcastable to size `(kv_len, q_len, nheads, batch_size)`.
           It will be added to the attention scores before applying the softmax. Default `nothing`.
-- `fdrop`: A dropout function or layer to be applied on the attention scores right after the softmax. 
-           Default `identity` (no dropout). 
+- `fdrop`: A dropout function or layer to be applied on the attention scores right after the softmax.
+           Default `identity` (no dropout).
 - `mask`: Either `nothing` or a boolean array broadcastable to size `(kv_len, q_len, nheads, batch_size)`.
           The mask is applied to the attention scores just before the softmax.
           See [`make_causal_mask`](@ref) fore creating causal masks. Default `nothing`.
 - `nheads`: Number of heads to split the input arrays into. Default `1`.
 
 # Examples
-    
+
 ```julia
 q, k, v = rand(10, 20, 2), rand(10, 30, 2), rand(20, 30, 2)
 y, α = dot_product_attention(q, k, v)
@@ -49,13 +49,34 @@ function dot_product_attention(q::AA{N}, k::AA{N}, v::AA{N}, args...; kws...) wh
     return x, α
 end
 
-function dot_product_attention(q::AA3, k::AA3, v::AA3, bias=nothing; 
+function dot_product_attention(q::AA3, k::AA3, v::AA3, bias=nothing;
             fdrop=identity, mask=nothing, nheads=1)
 
-    (size(q, 3) == size(k, 3) == size(v, 3)) || throw(ArgumentError("Batch dimensions have to be the same."))
-    size(q, 1) == size(k, 1) || throw(ArgumentError("First dimension in query and key has to be the same."))
-    size(k, 2) == size(v, 2) || throw(ArgumentError("Second dimension in key and value has to be the same."))
-    
+    (all(size.((q, k, v), 1) .% nheads .== 0)) || throw(ArgumentError("""
+    First dimension in query, key and value must be divisible by `nheads`.
+    Instead:
+    - size(q): $(size(q))
+    - size(k): $(size(q))
+    - size(v): $(size(q))
+    - nheads: $nheads
+    """))
+    (size(q, 3) == size(k, 3) == size(v, 3)) || throw(ArgumentError("""
+    Batch dimensions have to be the same. Instead:
+    - size(q): $(size(q))
+    - size(k): $(size(k))
+    - size(v): $(size(v))
+    """))
+    size(q, 1) == size(k, 1) || throw(ArgumentError("""
+    First dimension in query and key has to be the same. Instead:
+    - size(q): $(size(q))
+    - size(k): $(size(k))
+    """))
+    size(k, 2) == size(v, 2) || throw(ArgumentError("""
+    Second dimension in key and value has to be the same. Instead:
+    - size(k): $(size(k))
+    - size(v): $(size(v))
+    """))
+
     # Multihead attention. TODO create fastpath for singlehead attention.
     q, k, v = split_heads.((q, k, v), nheads)
     x, α = _dot_product_attention(q, k, v, bias, fdrop, mask)
@@ -69,7 +90,7 @@ function _dot_product_attention(q::AA4, k::AA4, v::AA4, bias, fdrop, mask)
 
     α = dot_product_attention_scores(q, k, bias; fdrop, mask)
     # [α] = [kv_len, q_len, nheads, batch_size]
-    
+
     # The following permutedims and batched_mul are equivalent to
     # @tullio x[d, h, i, b] := α[j, i, h, b] * v[d, h, j, b]
     vt = permutedims(v, (1, 3, 2, 4))
@@ -83,12 +104,12 @@ end
     dot_product_attention_scores(query, key, [bias]; [fdrop, mask])
 
 Return the attention scores for the [`dot_product_attention`](@ref).
-Input arrays must have dimensions 
+Input arrays must have dimensions
 `(num_features ÷ nheads, nheads, sequence_length, batch_size)`.
 
 See [`dot_product_attention`](@ref) for more details.
 """
-function dot_product_attention_scores(q::AA4{T}, k::AA4{T}, bias=nothing; 
+function dot_product_attention_scores(q::AA4{T}, k::AA4{T}, bias=nothing;
             fdrop=identity, mask=nothing) where T
 
     # The following permutedims and batched_mul are equivalent to
@@ -100,7 +121,7 @@ function dot_product_attention_scores(q::AA4{T}, k::AA4{T}, bias=nothing;
 
     logits = apply_attn_bias(logits, bias)
     logits = apply_attn_mask(logits, mask)
-    
+
     α = softmax(logits, dims=1)
     return fdrop(α)
 end
@@ -108,7 +129,6 @@ end
 apply_attn_bias(logits, bias::Nothing) = logits
 
 apply_attn_bias(logits, bias) = logits .+ bias
-
 
 apply_attn_mask(logits, mask::Nothing) = logits
 
@@ -118,11 +138,11 @@ function apply_attn_mask(logits, mask)
 end
 
 
-""" 
+"""
     make_causal_mask(x, dims=2)
 
 Return a boolean square matrix `m` of the same type as `x` and of side `size(x, dims)`.
-Its elements are set such that `m[i, j] == i ≤ j`. 
+Its elements are set such that `m[i, j] == i ≤ j`.
 
 Can be used to mask the attention scores in [`dot_product_attention`](@ref).
 """
@@ -141,4 +161,3 @@ join_heads(x) = reshape(x, :, size(x)[3:end]...)
 @non_differentiable make_causal_mask(::Any...)
 @non_differentiable trues_like(::Any...)
 @non_differentiable falses_like(::Any...)
-

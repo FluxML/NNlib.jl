@@ -52,3 +52,11 @@ end
 @testset "Activations" begin
     include("activations.jl")
 end
+
+@testset "Dropout" begin
+    include("dropout.jl")
+end
+
+@testset "Attention" begin
+    include("attention.jl")
+end
