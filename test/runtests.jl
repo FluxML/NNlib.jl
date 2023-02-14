@@ -29,6 +29,7 @@ include("test_utils.jl")
     if get(ENV, "NNLIB_TEST_AMDGPU", "false") == "true"
         using AMDGPU
         if AMDGPU.functional() && AMDGPU.functional(:MIOpen)
+            AMDGPU.versioninfo()
             @testset "AMDGPU" begin
                 include("amd/runtests.jl")
             end
