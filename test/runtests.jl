@@ -30,6 +30,7 @@ include("test_utils.jl")
         using AMDGPU
         if AMDGPU.functional() && AMDGPU.functional(:MIOpen)
             AMDGPU.versioninfo()
+            @show AMDGPU.MIOpen.version()
             @testset "AMDGPU" begin
                 include("amd/runtests.jl")
             end
