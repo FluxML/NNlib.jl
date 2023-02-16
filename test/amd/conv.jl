@@ -7,3 +7,14 @@
         gputest((x, w) -> NNlib.conv(x, w, cdims), x, w; atol=1e-4)
     end
 end
+
+@testset "Regular convolution with flipped kernel" begin
+    x = rand(Float32, 16, 16, 3, 1)
+    w = rand(Float32, 2, 2, 3, 4)
+    xd, wd = ROCArray.((x, reverse(w; dims=(1, 2))))
+
+    cdims = DenseConvDims(x, w)
+    y = NNlib.conv(x, w, cdims)
+    yd = NNlib.conv(xd, wd, cdims)
+    @test Array(yd) ≈ y atol=1f-3
+end
