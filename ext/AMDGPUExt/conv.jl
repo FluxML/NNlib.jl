@@ -1,9 +1,6 @@
 function NNlib.conv!(
     y::ROCArray{T, N}, x::ROCArray{T, N}, w::ROCArray{T, N}, cdims::DenseConvDims,
 ) where {T <: MIOPENFloat, N}
-    NNlib.flipkernel(cdims) || throw(ArgumentError(
-        "MIOpen supports only cross-correlation as its convolution implementation."))
-
     nd = max(0, 4 - N)
     ncdims = NNlib.insert_singleton_spatial_dimension(cdims, nd)
     MIOpen.convolution!(
@@ -18,9 +15,6 @@ end
 function NNlib.∇conv_data!(
     dx::ROCArray{T, N}, dy::ROCArray{T, N}, w::ROCArray{T, N}, cdims::DenseConvDims,
 ) where {T <: MIOPENFloat, N}
-    NNlib.flipkernel(cdims) || throw(ArgumentError(
-        "MIOpen supports only cross-correlation as its convolution implementation."))
-
     nd = max(0, 4 - N)
     ncdims = NNlib.insert_singleton_spatial_dimension(cdims, nd)
     MIOpen.∇convolution_data!(
@@ -35,9 +29,6 @@ end
 function NNlib.∇conv_filter!(
     dw::ROCArray{T, N}, x::ROCArray{T, N}, dy::ROCArray{T, N}, cdims::DenseConvDims,
 ) where {T <: MIOPENFloat, N}
-    NNlib.flipkernel(cdims) || throw(ArgumentError(
-        "MIOpen supports only cross-correlation as its convolution implementation."))
-
     nd = max(0, 4 - N)
     ncdims = NNlib.insert_singleton_spatial_dimension(cdims, nd)
     MIOpen.∇convolution_weight!(
