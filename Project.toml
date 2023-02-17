@@ -18,7 +18,7 @@ AMDGPU = "21141c5a-9bdb-4563-92ae-f87d6854732e"
 AMDGPUExt = "AMDGPU"
 
 [compat]
-AMDGPU = "0.4.7"
+AMDGPU = "0.4.8"
 Adapt = "2, 3.2"
 ChainRulesCore = "1.13"
 Requires = "0.5, 1.0"
