@@ -76,6 +76,13 @@ pad_zeros
 
 `Flux`'s `Conv` and `CrossCor` layers use `NNlib.DenseConvDims` and `NNlib.conv` internally. 
 
+!!! AMDGPU MIOpen supports only cross-correlation (flipkernel=true).
+    Therefore for every regular convolution (flipkernel=false)
+    kernel is flipped before calculation.
+    For better performance, use cross-correlation (flipkernel=true)
+    and manually flip the kernel before `NNlib.conv` call.
+    `Flux` handles this automatically, this is only required for direct calls.
+
 ```@docs
 conv
 ConvDims
