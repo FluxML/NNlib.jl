@@ -1,4 +1,4 @@
-module NNlibCUDA
+module NNlibCUDAExt
 
 using NNlib
 using CUDA, cuDNN

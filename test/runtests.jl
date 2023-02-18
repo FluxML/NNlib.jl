@@ -7,6 +7,10 @@ import Zygote
 using Zygote: gradient
 using StableRNGs
 using CUDA
+using Pkg
+
+using Documenter
+DocMeta.setdocmeta!(NNlib, :DocTestSetup, :(using NNlib, UnicodePlots); recursive=true)
 
 const rng = StableRNG(123)
 include("test_utils.jl")
@@ -14,7 +18,6 @@ include("test_utils.jl")
 @testset verbose=true "NNlib.jl" begin
     if CUDA.functional()
         if get(ENV, "NNLIB_TEST_CUDA", "false") == "true"
-            import Pkg
             using NNlibCUDA
             @testset "CUDA" begin
                 Pkg.test("NNlibCUDA")
@@ -32,23 +35,17 @@ include("test_utils.jl")
             AMDGPU.versioninfo()
             @show AMDGPU.MIOpen.version()
             @testset "AMDGPU" begin
-                include("amd/runtests.jl")
+                include("ext_amdgpu/runtests.jl")
             end
         else
             @info "AMDGPU.jl package is not functional. Skipping AMDGPU tests."
         end
     else
-        @info "Skipping AMDGPU tests, set NNLIB_TEST_CUDA=true to run them."
+        @info "Skipping AMDGPU tests, set NNLIB_TEST_AMDGPU=true to run them."
     end
 
-    if VERSION < v"1.6"
-        @info "skipping doctests, on Julia $VERSION"
-    else
-        using Documenter
-        DocMeta.setdocmeta!(NNlib, :DocTestSetup, :(using NNlib, UnicodePlots); recursive=true)
-        @testset "Doctests" begin
-            doctest(NNlib, manual=false)
-        end
+    @testset "Doctests" begin
+        doctest(NNlib, manual=false)
     end
 
     @testset "Activation Functions" begin
