@@ -1,4 +1,4 @@
-module AMDGPUExt
+module NNlibAMDGPUExt
 
 using Adapt
 using AMDGPU

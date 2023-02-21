@@ -1,6 +1,6 @@
 name = "NNlib"
 uuid = "872c559c-99b0-510c-b3b7-b6c96a88d5cd"
-version = "0.8.19"
+version = "0.8.20"
 
 [deps]
 Adapt = "79e6a3ab-5dfb-504d-930d-738a2a938a0e"
@@ -15,7 +15,7 @@ Statistics = "10745b16-79ce-11e8-11f9-7d13ad32a3b2"
 AMDGPU = "21141c5a-9bdb-4563-92ae-f87d6854732e"
 
 [extensions]
-AMDGPUExt = "AMDGPU"
+NNlibAMDGPUExt = "AMDGPU"
 
 [compat]
 AMDGPU = "0.4.8"
