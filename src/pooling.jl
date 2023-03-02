@@ -8,11 +8,15 @@
 #     - maxpool!(y, x, pdims)
 #     - meanpool(x, pdims)
 #     - meanpool!(y, x, pdims)
+#     - lpnormpool(x, pdims)
+#     - lpnormpool!(y, x, pdims)
 #   - Pooling input backprop
 #     - ∇maxpool(dy, y, x, pdims)
 #     - ∇maxpool!(dx, dy, y, x, pdims)
 #     - ∇meanpool(dy, y, x, pdims)
 #     - ∇meanpool!(dx, dy, y, x pdims)
+#     - ∇lpnormpool(dy, y, x, pdims)
+#     - ∇lpnormpool!(dx, dy, y, x pdims)
 #
 #   All methods require a `PoolDims` object to define the dimensions and optional
 #   elements of the convolution (stride, dilation, etc...), which is easily constructable
@@ -26,6 +30,7 @@ for (front_name, backend) in (
         # This maps from public, front-facing name, to internal backend name
         :maxpool  => :direct,
         :meanpool => :direct,
+        :lpnormpool => :direct,
     )
 
     # We only define 3d pooling primitives, we reshape lower down to get 1d and 2d pooling
@@ -42,6 +47,7 @@ end
 for (front_name, backend) in (
         :∇maxpool  => :direct,
         :∇meanpool => :direct,
+        :∇lpnormpool => :direct,
     )
     @eval begin
         function $(Symbol("$(front_name)!"))(
@@ -57,7 +63,7 @@ end
 # Our strategy for pooling is to reshape to an array with three spatial dimensions, which
 # makes things MUCH EASIER for us on the backend side, and is in general pretty fast,
 # since we can specialize on sizes.
-for front_name in (:maxpool, :meanpool)
+for front_name in (:maxpool, :meanpool, :lpnormpool)
     for backend in (Symbol(), :_direct)
         for N in (3, 4)
             @eval begin
@@ -103,7 +109,7 @@ end
 # Finally, let's generate auto-allocating versions of all our functions, for all backends:
 for backend in (Symbol(), :_direct, :_nnpack)
     # First make auto-allocating versions of the basic pooling calls:
-    for name in (:maxpool, :meanpool)
+    for name in (:maxpool, :meanpool, :lpnormpool)
         @eval begin
             function $(Symbol("$(name)$(backend)"))(
                             x::AbstractArray{xT,N},
@@ -141,9 +147,15 @@ expand(N, i::Integer) = ntuple(_ -> i, N)
 
 
 """
-    maxpool(x, k::NTuple; pad=0, stride=k)
+    maxpool(x, k::NTuple{N, Integer}; pad=0, stride=k)
 
 Perform max pool operation with window size `k` on input tensor `x`.
+
+Arguments:
+
+* `x` and `k`: Expects `ndim(x) ∈ 3:5`, and always `length(k) == ndim(x) - 2`
+* `pad`: See [`pad_zeros`](@ref) for details.
+* `stride`: Either a tuple with the same length as `k`, or one integer for all directions. Default is `k`.
 """
 function maxpool(x, k::NTuple{N, Integer}; pad=0, stride=k) where N
     pad = expand(Val(N), pad)
@@ -154,9 +166,15 @@ end
 
 
 """
-    meanpool(x, k::NTuple; pad=0, stride=k)
+    meanpool(x, k::NTuple{N, Integer}; pad=0, stride=k)
 
 Perform mean pool operation with window size `k` on input tensor `x`.
+
+Arguments:
+
+* `x` and `k`: Expects `ndim(x) ∈ 3:5``, and always `length(k) == ndim(x) - 2`
+* `pad`: See [`pad_zeros`](@ref) for details.
+* `stride`: Either a tuple with the same length as `k`, or one integer for all directions. Default is `k`.
 """
 function meanpool(x, k::NTuple{N, Integer}; pad=0, stride=k) where N
     pad = expand(Val(N), pad)
@@ -166,7 +184,32 @@ function meanpool(x, k::NTuple{N, Integer}; pad=0, stride=k) where N
 end
 
 
-for pool in [:maxpool, :meanpool]
+"""
+    lpnormpool(x, p::Real, k::NTuple{N, Integer}; pad=0, stride=k)
+
+Perform Lp pool operation with value of the Lp norm `p` and window size `k` on input tensor `x`, also known as LPPool in pytorch.
+This pooling operator from [Learned-Norm Pooling for Deep Feedforward and Recurrent Neural Networks](https://arxiv.org/abs/1311.1780).
+
+Arguments:
+
+* `x` and `k`: Expects `ndim(x) ∈ 3:5``, and always `length(k) == ndim(x) - 2`
+* `p` is restricted to `0 < p < Inf`.
+* `pad`: See [`pad_zeros`](@ref) for details.
+* `stride`: Either a tuple with the same length as `k`, or one integer for all directions. Default is `k`.
+
+For all elements `x` in a size `k` window, lpnormpool computes `(∑ᵢ xᵢ^p)^(1 / p)` as an element of the output.
+
+Thus `lpnormpool(x, 1, k) ./ prod(k) ≈ meanpool(x, k)` and `lpnormpool(x, 2, k).^2 ./ prod(k) ≈ meanpool(x.^2, k)`.
+"""
+function lpnormpool(x, p::Real, k::NTuple{N, Integer}; pad=0, stride=k) where {N}
+    pow = p isa Integer ? p : convert(float(eltype(x)), p)
+    (isinf(pow) || pow < 0) && error("p value of Lp norm pool expects `0 < p < Inf`, but p is $(pow) now.")
+    pdims = PoolDims(x, k; padding=expand(Val(N), pad), stride=expand(Val(N), stride))
+    return lpnormpool(x, pdims; p=pow)
+end
+
+
+for pool in [:maxpool, :meanpool, :lpnormpool]
     ∇pool = Symbol(:∇, pool)
     pullback = Symbol(pool, :_pullback)
     @eval function rrule(::typeof($pool), x, pdims::PoolDims; kw...)

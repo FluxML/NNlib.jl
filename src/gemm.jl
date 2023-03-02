@@ -138,7 +138,7 @@ for (gemm, elt) in gemm_datatype_mappings
 
             end
 
-            C
+            return C
         end
     end
 end

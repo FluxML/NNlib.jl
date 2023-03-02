@@ -149,3 +149,14 @@ end
     gradtest(xs -> gather!(dst, xs, index), src)
     gradtest(xs -> gather(xs, index), src)
 end
+
+@testset "gather(src, IJK...)" begin
+    x = reshape([1:15;], 3, 5)
+    
+    y = gather(x, [1,2], [2,4])
+    @test y == [4, 11]
+
+    @test gather(x, [1, 2]) ==  [1  4
+                                 2  5
+                                 3  6]
+end

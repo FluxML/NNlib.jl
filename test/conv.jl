@@ -725,6 +725,17 @@ end
     @test size(conv(x, w; stride = (1, 2), pad = (2, 3), dilation = (2, 2), flipped = true)) == (12, 7, 16, 10)
 end
 
+# https://github.com/FluxML/NNlib.jl/issues/369
+@testset "conv_wrapper with groups - not equal types that trigger direct backend" begin
+    x = rand(Float32, 10, 10, 32, 8)
+    w = rand(Float64, 2, 2, 16, 4)
+    g = 2
+    @test conv(x, w; groups=g) ≈ conv(x, Float32.(w); groups=g)
+    @test conv(x, w; stride = (2, 2), pad = (2, 2), groups=g) ≈ conv(x, w; stride = (2, 2), pad = (2, 2), groups=g)
+    @test conv(x, w; stride = (1, 2), pad = (2, 3), dilation = (2, 2), groups=g) ≈ conv(x, w; stride = (1, 2), pad = (2, 3), dilation = (2, 2), groups=g)
+    @test conv(x, w; stride = (1, 2), pad = (2, 3), dilation = (2, 2), flipped = true, groups=g) ≈ conv(x, w; stride = (1, 2), pad = (2, 3), dilation = (2, 2), flipped = true, groups=g)
+end
+
 @testset "depthwiseconv_wrapper" begin
     x = rand(10, 10, 3, 10)
     w = rand(2, 2, 3, 3)

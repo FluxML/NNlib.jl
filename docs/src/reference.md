@@ -33,6 +33,14 @@ tanhshrink
 trelu
 ```
 
+## Attention 
+
+```@docs
+dot_product_attention
+dot_product_attention_scores
+make_causal_mask
+```
+
 ## Softmax
 
 `Flux`'s `logitcrossentropy` uses `NNlib.softmax` internally.
@@ -44,20 +52,23 @@ logsoftmax
 
 ## Pooling
 
-`Flux`'s `AdaptiveMaxPool`, `AdaptiveMeanPool`, `GlobalMaxPool`, `GlobalMeanPool`, `MaxPool`, and `MeanPool` use `NNlib.PoolDims`, `NNlib.maxpool`, and `NNlib.meanpool` as their backend.
+`Flux`'s `AdaptiveMaxPool`, `AdaptiveMeanPool`, `GlobalMaxPool`, `GlobalMeanPool`, `MaxPool`, `MeanPool` and `lpnormpool` use `NNlib.PoolDims`, `NNlib.maxpool`, `NNlib.meanpool` and `NNlib.lpnormpool` as their backend.
 
 ```@docs
 PoolDims
 maxpool
 meanpool
+lpnormpool
 ```
 
 ## Padding
 
 ```@docs
 pad_reflect
-pad_constant
+pad_symmetric
+pad_circular
 pad_repeat
+pad_constant
 pad_zeros
 ```
 
@@ -65,14 +76,21 @@ pad_zeros
 
 `Flux`'s `Conv` and `CrossCor` layers use `NNlib.DenseConvDims` and `NNlib.conv` internally. 
 
+!!! AMDGPU MIOpen supports only cross-correlation (flipkernel=true).
+    Therefore for every regular convolution (flipkernel=false)
+    kernel is flipped before calculation.
+    For better performance, use cross-correlation (flipkernel=true)
+    and manually flip the kernel before `NNlib.conv` call.
+    `Flux` handles this automatically, this is only required for direct calls.
+
 ```@docs
 conv
 ConvDims
 depthwiseconv
 DepthwiseConvDims
 DenseConvDims
-unfold
-fold
+NNlib.unfold
+NNlib.fold
 ```
 
 ## Upsampling
@@ -132,4 +150,5 @@ ctc_loss
 ```@docs
 logsumexp
 NNlib.glu
+NNlib.within_gradient
 ```

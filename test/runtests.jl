@@ -2,10 +2,13 @@ using NNlib, Test, Statistics, Random
 using ChainRulesCore, ChainRulesTestUtils
 using Base.Broadcast: broadcasted
 import FiniteDifferences
+import ForwardDiff
 import Zygote
 using Zygote: gradient
 using StableRNGs
 using CUDA
+using Documenter
+DocMeta.setdocmeta!(NNlib, :DocTestSetup, :(using NNlib, UnicodePlots); recursive=true)
 
 const rng = StableRNG(123)
 include("test_utils.jl")
@@ -25,18 +28,31 @@ include("test_utils.jl")
         @info "Insufficient version or CUDA not found; Skipping CUDA tests"
     end
 
-    if VERSION < v"1.6"
-        @info "skipping doctests, on Julia $VERSION"
-    else
-        using Documenter
-        DocMeta.setdocmeta!(NNlib, :DocTestSetup, :(using NNlib, UnicodePlots); recursive=true)
-        @testset "Doctests" begin
-            doctest(NNlib, manual=false)
+    if get(ENV, "NNLIB_TEST_AMDGPU", "false") == "true"
+        using AMDGPU
+        if AMDGPU.functional() && AMDGPU.functional(:MIOpen)
+            AMDGPU.versioninfo()
+            @show AMDGPU.MIOpen.version()
+            @testset "AMDGPU" begin
+                include("ext_amdgpu/runtests.jl")
+            end
+        else
+            @info "AMDGPU.jl package is not functional. Skipping AMDGPU tests."
         end
+    else
+        @info "Skipping AMDGPU tests, set NNLIB_TEST_CUDA=true to run them."
+    end
+
+    @testset "Doctests" begin
+        doctest(NNlib, manual=false)
     end
 
     @testset "Activation Functions" begin
         include("activations.jl")
+    end
+
+    @testset "Attention" begin
+        include("attention.jl")
     end
 
     @testset "Batched Multiplication" begin
@@ -50,6 +66,10 @@ include("test_utils.jl")
 
     @testset "CTC Loss" begin
         include("ctc.jl")
+    end
+
+    @testset "Dropout" begin
+        include("dropout.jl")
     end
 
     @testset "Fold/Unfold" begin

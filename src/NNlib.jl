@@ -6,6 +6,7 @@ using ChainRulesCore
 import ChainRulesCore: rrule
 using Base.Broadcast: broadcasted
 using Base.Threads
+using Random
 using Statistics
 using Statistics: mean
 using LinearAlgebra
@@ -40,6 +41,12 @@ for f in ACTIVATIONS
 end
 export sigmoid, hardsigmoid, logsigmoid, thresholdrelu # Aliases
 
+include("attention.jl")
+export dot_product_attention, dot_product_attention_scores, make_causal_mask
+
+include("dropout.jl")
+export dropout, dropout!
+
 include("softmax.jl")
 export softmax, softmax!, ∇softmax, ∇softmax!, logsoftmax, 
     logsoftmax!, ∇logsoftmax, ∇logsoftmax!, logsumexp
@@ -67,11 +74,11 @@ include("ctc.jl")
 export ctc_loss
 
 include("pooling.jl")
-export maxpool, maxpool!, meanpool, meanpool!, 
-    ∇maxpool, ∇maxpool!, ∇meanpool, ∇meanpool!
+export maxpool, maxpool!, meanpool, meanpool!, lpnormpool, lpnormpool!,
+    ∇maxpool, ∇maxpool!, ∇meanpool, ∇meanpool!, ∇lpnormpool, ∇lpnormpool!
 
 include("padding.jl")
-export pad_constant, pad_repeat, pad_reflect, pad_zeros
+export pad_constant, pad_repeat, pad_reflect, pad_zeros, pad_symmetric, pad_circular
 
 include("upsample.jl")
 export upsample_nearest, ∇upsample_nearest,
@@ -83,6 +90,12 @@ export upsample_nearest, ∇upsample_nearest,
 include("gather.jl")
 include("scatter.jl")
 include("utils.jl")
+@init @require ForwardDiff = "f6369f11-7733-5829-9624-2563aa707210" begin
+    using .ForwardDiff
+    within_gradient(x::ForwardDiff.Dual) = true
+    within_gradient(x::AbstractArray{<:ForwardDiff.Dual}) = true
+end
+
 include("sampling.jl")
 include("functions.jl")
 

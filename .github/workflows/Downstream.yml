@@ -22,11 +22,12 @@ jobs:
           - {user: denizyuret, repo: Knet.jl, group: All}
           - {user: dfdx, repo: Avalon.jl, group: All}
           - {user: JuliaOptimalTransport, repo: OptimalTransport.jl, group: All}
+          - {user: avik-pal, repo: Lux.jl, group: All}
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
       # for OptimalTransport.jl
       - name: Install python
-        uses: actions/setup-python@v2
+        uses: actions/setup-python@v4
         with:
           python-version: '3.9'
           architecture: ${{ matrix.arch }}
@@ -38,7 +39,7 @@ jobs:
           arch: x64
       - uses: julia-actions/julia-buildpkg@latest
       - name: Clone Downstream
-        uses: actions/checkout@v2
+        uses: actions/checkout@v3
         with:
           repository: ${{ matrix.package.user }}/${{ matrix.package.repo }}
           path: downstream
