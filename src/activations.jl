@@ -339,6 +339,15 @@ end
 const gelu_λ = √(2 / π)
 const gelu_2λ = √(8 / π)
 
+function deriv_gelu(x)
+    α = oftf(x, 0.044715)
+    λλ = oftf(x, NNlib.gelu_2λ)
+    x2 = x * x
+    t = NNlib.muladd(x2, α, one(x))
+    Ω = sigmoid_fast(λλ * x * t)
+    return Ω + x * conj(Ω * (1 - Ω)) * λλ * (t + 2α * x2)
+end
+
 """
     swish(x) = x * σ(x)
 
@@ -853,7 +862,7 @@ UNARY_ACTS = [ # f, dfdx
     (:relu6,        :((Ω>0) & (Ω<6))),
     # rrelu is random, can't write a rule.
     (:elu,          :(deriv_elu(Ω))),
-    # gelu
+    (:gelu,         :(deriv_gelu(x))),
     (:swish,        :(Ω + sigmoid_fast(x) * (1 - Ω))),
     (:hardswish,    :(deriv_hardswish(x))),
     # lisht
