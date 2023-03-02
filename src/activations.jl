@@ -341,9 +341,9 @@ const gelu_2λ = √(8 / π)
 
 function deriv_gelu(x)
     α = oftf(x, 0.044715)
-    λλ = oftf(x, NNlib.gelu_2λ)
+    λλ = oftf(x, gelu_2λ)
     x2 = x * x
-    t = NNlib.muladd(x2, α, one(x))
+    t = muladd(x2, α, one(x))
     Ω = sigmoid_fast(λλ * x * t)
     return Ω + x * conj(Ω * (1 - Ω)) * λλ * (t + 2α * x2)
 end
