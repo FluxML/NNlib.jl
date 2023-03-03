@@ -341,11 +341,13 @@ const gelu_2λ = √(8 / π)
 
 function deriv_gelu(x)
     α = oftf(x, 0.044715)
+    α2 = oftf(x, 0.08943)
     λλ = oftf(x, gelu_2λ)
     x2 = x * x
     t = muladd(x2, α, one(x))
     Ω = sigmoid_fast(λλ * x * t)
-    return Ω + x * conj(Ω * (1 - Ω)) * λλ * (t + 2α * x2)
+    dσ = conj(Ω * (1 - Ω))
+    muladd(dσ * λλ * muladd(x2, α2, t), x, Ω)
 end
 
 """
