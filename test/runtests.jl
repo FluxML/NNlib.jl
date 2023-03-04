@@ -6,26 +6,30 @@ import ForwardDiff
 import Zygote
 using Zygote: gradient
 using StableRNGs
-using CUDA
 using Documenter
 DocMeta.setdocmeta!(NNlib, :DocTestSetup, :(using NNlib, UnicodePlots); recursive=true)
 
 const rng = StableRNG(123)
 include("test_utils.jl")
 
+
+ENV["NNLIB_TEST_CUDA"] = true
+ENV["NNLIB_TEST_AMDGPU"] = true
+
 @testset verbose=true "NNlib.jl" begin
-    if CUDA.functional()
-        if get(ENV, "NNLIB_TEST_CUDA", "false") == "true"
-            import Pkg
-            using NNlibCUDA
+
+    if get(ENV, "NNLIB_TEST_CUDA", "false") == "true"
+        using CUDA
+        if CUDA.functional()
+            CUDA.versioninfo()
             @testset "CUDA" begin
-                Pkg.test("NNlibCUDA")
+                include("ext_cuda/runtests.jl")
             end
         else
-            @info "Skipping CUDA tests, set NNLIB_TEST_CUDA=true to run them"
+            @info "CUDA.jl package is not functional. Skipping CUDA tests."
         end
     else
-        @info "Insufficient version or CUDA not found; Skipping CUDA tests"
+        @info "Skipping CUDA tests, set ENV[\"NNLIB_TEST_CUDA\"]=true to run them."
     end
 
     if get(ENV, "NNLIB_TEST_AMDGPU", "false") == "true"
@@ -40,7 +44,7 @@ include("test_utils.jl")
             @info "AMDGPU.jl package is not functional. Skipping AMDGPU tests."
         end
     else
-        @info "Skipping AMDGPU tests, set NNLIB_TEST_CUDA=true to run them."
+        @info "Skipping AMDGPU tests, set ENV[\"NNLIB_TEST_AMDGPU\"]=true to run them."
     end
 
     @testset "Doctests" begin
