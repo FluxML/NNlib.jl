@@ -69,19 +69,6 @@ steps:
       queue: "juliagpu"
       rocm: "*"
       rocmgpu: "*"
-    command:
-      - julia -e """
-        using TOML;
-        conf = TOML.parse(read(\"Project.toml\", String));
-        push!(conf[\"targets\"][\"test\"], \"AMDGPU\");
-        open(io -> TOML.print(io, conf), \"Project.toml\", \"w\");
-        """
-      - julia --project=. -e """
-        using Pkg;
-        Pkg.develop(\"AMDGPU\");
-        Pkg.activate(joinpath(Pkg.devdir(), \"AMDGPU\"));
-        Pkg.add(\"MIOpen_jll\");
-        """
     timeout_in_minutes: 30
     env:
       JULIA_AMDGPU_CORE_MUST_LOAD: "1"
