@@ -36,8 +36,8 @@ for (front_name, backend) in (
     # We only define 3d pooling primitives, we reshape lower down to get 1d and 2d pooling
     @eval begin
         function $(Symbol("$(front_name)!"))(
-                y::AbstractArray{T,5}, x::AbstractArray{T,5},
-                pdims::PoolDims; kwargs...) where {T}
+                y::AbstractArray{T,5}, x::AbstractArray{R,5},
+                pdims::PoolDims; kwargs...) where {T, R}
             $(Symbol("$(front_name)_$(backend)!"))(y, x, pdims; kwargs...)
         end
     end
@@ -51,9 +51,9 @@ for (front_name, backend) in (
     )
     @eval begin
         function $(Symbol("$(front_name)!"))(
-                        dx::AbstractArray{T,5}, dy::AbstractArray{T,5},
-                        y::AbstractArray{T,5}, x::AbstractArray{T,5},
-                        pdims::PoolDims; kwargs...) where {T}
+                        dx::AbstractArray{DX,5}, dy::AbstractArray{DY,5},
+                        y::AbstractArray{Y,5}, x::AbstractArray{X,5},
+                        pdims::PoolDims; kwargs...) where {DX, DY, X, Y}
             $(Symbol("$(front_name)_$(backend)!"))(dx, dy, y, x, pdims; kwargs...)
         end
     end
@@ -68,8 +68,8 @@ for front_name in (:maxpool, :meanpool, :lpnormpool)
         for N in (3, 4)
             @eval begin
                 function $(Symbol("$(front_name)$(backend)!"))(
-                                y::AbstractArray{T,$N}, x::AbstractArray{T,$N},
-                                pdims::PoolDims; kwargs...) where {T}
+                                y::AbstractArray{T,$N}, x::AbstractArray{R,$N},
+                                pdims::PoolDims; kwargs...) where {T, R}
                     $(Symbol("$(front_name)$(backend)!"))(
                         insert_singleton_spatial_dimension(y, $(5 - N)),
                         insert_singleton_spatial_dimension(x, $(5 - N)),
@@ -84,9 +84,9 @@ for front_name in (:maxpool, :meanpool, :lpnormpool)
 
                 # backprops too
                 function $(Symbol("∇$(front_name)$(backend)!"))(
-                                dx::AbstractArray{T,$N}, dy::AbstractArray{T,$N},
-                                y::AbstractArray{T,$N}, x::AbstractArray{T,$N},
-                                pdims::PoolDims; kwargs...) where {T}
+                                dx::AbstractArray{DX,$N}, dy::AbstractArray{DY,$N},
+                                y::AbstractArray{Y,$N}, x::AbstractArray{X,$N},
+                                pdims::PoolDims; kwargs...) where {DX, DY, X, Y}
                     $(Symbol("∇$(front_name)$(backend)!"))(
                         insert_singleton_spatial_dimension(dx, $(5 - N)),
                         insert_singleton_spatial_dimension(dy, $(5 - N)),
@@ -114,18 +114,33 @@ for backend in (Symbol(), :_direct, :_nnpack)
             function $(Symbol("$(name)$(backend)"))(
                             x::AbstractArray{xT,N},
                             pdims::PoolDims; kwargs...) where {xT, N}
-                y = similar(x, output_size(pdims)..., channels_out(pdims), size(x, N))
-                fill!(y, xT(0))
+                yT = if $(name == :maxpool)
+                    xT
+                elseif $(name == :meanpool)
+                    Base.promote_op(/, xT, Int)
+                else
+                    Base.promote_op(^, xT, Base.promote_op(/, xT, typeof(kwargs[:p])))
+                end
+                y = similar(x, yT, output_size(pdims)..., channels_out(pdims), size(x, N))
+                fill!(y, yT(0))
                 return $(Symbol("$(name)$(backend)!"))(y, x, pdims; kwargs...)
             end
 
             # Backprops too
             function $(Symbol("∇$(name)$(backend)"))(
-                            dy::AbstractArray{T,N}, y::AbstractArray{T,N},
-                            x::AbstractArray{T,N}, pdims::PoolDims;
-                            kwargs...) where {T, N}
-                dx = similar(x, input_size(pdims)..., channels_in(pdims), size(dy, N))
-                fill!(dx, T(0))
+                            dy::AbstractArray{DY,N}, y::AbstractArray{Y,N},
+                            x::AbstractArray{X,N}, pdims::PoolDims;
+                            kwargs...) where {DY, Y, X, N}
+                dxT = if $(name == :maxpool)
+                    DY
+                elseif $(name == :meanpool)
+                    Base.promote_op(/, DY, Int)
+                else
+                    pT = Base.promote_op(-, Int, typeof(kwargs[:p]))
+                    Base.promote_op(*, Base.promote_op(^, X, pT), Base.promote_op(^, DY, pT))
+                end
+                dx = similar(x, dxT, input_size(pdims)..., channels_in(pdims), size(dy, N))
+                fill!(dx, dxT(0))
                 return $(Symbol("∇$(name)$(backend)!"))(dx, dy, y, x, pdims; kwargs...)
             end
         end

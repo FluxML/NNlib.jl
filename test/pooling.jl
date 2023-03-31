@@ -905,6 +905,54 @@ maxpool_answer_nature = Dict(
     -0.25,  -0.5,  -0.25], (3, 3, 1, 1))
     @test all(pool .== valid)
 
+    # issue #484
+    # Description: some in-place pooling functions only accepted arrays with the same eltype.
+    # The strict method signatures were based on assumption on the return type of `similar`.
+    # For ReverseDiff, this caused problems, e.g. with taking derivatives of pooling 
+    # operations.
+    # Now, if explicitly calling an in-place pooling functions, a different `yT` is allowed:
+    for xT in (Int32, Int64, Float16, Float32, Float64, BigFloat)
+        for (xsz, psz) in (
+            ((1,1), (1,1)),
+            ((1,2), (1,1)), ((1,2), (1,2)),
+            ((2,1), (1,1)), ((2,1), (2,1)),
+            ((2,2), (1,1)), ((2,2), (1,2)), ((2,2), (2,1)),
+            ((4,4), (1,1)), ((4,4), (2,2)), ((4,4), (4,4))
+        )
+            x = ones(xT, xsz..., 1, 1)
+            pdims = PoolDims(x, psz)
+            for yT in (Float16, Float32, Float64, BigFloat) # no integer types here because of inprecision issues if xT <: AbstractFloat
+                y = similar(x, yT, output_size(pdims)..., channels_out(pdims), size(x, 4))
+                @test maxpool!(y, x, pdims) isa Array{yT}
+                @test meanpool!(y, x, pdims) isa Array{yT}
+                @test lpnormpool!(y, x, pdims; p=2) isa Array{yT}
+                @test lpnormpool!(y, x, pdims; p=1.0) isa Array{yT}
+            end
+        end
+    end
+    # Because of the changes it is now possible to apply meanpoolin and lpnormpooling to 
+    # integer arrays:
+    for xT in (Bool, Int32, Int64)
+        for xsz in ((1,1), (2,2))
+            if xT == Bool
+                x = rand(xT, xsz..., 1, 1)
+            else
+                x = rand(xT.(-5:5), xsz..., 1, 1)
+            end
+            @test meanpool(x, (1,1)) isa Array{Float64}
+            @test lpnormpool(x, 1.0, (1,1)) isa Array{Float64}
+            @test lpnormpool(x, 2, (1,1)) isa Array{Float64}
+        end
+    end
+    # works for gradients, too:
+    x = ones(Int32, 2, 2, 1, 1)
+    @test only(Zygote.gradient(x) do _x
+        only(meanpool(_x, (2,2)))
+    end) isa Array{Float64}
+    @test only(Zygote.gradient(x) do _x
+        only(lpnormpool(_x, 1, (2,2)))
+    end) isa Array{Float64}
+
     # if NNlib.is_nnpack_available()
     #     if NNlib.nnpack_supported_operation(pdims1)
     #         @test NNlib.maxpool_nnpack(x, pdims1) isa Array{Float32, 4}
