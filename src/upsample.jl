@@ -71,6 +71,52 @@ function pixel_shuffle(x::AbstractArray, r::Integer)
     return reshape(x, map(s -> s*r, sizein)..., cout, n)
 end
 
+#
+# Upsampling
+#
+# GPU based bilinear upsampling including its gradient
+#
+# Based on the Caffe2 implementation at:
+# The code is a translation from the following files:
+# - https://github.com/pytorch/pytorch/blob/v1.8.0-rc1/caffe2/operators/upsample_op.cu
+# - https://github.com/pytorch/pytorch/blob/v1.8.0-rc1/caffe2/core/common_gpu.h
+#
+# Copyright (c) 2016-2021 Facebook Inc.
+# Copyright (c) 2015 Google Inc.
+# Copyright (c) 2015 Yangqing Jia
+# Copyright 2019-2020 Kakao Brain
+#
+# All rights reserved.
+#
+# Redistribution and use in source and binary forms, with or without modification, are
+# permitted provided that the following conditions are met:
+#
+# 1. Redistributions of source code must retain the above copyright notice, this list of
+#    conditions and the following disclaimer.
+#
+# 2. Redistributions in binary form must reproduce the above copyright notice, this list of
+#    conditions and the following disclaimer in the documentation and/or other materials
+#    provided with the distribution.
+#
+# 3. Neither the names of Facebook, Deepmind Technologies, NYU, NEC Laboratories America and
+#    IDIAP Research Institute nor the names of its contributors may be used to endorse or
+#    promote products derived from this software without specific prior written permission.
+#
+# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY
+# EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
+# MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE
+# COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
+# EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+# SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
+# HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR
+# TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+# SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+# Forward and backward pass have been tested to produce the same output
+# as pytorch with align_corners=True - it works modulo bit noise.
+# pytorch's default is align_corners=False, because otherwise the gradients depend on the
+# image size, which should be avoided -> this should be considered here as well
+
 """
     upsample_nearest(x, scale::NTuple{S,Int})
     upsample_nearest(x; size::NTuple{S,Int})
@@ -346,8 +392,9 @@ end
     end
 end
 
-@kernel function _∇upsample_linear_kernel!(dx::T, Δ::T, rwidth, align::Val{A}) where {
-    T <: AbstractArray{<: Any, 3}, A,
+@kernel function _∇upsample_linear_kernel!(dx::T1, Δ::T2, rwidth, align::Val{A}) where {
+    T1 <: AbstractArray{<: Any, 3},
+    T2 <: AbstractArray{<: Any, 3}, A,
 }
     @uniform in_width::UInt32, channels::UInt32, batch::UInt32 = size(Δ)
     @uniform out_width::UInt32 = size(dx, 1)
@@ -380,8 +427,9 @@ end
     end
 end
 
-@kernel function _∇upsample_linear_kernel!(dx::T, Δ::T, rwidth, rheight, align::Val{A}) where {
-    T <: AbstractArray{<: Any, 4}, A,
+@kernel function _∇upsample_linear_kernel!(dx::T1, Δ::T2, rwidth, rheight, align::Val{A}) where {
+    T1 <: AbstractArray{<: Any, 4},
+    T2 <: AbstractArray{<: Any, 4}, A,
 }
     @uniform in_width::UInt32, in_height::UInt32, channels::UInt32, batch::UInt32 = size(Δ)
     @uniform out_width::UInt32, out_height::UInt32 = size(dx)[1:2]
@@ -406,7 +454,7 @@ end
     T <: AbstractArray{<: Any, 5}, A,
 }
     @uniform in_width::UInt32, in_height::UInt32, in_depth::UInt32 = size(x)[1:3]
-    @uniform channels::UInt32, batch::UInt32 = size(x)[4:5]
+    @uniform channels::UInt32, batch::UInt32 = size(x, 4), size(x, 5)
 
     i::UInt32, j::UInt32, k::UInt32 = @index(Global, NTuple)
 
@@ -425,11 +473,12 @@ end
     end
 end
 
-@kernel function _∇upsample_linear_kernel!(dx::T, Δ::T, rwidth, rheight, rdepth, align::Val{A}) where {
-    T <: AbstractArray{<: Any, 5}, A,
+@kernel function _∇upsample_linear_kernel!(dx::T1, Δ::T2, rwidth, rheight, rdepth, align::Val{A}) where {
+    T1 <: AbstractArray{<: Any, 5},
+    T2 <: AbstractArray{<: Any, 5}, A,
 }
     @uniform in_width::UInt32, in_height::UInt32, in_depth::UInt32 = size(Δ)[1:3]
-    @uniform channels::UInt32, batch::UInt32 = size(Δ)[4:5]
+    @uniform channels::UInt32, batch::UInt32 = size(Δ, 4), size(Δ, 5)
     @uniform out_width::UInt32, out_height::UInt32, out_depth::UInt32 = size(dx)[1:3]
 
     i::UInt32, j::UInt32, k::UInt32 = @index(Global, NTuple)

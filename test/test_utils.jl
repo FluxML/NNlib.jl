@@ -23,9 +23,9 @@ function gradtest(
 
     if check_broadcast
         length(fkwargs) > 0 && @warn("CHECK_BROADCAST: dropping keywords args")
-        h = (xs...) -> sum(sin.(f.(xs...)))
+        h = (xs...) -> sum(f.(xs...))
     else
-        h = (xs...) -> sum(sin.(f(xs...; fkwargs...)))
+        h = (xs...) -> sum(f(xs...; fkwargs...))
     end
 
     y_true = h(xs...)
@@ -70,8 +70,8 @@ function gputest(f, xs...; checkgrad=true, atol=1e-6, kws...)
     @test collect(cpu_y) ≈ collect(y)
 
     if checkgrad
-        cpu_grad = gradient((x...) -> sum(sin.(f(x...; kws...))), cpu_xs...)
-        gpu_grad = gradient((x...) -> sum(sin.(f(x...; kws...))), xs...)
+        cpu_grad = gradient((x...) -> sum(f(x...; kws...)), cpu_xs...)
+        gpu_grad = gradient((x...) -> sum(f(x...; kws...)), xs...)
 
         for (cpu_g, gpu_g) in zip(cpu_grad, adapt(CPU(), gpu_grad))
             if cpu_g === nothing
