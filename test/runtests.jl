@@ -7,10 +7,75 @@ import Zygote
 using Zygote: gradient
 using StableRNGs
 using Documenter
+using Adapt
+using KernelAbstractions
 DocMeta.setdocmeta!(NNlib, :DocTestSetup, :(using NNlib, UnicodePlots); recursive=true)
 
 const rng = StableRNG(123)
 include("test_utils.jl")
+
+macro conditional_testset(name, skip_tests, expr)
+    esc(quote
+        @testset $name begin
+            if $name ∉ $skip_tests
+                $expr
+            else
+                @test_skip false
+            end
+        end
+    end)
+end
+
+include("upsample.jl")
+
+function nnlib_testsuite(Backend; skip_tests = Set{String}())
+    @conditional_testset "Upsample" skip_tests begin
+        upsample_testsuite(Backend)
+    end
+end
+
+@testset verbose=true "NNlib.jl - Test Suite" begin
+    @testset "CPU" begin
+        nnlib_testsuite(CPU)
+    end
+
+    if get(ENV, "NNLIB_TEST_CUDA", "false") == "true"
+        using CUDA
+        if CUDA.functional()
+            @testset "CUDABackend" begin
+                nnlib_testsuite(CUDABackend)
+            end
+        else
+            @info "CUDA.jl is not functional. Skipping test suite for CUDABackend."
+        end
+    else
+        @info "Skipping CUDA tests, set NNLIB_TEST_CUDA=true to run them."
+    end
+
+    if get(ENV, "NNLIB_TEST_AMDGPU", "false") == "true"
+        import Pkg
+        test_info = Pkg.project()
+        # Add MIOpen_jll to AMDGPU.
+        Pkg.develop("AMDGPU")
+        Pkg.activate(joinpath(Pkg.devdir(), "AMDGPU"))
+        Pkg.add("MIOpen_jll")
+        Pkg.update()
+        # Update test project.
+        Pkg.activate(test_info.path)
+        Pkg.update()
+
+        using AMDGPU
+        if AMDGPU.functional()
+            @testset "ROCBackend" begin
+                nnlib_testsuite(ROCBackend)
+            end
+        else
+            @info "AMDGPU.jl is not functional. Skipping test suite for ROCBackend."
+        end
+    else
+        @info "Skipping AMDGPU tests, set NNLIB_TEST_AMDGPU=true to run them."
+    end
+end
 
 @testset verbose=true "NNlib.jl" begin
     if get(ENV, "NNLIB_TEST_CUDA", "false") == "true"
@@ -102,10 +167,6 @@ include("test_utils.jl")
 
     @testset "Softmax" begin
         include("softmax.jl")
-    end
-
-    @testset "Upsampling" begin
-        include("upsample.jl")
     end
 
     @testset "Gather" begin

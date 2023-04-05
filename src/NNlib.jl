@@ -12,6 +12,8 @@ using Statistics: mean
 using LinearAlgebra
 using LinearAlgebra: BlasFloat, Transpose, Adjoint, AdjOrTransAbsMat
 using LinearAlgebra.BLAS: BlasInt, @blasfunc
+using KernelAbstractions
+using KernelAbstractions: @atomic
 
 const libblas = Base.libblas_name
 
