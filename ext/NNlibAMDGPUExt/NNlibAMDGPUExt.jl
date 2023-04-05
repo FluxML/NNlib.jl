@@ -60,7 +60,10 @@ end
     include("softmax.jl")
     include("activations.jl")
 else
-    @warn "ROCm MIOpen is not available for AMDGPU. NNlib has limited functionality for AMDGPU."
+    @warn """
+    ROCm MIOpen is not available for AMDGPU.
+    NNlib has limited functionality for AMDGPU.
+    """
 end
 
 end
