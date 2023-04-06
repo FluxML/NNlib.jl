@@ -248,7 +248,7 @@ function ∇upsample_linear(Δ::AbstractArray{T,N}; size::NTuple{<:Any,Integer},
     if Base.size(Δ)[1:N-2] == size
         return Δ
     end
-    dx = zero(similar(Δ, T, size..., Base.size(Δ)[end-1:end]...))
+    dx = fill!(similar(Δ, T, size..., Base.size(Δ)[end-1:end]...), zero(T))
     return ∇upsample_linear_kernel!(dx, Δ; align_corners)
 end
 

@@ -78,7 +78,7 @@ end
         end
     end
 
-    @testset "NNlib.jl" begin
+    @testset "Tests" begin
         if get(ENV, "NNLIB_TEST_CUDA", "false") == "true"
             using CUDA
             if CUDA.functional()
