@@ -355,51 +355,78 @@ upsample_trilinear(x; size, align_corners::Bool = true)  = upsample_linear(x; si
 function upsample_linear_kernel!(
     y::AbstractArray{T, N}, x::AbstractArray{T, N}; align_corners::Bool = true,
 ) where {T, N}
-    # ndrange = size(y)[1:N - 2]
-    ndrange = size(y)[N - 1:end]
+    backend = KernelAbstractions.get_backend(x)
+    ndrange = backend isa CPU ?
+        size(y)[N - 1:end] : # Parallelization along channel x batch.
+        size(y)[1:N - 2] # Parallelization along WHD.
     ratios = align_corners ?
         ntuple(i -> real(T)((size(x, i) - 1) / (size(y, i) - 1)), N - 2) :
         ntuple(i -> real(T)(size(x, i) / size(y, i)), N - 2)
-
-    backend = KernelAbstractions.get_backend(x)
-    _upsample_linear_kernel!(backend)(y, x, ratios..., Val(align_corners); ndrange)
+    _upsample_linear_kernel!(backend)(backend, y, x, ratios..., Val(align_corners); ndrange)
     return y
 end
 
 function ∇upsample_linear_kernel!(
     dx::AbstractArray{T, N}, Δ::AbstractArray{T, N}; align_corners::Bool = true,
 ) where {T, N}
-    ndrange = size(Δ)[1:N - 2]
+    backend = KernelAbstractions.get_backend(dx)
+    ndrange = backend isa CPU ?
+        size(Δ)[N - 1:end] : # Parallelization along channel x batch.
+        size(Δ)[1:N - 2] # Parallelization along WHD.
     ratios = align_corners ?
         ntuple(i -> real(T)((size(dx, i) - 1) / (size(Δ, i) - 1)), N - 2) :
         ntuple(i -> real(T)(size(dx, i) / size(Δ, i)), N - 2)
-
-    backend = KernelAbstractions.get_backend(dx)
-    _∇upsample_linear_kernel!(backend)(dx, Δ, ratios..., Val(align_corners); ndrange)
+    _∇upsample_linear_kernel!(backend)(backend, dx, Δ, ratios..., Val(align_corners); ndrange)
     return dx
 end
 
-# Linear.
+# Linear (CPU): parallelization along channel x batch dimensions.
 
-@kernel function _upsample_linear_kernel!(y::T, x::T, rwidth, align::Val{A}) where {
-    T <: AbstractArray{<: Any, 3}, A,
+@kernel function _upsample_linear_kernel!(::CPU, y::T, x::T, rwidth, align::Val{A}) where {
+    T <: AbstractArray{<:Any, 3}, A,
 }
     @uniform in_width::UInt32, channels::UInt32, batch::UInt32 = size(x)
+    @uniform out_width::UInt32 = size(y, 1)
+    c::UInt32, n::UInt32 = @index(Global, NTuple)
+    @inbounds for i in UnitRange{UInt32}(1, out_width)
+        iw0, iw1, w0lambda, w1lambda = source_index_and_lambda(rwidth, i - 0x1, align, in_width)
+        y[i, c, n] = w0lambda * x[iw0, c, n] + w1lambda * x[iw1, c, n]
+    end
+end
 
+@kernel function _∇upsample_linear_kernel!(::CPU, dx::T1, Δ::T2, rwidth, align::Val{A}) where {
+    T1 <: AbstractArray{<:Any, 3}, T2 <: AbstractArray{<:Any, 3}, A,
+}
+    @uniform in_width::UInt32, channels::UInt32, batch::UInt32 = size(Δ)
+    @uniform out_width::UInt32 = size(dx, 1)
+    c::UInt32, n::UInt32 = @index(Global, NTuple)
+    @inbounds for i in UnitRange{UInt32}(1, in_width)
+        ow0, ow1, w0lambda, w1lambda = source_index_and_lambda(rwidth, i - 0x1, align, out_width)
+        val = Δ[i, c, n]
+        @atomic dx[ow0, c, n] += w0lambda * val
+        @atomic dx[ow1, c, n] += w1lambda * val
+    end
+end
+
+# Linear (GPU): parallelization along width dimension.
+# TODO replace AbstractArray -> AbstractGPUArray once device arrays subtype it.
+
+@kernel function _upsample_linear_kernel!(::B, y::T, x::T, rwidth, align::Val{A}) where {
+    B <: GPU, T <: AbstractArray{<:Any, 3}, A,
+}
+    @uniform in_width::UInt32, channels::UInt32, batch::UInt32 = size(x)
     i::UInt32 = @index(Global)
-    iw0, iw1, w0lambda, w1lambda = source_index_and_lambda( rwidth, i - 0x1, align, in_width)
+    iw0, iw1, w0lambda, w1lambda = source_index_and_lambda(rwidth, i - 0x1, align, in_width)
     @inbounds for n in 1:batch, c in 1:channels
         y[i, c, n] = w0lambda * x[iw0, c, n] + w1lambda * x[iw1, c, n]
     end
 end
 
-@kernel function _∇upsample_linear_kernel!(dx::T1, Δ::T2, rwidth, align::Val{A}) where {
-    T1 <: AbstractArray{<: Any, 3},
-    T2 <: AbstractArray{<: Any, 3}, A,
+@kernel function _∇upsample_linear_kernel!(::B, dx::T, Δ::T, rwidth, align::Val{A}) where {
+    B <: GPU, T <: AbstractArray{<:Any, 3}, A,
 }
     @uniform in_width::UInt32, channels::UInt32, batch::UInt32 = size(Δ)
     @uniform out_width::UInt32 = size(dx, 1)
-
     i::UInt32 = @index(Global)
     ow0, ow1, w0lambda, w1lambda = source_index_and_lambda(rwidth, i - 0x1, align, out_width)
     @inbounds for n in 1:batch, c in 1:channels
@@ -409,16 +436,14 @@ end
     end
 end
 
-# Bilinear.
+# Bilinear (CPU): parallelization along channel x batch dimensions.
 
-@kernel function _upsample_linear_kernel!(y::T, x::T, rwidth, rheight, align::Val{A}) where {
-    T <: AbstractArray{<: Any, 4}, A,
+@kernel function _upsample_linear_kernel!(::CPU, y::T, x::T, rwidth, rheight, align::Val{A}) where {
+    T <: AbstractArray{<:Any, 4}, A,
 }
     @uniform in_width::UInt32, in_height::UInt32, channels::UInt32, batch::UInt32 = size(x)
     @uniform out_width::UInt32, out_height::UInt32 = size(y)[1:2]
-
     c::UInt32, n::UInt32 = @index(Global, NTuple)
-
     for j in UnitRange{UInt32}(1, out_height)
         ih0, ih1, h0lambda, h1lambda = source_index_and_lambda(rheight, j - 0x1, align, in_height)
         for i in UnitRange{UInt32}(1, out_width)
@@ -428,48 +453,51 @@ end
                 h1lambda * (w0lambda * x[iw0, ih1, c, n] + w1lambda * x[iw1, ih1, c, n])
         end
     end
-
-    # i::UInt32, j::UInt32 = @index(Global, NTuple)
-
-    # iw0, iw1, w0lambda, w1lambda = source_index_and_lambda(rwidth, i - 0x1, align, in_width)
-    # ih0, ih1, h0lambda, h1lambda = source_index_and_lambda(rheight, j - 0x1, align, in_height)
-
-    # @inbounds for n in 1:batch, c in 1:channels
-    #     y[i, j, c, n] =
-    #         h0lambda * (w0lambda * x[iw0, ih0, c, n] + w1lambda * x[iw1, ih0, c, n]) +
-    #         h1lambda * (w0lambda * x[iw0, ih1, c, n] + w1lambda * x[iw1, ih1, c, n])
-    # end
 end
 
-# @kernel function _upsample_linear_kernel!(y::T, x::T, rwidth, rheight, align::Val{A}) where {
-#     T <: AbstractArray{<: Any, 4}, A,
-# }
-#     @uniform in_width::UInt32, in_height::UInt32, channels::UInt32, batch::UInt32 = size(x)
-
-#     i::UInt32, j::UInt32 = @index(Global, NTuple)
-
-#     iw0, iw1, w0lambda, w1lambda = source_index_and_lambda(rwidth, i - 0x1, align, in_width)
-#     ih0, ih1, h0lambda, h1lambda = source_index_and_lambda(rheight, j - 0x1, align, in_height)
-
-#     @inbounds for n in 1:batch, c in 1:channels
-#         y[i, j, c, n] =
-#             h0lambda * (w0lambda * x[iw0, ih0, c, n] + w1lambda * x[iw1, ih0, c, n]) +
-#             h1lambda * (w0lambda * x[iw0, ih1, c, n] + w1lambda * x[iw1, ih1, c, n])
-#     end
-# end
-
-@kernel function _∇upsample_linear_kernel!(dx::T1, Δ::T2, rwidth, rheight, align::Val{A}) where {
-    T1 <: AbstractArray{<: Any, 4},
-    T2 <: AbstractArray{<: Any, 4}, A,
+@kernel function _∇upsample_linear_kernel!(::CPU, dx::T1, Δ::T2, rwidth, rheight, align::Val{A}) where {
+    T1 <: AbstractArray{<:Any, 4}, T2 <: AbstractArray{<:Any, 4}, A,
 }
     @uniform in_width::UInt32, in_height::UInt32, channels::UInt32, batch::UInt32 = size(Δ)
     @uniform out_width::UInt32, out_height::UInt32 = size(dx)[1:2]
+    c::UInt32, n::UInt32 = @index(Global, NTuple)
+    for j in UnitRange{UInt32}(1, in_height)
+        oh0, oh1, h0lambda, h1lambda = source_index_and_lambda(rheight, j - 0x1, align, out_height)
+        for i in UnitRange{UInt32}(1, in_width)
+            ow0, ow1, w0lambda, w1lambda = source_index_and_lambda(rwidth, i - 0x1, align, out_width)
+            val = Δ[i, j, c, n]
+            @atomic dx[ow0, oh0, c, n] += w0lambda * h0lambda * val
+            @atomic dx[ow1, oh0, c, n] += w1lambda * h0lambda * val
+            @atomic dx[ow0, oh1, c, n] += w0lambda * h1lambda * val
+            @atomic dx[ow1, oh1, c, n] += w1lambda * h1lambda * val
+        end
+    end
+end
 
+# Bilinear (GPU): parallelization along width, height dimensions.
+
+@kernel function _upsample_linear_kernel!(::B, y::T, x::T, rwidth, rheight, align::Val{A}) where {
+    B <: GPU, T <: AbstractArray{<:Any, 4}, A,
+}
+    @uniform in_width::UInt32, in_height::UInt32, channels::UInt32, batch::UInt32 = size(x)
     i::UInt32, j::UInt32 = @index(Global, NTuple)
+    iw0, iw1, w0lambda, w1lambda = source_index_and_lambda(rwidth, i - 0x1, align, in_width)
+    ih0, ih1, h0lambda, h1lambda = source_index_and_lambda(rheight, j - 0x1, align, in_height)
+    @inbounds for n in 1:batch, c in 1:channels
+        y[i, j, c, n] =
+            h0lambda * (w0lambda * x[iw0, ih0, c, n] + w1lambda * x[iw1, ih0, c, n]) +
+            h1lambda * (w0lambda * x[iw0, ih1, c, n] + w1lambda * x[iw1, ih1, c, n])
+    end
+end
 
+@kernel function _∇upsample_linear_kernel!(::B, dx::T, Δ::T, rwidth, rheight, align::Val{A}) where {
+    B <: GPU, T <: AbstractArray{<:Any, 4}, A,
+}
+    @uniform in_width::UInt32, in_height::UInt32, channels::UInt32, batch::UInt32 = size(Δ)
+    @uniform out_width::UInt32, out_height::UInt32 = size(dx)[1:2]
+    i::UInt32, j::UInt32 = @index(Global, NTuple)
     ow0, ow1, w0lambda, w1lambda = source_index_and_lambda(rwidth, i - 0x1, align, out_width)
     oh0, oh1, h0lambda, h1lambda = source_index_and_lambda(rheight, j - 0x1, align, out_height)
-
     @inbounds for n in 1:batch, c in 1:channels
         val = Δ[i, j, c, n]
         @atomic dx[ow0, oh0, c, n] += w0lambda * h0lambda * val
@@ -479,20 +507,72 @@ end
     end
 end
 
-# Trilinear.
+# Trilinear (CPU): parallelization along channel x batch dimensions.
 
-@kernel function _upsample_linear_kernel!(y::T, x::T, rwidth, rheight, rdepth, align::Val{A}) where {
-    T <: AbstractArray{<: Any, 5}, A,
+@kernel function _upsample_linear_kernel!(::CPU, y::T, x::T, rwidth, rheight, rdepth, align::Val{A}) where {
+    T <: AbstractArray{<:Any, 5}, A,
 }
     @uniform in_width::UInt32, in_height::UInt32, in_depth::UInt32 = size(x)[1:3]
     @uniform channels::UInt32, batch::UInt32 = size(x, 4), size(x, 5)
+    @uniform out_width::UInt32, out_height::UInt32, out_depth::UInt32 = size(y)[1:3]
+    c::UInt32, n::UInt32 = @index(Global, NTuple)
+    for k in UnitRange{UInt32}(1, out_depth)
+        id0, id1, d0lambda, d1lambda = source_index_and_lambda(rdepth, k - 0x1, align, in_depth)
+        for j in UnitRange{UInt32}(1, out_height)
+            ih0, ih1, h0lambda, h1lambda = source_index_and_lambda(rheight, j - 0x1, align, in_height)
+            for i in UnitRange{UInt32}(1, out_width)
+                iw0, iw1, w0lambda, w1lambda = source_index_and_lambda(rwidth, i - 0x1, align, in_width)
+                @inbounds y[i, j, k, c, n] =
+                    d0lambda * (
+                        h0lambda * (w0lambda * x[iw0, ih0, id0, c, n] + w1lambda * x[iw1, ih0, id0, c, n]) +
+                        h1lambda * (w0lambda * x[iw0, ih1, id0, c, n] + w1lambda * x[iw1, ih1, id0, c, n])) +
+                    d1lambda * (
+                        h0lambda * (w0lambda * x[iw0, ih0, id1, c, n] + w1lambda * x[iw1, ih0, id1, c, n]) +
+                        h1lambda * (w0lambda * x[iw0, ih1, id1, c, n] + w1lambda * x[iw1, ih1, id1, c, n]))
+            end
+        end
+    end
+end
 
+@kernel function _∇upsample_linear_kernel!(::CPU, dx::T1, Δ::T2, rwidth, rheight, rdepth, align::Val{A}) where {
+    T1 <: AbstractArray{<:Any, 5}, T2 <: AbstractArray{<:Any, 5}, A,
+}
+    @uniform in_width::UInt32, in_height::UInt32, in_depth::UInt32 = size(Δ)[1:3]
+    @uniform channels::UInt32, batch::UInt32 = size(Δ, 4), size(Δ, 5)
+    @uniform out_width::UInt32, out_height::UInt32, out_depth::UInt32 = size(dx)[1:3]
+    c::UInt32, n::UInt32 = @index(Global, NTuple)
+    for k in UnitRange{UInt32}(1, in_depth)
+        od0, od1, d0lambda, d1lambda = source_index_and_lambda(rdepth, k - 0x1, align, out_depth)
+        for j in UnitRange{UInt32}(1, in_height)
+            oh0, oh1, h0lambda, h1lambda = source_index_and_lambda(rheight, j - 0x1, align, out_height)
+            @inbounds for i in UnitRange{UInt32}(1, in_width)
+                ow0, ow1, w0lambda, w1lambda = source_index_and_lambda(rwidth, i - 0x1, align, out_width)
+                val = Δ[i, j, k, c, n]
+                @atomic dx[ow0, oh0, od0, c, n] += w0lambda * h0lambda * d0lambda * val
+                @atomic dx[ow1, oh0, od0, c, n] += w1lambda * h0lambda * d0lambda * val
+                @atomic dx[ow0, oh1, od0, c, n] += w0lambda * h1lambda * d0lambda * val
+                @atomic dx[ow1, oh1, od0, c, n] += w1lambda * h1lambda * d0lambda * val
+
+                @atomic dx[ow0, oh0, od1, c, n] += w0lambda * h0lambda * d1lambda * val
+                @atomic dx[ow1, oh0, od1, c, n] += w1lambda * h0lambda * d1lambda * val
+                @atomic dx[ow0, oh1, od1, c, n] += w0lambda * h1lambda * d1lambda * val
+                @atomic dx[ow1, oh1, od1, c, n] += w1lambda * h1lambda * d1lambda * val
+            end
+        end
+    end
+end
+
+# Trilinear (GPU): parallelization along width x height x depth dimensions.
+
+@kernel function _upsample_linear_kernel!(::B, y::T, x::T, rwidth, rheight, rdepth, align::Val{A}) where {
+    B <: GPU, T <: AbstractArray{<:Any, 5}, A,
+}
+    @uniform in_width::UInt32, in_height::UInt32, in_depth::UInt32 = size(x)[1:3]
+    @uniform channels::UInt32, batch::UInt32 = size(x, 4), size(x, 5)
     i::UInt32, j::UInt32, k::UInt32 = @index(Global, NTuple)
-
     iw0, iw1, w0lambda, w1lambda = source_index_and_lambda(rwidth, i - 0x1, align, in_width)
     ih0, ih1, h0lambda, h1lambda = source_index_and_lambda(rheight, j - 0x1, align, in_height)
     id0, id1, d0lambda, d1lambda = source_index_and_lambda(rdepth, k - 0x1, align, in_depth)
-
     @inbounds for n in 1:batch, c in 1:channels
         y[i, j, k, c, n] =
             d0lambda * (
@@ -504,20 +584,16 @@ end
     end
 end
 
-@kernel function _∇upsample_linear_kernel!(dx::T1, Δ::T2, rwidth, rheight, rdepth, align::Val{A}) where {
-    T1 <: AbstractArray{<: Any, 5},
-    T2 <: AbstractArray{<: Any, 5}, A,
+@kernel function _∇upsample_linear_kernel!(::B, dx::T, Δ::T, rwidth, rheight, rdepth, align::Val{A}) where {
+    B <: GPU, T <: AbstractArray{<:Any, 5}, A,
 }
     @uniform in_width::UInt32, in_height::UInt32, in_depth::UInt32 = size(Δ)[1:3]
     @uniform channels::UInt32, batch::UInt32 = size(Δ, 4), size(Δ, 5)
     @uniform out_width::UInt32, out_height::UInt32, out_depth::UInt32 = size(dx)[1:3]
-
     i::UInt32, j::UInt32, k::UInt32 = @index(Global, NTuple)
-
     ow0, ow1, w0lambda, w1lambda = source_index_and_lambda(rwidth, i - 0x1, align, out_width)
     oh0, oh1, h0lambda, h1lambda = source_index_and_lambda(rheight, j - 0x1, align, out_height)
     od0, od1, d0lambda, d1lambda = source_index_and_lambda(rdepth, k - 0x1, align, out_depth)
-
     @inbounds for n in 1:batch, c in 1:channels
         val = Δ[i, j, k, c, n]
         @atomic dx[ow0, oh0, od0, c, n] += w0lambda * h0lambda * d0lambda * val
@@ -545,6 +621,5 @@ end
 
     w1lambda = real_index - iw0
     w0lambda = T(1) - w1lambda
-
     return iw0 + 0x1, iw1, w0lambda, w1lambda
 end

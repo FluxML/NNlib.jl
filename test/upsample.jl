@@ -27,7 +27,7 @@ function upsample_testsuite(Backend)
     end
 
     @testset "Linear upsampling (1D)" begin
-        x = Float64[1,2,3,4]
+        x = T[1,2,3,4]
         x = hcat(x,x,x)[:,:,:]
 
         y = collect(1:1//3:4)
