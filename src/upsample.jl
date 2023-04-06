@@ -388,8 +388,8 @@ end
     @uniform in_width::UInt32, channels::UInt32, batch::UInt32 = size(x)
     @uniform out_width::UInt32 = size(y, 1)
     c::UInt32, n::UInt32 = @index(Global, NTuple)
-    @inbounds for i in UnitRange{UInt32}(1, out_width)
-        iw0, iw1, w0lambda, w1lambda = source_index_and_lambda(rwidth, i - 0x1, align, in_width)
+    @inbounds for i in UnitRange{UInt32}(one(UInt32), out_width)
+        iw0, iw1, w0lambda, w1lambda = source_index_and_lambda(rwidth, i - one(UInt32), align, in_width)
         y[i, c, n] = w0lambda * x[iw0, c, n] + w1lambda * x[iw1, c, n]
     end
 end
@@ -400,8 +400,8 @@ end
     @uniform in_width::UInt32, channels::UInt32, batch::UInt32 = size(Δ)
     @uniform out_width::UInt32 = size(dx, 1)
     c::UInt32, n::UInt32 = @index(Global, NTuple)
-    @inbounds for i in UnitRange{UInt32}(1, in_width)
-        ow0, ow1, w0lambda, w1lambda = source_index_and_lambda(rwidth, i - 0x1, align, out_width)
+    @inbounds for i in UnitRange{UInt32}(one(UInt32), in_width)
+        ow0, ow1, w0lambda, w1lambda = source_index_and_lambda(rwidth, i - one(UInt32), align, out_width)
         val = Δ[i, c, n]
         dx[ow0, c, n] += w0lambda * val
         dx[ow1, c, n] += w1lambda * val
@@ -416,8 +416,8 @@ end
 }
     @uniform in_width::UInt32, channels::UInt32, batch::UInt32 = size(x)
     i::UInt32 = @index(Global)
-    iw0, iw1, w0lambda, w1lambda = source_index_and_lambda(rwidth, i - 0x1, align, in_width)
-    @inbounds for n in 1:batch, c in 1:channels
+    iw0, iw1, w0lambda, w1lambda = source_index_and_lambda(rwidth, i - one(UInt32), align, in_width)
+    @inbounds for n in UnitRange{UInt32}(one(UInt32), batch), c in UnitRange{UInt32}(one(UInt32), channels)
         y[i, c, n] = w0lambda * x[iw0, c, n] + w1lambda * x[iw1, c, n]
     end
 end
@@ -428,8 +428,8 @@ end
     @uniform in_width::UInt32, channels::UInt32, batch::UInt32 = size(Δ)
     @uniform out_width::UInt32 = size(dx, 1)
     i::UInt32 = @index(Global)
-    ow0, ow1, w0lambda, w1lambda = source_index_and_lambda(rwidth, i - 0x1, align, out_width)
-    @inbounds for n in 1:batch, c in 1:channels
+    ow0, ow1, w0lambda, w1lambda = source_index_and_lambda(rwidth, i - one(UInt32), align, out_width)
+    @inbounds for n in UnitRange{UInt32}(one(UInt32), batch), c in UnitRange{UInt32}(one(UInt32), channels)
         val = Δ[i, c, n]
         @atomic dx[ow0, c, n] += w0lambda * val
         @atomic dx[ow1, c, n] += w1lambda * val
@@ -444,10 +444,10 @@ end
     @uniform in_width::UInt32, in_height::UInt32, channels::UInt32, batch::UInt32 = size(x)
     @uniform out_width::UInt32, out_height::UInt32 = size(y)[1:2]
     c::UInt32, n::UInt32 = @index(Global, NTuple)
-    for j in UnitRange{UInt32}(1, out_height)
-        ih0, ih1, h0lambda, h1lambda = source_index_and_lambda(rheight, j - 0x1, align, in_height)
-        for i in UnitRange{UInt32}(1, out_width)
-            iw0, iw1, w0lambda, w1lambda = source_index_and_lambda(rwidth, i - 0x1, align, in_width)
+    for j in UnitRange{UInt32}(one(UInt32), out_height)
+        ih0, ih1, h0lambda, h1lambda = source_index_and_lambda(rheight, j - one(UInt32), align, in_height)
+        for i in UnitRange{UInt32}(one(UInt32), out_width)
+            iw0, iw1, w0lambda, w1lambda = source_index_and_lambda(rwidth, i - one(UInt32), align, in_width)
             @inbounds y[i, j, c, n] =
                 h0lambda * (w0lambda * x[iw0, ih0, c, n] + w1lambda * x[iw1, ih0, c, n]) +
                 h1lambda * (w0lambda * x[iw0, ih1, c, n] + w1lambda * x[iw1, ih1, c, n])
@@ -461,10 +461,10 @@ end
     @uniform in_width::UInt32, in_height::UInt32, channels::UInt32, batch::UInt32 = size(Δ)
     @uniform out_width::UInt32, out_height::UInt32 = size(dx)[1:2]
     c::UInt32, n::UInt32 = @index(Global, NTuple)
-    for j in UnitRange{UInt32}(1, in_height)
-        oh0, oh1, h0lambda, h1lambda = source_index_and_lambda(rheight, j - 0x1, align, out_height)
-        for i in UnitRange{UInt32}(1, in_width)
-            ow0, ow1, w0lambda, w1lambda = source_index_and_lambda(rwidth, i - 0x1, align, out_width)
+    for j in UnitRange{UInt32}(one(UInt32), in_height)
+        oh0, oh1, h0lambda, h1lambda = source_index_and_lambda(rheight, j - one(UInt32), align, out_height)
+        for i in UnitRange{UInt32}(one(UInt32), in_width)
+            ow0, ow1, w0lambda, w1lambda = source_index_and_lambda(rwidth, i - one(UInt32), align, out_width)
             val = Δ[i, j, c, n]
             dx[ow0, oh0, c, n] += w0lambda * h0lambda * val
             dx[ow1, oh0, c, n] += w1lambda * h0lambda * val
@@ -481,9 +481,9 @@ end
 }
     @uniform in_width::UInt32, in_height::UInt32, channels::UInt32, batch::UInt32 = size(x)
     i::UInt32, j::UInt32 = @index(Global, NTuple)
-    iw0, iw1, w0lambda, w1lambda = source_index_and_lambda(rwidth, i - 0x1, align, in_width)
-    ih0, ih1, h0lambda, h1lambda = source_index_and_lambda(rheight, j - 0x1, align, in_height)
-    @inbounds for n in 1:batch, c in 1:channels
+    iw0, iw1, w0lambda, w1lambda = source_index_and_lambda(rwidth, i - one(UInt32), align, in_width)
+    ih0, ih1, h0lambda, h1lambda = source_index_and_lambda(rheight, j - one(UInt32), align, in_height)
+    @inbounds for n in UnitRange{UInt32}(one(UInt32), batch), c in UnitRange{UInt32}(one(UInt32), channels)
         y[i, j, c, n] =
             h0lambda * (w0lambda * x[iw0, ih0, c, n] + w1lambda * x[iw1, ih0, c, n]) +
             h1lambda * (w0lambda * x[iw0, ih1, c, n] + w1lambda * x[iw1, ih1, c, n])
@@ -496,9 +496,9 @@ end
     @uniform in_width::UInt32, in_height::UInt32, channels::UInt32, batch::UInt32 = size(Δ)
     @uniform out_width::UInt32, out_height::UInt32 = size(dx)[1:2]
     i::UInt32, j::UInt32 = @index(Global, NTuple)
-    ow0, ow1, w0lambda, w1lambda = source_index_and_lambda(rwidth, i - 0x1, align, out_width)
-    oh0, oh1, h0lambda, h1lambda = source_index_and_lambda(rheight, j - 0x1, align, out_height)
-    @inbounds for n in 1:batch, c in 1:channels
+    ow0, ow1, w0lambda, w1lambda = source_index_and_lambda(rwidth, i - one(UInt32), align, out_width)
+    oh0, oh1, h0lambda, h1lambda = source_index_and_lambda(rheight, j - one(UInt32), align, out_height)
+    @inbounds for n in UnitRange{UInt32}(one(UInt32), batch), c in UnitRange{UInt32}(one(UInt32), channels)
         val = Δ[i, j, c, n]
         @atomic dx[ow0, oh0, c, n] += w0lambda * h0lambda * val
         @atomic dx[ow1, oh0, c, n] += w1lambda * h0lambda * val
@@ -516,12 +516,12 @@ end
     @uniform channels::UInt32, batch::UInt32 = size(x, 4), size(x, 5)
     @uniform out_width::UInt32, out_height::UInt32, out_depth::UInt32 = size(y)[1:3]
     c::UInt32, n::UInt32 = @index(Global, NTuple)
-    for k in UnitRange{UInt32}(1, out_depth)
-        id0, id1, d0lambda, d1lambda = source_index_and_lambda(rdepth, k - 0x1, align, in_depth)
-        for j in UnitRange{UInt32}(1, out_height)
-            ih0, ih1, h0lambda, h1lambda = source_index_and_lambda(rheight, j - 0x1, align, in_height)
-            for i in UnitRange{UInt32}(1, out_width)
-                iw0, iw1, w0lambda, w1lambda = source_index_and_lambda(rwidth, i - 0x1, align, in_width)
+    for k in UnitRange{UInt32}(one(UInt32), out_depth)
+        id0, id1, d0lambda, d1lambda = source_index_and_lambda(rdepth, k - one(UInt32), align, in_depth)
+        for j in UnitRange{UInt32}(one(UInt32), out_height)
+            ih0, ih1, h0lambda, h1lambda = source_index_and_lambda(rheight, j - one(UInt32), align, in_height)
+            for i in UnitRange{UInt32}(one(UInt32), out_width)
+                iw0, iw1, w0lambda, w1lambda = source_index_and_lambda(rwidth, i - one(UInt32), align, in_width)
                 @inbounds y[i, j, k, c, n] =
                     d0lambda * (
                         h0lambda * (w0lambda * x[iw0, ih0, id0, c, n] + w1lambda * x[iw1, ih0, id0, c, n]) +
@@ -541,12 +541,12 @@ end
     @uniform channels::UInt32, batch::UInt32 = size(Δ, 4), size(Δ, 5)
     @uniform out_width::UInt32, out_height::UInt32, out_depth::UInt32 = size(dx)[1:3]
     c::UInt32, n::UInt32 = @index(Global, NTuple)
-    for k in UnitRange{UInt32}(1, in_depth)
-        od0, od1, d0lambda, d1lambda = source_index_and_lambda(rdepth, k - 0x1, align, out_depth)
-        for j in UnitRange{UInt32}(1, in_height)
-            oh0, oh1, h0lambda, h1lambda = source_index_and_lambda(rheight, j - 0x1, align, out_height)
-            @inbounds for i in UnitRange{UInt32}(1, in_width)
-                ow0, ow1, w0lambda, w1lambda = source_index_and_lambda(rwidth, i - 0x1, align, out_width)
+    for k in UnitRange{UInt32}(one(UInt32), in_depth)
+        od0, od1, d0lambda, d1lambda = source_index_and_lambda(rdepth, k - one(UInt32), align, out_depth)
+        for j in UnitRange{UInt32}(one(UInt32), in_height)
+            oh0, oh1, h0lambda, h1lambda = source_index_and_lambda(rheight, j - one(UInt32), align, out_height)
+            @inbounds for i in UnitRange{UInt32}(one(UInt32), in_width)
+                ow0, ow1, w0lambda, w1lambda = source_index_and_lambda(rwidth, i - one(UInt32), align, out_width)
                 val = Δ[i, j, k, c, n]
                 dx[ow0, oh0, od0, c, n] += w0lambda * h0lambda * d0lambda * val
                 dx[ow1, oh0, od0, c, n] += w1lambda * h0lambda * d0lambda * val
@@ -570,10 +570,10 @@ end
     @uniform in_width::UInt32, in_height::UInt32, in_depth::UInt32 = size(x)[1:3]
     @uniform channels::UInt32, batch::UInt32 = size(x, 4), size(x, 5)
     i::UInt32, j::UInt32, k::UInt32 = @index(Global, NTuple)
-    iw0, iw1, w0lambda, w1lambda = source_index_and_lambda(rwidth, i - 0x1, align, in_width)
-    ih0, ih1, h0lambda, h1lambda = source_index_and_lambda(rheight, j - 0x1, align, in_height)
-    id0, id1, d0lambda, d1lambda = source_index_and_lambda(rdepth, k - 0x1, align, in_depth)
-    @inbounds for n in 1:batch, c in 1:channels
+    iw0, iw1, w0lambda, w1lambda = source_index_and_lambda(rwidth, i - one(UInt32), align, in_width)
+    ih0, ih1, h0lambda, h1lambda = source_index_and_lambda(rheight, j - one(UInt32), align, in_height)
+    id0, id1, d0lambda, d1lambda = source_index_and_lambda(rdepth, k - one(UInt32), align, in_depth)
+    @inbounds for n in UnitRange{UInt32}(one(UInt32), batch), c in UnitRange{UInt32}(one(UInt32), channels)
         y[i, j, k, c, n] =
             d0lambda * (
                 h0lambda * (w0lambda * x[iw0, ih0, id0, c, n] + w1lambda * x[iw1, ih0, id0, c, n]) +
@@ -591,10 +591,10 @@ end
     @uniform channels::UInt32, batch::UInt32 = size(Δ, 4), size(Δ, 5)
     @uniform out_width::UInt32, out_height::UInt32, out_depth::UInt32 = size(dx)[1:3]
     i::UInt32, j::UInt32, k::UInt32 = @index(Global, NTuple)
-    ow0, ow1, w0lambda, w1lambda = source_index_and_lambda(rwidth, i - 0x1, align, out_width)
-    oh0, oh1, h0lambda, h1lambda = source_index_and_lambda(rheight, j - 0x1, align, out_height)
-    od0, od1, d0lambda, d1lambda = source_index_and_lambda(rdepth, k - 0x1, align, out_depth)
-    @inbounds for n in 1:batch, c in 1:channels
+    ow0, ow1, w0lambda, w1lambda = source_index_and_lambda(rwidth, i - one(UInt32), align, out_width)
+    oh0, oh1, h0lambda, h1lambda = source_index_and_lambda(rheight, j - one(UInt32), align, out_height)
+    od0, od1, d0lambda, d1lambda = source_index_and_lambda(rdepth, k - one(UInt32), align, out_depth)
+    @inbounds for n in UnitRange{UInt32}(one(UInt32), batch), c in UnitRange{UInt32}(one(UInt32), channels)
         val = Δ[i, j, k, c, n]
         @atomic dx[ow0, oh0, od0, c, n] += w0lambda * h0lambda * d0lambda * val
         @atomic dx[ow1, oh0, od0, c, n] += w1lambda * h0lambda * d0lambda * val
@@ -616,10 +616,10 @@ end
         max(zero(T), ratio * (out_idx + T(0.5)) - T(0.5))
 
     iw0 = floor(UInt32, real_index)
-    offset::UInt32 = ifelse(iw0 < in_width - 0x1, 0x1, 0x0)
-    iw1 = iw0 + offset + 0x1
+    offset::UInt32 = ifelse(iw0 < in_width - one(UInt32), one(UInt32), zero(UInt32))
+    iw1 = iw0 + offset + one(UInt32)
 
     w1lambda = real_index - iw0
     w0lambda = T(1) - w1lambda
-    return iw0 + 0x1, iw1, w0lambda, w1lambda
+    return iw0 + one(UInt32), iw1, w0lambda, w1lambda
 end
