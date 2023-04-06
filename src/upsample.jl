@@ -380,6 +380,15 @@ function ∇upsample_linear_kernel!(
     return dx
 end
 
+# Compatibility layer for old versions of NNlibCUDA.
+# TODO Can be removed from NNlib 0.9.
+upsample_linear_wcn!(y, x) = upsample_linear_kernel!(y, x)
+upsample_bilinear_whcn!(y, x) = upsample_linear_kernel!(y, x)
+upsample_trilinear_whdcn!(y, x) = upsample_linear_kernel!(y, x)
+∇upsample_linear_wcn!(y, x) = ∇upsample_linear_kernel!(y, x)
+∇upsample_bilinear_whcn!(y, x) = ∇upsample_linear_kernel!(y, x)
+∇upsample_trilinear_whdcn!(y, x) = ∇upsample_linear_kernel!(y, x)
+
 # Linear (CPU): parallelization along channel x batch dimensions.
 
 @kernel function _upsample_linear_kernel!(::CPU, y::T, x::T, rwidth, align::Val{A}) where {
