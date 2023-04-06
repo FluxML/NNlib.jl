@@ -403,8 +403,8 @@ end
     @inbounds for i in UnitRange{UInt32}(1, in_width)
         ow0, ow1, w0lambda, w1lambda = source_index_and_lambda(rwidth, i - 0x1, align, out_width)
         val = Δ[i, c, n]
-        @atomic dx[ow0, c, n] += w0lambda * val
-        @atomic dx[ow1, c, n] += w1lambda * val
+        dx[ow0, c, n] += w0lambda * val
+        dx[ow1, c, n] += w1lambda * val
     end
 end
 
@@ -466,10 +466,10 @@ end
         for i in UnitRange{UInt32}(1, in_width)
             ow0, ow1, w0lambda, w1lambda = source_index_and_lambda(rwidth, i - 0x1, align, out_width)
             val = Δ[i, j, c, n]
-            @atomic dx[ow0, oh0, c, n] += w0lambda * h0lambda * val
-            @atomic dx[ow1, oh0, c, n] += w1lambda * h0lambda * val
-            @atomic dx[ow0, oh1, c, n] += w0lambda * h1lambda * val
-            @atomic dx[ow1, oh1, c, n] += w1lambda * h1lambda * val
+            dx[ow0, oh0, c, n] += w0lambda * h0lambda * val
+            dx[ow1, oh0, c, n] += w1lambda * h0lambda * val
+            dx[ow0, oh1, c, n] += w0lambda * h1lambda * val
+            dx[ow1, oh1, c, n] += w1lambda * h1lambda * val
         end
     end
 end
@@ -548,15 +548,15 @@ end
             @inbounds for i in UnitRange{UInt32}(1, in_width)
                 ow0, ow1, w0lambda, w1lambda = source_index_and_lambda(rwidth, i - 0x1, align, out_width)
                 val = Δ[i, j, k, c, n]
-                @atomic dx[ow0, oh0, od0, c, n] += w0lambda * h0lambda * d0lambda * val
-                @atomic dx[ow1, oh0, od0, c, n] += w1lambda * h0lambda * d0lambda * val
-                @atomic dx[ow0, oh1, od0, c, n] += w0lambda * h1lambda * d0lambda * val
-                @atomic dx[ow1, oh1, od0, c, n] += w1lambda * h1lambda * d0lambda * val
+                dx[ow0, oh0, od0, c, n] += w0lambda * h0lambda * d0lambda * val
+                dx[ow1, oh0, od0, c, n] += w1lambda * h0lambda * d0lambda * val
+                dx[ow0, oh1, od0, c, n] += w0lambda * h1lambda * d0lambda * val
+                dx[ow1, oh1, od0, c, n] += w1lambda * h1lambda * d0lambda * val
 
-                @atomic dx[ow0, oh0, od1, c, n] += w0lambda * h0lambda * d1lambda * val
-                @atomic dx[ow1, oh0, od1, c, n] += w1lambda * h0lambda * d1lambda * val
-                @atomic dx[ow0, oh1, od1, c, n] += w0lambda * h1lambda * d1lambda * val
-                @atomic dx[ow1, oh1, od1, c, n] += w1lambda * h1lambda * d1lambda * val
+                dx[ow0, oh0, od1, c, n] += w0lambda * h0lambda * d1lambda * val
+                dx[ow1, oh0, od1, c, n] += w1lambda * h0lambda * d1lambda * val
+                dx[ow0, oh1, od1, c, n] += w0lambda * h1lambda * d1lambda * val
+                dx[ow1, oh1, od1, c, n] += w1lambda * h1lambda * d1lambda * val
             end
         end
     end
