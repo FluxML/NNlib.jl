@@ -2,7 +2,6 @@ module NNlibAMDGPUExt
 
 using Adapt
 using AMDGPU
-using AMDGPU.MIOpen
 using ChainRulesCore
 using NNlib
 using NNlib: BatchedAdjoint, BatchedTranspose, BatchedAdjOrTrans
@@ -53,9 +52,18 @@ function nnlib_padding(dims)
     pd[1:2:end]
 end
 
-include("conv.jl")
-include("pool.jl")
-include("softmax.jl")
-include("activations.jl")
+@static if AMDGPU.functional(:MIOpen)
+    using AMDGPU.MIOpen
+
+    include("conv.jl")
+    include("pool.jl")
+    include("softmax.jl")
+    include("activations.jl")
+else
+    @warn """
+    ROCm MIOpen is not available for AMDGPU.
+    NNlib has limited functionality for AMDGPU.
+    """
+end
 
 end

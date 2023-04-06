@@ -55,7 +55,7 @@ steps:
     if: build.pull_request.labels includes "benchmark"
     timeout_in_minutes: 30
 
-  - label: "AMDGPU - Julia 1.9 - No Artifacts"
+  - label: "AMDGPU - Julia 1.9"
     plugins:
       - JuliaCI/julia#v1:
           version: 1.9-nightly
@@ -69,25 +69,17 @@ steps:
       queue: "juliagpu"
       rocm: "*"
       rocmgpu: "*"
-    command:
-      - julia -e """
-        using TOML;
-        conf = TOML.parse(read(\"Project.toml\", String));
-        push!(conf[\"targets\"][\"test\"], \"AMDGPU\");
-        open(io -> TOML.print(io, conf), \"Project.toml\", \"w\");
-        """
-    timeout_in_minutes: 30
+    timeout_in_minutes: 60
     env:
       JULIA_AMDGPU_CORE_MUST_LOAD: "1"
       JULIA_AMDGPU_HIP_MUST_LOAD: "1"
-      JULIA_AMDGPU_DISABLE_ARTIFACTS: "1"
       NNLIB_TEST_AMDGPU: true
 
   # - label: "GPU julia nightly"
   #   plugins:
   #     - JuliaCI/julia#v1:
   #         version: "nightly"
-  #     - JuliaCI/julia-test#v1: ~  
+  #     - JuliaCI/julia-test#v1: ~
   #     - JuliaCI/julia-coverage#v1:
   #         codecov: true
   #         dirs:

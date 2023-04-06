@@ -6,7 +6,6 @@ import ForwardDiff
 import Zygote
 using Zygote: gradient
 using StableRNGs
-using CUDA
 using Documenter
 DocMeta.setdocmeta!(NNlib, :DocTestSetup, :(using NNlib, UnicodePlots); recursive=true)
 
@@ -14,24 +13,37 @@ const rng = StableRNG(123)
 include("test_utils.jl")
 
 @testset verbose=true "NNlib.jl" begin
-    if CUDA.functional()
-        if get(ENV, "NNLIB_TEST_CUDA", "false") == "true"
+    if get(ENV, "NNLIB_TEST_CUDA", "false") == "true"
+        using CUDA
+        if CUDA.functional()
             import Pkg
             using NNlibCUDA
             @testset "CUDA" begin
                 Pkg.test("NNlibCUDA")
             end
         else
-            @info "Skipping CUDA tests, set NNLIB_TEST_CUDA=true to run them"
+            @info "Insufficient version or CUDA not found; Skipping CUDA tests"
         end
     else
-        @info "Insufficient version or CUDA not found; Skipping CUDA tests"
+        @info "Skipping CUDA tests, set NNLIB_TEST_CUDA=true to run them"
     end
 
     if get(ENV, "NNLIB_TEST_AMDGPU", "false") == "true"
+        import Pkg
+        test_info = Pkg.project()
+
+        # Add MIOpen_jll to AMDGPU.
+        Pkg.develop("AMDGPU")
+        Pkg.activate(joinpath(Pkg.devdir(), "AMDGPU"))
+        Pkg.add("MIOpen_jll")
+        Pkg.update()
+        # Update test project.
+        Pkg.activate(test_info.path)
+        Pkg.update()
+
         using AMDGPU
+        AMDGPU.versioninfo()
         if AMDGPU.functional() && AMDGPU.functional(:MIOpen)
-            AMDGPU.versioninfo()
             @show AMDGPU.MIOpen.version()
             @testset "AMDGPU" begin
                 include("ext_amdgpu/runtests.jl")
