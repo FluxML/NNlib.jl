@@ -355,7 +355,8 @@ upsample_trilinear(x; size, align_corners::Bool = true)  = upsample_linear(x; si
 function upsample_linear_kernel!(
     y::AbstractArray{T, N}, x::AbstractArray{T, N}; align_corners::Bool = true,
 ) where {T, N}
-    ndrange = size(y)[1:N - 2]
+    # ndrange = size(y)[1:N - 2]
+    ndrange = size(y)[N - 1:end]
     ratios = align_corners ?
         ntuple(i -> real(T)((size(x, i) - 1) / (size(y, i) - 1)), N - 2) :
         ntuple(i -> real(T)(size(x, i) / size(y, i)), N - 2)
@@ -414,18 +415,48 @@ end
     T <: AbstractArray{<: Any, 4}, A,
 }
     @uniform in_width::UInt32, in_height::UInt32, channels::UInt32, batch::UInt32 = size(x)
+    @uniform out_width::UInt32, out_height::UInt32 = size(y)[1:2]
 
-    i::UInt32, j::UInt32 = @index(Global, NTuple)
+    c::UInt32, n::UInt32 = @index(Global, NTuple)
 
-    iw0, iw1, w0lambda, w1lambda = source_index_and_lambda(rwidth, i - 0x1, align, in_width)
-    ih0, ih1, h0lambda, h1lambda = source_index_and_lambda(rheight, j - 0x1, align, in_height)
-
-    @inbounds for n in 1:batch, c in 1:channels
-        y[i, j, c, n] =
-            h0lambda * (w0lambda * x[iw0, ih0, c, n] + w1lambda * x[iw1, ih0, c, n]) +
-            h1lambda * (w0lambda * x[iw0, ih1, c, n] + w1lambda * x[iw1, ih1, c, n])
+    for j in UnitRange{UInt32}(1, out_height)
+        ih0, ih1, h0lambda, h1lambda = source_index_and_lambda(rheight, j - 0x1, align, in_height)
+        for i in UnitRange{UInt32}(1, out_width)
+            iw0, iw1, w0lambda, w1lambda = source_index_and_lambda(rwidth, i - 0x1, align, in_width)
+            @inbounds y[i, j, c, n] =
+                h0lambda * (w0lambda * x[iw0, ih0, c, n] + w1lambda * x[iw1, ih0, c, n]) +
+                h1lambda * (w0lambda * x[iw0, ih1, c, n] + w1lambda * x[iw1, ih1, c, n])
+        end
     end
+
+    # i::UInt32, j::UInt32 = @index(Global, NTuple)
+
+    # iw0, iw1, w0lambda, w1lambda = source_index_and_lambda(rwidth, i - 0x1, align, in_width)
+    # ih0, ih1, h0lambda, h1lambda = source_index_and_lambda(rheight, j - 0x1, align, in_height)
+
+    # @inbounds for n in 1:batch, c in 1:channels
+    #     y[i, j, c, n] =
+    #         h0lambda * (w0lambda * x[iw0, ih0, c, n] + w1lambda * x[iw1, ih0, c, n]) +
+    #         h1lambda * (w0lambda * x[iw0, ih1, c, n] + w1lambda * x[iw1, ih1, c, n])
+    # end
 end
+
+# @kernel function _upsample_linear_kernel!(y::T, x::T, rwidth, rheight, align::Val{A}) where {
+#     T <: AbstractArray{<: Any, 4}, A,
+# }
+#     @uniform in_width::UInt32, in_height::UInt32, channels::UInt32, batch::UInt32 = size(x)
+
+#     i::UInt32, j::UInt32 = @index(Global, NTuple)
+
+#     iw0, iw1, w0lambda, w1lambda = source_index_and_lambda(rwidth, i - 0x1, align, in_width)
+#     ih0, ih1, h0lambda, h1lambda = source_index_and_lambda(rheight, j - 0x1, align, in_height)
+
+#     @inbounds for n in 1:batch, c in 1:channels
+#         y[i, j, c, n] =
+#             h0lambda * (w0lambda * x[iw0, ih0, c, n] + w1lambda * x[iw1, ih0, c, n]) +
+#             h1lambda * (w0lambda * x[iw0, ih1, c, n] + w1lambda * x[iw1, ih1, c, n])
+#     end
+# end
 
 @kernel function _∇upsample_linear_kernel!(dx::T1, Δ::T2, rwidth, rheight, align::Val{A}) where {
     T1 <: AbstractArray{<: Any, 4},
