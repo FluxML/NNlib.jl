@@ -14,14 +14,14 @@ typelength(::Type{<:NTuple{M}}) where M = M
 typelength(::Type{CartesianIndex{M}}) where M = M
 
 """
-Performs dimensional consistency checks and return the 
+Performs dimensional consistency checks and return the
 dimensionality of the scattered objects.
 """
-function scatter_dims(X::AbstractArray{Tx,Nx}, 
-                     Y::AbstractArray{Ty,Ny},
-                     idx::AbstractArray{Tidx,Nidx}) where {Tx,Ty,Tidx,Nx,Ny,Nidx}
-    M = typelength(Tidx)
-    dims = scatter_dims(Nx, Ny, M, Nidx)
+function scatter_dims(
+    X::AbstractArray{Tx,Nx}, Y::AbstractArray{Ty,Ny},
+    idx::AbstractArray{Tidx,Nidx},
+) where {Tx,Ty,Tidx,Nx,Ny,Nidx}
+    dims = scatter_dims(Nx, Ny, typelength(Tidx), Nidx)
     size(X)[1:dims] == size(Y)[1:dims] || throw(ArgumentError("Incompatible input shapes."))
     size(Y)[dims+1:end] == size(idx) || throw(ArgumentError("Incompatible input shapes."))
     return dims
@@ -41,7 +41,7 @@ _view(X, colons, k::Union{Integer, CartesianIndex}) = view(X, colons..., k)
     NNlib.scatter!(op, dst, src, idx)
 
 Scatter operation, which writes data in `src` into `dst` at locations `idx`.
-A binary reduction operator `op` is applied during the scatter. 
+A binary reduction operator `op` is applied during the scatter.
 For each index `k` in `idx`, accumulates values in `dst` according to
 
     dst[:, ..., idx[k]...] = (op).(dst[:, ..., idx[k]...], src[:, ..., k...])
@@ -53,7 +53,7 @@ See also [`scatter`](@ref), [`gather`](@ref).
 - `op`: Operations to be applied on `dst` and `src`, e.g. `+`, `-`, `*`, `/`, `max`, `min` and `mean`.
 - `dst`: The destination for `src` to aggregate to. This argument will be mutated.
 - `src`: The source data for aggregating.
-- `idx`: The mapping for aggregation from source (index) to destination (value). 
+- `idx`: The mapping for aggregation from source (index) to destination (value).
          The `idx` array can contain either integers or tuples.
 
 # Examples
@@ -70,16 +70,48 @@ julia> NNlib.scatter!(*, fill(0.5, 2, 4), [1 10; 100 1000], [3,2])
  0.5  500.0  50.0  0.5
 ```
 """
-function scatter!(op::OP, dst::AbstractArray, src::AbstractArray, idx::AbstractArray) where OP
-    dims = scatter_dims(dst, src, idx)
-    colons = Base.ntuple(_->Colon(), dims)
-    for k in CartesianIndices(idx)
-        dst_v = _view(dst, colons, idx[k])
-        src_v = _view(src, colons, k)
-        dst_v .= (op).(dst_v, src_v)
+# function scatter!(op::OP, dst::AbstractArray, src::AbstractArray, idx::AbstractArray) where OP
+#     dims = scatter_dims(dst, src, idx)
+#     colons = Base.ntuple(_->Colon(), dims)
+#     for k in CartesianIndices(idx)
+#         dst_v = _view(dst, colons, idx[k])
+#         src_v = _view(src, colons, k)
+#         dst_v .= (op).(dst_v, src_v)
+#     end
+#     dst
+# end
+
+function scatter!(op::OP, dst::AbstractGPUArray, src::AbstractGPUArray, idx::AbstractGPUArray) where OP
+    n_dims = scatter_dims(dst, src, idx)
+    args = if n_dims == 0
+        ndrange = length(idx)
+        ()
+    else
+        dims = size(dst)[1:n_dims]
+        max_dims_idx = prod(dims)
+        ndrange = max_dims_idx * length(idx)
+        (CartesianIndices(dims), max_dims_idx)
     end
+    _scatter!(KernelAbstractions.get_backend(dst))(
+        op, dst, src, idx, args...; ndrange)
     dst
 end
+
+@kernel function _scatter!(op::OP, dst, src, idxs) where OP
+    i = @index(Global)
+    idx = Tuple(idxs[i])
+    @atomic dst[idx...] = op(dst[idx...], src[i])
+end
+
+# @kernel function _scatter!(
+#     op::OP, dst, src, idxs, dim_ids::CartesianIndices, max_dims_idx::Int,
+# ) where OP
+#     i = @index(Global)
+#     j, k = divrem(i - 1, max_dims_idx)
+#     dim_i = Tuple(dim_ids[k + 1])
+#     idx = idxs[j + 1]
+#     @atomic dst[dim_i..., idx...] = op(dst[dim_i..., idx...], src[i])
+# end
 
 function scatter!(op::typeof(mean), dst::AbstractArray, src::AbstractArray, idx::AbstractArray)
     Ns = scatter!(+, zero(dst), one.(src), idx)
@@ -88,16 +120,15 @@ function scatter!(op::typeof(mean), dst::AbstractArray, src::AbstractArray, idx:
     return dst
 end
 
-
 """
     NNlib.scatter(op, src, idx; [init, dstsize])
 
-Scatter operation allocating a destination array `dst` and 
+Scatter operation allocating a destination array `dst` and
 calling `scatter!(op, dst, src, idx)` on it.
 
 * If keyword `init` is provided, it is used to initialize the content of `dst`.
   Otherwise, the init values is inferred from the reduction operator `op`
-  for some common operators (e.g. `init = 0` for `op = +`). 
+  for some common operators (e.g. `init = 0` for `op = +`).
 
 * If `dstsize` is provided, it will be used to define the size of
   destination array, otherwise it will be inferred by `src` and `idx`.
@@ -127,15 +158,14 @@ julia> NNlib.scatter(*, [10,200,3000], [1,4,2]; init = 10, dstsize = 6)
     10
 ```
 """
-function scatter(op::OP,
-                src::AbstractArray{Tsrc,Nsrc},
-                idx::AbstractArray{Tidx,Nidx};
-                init = nothing, dstsize = nothing) where {Tsrc,Tidx,Nsrc,Nidx,OP}
-
+function scatter(
+    op::OP, src::AbstractArray{Tsrc,Nsrc}, idx::AbstractArray{Tidx,Nidx};
+    init = nothing, dstsize = nothing,
+) where {Tsrc,Tidx,Nsrc,Nidx,OP}
     dims = Nsrc - Nidx
-    dstsz = isnothing(dstsize) ? (size(src)[1:dims]..., maximum_dims(idx)...) : dstsize 
+    dstsz = isnothing(dstsize) ? (size(src)[1:dims]..., maximum_dims(idx)...) : dstsize
     dst = similar(src, Tsrc, dstsz)
-    xinit = isnothing(init) ? scatter_empty(op, Tsrc) : init 
+    xinit = isnothing(init) ? scatter_empty(op, Tsrc) : init
     fill!(dst, xinit)
     scatter!(op, dst, src, idx)
 end
@@ -147,13 +177,11 @@ scatter_empty(op::typeof(min), T) = typemax(T)
 scatter_empty(op::typeof(max), T) = typemin(T)
 scatter_empty(op::typeof(mean), T) = zero(T)
 
-
 ## Gradients
 
-∇scatter!_src(op, Δ, dst, src, idx) = ∇scatter_src(op, Δ, dst, src, idx) 
+∇scatter!_src(op, Δ, dst, src, idx) = ∇scatter_src(op, Δ, dst, src, idx)
 ∇scatter!_dst(op, Δ, dst, y) = Δ
-
-∇scatter!_dst(op::Union{typeof(max),typeof(min)}, Δ, dst_old, dst) = 
+∇scatter!_dst(op::Union{typeof(max),typeof(min)}, Δ, dst_old, dst) =
     (dst_old .== op.(dst_old, dst)) .* Δ
 
 modify_src(::typeof(+), X) = X
@@ -162,13 +190,13 @@ modify_src(::typeof(*), X, Y) = X
 modify_src(::typeof(/), X, Y) = .-X ./ Y.^2
 
 ∇scatter_src(op::Union{typeof(+),typeof(-)}, Δ, dst, src, idx) = modify_src(op, gather(Δ, idx))
-
-∇scatter!_src(op::Union{typeof(*),typeof(/)}, Δ, dst, src, idx) = 
+∇scatter!_src(op::Union{typeof(*),typeof(/)}, Δ, dst, src, idx) =
     gather(dst, idx) .* ∇scatter_src(op, Δ, dst, src, idx)
 
-function ∇scatter_src(op::Union{typeof(*),typeof(/)}, Δ, dst,
-                      src::AbstractArray{Tsrc,Nsrc}, 
-                      idx::AbstractArray{Tidx,Nidx}) where {Tsrc,Tidx,Nsrc,Nidx}
+function ∇scatter_src(
+    op::Union{typeof(*),typeof(/)}, Δ, dst,
+    src::AbstractArray{Tsrc,Nsrc}, idx::AbstractArray{Tidx,Nidx},
+) where {Tsrc,Tidx,Nsrc,Nidx}
     dims = Nsrc - Nidx
     Δsrc = modify_src(op, gather(Δ, idx), src)
     rev_idx = reverse_indices(idx)
@@ -182,12 +210,13 @@ function ∇scatter_src(op::Union{typeof(*),typeof(/)}, Δ, dst,
     Δsrc
 end
 
-∇scatter_src(::Union{typeof(max),typeof(min)}, Δ, dst, src, idx) = (src .== gather(dst, idx)) .* gather(Δ, idx)
+∇scatter_src(::Union{typeof(max),typeof(min)}, Δ, dst, src, idx) =
+    (src .== gather(dst, idx)) .* gather(Δ, idx)
 
-function ∇scatter_src(::typeof(mean), Δ, dst,
-                    src::AbstractArray{Tsrc,Nsrc}, 
-                    idx::AbstractArray{Tidx,Nidx}) where {Tsrc,Tidx,Nsrc,Nidx}
-    
+function ∇scatter_src(
+    ::typeof(mean), Δ, dst,
+    src::AbstractArray{Tsrc,Nsrc}, idx::AbstractArray{Tidx,Nidx},
+) where {Tsrc,Tidx,Nsrc,Nidx}
     M = typelength(Tidx)
     num = gather(Δ, idx)
     counts = fill!(similar(Δ, Int, size(Δ)[end-M+1:end]), 0)

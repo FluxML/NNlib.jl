@@ -30,8 +30,7 @@ function scatter_kernel!(op::OP, dst, src, idx, max_idx, max_dims_idx, dims_size
     return nothing
 end
 
-function scatter_kernel!(op::OP, dst, src, idx::CUDA.CuDeviceArray{<:CartesianIndex}, 
-            max_idx, max_dims_idx, dims_size) where OP
+function scatter_kernel!(op::OP, dst, src, idx::CUDA.CuDeviceArray{<:CartesianIndex}, max_idx, max_dims_idx, dims_size) where OP
     index = threadIdx().x + (blockIdx().x - 1) * blockDim().x
 
     @inbounds if index <= max_idx
