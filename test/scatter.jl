@@ -15,13 +15,13 @@ idxs = Dict(
     :int => [1 2 3 4;
              4 2 1 3;
              3 5 5 3],
-    # :tup => [(1,) (2,) (3,) (4,);
-    #          (4,) (2,) (1,) (3,);
-    #          (3,) (5,) (5,) (3,)],
-    # :car => CartesianIndex.(
-    #         [(1,) (2,) (3,) (4,);
-    #          (4,) (2,) (1,) (3,);
-    #          (3,) (5,) (5,) (3,)]),
+    :tup => [(1,) (2,) (3,) (4,);
+             (4,) (2,) (1,) (3,);
+             (3,) (5,) (5,) (3,)],
+    :car => CartesianIndex.(
+            [(1,) (2,) (3,) (4,);
+             (4,) (2,) (1,) (3,);
+             (3,) (5,) (5,) (3,)]),
 )
 res = Dict(
     (+, 0, true) => [5, 6, 9, 8, 9],
@@ -68,152 +68,97 @@ res = Dict(
                          4. 4. 6. 5. 5.],
 )
 
-function scatter_testsuite(Backend)
-    cpu, backend = CPU(), Backend()
-    gradtest_fn = backend == CPU() ? gradtest : gputest
-    # types = [UInt8,  UInt32, Int64, Float16, Float32, Float64, BigFloat, Rational]
-    types = [Int64]
-
+function test_scatter(backend, types, ops; pt, ops_skip_types)
+    cpu = CPU()
     for T in types
-        PT = promote_type(T, Int)
-        @testset "T" begin
-            @testset "+" begin
-                # for idx = values(idxs), dims = [0, 1]
-                for idx = values(idxs), dims = [0]
-                    idx = adapt(backend, idx)
+        PT = promote_type(T, pt)
+        @testset failfast=true "$T" begin
+            for op in ops
+                skip_types = get(ops_skip_types, op, [])
+                @testset "$op" begin
+                    for idx = values(idxs), dims = [0, 1]
+                        idx = adapt(backend, idx)
+                        dst = adapt(backend, dsts[dims])
 
-                    mutated = true
-                    src = adapt(backend, srcs[(dims, mutated)])
-                    dst = adapt(backend, dsts[dims])
-                    target_y = res[(+, dims, mutated)]
+                        mutated = true
+                        target_y = res[(op, dims, mutated)]
+                        src = adapt(backend, srcs[(dims, mutated)])
+                        if op == /
+                            src = src .* T(2)
+                        end
 
-                    @show src
-                    @show idx
-                    @show dst
-                    @show target_y
-                    y = scatter!(+, T.(dst), T.(src), idx)
-                    @test adapt(cpu, y) == T.(target_y)
-                    # y = scatter!(+, T.(dst), src, idx)
-                    # @test adapt(cpu, y) == PT.(target_y)
-                    # y = scatter!(+, copy(dst), T.(src), idx)
-                    # @test adapt(cpu, y) == PT.(target_y)
+                        @test adapt(cpu, scatter!(op, T.(dst), T.(src), idx)) == T.(target_y)
+                        @test adapt(cpu, scatter!(op, T.(dst), src, idx)) == PT.(target_y)
+                        if op == /
+                            @test adapt(cpu, scatter!(op, T.(dst), T.(src), idx)) == PT.(target_y)
+                        else
+                            @test adapt(cpu, scatter!(op, copy(dst), T.(src), idx)) == PT.(target_y)
+                        end
 
-                    # mutated = false
-                    # src = adapt(backend, srcs[(dims, mutated)])
-                    # y = scatter(+, T.(src), idx)
-                    # @test adapt(cpu, y) == T.(res[(+, dims, mutated)])
+                        if T ∉ skip_types
+                            mutated = false
+                            src = adapt(backend, srcs[(dims, mutated)])
+                            @test adapt(cpu, scatter(op, T.(src), idx)) == T.(res[(op, dims, mutated)])
+                        end
+                    end
                 end
             end
         end
     end
 end
 
-# @testset "scatter" begin
-#     for T = types
-#         @testset "$T" begin
-#             # PT = promote_type(T, Int)
-#             # @testset "+" begin
-#             #     for idx = values(idxs), dims = [0, 1]
-#             #         mutated = true
-#             #         @test scatter!(+, T.(copy(dsts[dims])), T.(srcs[(dims, mutated)]), idx) == T.(res[(+, dims, mutated)])
-#             #         @test scatter!(+, T.(copy(dsts[dims])), srcs[(dims, mutated)], idx) == PT.(res[(+, dims, mutated)])
-#             #         @test scatter!(+, copy(dsts[dims]), T.(srcs[(dims, mutated)]), idx) == PT.(res[(+, dims, mutated)])
+function scatter_testsuite(Backend)
+    backend = Backend()
+    gradtest_fn = backend == CPU() ? gradtest : gputest
 
-#             #         mutated = false
-#             #         @test scatter(+, T.(srcs[(dims, mutated)]), idx) == T.(res[(+, dims, mutated)])
-#             #     end
-#             # end
+    ops_skip_types = Dict(
+        (+) => [],
+        (-) => [UInt8, UInt16, UInt32, UInt64, UInt128],
+        (*) => [UInt8, Int8],
+        max => [BigInt],
+        min => [BigInt])
+    types = if backend == CPU()
+        [UInt8,  UInt32, UInt64, Int32, Int64, Float16, Float32, Float64, BigFloat, Rational]
+    elseif Symbol(typeof(backend)) == :CUDABackend
+        [Int32, Int64, Float32, Float64]
+    else
+        # Need LLVM 15+ for atomic fmin/fmax:
+        # https://reviews.llvm.org/D127041
+        # But min/max can be done by reinterpreting an array to `UInt`.
+        [Int32, Int64, UInt32, UInt64]
+    end
+    ops = backend == CPU() ?
+        (+, -, max, min, *) :
+        (+, -, max, min)
+    test_scatter(backend, types, ops; pt=Int, ops_skip_types)
 
-#             @testset "-" begin
-#                 for idx = values(idxs), dims = [0, 1]
-#                     mutated = true
-#                     @test scatter!(-, T.(copy(dsts[dims])), T.(srcs[(dims, mutated)]), idx) == T.(res[(-, dims, mutated)])
-#                     @test scatter!(-, T.(copy(dsts[dims])), srcs[(dims, mutated)], idx) == PT.(res[(-, dims, mutated)])
-#                     @test scatter!(-, copy(dsts[dims]), T.(srcs[(dims, mutated)]), idx) == PT.(res[(-, dims, mutated)])
+    types = backend == CPU() ?
+        [Float16, Float32, BigFloat, Rational] :
+        [Float32, Float64]
+    ops = if backend == CPU()
+        (/, mean)
+    elseif Symbol(typeof(backend)) == :CUDABackend
+        (*, /, mean)
+    else
+        # LLVM does not support atomic fmul/fdiv:
+        # https://llvm.org/docs/LangRef.html#atomicrmw-instruction
+        (mean,)
+    end
+    test_scatter(backend, types, ops; pt=Float64, ops_skip_types=Dict())
 
-#                     mutated = false
-#                     if !(T in [UInt8, UInt16, UInt32, UInt64, UInt128])
-#                         @test scatter(-, T.(srcs[(dims, mutated)]), idx) == T.(res[(-, dims, mutated)])
-#                     end
-#                 end
-#             end
+    if backend == CPU()
+        @testset "scatter exceptions" begin
+            @test_throws AssertionError scatter!(+, dsts[0], srcs[(1, true)], idxs[:int])
+            idx = [1 2 3 4; 4 2 1 3; 6 7 8 9]
+            @test_throws BoundsError scatter!(+, dsts[1], srcs[(1, true)], idx)
+        end
+    end
+end
 
-#             @testset "max" begin
-#                 for idx = values(idxs), dims = [0, 1]
-#                     mutated = true
-#                     @test scatter!(max, T.(copy(dsts[dims])), T.(srcs[(dims, mutated)]), idx) == T.(res[(max, dims, mutated)])
-#                     @test scatter!(max, T.(copy(dsts[dims])), srcs[(dims, mutated)], idx) == PT.(res[(max, dims, mutated)])
-#                     @test scatter!(max, copy(dsts[dims]), T.(srcs[(dims, mutated)]), idx) == PT.(res[(max, dims, mutated)])
-
-#                     mutated = false
-#                     if !(T in [BigInt])
-#                         @test scatter(max, T.(srcs[(dims, mutated)]), idx) == T.(res[(max, dims, mutated)])
-#                     end
-#                 end
-#             end
-
-#             @testset "min" begin
-#                 for idx = values(idxs), dims = [0, 1]
-#                     mutated = true
-#                     @test scatter!(min, T.(copy(dsts[dims])), T.(srcs[(dims, mutated)]), idx) == T.(res[(min, dims, mutated)])
-#                     @test scatter!(min, T.(copy(dsts[dims])), srcs[(dims, mutated)], idx) == PT.(res[(min, dims, mutated)])
-#                     @test scatter!(min, copy(dsts[dims]), T.(srcs[(dims, mutated)]), idx) == PT.(res[(min, dims, mutated)])
-
-#                     mutated = false
-#                     if !(T in [BigInt])
-#                         @test scatter(min, T.(srcs[(dims, mutated)]), idx) == T.(res[(min, dims, mutated)])
-#                     end
-#                 end
-#             end
-
-#             @testset "*" begin
-#                 for idx = values(idxs), dims = [0, 1]
-#                     mutated = true
-#                     @test scatter!(*, T.(copy(dsts[dims])), T.(srcs[(dims, mutated)]), idx) == T.(res[(*, dims, mutated)])
-#                     @test scatter!(*, T.(copy(dsts[dims])), srcs[(dims, mutated)], idx) == PT.(res[(*, dims, mutated)])
-#                     @test scatter!(*, copy(dsts[dims]), T.(srcs[(dims, mutated)]), idx) == PT.(res[(*, dims, mutated)])
-
-#                     mutated = false
-#                     if !(T in [UInt8, Int8])
-#                         @test scatter(*, T.(srcs[(dims, mutated)]), idx) == T.(res[(*, dims, mutated)])
-#                     end
-#                 end
-#             end
-#         end
-#     end
-
-#     for T = [Float16, Float32, BigFloat, Rational]
-#         @testset "$T" begin
-#             PT = promote_type(T, Float64)
-#             @testset "/" begin
-#                 for idx = values(idxs), dims = [0, 1]
-#                     mutated = true
-#                     @test scatter!(/, T.(dsts[dims]), T.(srcs[(dims, mutated)].*2), idx) == T.(res[(/, dims, mutated)])
-#                     @test scatter!(/, T.(dsts[dims]), srcs[(dims, mutated)].*2, idx) == PT.(res[(/, dims, mutated)])
-#                     @test scatter!(/, T.(dsts[dims]), T.(srcs[(dims, mutated)].*2), idx) == PT.(res[(/, dims, mutated)])
-
-#                     mutated = false
-#                     @test scatter(/, T.(srcs[(dims, mutated)]), idx) == T.(res[(/, dims, mutated)])
-#                 end
-#             end
-
-#             @testset "mean" begin
-#                 for idx = values(idxs), dims = [0, 1]
-#                     mutated = true
-#                     @test scatter!(mean, T.(dsts[dims]), T.(srcs[(dims, mutated)]), idx) == T.(res[(mean, dims, mutated)])
-#                     @test scatter!(mean, T.(dsts[dims]), srcs[(dims, mutated)], idx) == PT.(res[(mean, dims, mutated)])
-#                     @test scatter!(mean, copy(dsts[dims]), T.(srcs[(dims, mutated)]), idx) == PT.(res[(mean, dims, mutated)])
-
-#                     mutated = false
-#                     @test scatter(mean, T.(srcs[(dims, mutated)]), idx) == T.(res[(mean, dims, mutated)])
-#                 end
-#             end
-#         end
-#     end
-
-#     @test_throws AssertionError scatter!(+, dsts[0], srcs[(1, true)], idxs[:int])
-#     idx = [1 2 3 4; 4 2 1 3; 6 7 8 9]
-#     @test_throws BoundsError scatter!(+, dsts[1], srcs[(1, true)], idx)
+# @testset "∇scatter" begin
+#     T = Float64
+#     fdm(op) = op == min ? :backward : :forward
+#     # fdm(op) = :forward
 
 #     @testset "dstsize" begin
 #         idx = [2, 2, 3, 4, 4]
@@ -222,12 +167,6 @@ end
 #         @test size(y) == (3, 6)
 #         gradtest(x -> scatter(+, x, idx, dstsize = (3,6)), src)
 #     end
-# end
-
-# @testset "∇scatter" begin
-#     T = Float64
-#     fdm(op) = op == min ? :backward : :forward
-#     # fdm(op) = :forward
 
 #     @testset "∂dst" begin
 #         for op in (+, -, *, /, mean, max, min)

@@ -1,5 +1,6 @@
 module NNlib
 
+import Atomix
 import ChainRulesCore: rrule
 
 using Base.Broadcast: broadcasted

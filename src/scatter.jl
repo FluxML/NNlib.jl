@@ -70,16 +70,25 @@ julia> NNlib.scatter!(*, fill(0.5, 2, 4), [1 10; 100 1000], [3,2])
  0.5  500.0  50.0  0.5
 ```
 """
-# function scatter!(op::OP, dst::AbstractArray, src::AbstractArray, idx::AbstractArray) where OP
-#     dims = scatter_dims(dst, src, idx)
-#     colons = Base.ntuple(_->Colon(), dims)
-#     for k in CartesianIndices(idx)
-#         dst_v = _view(dst, colons, idx[k])
-#         src_v = _view(src, colons, k)
-#         dst_v .= (op).(dst_v, src_v)
-#     end
-#     dst
-# end
+function scatter!(op::OP, dst::AbstractArray, src::AbstractArray, idx::AbstractArray) where OP
+    dims = scatter_dims(dst, src, idx)
+    colons = Base.ntuple(_->Colon(), dims)
+    for k in CartesianIndices(idx)
+        dst_v = _view(dst, colons, idx[k])
+        src_v = _view(src, colons, k)
+        dst_v .= (op).(dst_v, src_v)
+    end
+    dst
+end
+
+for AT in (AbstractArray, AbstractGPUArray)
+    @eval function scatter!(op::typeof(mean), dst::$AT, src::$AT, idx::$AT)
+        Ns = scatter!(+, zero(dst), one.(src), idx)
+        dst_ = scatter!(+, zero(dst), src, idx)
+        dst .+= safe_div.(dst_, Ns)
+        return dst
+    end
+end
 
 function scatter!(op::OP, dst::AbstractGPUArray, src::AbstractGPUArray, idx::AbstractGPUArray) where OP
     n_dims = scatter_dims(dst, src, idx)
@@ -100,24 +109,22 @@ end
 @kernel function _scatter!(op::OP, dst, src, idxs) where OP
     i = @index(Global)
     idx = Tuple(idxs[i])
-    @atomic dst[idx...] = op(dst[idx...], src[i])
+    Atomix.modify!(Atomix.IndexableRef(dst, idx), op, src[i])
+    # FIXME `@atomic` macro silently fails to perform atomic op below
+    # @atomic dst[idx...] = op(dst[idx...], src[i])
 end
 
-# @kernel function _scatter!(
-#     op::OP, dst, src, idxs, dim_ids::CartesianIndices, max_dims_idx::Int,
-# ) where OP
-#     i = @index(Global)
-#     j, k = divrem(i - 1, max_dims_idx)
-#     dim_i = Tuple(dim_ids[k + 1])
-#     idx = idxs[j + 1]
-#     @atomic dst[dim_i..., idx...] = op(dst[dim_i..., idx...], src[i])
-# end
-
-function scatter!(op::typeof(mean), dst::AbstractArray, src::AbstractArray, idx::AbstractArray)
-    Ns = scatter!(+, zero(dst), one.(src), idx)
-    dst_ = scatter!(+, zero(dst), src, idx)
-    dst .+= safe_div.(dst_, Ns)
-    return dst
+@kernel function _scatter!(
+    op::OP, dst, src, idxs, dim_ids::CartesianIndices, max_dims_idx::Int,
+) where OP
+    i = @index(Global)
+    j, k = divrem(i - 1, max_dims_idx)
+    idx = (Tuple(dim_ids[k + 1])..., Tuple(idxs[j + 1])...)
+    Atomix.modify!(Atomix.IndexableRef(dst, idx), op, src[i])
+    # FIXME
+    # dim_i = Tuple(dim_ids[k + 1])
+    # idx = idxs[j + 1]
+    # @atomic dst[dim_i..., idx...] = op(dst[dim_i..., idx...], src[i])
 end
 
 """
@@ -180,6 +187,8 @@ scatter_empty(op::typeof(mean), T) = zero(T)
 ## Gradients
 
 ∇scatter!_src(op, Δ, dst, src, idx) = ∇scatter_src(op, Δ, dst, src, idx)
+∇scatter!_src(op::Union{typeof(*),typeof(/)}, Δ, dst, src, idx) =
+    gather(dst, idx) .* ∇scatter_src(op, Δ, dst, src, idx)
 ∇scatter!_dst(op, Δ, dst, y) = Δ
 ∇scatter!_dst(op::Union{typeof(max),typeof(min)}, Δ, dst_old, dst) =
     (dst_old .== op.(dst_old, dst)) .* Δ
@@ -189,9 +198,10 @@ modify_src(::typeof(-), X) = -X
 modify_src(::typeof(*), X, Y) = X
 modify_src(::typeof(/), X, Y) = .-X ./ Y.^2
 
-∇scatter_src(op::Union{typeof(+),typeof(-)}, Δ, dst, src, idx) = modify_src(op, gather(Δ, idx))
-∇scatter!_src(op::Union{typeof(*),typeof(/)}, Δ, dst, src, idx) =
-    gather(dst, idx) .* ∇scatter_src(op, Δ, dst, src, idx)
+∇scatter_src(op::Union{typeof(+),typeof(-)}, Δ, dst, src, idx) =
+    modify_src(op, gather(Δ, idx))
+∇scatter_src(::Union{typeof(max),typeof(min)}, Δ, dst, src, idx) =
+    (src .== gather(dst, idx)) .* gather(Δ, idx)
 
 function ∇scatter_src(
     op::Union{typeof(*),typeof(/)}, Δ, dst,
@@ -210,8 +220,57 @@ function ∇scatter_src(
     Δsrc
 end
 
-∇scatter_src(::Union{typeof(max),typeof(min)}, Δ, dst, src, idx) =
-    (src .== gather(dst, idx)) .* gather(Δ, idx)
+function ∇scatter_src(
+    op::Union{typeof(*), typeof(/)}, Δ, dst,
+    src::AbstractGPUArray{Tsrc, Nsrc}, idx::AbstractGPUArray{Tidx, Nidx},
+) where {Tsrc, Nsrc, Tidx, Nidx}
+    n_dims = Nsrc - Nidx
+    Δsrc = NNlib.modify_src(op, NNlib.gather(Δ, idx), src)
+    rev_idx = NNlib.reverse_indices(idx)
+
+    args = if n_dims == 0
+        ndrange = length(idx)
+        ()
+    else
+        dims = size(dst)[1:n_dims]
+        max_dims_idx = prod(dims)
+        ndrange = max_dims_idx * length(idx)
+        (CartesianIndices(dims), max_dims_idx)
+    end
+    _∇scatter_src(KernelAbstractions.get_backend(src))(
+        op, Δsrc, src, idx, rev_idx, args...; ndrange)
+    # TODO KernelAbstractions.unsafe_free!(rev_idx)
+    return Δsrc
+end
+
+@kernel function _∇scatter_src(op, Δsrc, src::AbstractArray{T}, idx, rev_idx) where T
+    i = @index(Global)
+    cart_j = CartesianIndices(idx)[i]
+    inds = rev_idx[Tuple(idx[cart_j])...]
+    x = one(T)
+    for k in inds
+        x *= src[k]
+    end
+    x /= src[cart_j]
+    Δsrc[cart_j] = op(Δsrc[cart_j], x)
+end
+
+@kernel function _∇scatter_src(
+    op, Δsrc, src::AbstractArray{T}, idx, rev_idx,
+    dim_ids::CartesianIndices, max_dims_idx::Int,
+) where T
+    i = @index(Global)
+    j, k = fldmod1(i, max_dims_idx)
+    cart_j = CartesianIndices(idx)[j]
+    cart_k = dim_ids[k]
+    inds = rev_idx[Tuple(cart_j)...]
+    x = one(T)
+    for s in inds
+        x *= src[Tuple(cart_k)..., Tuple(s)...]
+    end
+    x /= src[i]
+    Δsrc[i] = op(Δsrc[i], x)
+end
 
 function ∇scatter_src(
     ::typeof(mean), Δ, dst,
@@ -229,8 +288,7 @@ function ∇scatter_src(
     return safe_div.(num, den)
 end
 
-∇scatter_src(op, Δ, dst, src, idx) =
-  ∇scatter_src(op, unthunk(Δ), dst, src, idx)
+∇scatter_src(op, Δ, dst, src, idx) = ∇scatter_src(op, unthunk(Δ), dst, src, idx)
 
 function rrule(::typeof(scatter!), op, dst::AbstractArray, src::AbstractArray, idx::AbstractArray)
     dst_old = copy(dst)
