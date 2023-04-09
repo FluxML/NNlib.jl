@@ -19,7 +19,6 @@ include("fold.jl")
 include("pooling.jl")
 include("softmax.jl")
 include("batchnorm.jl")
-include("scatter.jl")
 include("gather.jl")
 include("sampling.jl")
 end
