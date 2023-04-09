@@ -133,40 +133,49 @@ function gather_testsuite(Backend)
         @test y isa Array{T,3}
         @test size(y) == (size(src)[1:Nsrc-M]..., size(index)...)
     end
+
+    @testset "gather gradient for scalar index" begin
+        src = adapt(backend, Float64[3, 4, 5, 6, 7])
+        idx = adapt(backend, [
+            1 2 3 4;
+            4 2 1 3;
+            3 5 5 3])
+        dst = adapt(backend, Float64[
+            3 4 5 6;
+            6 4 3 5;
+            5 7 7 5])
+        backend == cpu ?
+            gradtest_fn(xs -> gather!(dst, xs, idx), src) :
+            gradtest_fn((d, s, i) -> gather!(d, s, i), dst, src, idx)
+        backend == cpu ?
+            gradtest_fn(xs -> gather(xs, idx), src) :
+            gradtest_fn((s, i) -> gather(s, i), src, idx)
+    end
+
+    @testset "gather gradient for tuple index" begin
+        src = adapt(backend, Float64[
+            3 5 7
+            4 6 8])
+        idx = adapt(backend, [(1,1), (1,2), (1,3), (2,1), (2,2), (2,3)])
+        dst = adapt(backend, Float64[3, 5, 7, 4, 6, 8])
+        backend == cpu ?
+            gradtest_fn(xs -> gather!(dst, xs, idx), src) :
+            gradtest_fn((d, s, i) -> gather!(d, s, i), dst, src, idx)
+        backend == cpu ?
+            gradtest_fn(xs -> gather(xs, idx), src) :
+            gradtest_fn((s, i) -> gather(s, i), src, idx)
+    end
+
+    @testset "gather(src, IJK...)" begin
+        x = adapt(backend, reshape([1:15;], 3, 5))
+        i, j = adapt(backend, [1,2]), adapt(backend, [2,4])
+        y = gather(x, i, j)
+        @test adapt(cpu, y) == [4, 11]
+        y = gather(x, adapt(backend, [1, 2]))
+        @test adapt(cpu, y) == [
+            1 4
+            2 5
+            3 6]
+    end
 end
 
-# @testset "gather gradient for scalar index" begin
-#     T = Float64
-#     src = T[3, 4, 5, 6, 7]
-#     index = [1 2 3 4;
-#             4 2 1 3;
-#             3 5 5 3]
-#     dst = T[3 4 5 6;
-#             6 4 3 5;
-#             5 7 7 5]
-
-#     gradtest(xs -> gather!(dst, xs, index), src)
-#     gradtest(xs -> gather(xs, index), src)
-# end
-
-# @testset "gather gradient for tuple index" begin
-#     T = Float64
-#     src = T[3 5 7
-#             4 6 8]
-#     index = [(1,1), (1,2), (1,3), (2,1), (2,2), (2,3)]
-#     dst = T[3, 5, 7, 4, 6, 8]
-
-#     gradtest(xs -> gather!(dst, xs, index), src)
-#     gradtest(xs -> gather(xs, index), src)
-# end
-
-# @testset "gather(src, IJK...)" begin
-#     x = reshape([1:15;], 3, 5)
-
-#     y = gather(x, [1,2], [2,4])
-#     @test y == [4, 11]
-
-#     @test gather(x, [1, 2]) ==  [1  4
-#                                  2  5
-#                                  3  6]
-# end

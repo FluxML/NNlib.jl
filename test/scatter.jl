@@ -72,7 +72,7 @@ function test_scatter(backend, types, ops; pt, ops_skip_types)
     cpu = CPU()
     for T in types
         PT = promote_type(T, pt)
-        @testset failfast=true "$T" begin
+        @testset "$T" begin
             for op in ops
                 skip_types = get(ops_skip_types, op, [])
                 @testset "$op" begin
@@ -124,7 +124,7 @@ function scatter_testsuite(Backend)
     else
         # Need LLVM 15+ for atomic fmin/fmax:
         # https://reviews.llvm.org/D127041
-        # But min/max can be done by reinterpreting an array to `UInt`.
+        # But fmin/fmax can be done by reinterpreting an array to `UInt`.
         [Int32, Int64, UInt32, UInt64]
     end
     ops = backend == CPU() ?
@@ -148,40 +148,65 @@ function scatter_testsuite(Backend)
 
     if backend == CPU()
         @testset "scatter exceptions" begin
-            @test_throws AssertionError scatter!(+, dsts[0], srcs[(1, true)], idxs[:int])
             idx = [1 2 3 4; 4 2 1 3; 6 7 8 9]
-            @test_throws BoundsError scatter!(+, dsts[1], srcs[(1, true)], idx)
+            @test_throws AssertionError scatter!(+, copy(dsts[0]), srcs[(1, true)], idxs[:int])
+            @test_throws BoundsError scatter!(+, copy(dsts[1]), srcs[(1, true)], idx)
+        end
+    end
+
+    @testset "∇scatter" begin
+        T = Float64
+        fdm(op) = op == min ? :backward : :forward
+
+        @testset "dstsize" begin
+            idx = adapt(backend, [2, 2, 3, 4, 4])
+            src = adapt(backend, ones(T, 3, 5))
+            y = scatter(+, src, idx, dstsize = (3, 6))
+            @test eltype(y) == T
+            @test size(y) == (3, 6)
+            backend == CPU() ?
+                gradtest_fn(x -> scatter(+, x, idx; dstsize=(3, 6)), src) :
+                gradtest_fn((x, i) -> scatter(+, x, i; dstsize=(3, 6)), src, idx)
+        end
+
+        @testset "∂dst" begin
+            ops = if backend == CPU() || Symbol(typeof(backend)) == :CUDABackend
+                (+, -, *, /, mean, max, min)
+            else
+                (+, -, mean, max, min)
+            end
+            for op in ops, i in (0, 1)
+                PT = ( # If not CPU and CUDA -> use Int64 for min/max.
+                    backend != CPU() &&
+                    Symbol(typeof(backend)) != :CUDABackend &&
+                    (op == max || op == min)) ? Int64 : T
+
+                src = adapt(backend, srcs[(i, true)])
+                idx = adapt(backend, idxs[:int])
+                dst = adapt(backend, PT.(dsts[i]))
+                backend == CPU() ?
+                    gradtest_fn(x -> scatter!(op, copy(x), src, idx), dst; fdm=fdm(op)) :
+                    gradtest_fn((x, s, i) -> scatter!(op, x, s, i), dst, src, idx)
+            end
+        end
+
+        @testset "∂src" begin
+            ops = if backend == CPU() || Symbol(typeof(backend)) == :CUDABackend
+                (+, -, *, /, mean, max, min)
+            else
+                (+, -, mean, max, min)
+            end
+            for op in ops, i in (0, 1)
+                PT = ( # If not CPU and CUDA -> use Int64 for min/max.
+                    backend != CPU() &&
+                    Symbol(typeof(backend)) != :CUDABackend &&
+                    (op == max || op == min)) ? Int64 : T
+                src = PT.(adapt(backend, srcs[(i, false)]))
+                idx = adapt(backend, idxs[:int])
+                backend == CPU() ?
+                    gradtest_fn(xs -> scatter(op, xs, idx), src; fdm=fdm(op)) :
+                    gradtest_fn((xs, i) -> scatter(op, xs, i), src, idx)
+            end
         end
     end
 end
-
-# @testset "∇scatter" begin
-#     T = Float64
-#     fdm(op) = op == min ? :backward : :forward
-#     # fdm(op) = :forward
-
-#     @testset "dstsize" begin
-#         idx = [2, 2, 3, 4, 4]
-#         src = ones(3, 5)
-#         y = scatter(+, src, idx, dstsize = (3, 6))
-#         @test size(y) == (3, 6)
-#         gradtest(x -> scatter(+, x, idx, dstsize = (3,6)), src)
-#     end
-
-#     @testset "∂dst" begin
-#         for op in (+, -, *, /, mean, max, min)
-#             gradtest(xs -> scatter!(op, copy(xs), srcs[(0, true)], idxs[:int]), T.(dsts[0]), fdm=fdm(op))
-#             gradtest(xs -> scatter!(op, copy(xs), srcs[(1, true)], idxs[:int]), T.(dsts[1]), fdm=fdm(op))
-#         end
-#     end
-
-#     @testset "∂src" begin
-#         for op in (+, -, *, /, mean, max, min)
-#             gradtest(xs -> scatter!(op, T.(dsts[0]), xs, idxs[:int]), T.(srcs[(0, true)]), fdm=fdm(op))
-#             gradtest(xs -> scatter!(op, T.(dsts[1]), xs, idxs[:int]), T.(srcs[(1, true)]), fdm=fdm(op))
-
-#             gradtest(xs -> scatter(op, xs, idxs[:int]), T.(srcs[(0, false)]), fdm=fdm(op))
-#             gradtest(xs -> scatter(op, xs, idxs[:int]), T.(srcs[(1, false)]), fdm=fdm(op))
-#         end
-#     end
-# end
