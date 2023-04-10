@@ -26,6 +26,8 @@ macro conditional_testset(name, skip_tests, expr)
     end)
 end
 
+cpu(x) = adapt(CPU(), x)
+
 include("upsample.jl")
 
 function nnlib_testsuite(Backend; skip_tests = Set{String}())
