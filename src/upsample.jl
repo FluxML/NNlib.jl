@@ -1,4 +1,123 @@
 """
+    pixel_shuffle(x, r::Integer)
+
+Pixel shuffling operation, upscaling by a factor `r`.
+
+For 4-arrays representing `N` images, the operation converts input `size(x) == (W, H, r^2*C, N)`
+to output of size `(r*W, r*H, C, N)`. For `D`-dimensional data, it expects `ndims(x) == D+2`
+with channel and batch dimensions, and divides the number of channels by `r^D`.
+
+Used in super-resolution networks to upsample towards high resolution features.
+Reference: Shi et. al., "Real-Time Single Image and Video Super-Resolution ...", CVPR 2016, https://arxiv.org/abs/1609.05158
+
+# Examples
+
+```jldoctest
+julia> x = [10i + j + channel/10 for i in 1:2, j in 1:3, channel in 1:4, batch in 1:1]
+2×3×4×1 Array{Float64, 4}:
+[:, :, 1, 1] =
+ 11.1  12.1  13.1
+ 21.1  22.1  23.1
+
+[:, :, 2, 1] =
+ 11.2  12.2  13.2
+ 21.2  22.2  23.2
+
+[:, :, 3, 1] =
+ 11.3  12.3  13.3
+ 21.3  22.3  23.3
+
+[:, :, 4, 1] =
+ 11.4  12.4  13.4
+ 21.4  22.4  23.4
+
+julia> pixel_shuffle(x, 2)  # 4 channels used up as 2x upscaling of image dimensions
+4×6×1×1 Array{Float64, 4}:
+[:, :, 1, 1] =
+ 11.1  11.3  12.1  12.3  13.1  13.3
+ 11.2  11.4  12.2  12.4  13.2  13.4
+ 21.1  21.3  22.1  22.3  23.1  23.3
+ 21.2  21.4  22.2  22.4  23.2  23.4
+
+julia> y = [i + channel/10 for i in 1:3, channel in 1:6, batch in 1:1]
+3×6×1 Array{Float64, 3}:
+[:, :, 1] =
+ 1.1  1.2  1.3  1.4  1.5  1.6
+ 2.1  2.2  2.3  2.4  2.5  2.6
+ 3.1  3.2  3.3  3.4  3.5  3.6
+
+julia> pixel_shuffle(y, 2)  # 1D image, with 6 channels reduced to 3
+6×3×1 Array{Float64, 3}:
+[:, :, 1] =
+ 1.1  1.3  1.5
+ 1.2  1.4  1.6
+ 2.1  2.3  2.5
+ 2.2  2.4  2.6
+ 3.1  3.3  3.5
+ 3.2  3.4  3.6
+```
+"""
+function pixel_shuffle(x::AbstractArray, r::Integer)
+    ndims(x) > 2 || throw(ArgumentError("expected x with at least 3 dimensions"))
+    d = ndims(x) - 2
+    sizein = size(x)[1:d]
+    cin, n = size(x, d+1), size(x, d+2)
+    cin % r^d == 0 || throw(ArgumentError("expected channel dimension to be divisible by r^d = $(
+        r^d), where d=$d is the number of spatial dimensions. Given r=$r, input size(x) = $(size(x))"))
+    cout = cin ÷ r^d
+    x = reshape(x, sizein..., ntuple(i->r, d)..., cout, n)
+    perm = hcat(d+1:2d, 1:d) |> transpose |> vec  # = [d+1, 1, d+2, 2, ..., 2d, d]
+    x = permutedims(x, (perm..., 2d+1, 2d+2))
+    return reshape(x, map(s -> s*r, sizein)..., cout, n)
+end
+
+#
+# Upsampling
+#
+# GPU based bilinear upsampling including its gradient
+#
+# Based on the Caffe2 implementation at:
+# The code is a translation from the following files:
+# - https://github.com/pytorch/pytorch/blob/v1.8.0-rc1/caffe2/operators/upsample_op.cu
+# - https://github.com/pytorch/pytorch/blob/v1.8.0-rc1/caffe2/core/common_gpu.h
+#
+# Copyright (c) 2016-2021 Facebook Inc.
+# Copyright (c) 2015 Google Inc.
+# Copyright (c) 2015 Yangqing Jia
+# Copyright 2019-2020 Kakao Brain
+#
+# All rights reserved.
+#
+# Redistribution and use in source and binary forms, with or without modification, are
+# permitted provided that the following conditions are met:
+#
+# 1. Redistributions of source code must retain the above copyright notice, this list of
+#    conditions and the following disclaimer.
+#
+# 2. Redistributions in binary form must reproduce the above copyright notice, this list of
+#    conditions and the following disclaimer in the documentation and/or other materials
+#    provided with the distribution.
+#
+# 3. Neither the names of Facebook, Deepmind Technologies, NYU, NEC Laboratories America and
+#    IDIAP Research Institute nor the names of its contributors may be used to endorse or
+#    promote products derived from this software without specific prior written permission.
+#
+# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY
+# EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
+# MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE
+# COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
+# EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+# SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
+# HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR
+# TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+# SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+# Forward and backward pass have been tested to produce the same output
+# as pytorch with align_corners=True - it works modulo bit noise.
+# pytorch's default is align_corners=False, because otherwise the gradients depend on the
+# image size, which should be avoided -> this should be considered here as well
+
+"""
     upsample_nearest(x, scale::NTuple{S,Int})
     upsample_nearest(x; size::NTuple{S,Int})
 
@@ -75,28 +194,9 @@ function rrule(::typeof(upsample_nearest), x::AbstractArray, s::Tuple)
     return Ω, upsample_nearest_pullback
 end
 
-# utility function
-@inline function compute_source_index_and_lambda(
-    ratio, # 0 < ratio < 1
-    output_index,
-    input_size,
-    output_size
-)
-    real_input_index = ratio*output_index
-    input_index0 = floor(Int, real_input_index) # typecast to int was here in C++
-    offset = (input_index0 < input_size - 1) ? 1 : 0
-    input_index1 = input_index0 + offset
-    lambda1 = real_input_index - input_index0
-    lambda0 = 1 - lambda1
-    return input_index0, input_index1, lambda0, lambda1
-end
-
-###########
-# linear
-###########
 """
-    upsample_linear(x::AbstractArray{T,3}, scale::Real)
-    upsample_linear(x::AbstractArray{T,3}; size::Integer)
+    upsample_linear(x::AbstractArray{T,3}, scale::Real; align_corners::Bool = true)
+    upsample_linear(x::AbstractArray{T,3}; size::Integer, align_corners::Bool = true)
 
 Upsamples the first dimension of the array `x` by the upsample provided `scale`,
 using linear interpolation. As an alternative to using `scale`, the resulting array `size`
@@ -105,17 +205,18 @@ can be directly specified with a keyword argument.
 The size of the output is equal to
 `(scale*S1, S2, S3)`, where `S1, S2, S3 = size(x)`.
 """  # the user facing function
-function upsample_linear(x::AbstractArray{<:Any,N}, scale::NTuple{M,Real}) where {N,M}
+function upsample_linear(x::AbstractArray{<:Any,N}, scale::NTuple{M,Real}; align_corners::Bool = true) where {N,M}
     M == N-2 || error("The scale argument should be an NTuple with length $(N-2), but it has length $M.")
     outsize = ntuple(i -> floor(Int, scale[i] * Base.size(x, i)), N-2)
-    return upsample_linear(x; size=outsize)
+    return upsample_linear(x; size=outsize, align_corners)
 end
 
 # convenience for single-number scale
-upsample_linear(x::AbstractArray{<:Any,N}, scale::Real) where N = upsample_linear(x, ntuple(_ -> scale, N-2))
+upsample_linear(x::AbstractArray{<:Any,N}, scale::Real; align_corners::Bool = true) where N =
+    upsample_linear(x, ntuple(_ -> scale, N-2); align_corners)
 
 # this actually calls the upsamling kernel
-function upsample_linear(x::AbstractArray{T,N}; size::Union{Integer, NTuple{<:Any,Integer}}) where {T,N}
+function upsample_linear(x::AbstractArray{T,N}; size::Union{Integer, NTuple{<:Any,Integer}}, align_corners::Bool = true) where {T,N}
     length(size) == N-2 || error("The scale argument should be an NTuple with length $(N-2), but it has length $(length(size)).")
 
     if Base.size(x)[1:N-2] == size
@@ -123,133 +224,18 @@ function upsample_linear(x::AbstractArray{T,N}; size::Union{Integer, NTuple{<:An
     end
 
     y = similar(x, T, size..., Base.size(x)[end-1:end]...)
-    return upsample_linear_kernel!(y, x)
+    return upsample_linear_kernel!(y, x; align_corners)
 end
 
 # Convenience definition for integers. The algo internally works with floats and then rounds.
-function upsample_linear(x::AbstractArray{T,<:Any}; size) where T<:Integer
+function upsample_linear(x::AbstractArray{T,<:Any}; size, align_corners::Bool = true) where T<:Integer
     y = float.(x)
-    res = upsample_linear(y; size=size)
+    res = upsample_linear(y; size=size, align_corners)
     return round.(T, res)
 end
 
-# compatibility layer for old versions of NNlibCUDA
-# old versions overload upsample_linear_wcn, new versions overload upsample_linear_kernel
-# can be removed from NNlib 0.9, i.e. revert https://github.com/FluxML/NNlib.jl/pull/414
-# IF https://github.com/FluxML/NNlibCUDA.jl/pull/49 has been merged
-upsample_linear_kernel!(y::AbstractArray{<:Any,3}, x::AbstractArray{<:Any,3}) = upsample_linear_wcn!(y,x)
-upsample_linear_kernel!(y::AbstractArray{<:Any,4}, x::AbstractArray{<:Any,4}) = upsample_bilinear_whcn!(y,x)
-upsample_linear_kernel!(y::AbstractArray{<:Any,5}, x::AbstractArray{<:Any,5}) = upsample_trilinear_whdcn!(y,x)
-∇upsample_linear_kernel!(y::AbstractArray{<:Any,3}, x::AbstractArray{<:Any,3}) = ∇upsample_linear_wcn!(y,x)
-∇upsample_linear_kernel!(y::AbstractArray{<:Any,4}, x::AbstractArray{<:Any,4}) = ∇upsample_bilinear_whcn!(y,x)
-∇upsample_linear_kernel!(y::AbstractArray{<:Any,5}, x::AbstractArray{<:Any,5}) = ∇upsample_trilinear_whdcn!(y,x)
-
-# linearly upsamples first dim of 3D array
-function upsample_linear_wcn!(output::AbstractArray{T,3}, input::AbstractArray{T,3}) where T
-    size(input)[2:3] == size(output)[2:3] || error("Number of input and output channels and batches must match. Got input $(size(input)) and output $(size(output))")
-    in_w, channels, batches = size(input)
-    RT = real(T)
-    # treat batch and channel dimension as one for better parallelization granularity
-    channels *= batches
-    out_w, _, _ = size(output)
-    output_slice_size = out_w
-
-    #real(T)() and // so that we can handle rationals (super slow)
-    width_scale  = RT((in_w - 1) // (out_w - 1))
-
-    @inline idx(c, w) = c * in_w + w + 1
-
-    Threads.@threads for c in 0:channels-1
-        @inbounds for ow in 0:out_w-1
-            iw0, iw1, w0lambda, w1lambda = compute_source_index_and_lambda(width_scale, ow, in_w, out_w)
-            output_offset = c * output_slice_size + ow + 1
-            output[output_offset] = (w0lambda * input[idx(c, iw0)] + # w0 * i00
-                                    w1lambda * input[idx(c, iw1)])  # w1 * i01
-        end
-    end
-    return output
-end
-
-# bilinear
-# linearly upsamples first two dims of 4D array
-function upsample_bilinear_whcn!(output::AbstractArray{T,4}, input::AbstractArray{T,4}) where T
-    size(input)[3:4] == size(output)[3:4] || error("Number of input and output channels and batches must match. Got input $(size(input)) and output $(size(output))")
-    in_w, in_h, channels, batches = size(input)
-    RT = real(T)
-    # treat batch and channel dimension as one for better parallelization granularity
-    channels *= batches
-    out_w, out_h, _, _ = size(output)
-    output_slice_size = out_h * out_w
-
-    #real(T)() and // so that we can handle rationals (super slow)
-    width_scale  = RT((in_w - 1) // (out_w - 1))
-    height_scale = RT((in_h - 1) // (out_h - 1))
-
-    @inline idx(c, h, w) = c * in_h * in_w + h * in_w + w + 1
-
-    Threads.@threads for c in 0:channels-1
-        @inbounds for oh in 0:out_h-1
-            ih0, ih1, h0lambda, h1lambda = compute_source_index_and_lambda(height_scale, oh, in_h, out_h)
-            for ow in 0:out_w-1
-                iw0, iw1, w0lambda, w1lambda = compute_source_index_and_lambda(width_scale, ow, in_w, out_w)
-                output_offset = c * output_slice_size + oh * out_w + ow + 1
-                output[output_offset] =
-                    (h0lambda * w0lambda * input[idx(c, ih0, iw0)] + # h0 * w0 * i00
-                     h0lambda * w1lambda * input[idx(c, ih0, iw1)] + # h0 * w1 * i01
-                     h1lambda * w0lambda * input[idx(c, ih1, iw0)] + # h1 * w0 * i10
-                     h1lambda * w1lambda * input[idx(c, ih1, iw1)])  # h1 * w1 * i11
-            end
-        end
-    end
-    return output
-end
-
-# trilinear
-# linearly upsamples first three dims of 5D array
-function upsample_trilinear_whdcn!(output::AbstractArray{T,5}, input::AbstractArray{T,5}) where T
-    size(input)[4:5] == size(output)[4:5] || error("Number of input and output channels and batches must match. Got input $(size(input)) and output $(size(output))")
-    in_w, in_h, in_d, channels, batches = size(input)
-    RT = real(T)
-    # treat batch and channel dimension as one for better parallelization granularity
-    channels *= batches
-    out_w, out_h, out_d, _, _ = size(output)
-    output_slice_size = out_h * out_w * out_d
-
-    #real(T)() and // so that we can handle rationals (super slow)
-    width_scale  = RT((in_w - 1) // (out_w - 1))
-    height_scale = RT((in_h - 1) // (out_h - 1))
-    depth_scale  = RT((in_d - 1) // (out_d - 1))
-
-    @inline idx(c, d, h, w) = c * in_d * in_h * in_w + d * in_h * in_w + h * in_w + w + 1
-
-    Threads.@threads for c in 0:channels-1
-        @inbounds for od in 0:out_d-1
-            id0, id1, d0lambda, d1lambda = compute_source_index_and_lambda(depth_scale, od, in_d, out_d)
-            for oh in 0:out_h-1
-                ih0, ih1, h0lambda, h1lambda = compute_source_index_and_lambda(height_scale, oh, in_h, out_h)
-                for ow in 0:out_w-1
-                    iw0, iw1, w0lambda, w1lambda = compute_source_index_and_lambda(width_scale, ow, in_w, out_w)
-                    output_offset = c * output_slice_size + od * out_w * out_h + oh * out_w + ow + 1
-                    output[output_offset] =
-                        d0lambda * h0lambda * w0lambda * input[idx(c, id0, ih0, iw0)] + # d0 * h0 * w0 * i000
-                        d0lambda * h0lambda * w1lambda * input[idx(c, id0, ih0, iw1)] + # d0 * h0 * w1 * i001
-                        d0lambda * h1lambda * w0lambda * input[idx(c, id0, ih1, iw0)] + # d0 * h1 * w0 * i010
-                        d0lambda * h1lambda * w1lambda * input[idx(c, id0, ih1, iw1)] + # d0 * h1 * w1 * i011
-                        d1lambda * h0lambda * w0lambda * input[idx(c, id1, ih0, iw0)] + # d1 * h0 * w0 * i100
-                        d1lambda * h0lambda * w1lambda * input[idx(c, id1, ih0, iw1)] + # d1 * h0 * w1 * i101
-                        d1lambda * h1lambda * w0lambda * input[idx(c, id1, ih1, iw0)] + # d1 * h1 * w0 * i110
-                        d1lambda * h1lambda * w1lambda * input[idx(c, id1, ih1, iw1)]   # d1 * h1 * w1 * i111
-                end
-            end
-        end
-    end
-    return output
-end
-
-
-
 """
-    ∇upsample_linear(Δ::AbstractArray{T,3}; size::Integer) where T
+    ∇upsample_linear(Δ::AbstractArray{T,3}; size::Integer, align_corners::Bool = true) where T
 
 # Arguments
 - `Δ`: Incoming gradient array, backpropagated from downstream layers
@@ -258,127 +244,26 @@ end
 # Outputs
 - `dx`: Downsampled version of `Δ`
 """
-function ∇upsample_linear(Δ::AbstractArray{T,N}; size::NTuple{<:Any,Integer}) where {T,N}
+function ∇upsample_linear(Δ::AbstractArray{T,N}; size::NTuple{<:Any,Integer}, align_corners::Bool = true) where {T,N}
     if Base.size(Δ)[1:N-2] == size
         return Δ
     end
-    dx = zero(similar(Δ, T, size..., Base.size(Δ)[end-1:end]...))
-    return ∇upsample_linear_kernel!(dx, Δ)
+    dx = fill!(similar(Δ, T, size..., Base.size(Δ)[end-1:end]...), zero(T))
+    return ∇upsample_linear_kernel!(dx, Δ; align_corners)
 end
 
-# linear
-function ∇upsample_linear_wcn!(dx::AbstractArray{T,3}, Δ::AbstractArray{T,3}) where T
-    size(dx)[2:3] == size(Δ)[2:3] || error("Number of input and output channels and batches must match. Got input $(size(input)) and output $(size(output))")
-    in_w, channels, batches = size(dx)
-    RT = real(T)
-    # treat batch and channel dimension as one for better parallelization granularity
-    channels *= batches
-    out_w, _, _ = size(Δ)
-    output_slice_size = out_w
 
-    width_scale = RT((in_w - 1) // (out_w - 1))
-
-    @inline idx(c, w) = c * in_w + w + 1
-
-    Threads.@threads for c in 0:channels-1
-        @inbounds for ow in 0:out_w-1
-            iw0, iw1, w0lambda, w1lambda = compute_source_index_and_lambda(width_scale, ow, in_w, out_w)
-            output_offset = c * output_slice_size + ow + 1
-            Δ_value = Δ[output_offset]
-            dx[idx(c, iw0)] += w0lambda * Δ_value # i00
-            dx[idx(c, iw1)] += w1lambda * Δ_value # i01
-        end
-    end
-    return dx
-end
-
-# bilinear
-function ∇upsample_bilinear_whcn!(dx::AbstractArray{T,4}, Δ::AbstractArray{T,4}) where T
-    size(dx)[3:4] == size(Δ)[3:4] || error("Number of input and output channels and batches must match. Got input $(size(input)) and output $(size(output))")
-    in_w, in_h, channels, batches = size(dx)
-    RT = real(T)
-    # treat batch and channel dimension as one for better parallelization granularity
-    channels *= batches
-    out_w, out_h, _, _ = size(Δ)
-    output_slice_size = out_h * out_w
-
-    width_scale  = RT((in_w - 1) // (out_w - 1))
-    height_scale = RT((in_h - 1) // (out_h - 1))
-
-    @inline idx(c, h, w) = c * in_h * in_w + h * in_w + w + 1
-
-    Threads.@threads for c in 0:channels-1
-        @inbounds for oh in 0:out_h-1
-            ih0, ih1, h0lambda, h1lambda = compute_source_index_and_lambda(height_scale, oh, in_h, out_h)
-            for ow in 0:out_w-1
-                iw0, iw1, w0lambda, w1lambda = compute_source_index_and_lambda(width_scale, ow, in_w, out_w)
-                output_offset = c * output_slice_size + oh * out_w + ow + 1
-                Δ_value = Δ[output_offset]
-                dx[idx(c, ih0, iw0)] += h0lambda * w0lambda * Δ_value # i00
-                dx[idx(c, ih0, iw1)] += h0lambda * w1lambda * Δ_value # i01
-                dx[idx(c, ih1, iw0)] += h1lambda * w0lambda * Δ_value # i10
-                dx[idx(c, ih1, iw1)] += h1lambda * w1lambda * Δ_value # i11
-            end
-        end
-    end
-    return dx
-end
-
-# trilinear
-function ∇upsample_trilinear_whdcn!(dx::AbstractArray{T,5}, Δ::AbstractArray{T,5}) where T
-    size(dx)[4:5] == size(Δ)[4:5] || error("Number of input and output channels and batches must match. Got dx $(size(dx)) and Δ $(size(Δ))")
-    in_w, in_h, in_d, channels, batches = size(dx)
-    RT = real(T)
-    # treat batch and channel dimension as one for better parallelization granularity
-    channels *= batches
-    out_w, out_h, out_d, _, _ = size(Δ)
-    output_slice_size = out_h * out_w * out_d
-
-    #real(T)() and // so that we can handle rationals (super slow)
-    width_scale  = RT((in_w - 1) // (out_w - 1))
-    height_scale = RT((in_h - 1) // (out_h - 1))
-    depth_scale  = RT((in_d - 1) // (out_d - 1))
-
-    @inline idx(c, d, h, w) = c * in_d * in_h * in_w + d * in_h * in_w + h * in_w + w + 1
-
-    Threads.@threads for c in 0:channels-1
-        @inbounds for od in 0:out_d-1
-            id0, id1, d0lambda, d1lambda = compute_source_index_and_lambda(depth_scale, od, in_d, out_d)
-            for oh in 0:out_h-1
-                ih0, ih1, h0lambda, h1lambda = compute_source_index_and_lambda(height_scale, oh, in_h, out_h)
-                for ow in 0:out_w-1
-                    iw0, iw1, w0lambda, w1lambda = compute_source_index_and_lambda(width_scale, ow, in_w, out_w)
-                    output_offset = c * output_slice_size + od * out_w * out_h + oh * out_w + ow + 1
-                    Δ_value = Δ[output_offset]
-                    dx[idx(c, id0, ih0, iw0)] += d0lambda * h0lambda * w0lambda * Δ_value  # /* i000 */
-                    dx[idx(c, id0, ih0, iw1)] += d0lambda * h0lambda * w1lambda * Δ_value  # /* i001 */
-                    dx[idx(c, id0, ih1, iw0)] += d0lambda * h1lambda * w0lambda * Δ_value  # /* i010 */
-                    dx[idx(c, id0, ih1, iw1)] += d0lambda * h1lambda * w1lambda * Δ_value  # /* i011 */
-                    dx[idx(c, id1, ih0, iw0)] += d1lambda * h0lambda * w0lambda * Δ_value  # /* i100 */
-                    dx[idx(c, id1, ih0, iw1)] += d1lambda * h0lambda * w1lambda * Δ_value  # /* i101 */
-                    dx[idx(c, id1, ih1, iw0)] += d1lambda * h1lambda * w0lambda * Δ_value  # /* i110 */
-                    dx[idx(c, id1, ih1, iw1)] += d1lambda * h1lambda * w1lambda * Δ_value  # /* i111 */
-                end
-            end
-        end
-    end
-    return dx
-end
-
-function rrule(::typeof(upsample_linear), x::AbstractArray{<:Any,N}; size) where N
-    Ω = upsample_linear(x; size=size)
+function rrule(::typeof(upsample_linear), x::AbstractArray{<:Any,N}; size, align_corners::Bool = true) where N
+    Ω = upsample_linear(x; size, align_corners)
     function upsample_linear_pullback(Δ)
-        (NoTangent(), ∇upsample_linear(unthunk(Δ); size=Base.size(x)[1:N-2]))
+        (NoTangent(), ∇upsample_linear(unthunk(Δ); size=Base.size(x)[1:N-2], align_corners))
     end
     return Ω, upsample_linear_pullback
 end
 
-###########
-# bilinear
-###########
 """
-    upsample_bilinear(x::AbstractArray{T,4}, scale::NTuple{2,Real})
-    upsample_bilinear(x::AbstractArray{T,4}; size::NTuple{2,Integer})
+    upsample_bilinear(x::AbstractArray{T,4}, scale::NTuple{2,Real}; align_corners::Bool = true)
+    upsample_bilinear(x::AbstractArray{T,4}; size::NTuple{2,Integer}, align_corners::Bool = true)
 
 Upsamples the first 2 dimensions of the array `x` by the upsample factors stored in `scale`,
 using bilinear interpolation. As an alternative to using `scale`, the resulting image `size`
@@ -417,12 +302,12 @@ julia> upsample_bilinear(x, (2.5, 3.5))  # non-integer scaling factors are allow
  4.0   4.22222  4.44444  4.66667  4.88889     5.33333  5.55556  5.77778  6.0
 ```
 """
-upsample_bilinear(x, scale) = upsample_linear(x, scale)
-upsample_bilinear(x; size)  = upsample_linear(x; size)
+upsample_bilinear(x, scale; align_corners::Bool = true) = upsample_linear(x, scale; align_corners)
+upsample_bilinear(x; size, align_corners::Bool = true)  = upsample_linear(x; size, align_corners)
 
 
 """
-    ∇upsample_bilinear(Δ::AbstractArray{T,4}; size::NTuple{2,Integer}) where T
+    ∇upsample_bilinear(Δ::AbstractArray{T,4}; size::NTuple{2,Integer}, align_corners::Bool = true) where T
 
 # Arguments
 - `Δ`: Incoming gradient array, backpropagated from downstream layers
@@ -431,11 +316,11 @@ upsample_bilinear(x; size)  = upsample_linear(x; size)
 # Outputs
 - `dx`: Downsampled version of `Δ`
 """
-∇upsample_bilinear(Δ; size) = ∇upsample_linear(Δ; size)
+∇upsample_bilinear(Δ; size, align_corners::Bool = true) = ∇upsample_linear(Δ; size, align_corners)
 
 """
-    upsample_trilinear(x::AbstractArray{T,5}, scale::NTuple{3,Real})
-    upsample_trilinear(x::AbstractArray{T,5}; size::NTuple{3,Integer})
+    upsample_trilinear(x::AbstractArray{T,5}, scale::NTuple{3,Real}; align_corners::Bool = true)
+    upsample_trilinear(x::AbstractArray{T,5}; size::NTuple{3,Integer}, align_corners::Bool = true)
 
 Upsamples the first 3 dimensions of the array `x` by the upsample factors stored in `scale`,
 using trilinear interpolation. As an alternative to using `scale`, the resulting image `size`
@@ -452,11 +337,11 @@ upsample_trilinear(x; size=(4, 9, 11))  # specify ouput size instead
 upsample_trilinear(x, (2.5, 3.5, pi))  # non-integer scaling factors are allowed
 ```
 """
-upsample_trilinear(x, scale) = upsample_linear(x, scale)
-upsample_trilinear(x; size)  = upsample_linear(x; size)
+upsample_trilinear(x, scale; align_corners::Bool = true) = upsample_linear(x, scale; align_corners)
+upsample_trilinear(x; size, align_corners::Bool = true)  = upsample_linear(x; size, align_corners)
 
 """
-    ∇upsample_trilinear(Δ::AbstractArray{T,5}; size::NTuple{3,Integer}) where T
+    ∇upsample_trilinear(Δ::AbstractArray{T,5}; size::NTuple{3,Integer}, align_corners::Bool = true) where T
 
 # Arguments
 - `Δ`: Incoming gradient array, backpropagated from downstream layers
@@ -465,79 +350,291 @@ upsample_trilinear(x; size)  = upsample_linear(x; size)
 # Outputs
 - `dx`: Downsampled version of `Δ`
 """
-∇upsample_trilinear(Δ; size)= ∇upsample_linear(Δ; size)
+∇upsample_trilinear(Δ; size, align_corners::Bool = true) = ∇upsample_linear(Δ; size, align_corners)
 
+function upsample_linear_kernel!(
+    y::AbstractArray{T, N}, x::AbstractArray{T, N}; align_corners::Bool = true,
+) where {T, N}
+    backend = KernelAbstractions.get_backend(x)
+    ndrange = backend isa CPU ?
+        size(y)[N - 1:end] : # Parallelization along channel x batch.
+        size(y)[1:N - 2] # Parallelization along WHD.
+    ratios = align_corners ?
+        ntuple(i -> real(T)((size(x, i) - 1) / (size(y, i) - 1)), N - 2) :
+        ntuple(i -> real(T)(size(x, i) / size(y, i)), N - 2)
+    _upsample_linear_kernel!(backend)(backend, y, x, ratios..., Val(align_corners); ndrange)
+    return y
+end
 
+function ∇upsample_linear_kernel!(
+    dx::AbstractArray{T, N}, Δ::AbstractArray{T, N}; align_corners::Bool = true,
+) where {T, N}
+    backend = KernelAbstractions.get_backend(dx)
+    ndrange = backend isa CPU ?
+        size(Δ)[N - 1:end] : # Parallelization along channel x batch.
+        size(Δ)[1:N - 2] # Parallelization along WHD.
+    ratios = align_corners ?
+        ntuple(i -> real(T)((size(dx, i) - 1) / (size(Δ, i) - 1)), N - 2) :
+        ntuple(i -> real(T)(size(dx, i) / size(Δ, i)), N - 2)
+    _∇upsample_linear_kernel!(backend)(backend, dx, Δ, ratios..., Val(align_corners); ndrange)
+    return dx
+end
 
-"""
-    pixel_shuffle(x, r::Integer)
+# Compatibility layer for old versions of NNlibCUDA.
+# TODO Can be removed from NNlib 0.9.
+upsample_linear_wcn!(y, x) = upsample_linear_kernel!(y, x)
+upsample_bilinear_whcn!(y, x) = upsample_linear_kernel!(y, x)
+upsample_trilinear_whdcn!(y, x) = upsample_linear_kernel!(y, x)
+∇upsample_linear_wcn!(y, x) = ∇upsample_linear_kernel!(y, x)
+∇upsample_bilinear_whcn!(y, x) = ∇upsample_linear_kernel!(y, x)
+∇upsample_trilinear_whdcn!(y, x) = ∇upsample_linear_kernel!(y, x)
 
-Pixel shuffling operation, upscaling by a factor `r`.
+# Linear (CPU): parallelization along channel x batch dimensions.
 
-For 4-arrays representing `N` images, the operation converts input `size(x) == (W, H, r^2*C, N)`
-to output of size `(r*W, r*H, C, N)`. For `D`-dimensional data, it expects `ndims(x) == D+2`
-with channel and batch dimensions, and divides the number of channels by `r^D`.
+@kernel function _upsample_linear_kernel!(::CPU, y::T, x::T, rwidth, align::Val{A}) where {
+    T <: AbstractArray{<:Any, 3}, A,
+}
+    @uniform in_width::UInt32, channels::UInt32, batch::UInt32 = size(x)
+    @uniform out_width::UInt32 = size(y, 1)
+    c::UInt32, n::UInt32 = @index(Global, NTuple)
+    yv, xv = @view(y[:, c, n]), @view(x[:, c, n])
+    @inbounds for i in UnitRange{UInt32}(one(UInt32), out_width)
+        iw0, iw1, w0λ, w1λ = source_idx_and_λ(rwidth, i - one(UInt32), align, in_width)
+        yv[i] = w0λ * xv[iw0] + w1λ * xv[iw1]
+    end
+end
 
-Used in super-resolution networks to upsample towards high resolution features.
-Reference: Shi et. al., "Real-Time Single Image and Video Super-Resolution ...", CVPR 2016, https://arxiv.org/abs/1609.05158
+@kernel function _∇upsample_linear_kernel!(::CPU, dx::T1, Δ::T2, rwidth, align::Val{A}) where {
+    T1 <: AbstractArray{<:Any, 3}, T2 <: AbstractArray{<:Any, 3}, A,
+}
+    @uniform in_width::UInt32, channels::UInt32, batch::UInt32 = size(Δ)
+    @uniform out_width::UInt32 = size(dx, 1)
+    c::UInt32, n::UInt32 = @index(Global, NTuple)
+    Δv, dxv = @view(Δ[:, c, n]), @view(dx[:, c, n])
+    @inbounds for i in UnitRange{UInt32}(one(UInt32), in_width)
+        ow0, ow1, w0λ, w1λ = source_idx_and_λ(rwidth, i - one(UInt32), align, out_width)
+        val = Δv[i]
+        dxv[ow0] += w0λ * val
+        dxv[ow1] += w1λ * val
+    end
+end
 
-# Examples
+# Linear (GPU): parallelization along width dimension.
+# TODO replace AbstractArray -> AbstractGPUArray once device arrays subtype it.
 
-```jldoctest
-julia> x = [10i + j + channel/10 for i in 1:2, j in 1:3, channel in 1:4, batch in 1:1]
-2×3×4×1 Array{Float64, 4}:
-[:, :, 1, 1] =
- 11.1  12.1  13.1
- 21.1  22.1  23.1
+@kernel function _upsample_linear_kernel!(::B, y::T, x::T, rwidth, align::Val{A}) where {
+    B <: GPU, T <: AbstractArray{<:Any, 3}, A,
+}
+    @uniform in_width::UInt32, channels::UInt32, batch::UInt32 = size(x)
+    i::UInt32 = @index(Global)
+    iw0, iw1, w0λ, w1λ = source_idx_and_λ(rwidth, i - one(UInt32), align, in_width)
+    @inbounds for n in UnitRange{UInt32}(one(UInt32), batch), c in UnitRange{UInt32}(one(UInt32), channels)
+        y[i, c, n] = w0λ * x[iw0, c, n] + w1λ * x[iw1, c, n]
+    end
+end
 
-[:, :, 2, 1] =
- 11.2  12.2  13.2
- 21.2  22.2  23.2
+@kernel function _∇upsample_linear_kernel!(::B, dx::T, Δ::T, rwidth, align::Val{A}) where {
+    B <: GPU, T <: AbstractArray{<:Any, 3}, A,
+}
+    @uniform in_width::UInt32, channels::UInt32, batch::UInt32 = size(Δ)
+    @uniform out_width::UInt32 = size(dx, 1)
+    i::UInt32 = @index(Global)
+    ow0, ow1, w0λ, w1λ = source_idx_and_λ(rwidth, i - one(UInt32), align, out_width)
+    @inbounds for n in UnitRange{UInt32}(one(UInt32), batch), c in UnitRange{UInt32}(one(UInt32), channels)
+        val = Δ[i, c, n]
+        @atomic dx[ow0, c, n] += w0λ * val
+        @atomic dx[ow1, c, n] += w1λ * val
+    end
+end
 
-[:, :, 3, 1] =
- 11.3  12.3  13.3
- 21.3  22.3  23.3
+# Bilinear (CPU): parallelization along channel x batch dimensions.
 
-[:, :, 4, 1] =
- 11.4  12.4  13.4
- 21.4  22.4  23.4
+@kernel function _upsample_linear_kernel!(::CPU, y::T, x::T, rwidth, rheight, align::Val{A}) where {
+    T <: AbstractArray{<:Any, 4}, A,
+}
+    @uniform in_width::UInt32, in_height::UInt32, channels::UInt32, batch::UInt32 = size(x)
+    @uniform out_width::UInt32, out_height::UInt32 = size(y)[1:2]
+    c::UInt32, n::UInt32 = @index(Global, NTuple)
+    yv, xv = @view(y[:, :, c, n]), @view(x[:, :, c, n])
+    for j in UnitRange{UInt32}(one(UInt32), out_height)
+        ih0, ih1, h0λ, h1λ = source_idx_and_λ(rheight, j - one(UInt32), align, in_height)
+        for i in UnitRange{UInt32}(one(UInt32), out_width)
+            iw0, iw1, w0λ, w1λ = source_idx_and_λ(rwidth, i - one(UInt32), align, in_width)
+            @inbounds yv[i, j] =
+                h0λ * (w0λ * xv[iw0, ih0] + w1λ * xv[iw1, ih0]) +
+                h1λ * (w0λ * xv[iw0, ih1] + w1λ * xv[iw1, ih1])
+        end
+    end
+end
 
-julia> pixel_shuffle(x, 2)  # 4 channels used up as 2x upscaling of image dimensions
-4×6×1×1 Array{Float64, 4}:
-[:, :, 1, 1] =
- 11.1  11.3  12.1  12.3  13.1  13.3
- 11.2  11.4  12.2  12.4  13.2  13.4
- 21.1  21.3  22.1  22.3  23.1  23.3
- 21.2  21.4  22.2  22.4  23.2  23.4
+@kernel function _∇upsample_linear_kernel!(::CPU, dx::T1, Δ::T2, rwidth, rheight, align::Val{A}) where {
+    T1 <: AbstractArray{<:Any, 4}, T2 <: AbstractArray{<:Any, 4}, A,
+}
+    @uniform in_width::UInt32, in_height::UInt32, channels::UInt32, batch::UInt32 = size(Δ)
+    @uniform out_width::UInt32, out_height::UInt32 = size(dx)[1:2]
+    c::UInt32, n::UInt32 = @index(Global, NTuple)
+    Δv, dxv = @view(Δ[:, :, c, n]), @view(dx[:, :, c, n])
+    for j in UnitRange{UInt32}(one(UInt32), in_height)
+        oh0, oh1, h0λ, h1λ = source_idx_and_λ(rheight, j - one(UInt32), align, out_height)
+        @inbounds for i in UnitRange{UInt32}(one(UInt32), in_width)
+            ow0, ow1, w0λ, w1λ = source_idx_and_λ(rwidth, i - one(UInt32), align, out_width)
+            val = Δv[i, j]
+            dxv[ow0, oh0] += w0λ * h0λ * val
+            dxv[ow1, oh0] += w1λ * h0λ * val
+            dxv[ow0, oh1] += w0λ * h1λ * val
+            dxv[ow1, oh1] += w1λ * h1λ * val
+        end
+    end
+end
 
-julia> y = [i + channel/10 for i in 1:3, channel in 1:6, batch in 1:1]
-3×6×1 Array{Float64, 3}:
-[:, :, 1] =
- 1.1  1.2  1.3  1.4  1.5  1.6
- 2.1  2.2  2.3  2.4  2.5  2.6
- 3.1  3.2  3.3  3.4  3.5  3.6
+# Bilinear (GPU): parallelization along width, height dimensions.
 
-julia> pixel_shuffle(y, 2)  # 1D image, with 6 channels reduced to 3
-6×3×1 Array{Float64, 3}:
-[:, :, 1] =
- 1.1  1.3  1.5
- 1.2  1.4  1.6
- 2.1  2.3  2.5
- 2.2  2.4  2.6
- 3.1  3.3  3.5
- 3.2  3.4  3.6
-```
-"""
-function pixel_shuffle(x::AbstractArray, r::Integer)
-    ndims(x) > 2 || throw(ArgumentError("expected x with at least 3 dimensions"))
-    d = ndims(x) - 2
-    sizein = size(x)[1:d]
-    cin, n = size(x, d+1), size(x, d+2)
-    cin % r^d == 0 || throw(ArgumentError("expected channel dimension to be divisible by r^d = $(
-        r^d), where d=$d is the number of spatial dimensions. Given r=$r, input size(x) = $(size(x))"))
-    cout = cin ÷ r^d
-    x = reshape(x, sizein..., ntuple(i->r, d)..., cout, n)
-    perm = hcat(d+1:2d, 1:d) |> transpose |> vec  # = [d+1, 1, d+2, 2, ..., 2d, d]
-    x = permutedims(x, (perm..., 2d+1, 2d+2))
-    return reshape(x, map(s -> s*r, sizein)..., cout, n)
+@kernel function _upsample_linear_kernel!(::B, y::T, x::T, rwidth, rheight, align::Val{A}) where {
+    B <: GPU, T <: AbstractArray{<:Any, 4}, A,
+}
+    @uniform in_width::UInt32, in_height::UInt32, channels::UInt32, batch::UInt32 = size(x)
+    i::UInt32, j::UInt32 = @index(Global, NTuple)
+    iw0, iw1, w0λ, w1λ = source_idx_and_λ(rwidth, i - one(UInt32), align, in_width)
+    ih0, ih1, h0λ, h1λ = source_idx_and_λ(rheight, j - one(UInt32), align, in_height)
+    @inbounds for n in UnitRange{UInt32}(one(UInt32), batch), c in UnitRange{UInt32}(one(UInt32), channels)
+        y[i, j, c, n] =
+            h0λ * (w0λ * x[iw0, ih0, c, n] + w1λ * x[iw1, ih0, c, n]) +
+            h1λ * (w0λ * x[iw0, ih1, c, n] + w1λ * x[iw1, ih1, c, n])
+    end
+end
+
+@kernel function _∇upsample_linear_kernel!(::B, dx::T, Δ::T, rwidth, rheight, align::Val{A}) where {
+    B <: GPU, T <: AbstractArray{<:Any, 4}, A,
+}
+    @uniform in_width::UInt32, in_height::UInt32, channels::UInt32, batch::UInt32 = size(Δ)
+    @uniform out_width::UInt32, out_height::UInt32 = size(dx)[1:2]
+    i::UInt32, j::UInt32 = @index(Global, NTuple)
+    ow0, ow1, w0λ, w1λ = source_idx_and_λ(rwidth, i - one(UInt32), align, out_width)
+    oh0, oh1, h0λ, h1λ = source_idx_and_λ(rheight, j - one(UInt32), align, out_height)
+    @inbounds for n in UnitRange{UInt32}(one(UInt32), batch), c in UnitRange{UInt32}(one(UInt32), channels)
+        val = Δ[i, j, c, n]
+        @atomic dx[ow0, oh0, c, n] += w0λ * h0λ * val
+        @atomic dx[ow1, oh0, c, n] += w1λ * h0λ * val
+        @atomic dx[ow0, oh1, c, n] += w0λ * h1λ * val
+        @atomic dx[ow1, oh1, c, n] += w1λ * h1λ * val
+    end
+end
+
+# Trilinear (CPU): parallelization along channel x batch dimensions.
+
+@kernel function _upsample_linear_kernel!(::CPU, y::T, x::T, rwidth, rheight, rdepth, align::Val{A}) where {
+    T <: AbstractArray{<:Any, 5}, A,
+}
+    @uniform in_width::UInt32, in_height::UInt32, in_depth::UInt32 = size(x)[1:3]
+    @uniform channels::UInt32, batch::UInt32 = size(x, 4), size(x, 5)
+    @uniform out_width::UInt32, out_height::UInt32, out_depth::UInt32 = size(y)[1:3]
+    c::UInt32, n::UInt32 = @index(Global, NTuple)
+    yv, xv = @view(y[:, :, :, c, n]), @view(x[:, :, :, c, n])
+    for k in UnitRange{UInt32}(one(UInt32), out_depth)
+        id0, id1, d0λ, d1λ = source_idx_and_λ(rdepth, k - one(UInt32), align, in_depth)
+        for j in UnitRange{UInt32}(one(UInt32), out_height)
+            ih0, ih1, h0λ, h1λ = source_idx_and_λ(rheight, j - one(UInt32), align, in_height)
+            for i in UnitRange{UInt32}(one(UInt32), out_width)
+                iw0, iw1, w0λ, w1λ = source_idx_and_λ(rwidth, i - one(UInt32), align, in_width)
+                @inbounds yv[i, j, k] =
+                    d0λ * (
+                        h0λ * (w0λ * xv[iw0, ih0, id0] + w1λ * xv[iw1, ih0, id0]) +
+                        h1λ * (w0λ * xv[iw0, ih1, id0] + w1λ * xv[iw1, ih1, id0])) +
+                    d1λ * (
+                        h0λ * (w0λ * xv[iw0, ih0, id1] + w1λ * xv[iw1, ih0, id1]) +
+                        h1λ * (w0λ * xv[iw0, ih1, id1] + w1λ * xv[iw1, ih1, id1]))
+            end
+        end
+    end
+end
+
+@kernel function _∇upsample_linear_kernel!(::CPU, dx::T1, Δ::T2, rwidth, rheight, rdepth, align::Val{A}) where {
+    T1 <: AbstractArray{<:Any, 5}, T2 <: AbstractArray{<:Any, 5}, A,
+}
+    @uniform in_width::UInt32, in_height::UInt32, in_depth::UInt32 = size(Δ)[1:3]
+    @uniform channels::UInt32, batch::UInt32 = size(Δ, 4), size(Δ, 5)
+    @uniform out_width::UInt32, out_height::UInt32, out_depth::UInt32 = size(dx)[1:3]
+    c::UInt32, n::UInt32 = @index(Global, NTuple)
+    Δv, dxv = @view(Δ[:, :, :, c, n]), @view(dx[:, :, :, c, n])
+    for k in UnitRange{UInt32}(one(UInt32), in_depth)
+        od0, od1, d0λ, d1λ = source_idx_and_λ(rdepth, k - one(UInt32), align, out_depth)
+        for j in UnitRange{UInt32}(one(UInt32), in_height)
+            oh0, oh1, h0λ, h1λ = source_idx_and_λ(rheight, j - one(UInt32), align, out_height)
+            @inbounds for i in UnitRange{UInt32}(one(UInt32), in_width)
+                ow0, ow1, w0λ, w1λ = source_idx_and_λ(rwidth, i - one(UInt32), align, out_width)
+                val = Δv[i, j, k]
+                dxv[ow0, oh0, od0] += w0λ * h0λ * d0λ * val
+                dxv[ow1, oh0, od0] += w1λ * h0λ * d0λ * val
+                dxv[ow0, oh1, od0] += w0λ * h1λ * d0λ * val
+                dxv[ow1, oh1, od0] += w1λ * h1λ * d0λ * val
+
+                dxv[ow0, oh0, od1] += w0λ * h0λ * d1λ * val
+                dxv[ow1, oh0, od1] += w1λ * h0λ * d1λ * val
+                dxv[ow0, oh1, od1] += w0λ * h1λ * d1λ * val
+                dxv[ow1, oh1, od1] += w1λ * h1λ * d1λ * val
+            end
+        end
+    end
+end
+
+# Trilinear (GPU): parallelization along width x height x depth dimensions.
+
+@kernel function _upsample_linear_kernel!(::B, y::T, x::T, rwidth, rheight, rdepth, align::Val{A}) where {
+    B <: GPU, T <: AbstractArray{<:Any, 5}, A,
+}
+    @uniform in_width::UInt32, in_height::UInt32, in_depth::UInt32 = size(x)[1:3]
+    @uniform channels::UInt32, batch::UInt32 = size(x, 4), size(x, 5)
+    i::UInt32, j::UInt32, k::UInt32 = @index(Global, NTuple)
+    iw0, iw1, w0λ, w1λ = source_idx_and_λ(rwidth, i - one(UInt32), align, in_width)
+    ih0, ih1, h0λ, h1λ = source_idx_and_λ(rheight, j - one(UInt32), align, in_height)
+    id0, id1, d0λ, d1λ = source_idx_and_λ(rdepth, k - one(UInt32), align, in_depth)
+    @inbounds for n in UnitRange{UInt32}(one(UInt32), batch), c in UnitRange{UInt32}(one(UInt32), channels)
+        y[i, j, k, c, n] =
+            d0λ * (
+                h0λ * (w0λ * x[iw0, ih0, id0, c, n] + w1λ * x[iw1, ih0, id0, c, n]) +
+                h1λ * (w0λ * x[iw0, ih1, id0, c, n] + w1λ * x[iw1, ih1, id0, c, n])) +
+            d1λ * (
+                h0λ * (w0λ * x[iw0, ih0, id1, c, n] + w1λ * x[iw1, ih0, id1, c, n]) +
+                h1λ * (w0λ * x[iw0, ih1, id1, c, n] + w1λ * x[iw1, ih1, id1, c, n]))
+    end
+end
+
+@kernel function _∇upsample_linear_kernel!(::B, dx::T, Δ::T, rwidth, rheight, rdepth, align::Val{A}) where {
+    B <: GPU, T <: AbstractArray{<:Any, 5}, A,
+}
+    @uniform in_width::UInt32, in_height::UInt32, in_depth::UInt32 = size(Δ)[1:3]
+    @uniform channels::UInt32, batch::UInt32 = size(Δ, 4), size(Δ, 5)
+    @uniform out_width::UInt32, out_height::UInt32, out_depth::UInt32 = size(dx)[1:3]
+    i::UInt32, j::UInt32, k::UInt32 = @index(Global, NTuple)
+    ow0, ow1, w0λ, w1λ = source_idx_and_λ(rwidth, i - one(UInt32), align, out_width)
+    oh0, oh1, h0λ, h1λ = source_idx_and_λ(rheight, j - one(UInt32), align, out_height)
+    od0, od1, d0λ, d1λ = source_idx_and_λ(rdepth, k - one(UInt32), align, out_depth)
+    @inbounds for n in UnitRange{UInt32}(one(UInt32), batch), c in UnitRange{UInt32}(one(UInt32), channels)
+        val = Δ[i, j, k, c, n]
+        @atomic dx[ow0, oh0, od0, c, n] += w0λ * h0λ * d0λ * val
+        @atomic dx[ow1, oh0, od0, c, n] += w1λ * h0λ * d0λ * val
+        @atomic dx[ow0, oh1, od0, c, n] += w0λ * h1λ * d0λ * val
+        @atomic dx[ow1, oh1, od0, c, n] += w1λ * h1λ * d0λ * val
+
+        @atomic dx[ow0, oh0, od1, c, n] += w0λ * h0λ * d1λ * val
+        @atomic dx[ow1, oh0, od1, c, n] += w1λ * h0λ * d1λ * val
+        @atomic dx[ow0, oh1, od1, c, n] += w0λ * h1λ * d1λ * val
+        @atomic dx[ow1, oh1, od1, c, n] += w1λ * h1λ * d1λ * val
+    end
+end
+
+@inline function source_idx_and_λ(
+    ratio::T, out_idx::UInt32, ::Val{align}, in_width::UInt32,
+) where {T, align}
+    real_index = align ?
+        ratio * out_idx :
+        max(zero(T), ratio * (out_idx + T(0.5)) - T(0.5))
+
+    iw0 = floor(UInt32, real_index)
+    offset::UInt32 = ifelse(iw0 < in_width - one(UInt32), one(UInt32), zero(UInt32))
+    iw1 = iw0 + offset + one(UInt32)
+
+    w1lambda = real_index - iw0
+    w0lambda = one(T) - w1lambda
+    return iw0 + one(UInt32), iw1, w0lambda, w1lambda
 end

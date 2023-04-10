@@ -1,17 +1,20 @@
 module NNlib
 
-using Pkg
-using Requires
-using ChainRulesCore
 import ChainRulesCore: rrule
+
 using Base.Broadcast: broadcasted
 using Base.Threads
+using ChainRulesCore
+using KernelAbstractions
+using KernelAbstractions: @atomic
+using LinearAlgebra
+using LinearAlgebra.BLAS: @blasfunc, BlasInt
+using LinearAlgebra: AdjOrTransAbsMat, Adjoint, BlasFloat, Transpose
+using Pkg
 using Random
+using Requires
 using Statistics
 using Statistics: mean
-using LinearAlgebra
-using LinearAlgebra: BlasFloat, Transpose, Adjoint, AdjOrTransAbsMat
-using LinearAlgebra.BLAS: BlasInt, @blasfunc
 
 const libblas = Base.libblas_name
 
