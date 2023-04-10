@@ -35,7 +35,7 @@ function nnlib_testsuite(Backend; skip_tests = Set{String}())
 end
 
 @testset "NNlib.jl" verbose=true begin
-    @testset "Test Suite" begin
+    @testset verbose=true "Test Suite" begin
         @testset "CPU" begin
             nnlib_testsuite(CPU)
         end

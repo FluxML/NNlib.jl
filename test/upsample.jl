@@ -1,25 +1,26 @@
 function upsample_testsuite(Backend)
-    cpu, backend = CPU(), Backend()
+    cpu(x) = adapt(CPU(), x)
+    device(x) = adapt(Backend(), x)
+    gradtest_fn = KernelAbstractions.isgpu(Backend()) ? gputest : gradtest
     T = Float32 # TODO test against all supported eltypes for each backend.
     atol = T == Float32 ? 1e-3 : 1e-6
-    gradtest_fn = backend == CPU() ? gradtest : gputest
 
     @testset "upsample_nearest, integer scale via reshape" begin
-        x = adapt(backend, reshape(T[1 2; 3 4], (2,2,1,1)))
-        @test adapt(cpu, upsample_nearest(x, (3,3)))[1,:] == [1,1,1, 2,2,2]
+        x = device(reshape(T[1 2; 3 4], (2,2,1,1)))
+        @test cpu(upsample_nearest(x, (3,3)))[1,:] == [1,1,1, 2,2,2]
 
         y = upsample_nearest(x, (2,3))
         @test size(y) == (4,6,1,1)
         y2 = upsample_nearest(x, size=(4,6))
-        @test adapt(cpu, y) ≈ adapt(cpu, y2)
+        @test cpu(y) ≈ cpu(y2)
 
-        @test adapt(cpu, ∇upsample_nearest(y, (2,3)))[:, :, 1, 1] == [6 12; 18 24]
+        @test cpu(∇upsample_nearest(y, (2,3)))[:, :, 1, 1] == [6 12; 18 24]
         gradtest_fn(
             x -> upsample_nearest(x, (2,3)),
-            adapt(backend, rand(T, 2,2,1,1)); atol)
+            device(rand(T, 2,2,1,1)); atol)
         gradtest_fn(
             x -> upsample_nearest(x, size=(4,6)),
-            adapt(backend, rand(T, 2,2,1,1)); atol)
+            device(rand(T, 2,2,1,1)); atol)
 
         @test_throws ArgumentError ∇upsample_nearest(y, (2,4))
         @test_throws ArgumentError upsample_nearest(x, (1,2,3,4,5))
@@ -33,9 +34,9 @@ function upsample_testsuite(Backend)
         y = collect(1:1//3:4)
         y = hcat(y,y,y)[:,:,:]
 
-        xd = adapt(backend, x)
-        @test y ≈ adapt(cpu, upsample_linear(xd, 2.5))
-        @test y ≈ adapt(cpu, upsample_linear(xd; size=10))
+        xd = device(x)
+        @test y ≈ cpu(upsample_linear(xd, 2.5))
+        @test y ≈ cpu(upsample_linear(xd; size=10))
         gradtest_fn(x -> upsample_linear(x, 2.5), xd; atol)
     end
 
@@ -56,18 +57,18 @@ function upsample_testsuite(Backend)
         y_true = cat(y_true, y_true; dims=3)
         y_true = cat(y_true, y_true; dims=4)
 
-        xd = adapt(backend, x)
+        xd = device(x)
         y = upsample_bilinear(xd, (3, 2))
         @test size(y) == size(y_true)
         @test eltype(y) == Float32
-        @test adapt(cpu, y) ≈ y_true
+        @test cpu(y) ≈ y_true
 
         gradtest_fn(x -> upsample_bilinear(x, (3, 2)), xd; atol)
 
         # additional grad check, also compliant with pytorch
         o = ones(Float32,6,4,2,1)
         grad_true = 6*ones(Float32,2,2,2,1)
-        @test adapt(cpu, ∇upsample_bilinear(adapt(backend, o); size = (2,2))) ≈ grad_true
+        @test cpu(∇upsample_bilinear(device(o); size = (2,2))) ≈ grad_true
 
         # CPU only tests.
 
@@ -110,7 +111,7 @@ function upsample_testsuite(Backend)
         y_true[:,:,4,:,:] .= 2.5
         y_true[:,:,5,:,:] .= 3.
 
-        xd = adapt(backend, x)
+        xd = device(x)
         y = upsample_trilinear(xd; size=(5,5,5))
 
         @test size(y) == size(y_true)
@@ -122,9 +123,9 @@ function upsample_testsuite(Backend)
             atol=(T == Float32) ? 1e-2 : 1e-5)
 
         # This test only works when `align_corners=false`.
-        o = adapt(backend, ones(Float32,8,8,8,1,1))
+        o = device(ones(Float32,8,8,8,1,1))
         grad_true = 8 * ones(Float32,4,4,4,1,1)
-        @test adapt(cpu, ∇upsample_trilinear(o; size=(4,4,4), align_corners=false)) ≈ grad_true
+        @test cpu(∇upsample_trilinear(o; size=(4,4,4), align_corners=false)) ≈ grad_true
     end
 
     @testset "pixel_shuffle" begin
@@ -147,9 +148,9 @@ function upsample_testsuite(Backend)
                   2 10 4 12
                   6 14 8 16][:,:,:,:]
 
-        y = pixel_shuffle(adapt(backend, x), 2)
+        y = pixel_shuffle(device(x), 2)
         @test size(y) == size(y_true)
-        @test y_true == adapt(cpu, y)
+        @test y_true == cpu(y)
 
         x = reshape(1:32, (2, 2, 8, 1))
         y_true = zeros(Int, 4, 4, 2, 1)
@@ -163,20 +164,20 @@ function upsample_testsuite(Backend)
                              18  26  20  28
                              22  30  24  32]
 
-        y = pixel_shuffle(adapt(backend, x), 2)
+        y = pixel_shuffle(device(x), 2)
         @test size(y) == size(y_true)
-        @test y_true == adapt(cpu, y)
+        @test y_true == cpu(y)
 
         x = reshape(1:4*3*27*2, (4,3,27,2))
-        y = pixel_shuffle(adapt(backend, x), 3)
+        y = pixel_shuffle(device(x), 3)
         @test size(y) == (12, 9, 3, 2)
 
         # batch dimension is preserved
         x1 = x[:,:,:,[1]]
         x2 = x[:,:,:,[2]]
-        y1 = pixel_shuffle(adapt(backend, x1), 3)
-        y2 = pixel_shuffle(adapt(backend, x2), 3)
-        @test adapt(cpu, cat(y1, y2, dims=4)) == adapt(cpu, y)
+        y1 = pixel_shuffle(device(x1), 3)
+        y2 = pixel_shuffle(device(x2), 3)
+        @test cpu(cat(y1, y2, dims=4)) == cpu(y)
 
         for d in [1, 2, 3]
             r = rand(1:5)
@@ -184,7 +185,7 @@ function upsample_testsuite(Backend)
             c = rand(1:5)
             insize = rand(1:5, d)
             x = rand(insize..., r^d*c, n)
-            xd = adapt(backend, x)
+            xd = device(x)
 
             y = pixel_shuffle(xd, r)
             @test size(y) == ((r .* insize)..., c, n)
@@ -195,19 +196,19 @@ function upsample_testsuite(Backend)
     @testset "Complex-valued upsample" begin
         for (d, method) in zip([1, 2, 3], [upsample_linear, upsample_bilinear, upsample_trilinear])
             for (k, interp) in zip((2, ntuple(_ -> 2,  d)), [method, upsample_nearest])
-                x = adapt(backend, randn(Complex{Float32}, (4,8,12)[1:d]..., 1, 1))
+                x = device(randn(Complex{Float32}, (4,8,12)[1:d]..., 1, 1))
 
                 upsize = (8, 16, 24)[1:d]
                 xup = interp(x, k)
                 @test size(xup)[1:d] == upsize
-                @test adapt(cpu, real(xup)) == adapt(cpu, interp(real(x), k))
-                @test adapt(cpu, imag(xup)) == adapt(cpu, interp(imag(x), k))
+                @test cpu(real(xup)) == cpu(interp(real(x), k))
+                @test cpu(imag(xup)) == cpu(interp(imag(x), k))
 
                 upsize = (8,24,48)[1:d]
                 xup = interp(x; size=upsize)
                 @test size(xup)[1:d] == upsize
-                @test adapt(cpu, real(xup)) == adapt(cpu, interp(real(x), size=upsize))
-                @test adapt(cpu, imag(xup)) == adapt(cpu, interp(imag(x), size=upsize))
+                @test cpu(real(xup)) == cpu(interp(real(x), size=upsize))
+                @test cpu(imag(xup)) == cpu(interp(imag(x), size=upsize))
             end
         end
     end
