@@ -125,7 +125,7 @@ end
 )
     i = @index(Global)
     j, k = divrem(i - 1, max_dims_idx)
-    dst[i] = src[dim_ids[k + 1], Tuple(idx[j + 1])...]
+    @inbounds dst[i] = src[dim_ids[k + 1], Tuple(idx[j + 1])...]
 end
 
 ∇gather_src(Δ, src_size, idx) = scatter!(+, fill!(similar(Δ, eltype(Δ), src_size), 0), Δ, idx)

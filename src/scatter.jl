@@ -108,8 +108,8 @@ end
 
 @kernel function _scatter!(op::OP, dst, src, idxs) where OP
     i = @index(Global)
-    idx = Tuple(idxs[i])
-    Atomix.modify!(Atomix.IndexableRef(dst, idx), op, src[i])
+    @inbounds idx = Tuple(idxs[i])
+    @inbounds Atomix.modify!(Atomix.IndexableRef(dst, idx), op, src[i])
     # FIXME `@atomic` macro silently fails to perform atomic op below
     # @atomic dst[idx...] = op(dst[idx...], src[i])
 end
@@ -119,8 +119,8 @@ end
 ) where OP
     i = @index(Global)
     j, k = divrem(i - 1, max_dims_idx)
-    idx = (Tuple(dim_ids[k + 1])..., Tuple(idxs[j + 1])...)
-    Atomix.modify!(Atomix.IndexableRef(dst, idx), op, src[i])
+    @inbounds idx = (Tuple(dim_ids[k + 1])..., Tuple(idxs[j + 1])...)
+    @inbounds Atomix.modify!(Atomix.IndexableRef(dst, idx), op, src[i])
     # FIXME
     # dim_i = Tuple(dim_ids[k + 1])
     # idx = idxs[j + 1]
@@ -246,13 +246,15 @@ end
 @kernel function _∇scatter_src(op, Δsrc, src::AbstractArray{T}, idx, rev_idx) where T
     i = @index(Global)
     cart_j = CartesianIndices(idx)[i]
-    inds = rev_idx[Tuple(idx[cart_j])...]
-    x = one(T)
-    for k in inds
-        x *= src[k]
+    @inbounds begin
+        inds = rev_idx[Tuple(idx[cart_j])...]
+        x = one(T)
+        for k in inds
+            x *= src[k]
+        end
+        x /= src[cart_j]
+        Δsrc[cart_j] = op(Δsrc[cart_j], x)
     end
-    x /= src[cart_j]
-    Δsrc[cart_j] = op(Δsrc[cart_j], x)
 end
 
 @kernel function _∇scatter_src(
@@ -261,15 +263,17 @@ end
 ) where T
     i = @index(Global)
     j, k = fldmod1(i, max_dims_idx)
-    cart_j = CartesianIndices(idx)[j]
-    cart_k = dim_ids[k]
-    inds = rev_idx[Tuple(cart_j)...]
-    x = one(T)
-    for s in inds
-        x *= src[Tuple(cart_k)..., Tuple(s)...]
+    @inbounds begin
+        cart_j = CartesianIndices(idx)[j]
+        cart_k = dim_ids[k]
+        inds = rev_idx[Tuple(cart_j)...]
+        x = one(T)
+        for s in inds
+            x *= src[Tuple(cart_k)..., Tuple(s)...]
+        end
+        x /= src[i]
+        Δsrc[i] = op(Δsrc[i], x)
     end
-    x /= src[i]
-    Δsrc[i] = op(Δsrc[i], x)
 end
 
 function ∇scatter_src(
