@@ -46,9 +46,9 @@ end
 
 @testset "NNlib.jl" verbose=true begin
     @testset verbose=true "Test Suite" begin
-        # @testset "CPU" begin
-        #     nnlib_testsuite(CPU)
-        # end
+        @testset "CPU" begin
+            nnlib_testsuite(CPU)
+        end
 
         if get(ENV, "NNLIB_TEST_CUDA", "false") == "true"
             using CUDA
