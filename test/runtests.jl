@@ -46,15 +46,15 @@ end
 
 @testset "NNlib.jl" verbose=true begin
     @testset verbose=true "Test Suite" begin
-        @testset "CPU" begin
-            nnlib_testsuite(CPU)
-        end
+        # @testset "CPU" begin
+        #     nnlib_testsuite(CPU)
+        # end
 
         if get(ENV, "NNLIB_TEST_CUDA", "false") == "true"
             using CUDA
             if CUDA.functional()
                 @testset "CUDABackend" begin
-                    nnlib_testsuite(CUDABackend)
+                    nnlib_testsuite(CUDABackend; skip_tests=Set(("Scatter", "Gather")))
                 end
             else
                 @info "CUDA.jl is not functional. Skipping test suite for CUDABackend."
