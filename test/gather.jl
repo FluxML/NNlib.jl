@@ -1,14 +1,14 @@
 using NNlib: gather, gather!
 
 function gather_testsuite(Backend)
-    cpu, backend = CPU(), Backend()
+    device(x) = adapt(Backend(), x)
+    gradtest_fn = Backend == CPU ? gradtest : gputest
     T = Float32
-    gradtest_fn = backend == CPU() ? gradtest : gputest
 
     @testset "gather scalar index" begin
         ## 1d src, 2d index of ints -> 2d output
-        src = adapt(backend, T[3, 4, 5, 6, 7])
-        index = adapt(backend, [
+        src = device(T[3, 4, 5, 6, 7])
+        index = device([
             1 2 3 4;
             4 2 1 3;
             3 5 5 3])
@@ -17,14 +17,14 @@ function gather_testsuite(Backend)
             6 4 3 5;
             5 7 7 5]
 
-        y = adapt(cpu, gather(src, index))
+        y = cpu(gather(src, index))
         @test y isa Array{T,2}
         @test size(y) == size(index)
         @test y == output
 
-        dst = adapt(backend, T.(zero(index)))
-        @test adapt(cpu, gather!(dst, src, index)) == output
-        dst = adapt(backend, zeros(T, 3, 5))
+        dst = device(T.(zero(index)))
+        @test cpu(gather!(dst, src, index)) == output
+        dst = device(zeros(T, 3, 5))
         @test_throws ArgumentError gather!(dst, src, index)
 
         if Backend == CPU
@@ -35,8 +35,8 @@ function gather_testsuite(Backend)
         end
 
         ## 1d src, 3d index of ints -> 3d output
-        src = adapt(backend, T[3, 4, 5, 6, 7])
-        index = adapt(backend, [
+        src = device(T[3, 4, 5, 6, 7])
+        index = device([
             1 2 3 4;
             4 2 1 3;
             3 5 5 3][:,:,1:1])
@@ -45,16 +45,16 @@ function gather_testsuite(Backend)
             6 4 3 5;
             5 7 7 5][:,:,1:1]
 
-        y = adapt(cpu, gather(src, index))
+        y = cpu(gather(src, index))
         @test y isa Array{T,3}
         @test size(y) == size(index)
         @test y == output
 
         ## 2d src, 2d index of ints -> 3d output
-        src = adapt(backend, T[
+        src = device(T[
             3 5 7
             4 6 8])
-        index = adapt(backend, [
+        index = device([
             1 2 3;
             2 2 1;
             3 1 3])
@@ -70,7 +70,7 @@ function gather_testsuite(Backend)
             7 3 7
             8 4 8]
 
-        y = adapt(cpu, gather(src, index))
+        y = cpu(gather(src, index))
         M = NNlib.typelength(eltype(index))
         Nsrc = ndims(src)
         @test y isa Array{T,3}
@@ -80,13 +80,13 @@ function gather_testsuite(Backend)
 
     @testset "gather tuple index" begin
         ## 2d src, 1d index of 2-tuples -> 1d output
-        src = adapt(backend, T[
+        src = device(T[
             3 5 7
             4 6 8])
-        index = adapt(backend, [(1,1), (1,2), (1,3), (2,1), (2,2), (2,3)])
+        index = device([(1,1), (1,2), (1,3), (2,1), (2,2), (2,3)])
         output = T[3, 5, 7, 4, 6, 8]
 
-        y = adapt(cpu, gather(src, index))
+        y = cpu(gather(src, index))
         M = NNlib.typelength(eltype(index))
         Nsrc = ndims(src)
         @test y isa Array{T,1}
@@ -95,11 +95,11 @@ function gather_testsuite(Backend)
 
         ## 3d src, 2d index of 2-tuples -> 3d output
         n1, nsrc, nidx = 2, 3, 6
-        src = adapt(backend, rand(T, n1, nsrc, nsrc))
-        index = adapt(backend, [
+        src = device(rand(T, n1, nsrc, nsrc))
+        index = device([
             (rand(1:nsrc), rand(1:nsrc)) for i=1:nidx, j=1:nidx])
 
-        y = adapt(cpu, gather(src, index))
+        y = cpu(gather(src, index))
         M = NNlib.typelength(eltype(index))
         Nsrc = ndims(src)
         @test y isa Array{T,3}
@@ -108,13 +108,13 @@ function gather_testsuite(Backend)
 
     @testset "gather cartesian index" begin
         ## 2d src, 1d index of 2-tuples -> 1d output
-        src = adapt(backend, T[
+        src = device(T[
             3 5 7
             4 6 8])
-        index = adapt(backend, CartesianIndex.([(1,1), (1,2), (1,3), (2,1), (2,2), (2,3)]))
+        index = device(CartesianIndex.([(1,1), (1,2), (1,3), (2,1), (2,2), (2,3)]))
         output = T[3, 5, 7, 4, 6, 8]
 
-        y = adapt(cpu, gather(src, index))
+        y = cpu(gather(src, index))
         M = NNlib.typelength(eltype(index))
         Nsrc = ndims(src)
         @test y isa Array{T,1}
@@ -123,11 +123,11 @@ function gather_testsuite(Backend)
 
         ## 3d src, 2d index of 2-tuples -> 3d output
         n1, nsrc, nidx = 2, 3, 6
-        src = adapt(backend, rand(Float32, n1, nsrc, nsrc))
-        index = adapt(backend, [
+        src = device(rand(Float32, n1, nsrc, nsrc))
+        index = device([
             CartesianIndex((rand(1:nsrc), rand(1:nsrc))) for i=1:nidx, j=1:nidx])
 
-        y = adapt(cpu, gather(src, index))
+        y = cpu(gather(src, index))
         M = NNlib.typelength(eltype(index))
         Nsrc = ndims(src)
         @test y isa Array{T,3}
@@ -135,44 +135,44 @@ function gather_testsuite(Backend)
     end
 
     @testset "gather gradient for scalar index" begin
-        src = adapt(backend, Float64[3, 4, 5, 6, 7])
-        idx = adapt(backend, [
+        src = device(Float64[3, 4, 5, 6, 7])
+        idx = device([
             1 2 3 4;
             4 2 1 3;
             3 5 5 3])
-        dst = adapt(backend, Float64[
+        dst = device(Float64[
             3 4 5 6;
             6 4 3 5;
             5 7 7 5])
-        backend == cpu ?
+        Backend == CPU ?
             gradtest_fn(xs -> gather!(dst, xs, idx), src) :
             gradtest_fn((d, s, i) -> gather!(d, s, i), dst, src, idx)
-        backend == cpu ?
+        Backend == CPU ?
             gradtest_fn(xs -> gather(xs, idx), src) :
             gradtest_fn((s, i) -> gather(s, i), src, idx)
     end
 
     @testset "gather gradient for tuple index" begin
-        src = adapt(backend, Float64[
+        src = device(Float64[
             3 5 7
             4 6 8])
-        idx = adapt(backend, [(1,1), (1,2), (1,3), (2,1), (2,2), (2,3)])
-        dst = adapt(backend, Float64[3, 5, 7, 4, 6, 8])
-        backend == cpu ?
+        idx = device([(1,1), (1,2), (1,3), (2,1), (2,2), (2,3)])
+        dst = device(Float64[3, 5, 7, 4, 6, 8])
+        Backend == CPU ?
             gradtest_fn(xs -> gather!(dst, xs, idx), src) :
             gradtest_fn((d, s, i) -> gather!(d, s, i), dst, src, idx)
-        backend == cpu ?
+        Backend == CPU ?
             gradtest_fn(xs -> gather(xs, idx), src) :
             gradtest_fn((s, i) -> gather(s, i), src, idx)
     end
 
     @testset "gather(src, IJK...)" begin
-        x = adapt(backend, reshape([1:15;], 3, 5))
-        i, j = adapt(backend, [1,2]), adapt(backend, [2,4])
+        x = device(reshape([1:15;], 3, 5))
+        i, j = device([1,2]), device([2,4])
         y = gather(x, i, j)
-        @test adapt(cpu, y) == [4, 11]
-        y = gather(x, adapt(backend, [1, 2]))
-        @test adapt(cpu, y) == [
+        @test cpu(y) == [4, 11]
+        y = gather(x, device([1, 2]))
+        @test cpu(y) == [
             1 4
             2 5
             3 6]

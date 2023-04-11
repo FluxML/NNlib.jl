@@ -68,8 +68,7 @@ res = Dict(
                          4. 4. 6. 5. 5.],
 )
 
-function test_scatter(backend, types, ops; pt, ops_skip_types)
-    cpu = CPU()
+function test_scatter(device, types, ops; pt, ops_skip_types)
     for T in types
         PT = promote_type(T, pt)
         @testset "$T" begin
@@ -77,28 +76,28 @@ function test_scatter(backend, types, ops; pt, ops_skip_types)
                 skip_types = get(ops_skip_types, op, [])
                 @testset "$op" begin
                     for idx = values(idxs), dims = [0, 1]
-                        idx = adapt(backend, idx)
-                        dst = adapt(backend, dsts[dims])
+                        idx = device(idx)
+                        dst = device(dsts[dims])
 
                         mutated = true
                         target_y = res[(op, dims, mutated)]
-                        src = adapt(backend, srcs[(dims, mutated)])
+                        src = device(srcs[(dims, mutated)])
                         if op == /
                             src = src .* T(2)
                         end
 
-                        @test adapt(cpu, scatter!(op, T.(dst), T.(src), idx)) == T.(target_y)
-                        @test adapt(cpu, scatter!(op, T.(dst), src, idx)) == PT.(target_y)
+                        @test cpu(scatter!(op, T.(dst), T.(src), idx)) == T.(target_y)
+                        @test cpu(scatter!(op, T.(dst), src, idx)) == PT.(target_y)
                         if op == /
-                            @test adapt(cpu, scatter!(op, T.(dst), T.(src), idx)) == PT.(target_y)
+                            @test cpu(scatter!(op, T.(dst), T.(src), idx)) == PT.(target_y)
                         else
-                            @test adapt(cpu, scatter!(op, copy(dst), T.(src), idx)) == PT.(target_y)
+                            @test cpu(scatter!(op, copy(dst), T.(src), idx)) == PT.(target_y)
                         end
 
                         if T ∉ skip_types
                             mutated = false
-                            src = adapt(backend, srcs[(dims, mutated)])
-                            @test adapt(cpu, scatter(op, T.(src), idx)) == T.(res[(op, dims, mutated)])
+                            src = device(srcs[(dims, mutated)])
+                            @test cpu(scatter(op, T.(src), idx)) == T.(res[(op, dims, mutated)])
                         end
                     end
                 end
@@ -108,8 +107,8 @@ function test_scatter(backend, types, ops; pt, ops_skip_types)
 end
 
 function scatter_testsuite(Backend)
-    backend = Backend()
-    gradtest_fn = backend == CPU() ? gradtest : gputest
+    device(x) = adapt(Backend(), x)
+    gradtest_fn = Backend == CPU ? gradtest : gputest
 
     ops_skip_types = Dict(
         (+) => [],
@@ -117,9 +116,9 @@ function scatter_testsuite(Backend)
         (*) => [UInt8, Int8],
         max => [BigInt],
         min => [BigInt])
-    types = if backend == CPU()
+    types = if Backend == CPU
         [UInt8,  UInt32, UInt64, Int32, Int64, Float16, Float32, Float64, BigFloat, Rational]
-    elseif Symbol(typeof(backend)) == :CUDABackend
+    elseif Symbol(Backend) == :CUDABackend
         [Int32, Int64, Float32, Float64]
     else
         # Need LLVM 15+ for atomic fmin/fmax:
@@ -127,26 +126,26 @@ function scatter_testsuite(Backend)
         # But fmin/fmax can be done by reinterpreting an array to `UInt`.
         [Int32, Int64, UInt32, UInt64]
     end
-    ops = backend == CPU() ?
+    ops = Backend == CPU ?
         (+, -, max, min, *) :
         (+, -, max, min)
-    test_scatter(backend, types, ops; pt=Int, ops_skip_types)
+    test_scatter(device, types, ops; pt=Int, ops_skip_types)
 
-    types = backend == CPU() ?
+    types = Backend == CPU ?
         [Float16, Float32, BigFloat, Rational] :
         [Float32, Float64]
-    ops = if backend == CPU()
+    ops = if Backend == CPU
         (/, mean)
-    elseif Symbol(typeof(backend)) == :CUDABackend
+    elseif Symbol(Backend) == :CUDABackend
         (*, /, mean)
     else
         # LLVM does not support atomic fmul/fdiv:
         # https://llvm.org/docs/LangRef.html#atomicrmw-instruction
         (mean,)
     end
-    test_scatter(backend, types, ops; pt=Float64, ops_skip_types=Dict())
+    test_scatter(device, types, ops; pt=Float64, ops_skip_types=Dict())
 
-    if backend == CPU()
+    if Backend == CPU
         @testset "scatter exceptions" begin
             idx = [1 2 3 4; 4 2 1 3; 6 7 8 9]
             @test_throws AssertionError scatter!(+, copy(dsts[0]), srcs[(1, true)], idxs[:int])
@@ -159,51 +158,51 @@ function scatter_testsuite(Backend)
         fdm(op) = op == min ? :backward : :forward
 
         @testset "dstsize" begin
-            idx = adapt(backend, [2, 2, 3, 4, 4])
-            src = adapt(backend, ones(T, 3, 5))
+            idx = device([2, 2, 3, 4, 4])
+            src = device(ones(T, 3, 5))
             y = scatter(+, src, idx, dstsize = (3, 6))
             @test eltype(y) == T
             @test size(y) == (3, 6)
-            backend == CPU() ?
+            Backend == CPU ?
                 gradtest_fn(x -> scatter(+, x, idx; dstsize=(3, 6)), src) :
                 gradtest_fn((x, i) -> scatter(+, x, i; dstsize=(3, 6)), src, idx)
         end
 
         @testset "∂dst" begin
-            ops = if backend == CPU() || Symbol(typeof(backend)) == :CUDABackend
+            ops = if Backend == CPU || Symbol(Backend) == :CUDABackend
                 (+, -, *, /, mean, max, min)
             else
                 (+, -, mean, max, min)
             end
             for op in ops, i in (0, 1)
                 PT = ( # If not CPU and CUDA -> use Int64 for min/max.
-                    backend != CPU() &&
-                    Symbol(typeof(backend)) != :CUDABackend &&
+                    Backend != CPU &&
+                    Symbol(Backend) != :CUDABackend &&
                     (op == max || op == min)) ? Int64 : T
 
-                src = adapt(backend, srcs[(i, true)])
-                idx = adapt(backend, idxs[:int])
-                dst = adapt(backend, PT.(dsts[i]))
-                backend == CPU() ?
+                src = device(srcs[(i, true)])
+                idx = device(idxs[:int])
+                dst = device(PT.(dsts[i]))
+                Backend == CPU ?
                     gradtest_fn(x -> scatter!(op, copy(x), src, idx), dst; fdm=fdm(op)) :
                     gradtest_fn((x, s, i) -> scatter!(op, x, s, i), dst, src, idx)
             end
         end
 
         @testset "∂src" begin
-            ops = if backend == CPU() || Symbol(typeof(backend)) == :CUDABackend
+            ops = if Backend == CPU || Symbol(Backend) == :CUDABackend
                 (+, -, *, /, mean, max, min)
             else
                 (+, -, mean, max, min)
             end
             for op in ops, i in (0, 1)
                 PT = ( # If not CPU and CUDA -> use Int64 for min/max.
-                    backend != CPU() &&
-                    Symbol(typeof(backend)) != :CUDABackend &&
+                    Backend != CPU &&
+                    Symbol(Backend) != :CUDABackend &&
                     (op == max || op == min)) ? Int64 : T
-                src = PT.(adapt(backend, srcs[(i, false)]))
-                idx = adapt(backend, idxs[:int])
-                backend == CPU() ?
+                src = PT.(device(srcs[(i, false)]))
+                idx = device(idxs[:int])
+                Backend == CPU ?
                     gradtest_fn(xs -> scatter(op, xs, idx), src; fdm=fdm(op)) :
                     gradtest_fn((xs, i) -> scatter(op, xs, i), src, idx)
             end
