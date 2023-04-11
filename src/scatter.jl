@@ -239,7 +239,7 @@ function ∇scatter_src(
     end
     _∇scatter_src(KernelAbstractions.get_backend(src))(
         op, Δsrc, src, idx, rev_idx, args...; ndrange)
-    # TODO KernelAbstractions.unsafe_free!(rev_idx)
+    KernelAbstractions.unsafe_free!(rev_idx)
     return Δsrc
 end
 
