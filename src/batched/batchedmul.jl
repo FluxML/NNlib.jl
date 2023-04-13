@@ -223,7 +223,6 @@ _batched_mul!(::Type{DT}, C, A, B, α::Number, β::Number) where {DT<:DenseArray
     _batched_try_gemm!(DT, C, A, B, α, β)
 
 function _batched_try_gemm!(::Type{DT}, C, A, B, α::Number, β::Number) where {DT<:DenseArray{T}} where {T<:BlasFloat}
-
     alpha, beta = promote(α, β, zero(T))
     alpha isa T && beta isa T || return batched_mul_generic!(C, A, B, α, β)
 

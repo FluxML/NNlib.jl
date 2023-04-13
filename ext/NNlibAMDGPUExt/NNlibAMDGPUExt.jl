@@ -35,12 +35,6 @@ Base.show(io::IO, x::AnyROCBatchedAdjOrTrans) = show(io, adapt(Array, x))
 
 Base.display(x::AnyROCBatchedAdjOrTrans) = display(adapt(Array, x))
 
-function NNlib._batched_gemm!(
-    ::Type{<: ROCArray}, transA::Char, transB::Char, α, A, B, β, C,
-)
-    AMDGPU.rocBLAS.gemm_batched!(transA, transB, α, A, B, β, C)
-end
-
 function nnlib_padding(dims)
     pd = NNlib.padding(dims)
     if !all(pd[1:2:end] .== pd[2:2:end])
@@ -51,6 +45,8 @@ function nnlib_padding(dims)
     end
     pd[1:2:end]
 end
+
+include("batched_mul.jl")
 
 @static if AMDGPU.functional(:MIOpen)
     using AMDGPU.MIOpen
