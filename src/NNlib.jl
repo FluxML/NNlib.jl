@@ -1,10 +1,12 @@
 module NNlib
 
+import Atomix
 import ChainRulesCore: rrule
 
 using Base.Broadcast: broadcasted
 using Base.Threads
 using ChainRulesCore
+using GPUArraysCore
 using KernelAbstractions
 using KernelAbstractions: @atomic
 using LinearAlgebra

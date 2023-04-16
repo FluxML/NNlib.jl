@@ -30,7 +30,7 @@ function scatter_kernel!(op::OP, dst, src, idx, max_idx, max_dims_idx, dims_size
     return nothing
 end
 
-function scatter_kernel!(op::OP, dst, src, idx::CUDA.CuDeviceArray{<:CartesianIndex}, 
+function scatter_kernel!(op::OP, dst, src, idx::CUDA.CuDeviceArray{<:CartesianIndex},
             max_idx, max_dims_idx, dims_size) where OP
     index = threadIdx().x + (blockIdx().x - 1) * blockDim().x
 
@@ -73,7 +73,7 @@ end
 
 ## Gradients
 
-function ∇scatter_src_kernel!(op::OP, Δsrc, src, idx, 
+function ∇scatter_src_kernel!(op::OP, Δsrc, src, idx,
                 rev_idx, max_idx, T::Type{TT})  where {OP,TT}
     index = threadIdx().x + (blockIdx().x - 1) * blockDim().x
 
@@ -93,7 +93,7 @@ function ∇scatter_src_kernel!(op::OP, Δsrc, src, idx,
     return nothing
 end
 
-function ∇scatter_src_kernel!(op::OP, Δsrc, src, idx::CUDA.CuDeviceArray{<:CartesianIndex}, 
+function ∇scatter_src_kernel!(op::OP, Δsrc, src, idx::CUDA.CuDeviceArray{<:CartesianIndex},
                 rev_idx, max_idx, T::Type{TT}) where {OP,TT}
     index = threadIdx().x + (blockIdx().x - 1) * blockDim().x
 
@@ -113,7 +113,7 @@ function ∇scatter_src_kernel!(op::OP, Δsrc, src, idx::CUDA.CuDeviceArray{<:Ca
     return nothing
 end
 
-function ∇scatter_src_kernel!(op::OP, Δsrc, src, idx, 
+function ∇scatter_src_kernel!(op::OP, Δsrc, src, idx,
             rev_idx, pre_cart_idx, max_dims_idx, max_idx, T::Type{TT}) where {OP,TT}
     index = threadIdx().x + (blockIdx().x - 1) * blockDim().x
 
@@ -160,13 +160,13 @@ function ∇scatter_src_kernel!(op::OP, Δsrc, src, idx::CUDA.CuDeviceArray{<:Ca
 end
 
 function NNlib.∇scatter_src(op::Union{typeof(*),typeof(/)}, Δ, dst,
-                            src::AnyCuArray{Tsrc,Nsrc}, 
+                            src::AnyCuArray{Tsrc,Nsrc},
                             idx::AnyCuArray{Tidx,Nidx}) where {Tsrc,Tidx,Nsrc,Nidx}
     dims = Nsrc - Nidx
     Δsrc = NNlib.modify_src(op, NNlib.gather(Δ, idx), src)
     rev_idx = NNlib.reverse_indices(idx)
     rev_idx = CuArray(map(CUDA.cudaconvert, rev_idx))
-    
+
     if dims == 0
         max_idx = length(idx)
         args = op, Δsrc, src, idx, rev_idx, max_idx, Tsrc

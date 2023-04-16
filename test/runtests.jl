@@ -28,11 +28,19 @@ end
 
 cpu(x) = adapt(CPU(), x)
 
+include("gather.jl")
+include("scatter.jl")
 include("upsample.jl")
 
 function nnlib_testsuite(Backend; skip_tests = Set{String}())
     @conditional_testset "Upsample" skip_tests begin
         upsample_testsuite(Backend)
+    end
+    @conditional_testset "Gather" skip_tests begin
+        gather_testsuite(Backend)
+    end
+    @conditional_testset "Scatter" skip_tests begin
+        scatter_testsuite(Backend)
     end
 end
 
@@ -46,7 +54,7 @@ end
             using CUDA
             if CUDA.functional()
                 @testset "CUDABackend" begin
-                    nnlib_testsuite(CUDABackend)
+                    nnlib_testsuite(CUDABackend; skip_tests=Set(("Scatter", "Gather")))
                 end
             else
                 @info "CUDA.jl is not functional. Skipping test suite for CUDABackend."
@@ -80,7 +88,7 @@ end
         end
     end
 
-    @testset "Tests" begin
+    @testset verbose=true "Tests" begin
         if get(ENV, "NNLIB_TEST_CUDA", "false") == "true"
             using CUDA
             if CUDA.functional()
@@ -169,14 +177,6 @@ end
 
         @testset "Softmax" begin
             include("softmax.jl")
-        end
-
-        @testset "Gather" begin
-            include("gather.jl")
-        end
-
-        @testset "Scatter" begin
-            include("scatter.jl")
         end
 
         @testset "Utilities" begin

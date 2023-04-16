@@ -1,6 +1,6 @@
 function upsample_testsuite(Backend)
     device(x) = adapt(Backend(), x)
-    gradtest_fn = KernelAbstractions.isgpu(Backend()) ? gputest : gradtest
+    gradtest_fn = Backend == CPU ? gradtest : gputest
     T = Float32 # TODO test against all supported eltypes for each backend.
     atol = T == Float32 ? 1e-3 : 1e-6
 
