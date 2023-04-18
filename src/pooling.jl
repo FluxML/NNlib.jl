@@ -114,15 +114,8 @@ for backend in (Symbol(), :_direct, :_nnpack)
             function $(Symbol("$(name)$(backend)"))(
                             x::AbstractArray{xT,N},
                             pdims::PoolDims; kwargs...) where {xT, N}
-                yT = if $(name == :maxpool)
-                    xT
-                elseif $(name == :meanpool)
-                    Base.promote_op(/, xT, Int)
-                else
-                    Base.promote_op(^, xT, Base.promote_op(/, xT, typeof(kwargs[:p])))
-                end
-                y = similar(x, yT, output_size(pdims)..., channels_out(pdims), size(x, N))
-                fill!(y, yT(0))
+                y = similar(x, output_size(pdims)..., channels_out(pdims), size(x, N))
+                fill!(y, 0)
                 return $(Symbol("$(name)$(backend)!"))(y, x, pdims; kwargs...)
             end
 
@@ -131,16 +124,8 @@ for backend in (Symbol(), :_direct, :_nnpack)
                             dy::AbstractArray{DY,N}, y::AbstractArray{Y,N},
                             x::AbstractArray{X,N}, pdims::PoolDims;
                             kwargs...) where {DY, Y, X, N}
-                dxT = if $(name == :maxpool)
-                    DY
-                elseif $(name == :meanpool)
-                    Base.promote_op(/, DY, Int)
-                else
-                    pT = Base.promote_op(-, Int, typeof(kwargs[:p]))
-                    Base.promote_op(*, Base.promote_op(^, X, pT), Base.promote_op(^, DY, pT))
-                end
-                dx = similar(x, dxT, input_size(pdims)..., channels_in(pdims), size(dy, N))
-                fill!(dx, dxT(0))
+                dx = similar(x, input_size(pdims)..., channels_in(pdims), size(dy, N))
+                fill!(dx, 0)
                 return $(Symbol("∇$(name)$(backend)!"))(dx, dy, y, x, pdims; kwargs...)
             end
         end

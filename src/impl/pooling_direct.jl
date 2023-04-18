@@ -36,7 +36,9 @@ for name in (:max, :mean, :lpnorm)
         @inline project(idx, stride, pad) = (idx - 1) * stride - pad + 1
 
         # If we're doing mean pooling, we represent division by kernel size by rolling it
-        # into the `_alpha` multiplier.
+        # into the `alpha` multiplier. 
+        # The type might change here, that's why we prepend the underscore 
+        # (does it make a difference, though?)
         _alpha = if $(name == :mean)
             T(alpha / prod(K))
         else
