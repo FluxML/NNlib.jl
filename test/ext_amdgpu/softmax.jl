@@ -10,6 +10,7 @@
             else
                 x = randn(T, sz)
             end
+
             gputest(NNlib.softmax, x; atol)
             gputest(NNlib.logsoftmax, x; atol)
         end
