@@ -8,10 +8,14 @@ Random.seed!(1234567890)
 const SUITE = BenchmarkGroup()
 
 SUITE["activations"] = BenchmarkGroup()
-let x = rand(64, 64)
-    for f in NNlib.ACTIVATIONS
-        act = @eval($f)
-        SUITE["activations"][string(f)] = @benchmarkable $act.($x)
+for et in (Float16, Float32, Float64)
+    et_suite = BenchmarkGroup()
+    SUITE["activations"][string(et)] = et_suite
+    let x = rand(et, 1024, 1024), y = similar(x)
+        for f in NNlib.ACTIVATIONS
+            act = @eval($f)
+            et_suite[string(f)] = @benchmarkable broadcast!($act, $y, $x)
+        end
     end
 end
 
