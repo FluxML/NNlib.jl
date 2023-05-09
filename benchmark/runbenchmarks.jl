@@ -24,7 +24,7 @@ function parse_commandline()
             default = "master"
         "--retune"
             help = "force re-tuning (ignore existing tuning data)"
-            action = :store_true
+            action = :store_false
     end
 
     return parse_args(s)
