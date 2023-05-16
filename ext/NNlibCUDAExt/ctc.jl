@@ -1,4 +1,4 @@
-# CTC loss moved from Flux.jl to NNlib + NNlibCUDA
+# CTC loss moved from Flux.jl to NNlib
 
 import NNlib: ctc_loss, ctc_alpha, ∇ctc_loss
 

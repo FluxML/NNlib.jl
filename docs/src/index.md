@@ -4,5 +4,4 @@
 
 For use with automatic differentiation, this package defines gradients using [ChainRules.jl](https://github.com/JuliaDiff/ChainRules.jl). These will be seen by various packages including [Zygote.jl](https://github.com/FluxML/Zygote.jl).
 
-To use these functions with [CUDA.jl](https://github.com/JuliaGPU/CUDA.jl) you will need [NNlibCUDA.jl](https://github.com/FluxML/NNlibCUDA.jl) as well.
-For [AMDGPU.jl](https://github.com/JuliaGPU/AMDGPU.jl) you will need to load it and NNlib in the same Julia session.
+To use these functions with [CUDA.jl](https://github.com/JuliaGPU/CUDA.jl) or [AMDGPU.jl](https://github.com/JuliaGPU/AMDGPU.jl) you will need to load them and NNlib in the same Julia session.

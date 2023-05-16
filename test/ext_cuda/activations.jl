@@ -14,8 +14,8 @@ end
     end
 end
 
-# Broadcasting over complex CuArray works without NNlibCUDA, this test checks that
-# NNlibCUDA does not cause such operations to take a fast path which does not support
+# Broadcasting over complex CuArray works without NNlibCUDAExt, this test checks that
+# NNlibCUDAExt does not cause such operations to take a fast path which does not support
 # complex numbers (e.g. cuDNN)
 @testset "complex" begin
     f(x) = tanh.(x)

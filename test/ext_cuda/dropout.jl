@@ -1,6 +1,3 @@
-using NNlib, NNlibCUDA, CUDA, Test
-using Zygote, ChainRulesCore
-
 @testset "dropout + CUDA" begin
     # Basics
     x1 = CUDA.randn(3, 4)

@@ -1,22 +1,14 @@
 steps:
-  - label: "GPU julia v1.6"
+  - label: "CUDA - Julia v1.9"
     plugins:
       - JuliaCI/julia#v1:
-          version: "1.6"
+          version: "1.9"
       - JuliaCI/julia-test#v1: ~
       - JuliaCI/julia-coverage#v1:
           codecov: true
           dirs:
             - src
-#     commands:
-#       - julia --project=test -e """
-#         Pkg.develop(url = \"https://github.com/FluxML/NNlibCUDA.jl\")
-#         Pkg.instantiate()
-#         Pkg.build()
-#         Pkg.status()
-#         Pkg.test()
-#         Pkg.test(\"NNlibCUDA\")
-#         """
+            - ext
     agents:
       queue: "juliagpu"
       cuda: "*"
@@ -24,7 +16,7 @@ steps:
       NNLIB_TEST_CUDA: true
     timeout_in_minutes: 60
 
-  - label: "GPU julia v1"
+  - label: "CUDA - Julia v1"
     plugins:
       - JuliaCI/julia#v1:
           version: "1"
@@ -33,6 +25,7 @@ steps:
           codecov: true
           dirs:
             - src
+            - ext
     agents:
       queue: "juliagpu"
       cuda: "*"
@@ -55,10 +48,10 @@ steps:
     if: build.pull_request.labels includes "benchmark"
     timeout_in_minutes: 30
 
-  - label: "AMDGPU - Julia 1.9"
+  - label: "AMDGPU - Julia v1.9"
     plugins:
       - JuliaCI/julia#v1:
-          version: 1.9-nightly
+          version: "1.9"
       - JuliaCI/julia-test#v1:
       - JuliaCI/julia-coverage#v1:
           codecov: true

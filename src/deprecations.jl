@@ -1,23 +1,3 @@
-
-### Deprecated while v0.7 was latest
-
-function ∇softmax(Δ, x; dims = 1)
-    # This 2-arg version recomputes the forward pass, which is slow.
-    # Removed from use in 0.7, but only prints a warning during 0.8:
-    Base.depwarn("`∇softmax(Δ, x)` without `y = softmax(x)` argument is deprecated, as this is inefficient, please use `∇softmax_data(dy, y)`", :∇softmax)
-    ∇softmax(Δ, x, softmax(x; dims); dims)
-end
-∇softmax!(Δ, x; dims = 1) = Δ .= ∇softmax(Δ, x; dims)
-∇softmax!(out, Δ, x; dims = 1) = out .= ∇softmax(Δ, x; dims)
-
-function ∇logsoftmax(Δ, x; dims = 1)
-    Base.depwarn("`∇logsoftmax(Δ, x)` without `y = logsoftmax(x)` argument is deprecated, please use `∇logsoftmax_data(dy, y)`", :∇logsoftmax)
-    ∇logsoftmax(Δ, x, logsoftmax(x; dims); dims)
-end
-∇logsoftmax!(Δ, x; dims = 1) = Δ .= ∇logsoftmax(Δ, x; dims)
-∇logsoftmax!(out, Δ, x; dims = 1) = out .= ∇logsoftmax(Δ, x; dims)
-
-
 ### Deprecated while v0.8 was latest
 
 export ∇softmax,

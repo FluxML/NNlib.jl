@@ -1,9 +1,3 @@
-using Test
-using NNlib: ctc_loss
-using Zygote: gradient
-using LinearAlgebra
-using CUDA, NNlibCUDA
-
 # Custom function to check numerical gradient of ctc loss,
 # based on `ngradient` in `Tracker.jl`
 function ctc_ngradient(x, y)
