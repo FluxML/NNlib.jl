@@ -26,18 +26,12 @@ NNlibCUDNNExt = "cuDNN"
 
 [compat]
 AMDGPU = "0.4.8"
-Adapt = "2, 3.2"
+Adapt = "3.2"
 Atomix = "0.1"
 ChainRulesCore = "1.13"
 CUDA = "4"
 cuDNN = "1"
 GPUArraysCore = "0.1"
 KernelAbstractions = "0.9.2"
-Requires = "0.5, 1.0"
+Requires = "1.0"
 julia = "1.9"
-
-[extras]
-AMDGPU = "21141c5a-9bdb-4563-92ae-f87d6854732e"
-cuDNN = "02a925ec-e4fe-4b08-9a7e-0d78e3d38ccd"
-CUDA = "052768ef-5323-5732-b1bb-66c8b64840ba"
-
