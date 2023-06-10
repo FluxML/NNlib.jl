@@ -1,9 +1,10 @@
 steps:
-  - label: "CUDA - Julia v1.9"
+   - label: ":julia: Julia {{matrix.julia}} + CUDA GPU"
     plugins:
       - JuliaCI/julia#v1:
-          version: "1.9"
-      - JuliaCI/julia-test#v1: ~
+          version: "{{matrix.julia}}"
+      - JuliaCI/julia-test#v1:
+          test_args: "--quickfail"
       - JuliaCI/julia-coverage#v1:
           codecov: true
           dirs:
@@ -14,41 +15,20 @@ steps:
       cuda: "*"
     env:
       NNLIB_TEST_CUDA: true
+    if: build.message !~ /\[skip tests\]/
     timeout_in_minutes: 60
+    matrix:
+      setup:
+        julia:
+          # - "1.9"  # uncomment when 1.10 is out
+          - "1"
+          - "nightly"
+      adjustments:
+        - with:
+            julia: "nightly"
+          soft_fail: true
 
-  - label: "CUDA - Julia v1"
-    plugins:
-      - JuliaCI/julia#v1:
-          version: "1"
-      - JuliaCI/julia-test#v1: ~
-      - JuliaCI/julia-coverage#v1:
-          codecov: true
-          dirs:
-            - src
-            - ext
-    agents:
-      queue: "juliagpu"
-      cuda: "*"
-    env:
-      NNLIB_TEST_CUDA: true
-    timeout_in_minutes: 60
-
-  - label: "Benchmarks"
-    plugins:
-      - JuliaCI/julia#v1:
-          version: 1
-    env:
-      JULIA_NUM_THREADS: 4
-    command:
-      - julia --project=benchmark -e 'using Pkg; Pkg.develop(PackageSpec(path=pwd())); Pkg.instantiate()'
-      - julia --project=benchmark benchmark/runbenchmarks.jl
-      - printf '%b\n' "$(cat benchmark/report.md)" | buildkite-agent annotate --style 'info'
-    agents:
-      queue: "juliagpu"
-    if: build.pull_request.labels includes "benchmark"
-    timeout_in_minutes: 30
-
-  - label: "AMDGPU - Julia v1.9"
+  - label: ":julia: Julia 1.9 + AMD GPU"
     plugins:
       - JuliaCI/julia#v1:
           version: "1.9"
@@ -68,18 +48,21 @@ steps:
       JULIA_AMDGPU_HIP_MUST_LOAD: "1"
       NNLIB_TEST_AMDGPU: true
 
-  # - label: "GPU julia nightly"
-  #   plugins:
-  #     - JuliaCI/julia#v1:
-  #         version: "nightly"
-  #     - JuliaCI/julia-test#v1: ~
-  #     - JuliaCI/julia-coverage#v1:
-  #         codecov: true
-  #         dirs:
-  #           - src
-  #   agents:
-  #     queue: "juliagpu"
-  #     cuda: "*"
-  #   timeout_in_minutes: 60
+
+  - label: "Benchmarks"
+    plugins:
+      - JuliaCI/julia#v1:
+          version: 1
+    env:
+      JULIA_NUM_THREADS: 4
+    command:
+      - julia --project=benchmark -e 'using Pkg; Pkg.develop(PackageSpec(path=pwd())); Pkg.instantiate()'
+      - julia --project=benchmark benchmark/runbenchmarks.jl
+      - printf '%b\n' "$(cat benchmark/report.md)" | buildkite-agent annotate --style 'info'
+    agents:
+      queue: "juliagpu"
+    if: build.pull_request.labels includes "benchmark"
+    timeout_in_minutes: 30
+
 env:
   SECRET_CODECOV_TOKEN: "IlEMvDI6RciJQr5eX7qBBpHYFAe8+Svf3lNJh9gZi0MeJZQvMZWzHfW/lVncA9d9K+gDBBTv/zwqF86xOaIFLuACNdcGZiGgHS+NGeXN5CEppjqLnqKuaeHmLgJ43jygxRwgF88LhwTGcHG7pmESIp1Bn3Jd23UUv4t8hJLBDF+KJLZMefzCXnEVzfwJYxhJktnKJPA4dOv59w33Vj1x5uCYZbQlLP54IJPBm8UGdXS+JrUX8Z7lhxbkJUi6c+R6cvVBw27uRjF0pUJY26mt1frx8MzTGTOweXTpi+Kc5JhzlokMlan17j6T/b7qMC13IuKopfqu1GhkSBQD3ZhQqA==;U2FsdGVkX19l7JMB48k4oJHLoaqC7/MmvQWmaiBxRN472ZC6AcQ0uCBRy6Fw8tI0YcjIxKDScaBnJ2v/deOfhg=="
