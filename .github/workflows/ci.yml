@@ -15,7 +15,7 @@ defaults:
 
 jobs:
   test:
-    name: Julia v${{ matrix.version }} - ${{ matrix.os }} - ${{ matrix.julia-threads }} thread(s) 
+    name: Julia ${{ matrix.version }} - ${{ matrix.os }} - ${{ matrix.julia-threads }} thread(s) 
     runs-on: ${{ matrix.os }}
     env:
       JULIA_NUM_THREADS: ${{ matrix.julia-threads }}
