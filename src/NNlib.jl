@@ -20,7 +20,6 @@ using Statistics: mean
 
 const libblas = Base.libblas_name
 
-const IntOrIntTuple = Union{Integer, NTuple{N,<:Integer} where N}
 const Numeric = Union{AbstractArray{<:T}, T} where {T<:Number}
 
 # Include APIs

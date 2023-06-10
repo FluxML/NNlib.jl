@@ -6,7 +6,6 @@ version = "0.9.0"
 Adapt = "79e6a3ab-5dfb-504d-930d-738a2a938a0e"
 Atomix = "a9b6321e-bd34-4604-b9c9-b65b8de01458"
 ChainRulesCore = "d360d2e6-b24c-11e9-a2a3-2a2ae2dbcce4"
-cuDNN = "02a925ec-e4fe-4b08-9a7e-0d78e3d38ccd"
 GPUArraysCore = "46192b85-c4d5-4398-a991-12ede77f4527"
 KernelAbstractions = "63c18a36-062a-441e-b654-da1e3ab1ce7c"
 LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
@@ -17,11 +16,13 @@ Statistics = "10745b16-79ce-11e8-11f9-7d13ad32a3b2"
 
 [weakdeps]
 AMDGPU = "21141c5a-9bdb-4563-92ae-f87d6854732e"
+cuDNN = "02a925ec-e4fe-4b08-9a7e-0d78e3d38ccd"
 CUDA = "052768ef-5323-5732-b1bb-66c8b64840ba"
 
 [extensions]
 NNlibAMDGPUExt = "AMDGPU"
 NNlibCUDAExt = "CUDA"
+NNlibCUDNNExt = "cuDNN"
 
 [compat]
 AMDGPU = "0.4.8"
@@ -37,5 +38,6 @@ julia = "1.9"
 
 [extras]
 AMDGPU = "21141c5a-9bdb-4563-92ae-f87d6854732e"
+cuDNN = "02a925ec-e4fe-4b08-9a7e-0d78e3d38ccd"
 CUDA = "052768ef-5323-5732-b1bb-66c8b64840ba"
 
