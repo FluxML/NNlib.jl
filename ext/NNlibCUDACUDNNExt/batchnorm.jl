@@ -1,7 +1,7 @@
 using cuDNN: CUDNN_BN_MIN_EPSILON, cudnnBatchNormalizationBackward,
              cudnnBatchNormalizationForwardInference, CUDNN_BATCHNORM_SPATIAL,
              cudnnBatchNormalizationForwardTraining
-
+import NNlib: batchnorm, ∇batchnorm
 
 # TODO: replace with new cudnn normalization interface
 # https://github.com/JuliaGPU/CUDA.jl/blob/master/lib/cudnn/normalization.jl

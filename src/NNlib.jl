@@ -103,6 +103,9 @@ end
 include("sampling.jl")
 include("functions.jl")
 
+include("normalization.jl")
+# export batchnorm, ∇batchnorm
+
 ## Include implementations
 include("impl/padding_edges.jl")
 

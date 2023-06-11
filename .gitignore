@@ -12,6 +12,7 @@ deps.jl
 *.log
 .vscode/
 /Manifest.toml
+test/Manifest.toml
 benchmark/Manifest.toml
 benchmark/*.json
 benchmark/report.md
