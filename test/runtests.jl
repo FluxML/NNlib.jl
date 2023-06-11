@@ -128,7 +128,7 @@ end
                 @info "AMDGPU.jl package is not functional. Skipping AMDGPU tests."
             end
         else
-            @info "Skipping AMDGPU tests, set NNLIB_TEST_CUDA=true to run them."
+            @info "Skipping AMDGPU tests, set NNLIB_TEST_AMDGPU=true to run them."
         end
 
         @testset "Doctests" begin
