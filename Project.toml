@@ -22,7 +22,7 @@ CUDA = "052768ef-5323-5732-b1bb-66c8b64840ba"
 [extensions]
 NNlibAMDGPUExt = "AMDGPU"
 NNlibCUDAExt = "CUDA"
-NNlibCUDNNExt = "cuDNN"
+NNlibCUDACUDNNExt = ["CUDA", "cuDNN"]
 
 [compat]
 AMDGPU = "0.4.8"

@@ -1,8 +1,8 @@
-module NNlibCUDNNExt
+module NNlibCUDACUDNNExt
 
 using NNlib
 using cuDNN
-using CUDA # available as a dependency of cuDNN
+using CUDA
 using Random, Statistics
 
 using cuDNN: handle, with_workspace, cudnnTensorDescriptor, cudnnFilterDescriptor,

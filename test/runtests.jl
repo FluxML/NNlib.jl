@@ -11,7 +11,7 @@ using Adapt
 using KernelAbstractions
 DocMeta.setdocmeta!(NNlib, :DocTestSetup, :(using NNlib, UnicodePlots); recursive=true)
 
-# ENV["NNLIB_TEST_CUDA"] = true # uncomment to run CUDA tests
+ENV["NNLIB_TEST_CUDA"] = true # uncomment to run CUDA tests
 # ENV["NNLIB_TEST_AMDGPU"] = true # uncomment to run AMDGPU tests
 
 const rng = StableRNG(123)

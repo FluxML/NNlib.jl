@@ -3,7 +3,8 @@ using NNlib
 using Zygote
 using ForwardDiff: Dual
 using Statistics: mean
-using CUDA
+using CUDA, cuDNN
+using NNlib: batchnorm, ∇batchnorm
 CUDA.allowscalar(false)
 
 include("test_utils.jl")
