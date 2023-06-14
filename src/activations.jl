@@ -1,6 +1,6 @@
 ## Activation functions
 #
-# Some of activation functions have its wrapper function for GPU in NNlibCUDA.jl.
+# Some of activation functions have its wrapper function for GPU in NNlibCUDAExt.jl.
 # https://github.com/JuliaGPU/CuArrays.jl/issues/614
 
 ACTIVATIONS = [

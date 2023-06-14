@@ -158,5 +158,5 @@ _rng_from_array(::AbstractArray) = Random.default_rng()
 @non_differentiable _rng_from_array(::Any)
 
 # This exists because `rand!(default_rng(), CUDA.rand(3))` ignores the RNG,
-# and Flux would prefer an error. NNlibCUDA will overload it to produce that.
+# and Flux would prefer an error. NNlibCUDAExt will overload it to produce that.
 _rng_compat_array(::AbstractRNG, ::AbstractArray) = nothing

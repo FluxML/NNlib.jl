@@ -11,6 +11,9 @@ using Adapt
 using KernelAbstractions
 DocMeta.setdocmeta!(NNlib, :DocTestSetup, :(using NNlib, UnicodePlots); recursive=true)
 
+ENV["NNLIB_TEST_CUDA"] = true # uncomment to run CUDA tests
+# ENV["NNLIB_TEST_AMDGPU"] = true # uncomment to run AMDGPU tests
+
 const rng = StableRNG(123)
 include("test_utils.jl")
 
@@ -92,10 +95,8 @@ end
         if get(ENV, "NNLIB_TEST_CUDA", "false") == "true"
             using CUDA
             if CUDA.functional()
-                import Pkg
-                using NNlibCUDA
                 @testset "CUDA" begin
-                    Pkg.test("NNlibCUDA")
+                    include("ext_cuda/runtests.jl")
                 end
             else
                 @info "Insufficient version or CUDA not found; Skipping CUDA tests"
@@ -127,7 +128,7 @@ end
                 @info "AMDGPU.jl package is not functional. Skipping AMDGPU tests."
             end
         else
-            @info "Skipping AMDGPU tests, set NNLIB_TEST_CUDA=true to run them."
+            @info "Skipping AMDGPU tests, set NNLIB_TEST_AMDGPU=true to run them."
         end
 
         @testset "Doctests" begin
