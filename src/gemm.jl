@@ -88,7 +88,9 @@ for (gemm, elt) in gemm_datatype_mappings
             strB = size(B, 3) == 1 ? 0 : Base.stride(B, 3)
             strC = Base.stride(C, 3)
 
-            n_threads = min(Threads.nthreads(), 1 + max(length(A), length(B)) ÷ 8000)
+            n_threads = min(
+                VERSION > v"1.9.0-0" ? Threads.maxthreadid() : Threads.nthreads(),
+                1 + max(length(A), length(B)) ÷ 8000)
             # In some tests, size (20,20,20) is worth splitting between two threads,
             # as is size (32,32,8).
 
