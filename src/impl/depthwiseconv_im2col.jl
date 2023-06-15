@@ -26,7 +26,7 @@ function depthwiseconv_im2col!(
     N = channel_multiplier(cdims)
     K = prod(kernel_size(cdims))
 
-    parts = Iterators.partition(axes(y)[end], ntasks)
+    parts = collect(Iterators.partition(axes(y)[end], ntasks))
 
     dcdims = DenseConvDims(cdims)
 
@@ -114,7 +114,7 @@ function ∇depthwiseconv_data_im2col!(
     N = prod(kernel_size(cdims))
     K = channel_multiplier(cdims)
 
-    parts = Iterators.partition(axes(dx)[end], ntasks)
+    parts = collect(Iterators.partition(axes(dx)[end], ntasks))
 
     @sync for task_n in 1:ntasks
         Threads.@spawn begin

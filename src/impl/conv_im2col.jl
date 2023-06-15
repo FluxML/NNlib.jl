@@ -45,7 +45,7 @@ function conv_im2col!(
     N = channels_out(cdims)
     K = prod(kernel_size(cdims))*channels_in(cdims)
 
-    parts = Iterators.partition(axes(x, 5), ntasks)
+    parts = collect(Iterators.partition(axes(x, 5), ntasks))
 
     @sync for task_n in 1:ntasks
         Threads.@spawn begin
@@ -150,7 +150,7 @@ function ∇conv_data_im2col!(
     N = prod(kernel_size(cdims))*channels_in(cdims)
     K = channels_out(cdims)
 
-    parts = Iterators.partition(axes(dx, 5), ntasks)
+    parts = collect(Iterators.partition(axes(dx, 5), ntasks))
 
     @sync for task_n in 1:ntasks
         Threads.@spawn begin
