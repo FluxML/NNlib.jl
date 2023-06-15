@@ -107,7 +107,8 @@ function ∇depthwiseconv_data_im2col!(
                 dx::AbstractArray{T,5}, dy::AbstractArray{T,5},
                 w::AbstractArray{T,5}, cdims::DepthwiseConvDims;
                 col::AbstractArray{T,3} = similar(dx, im2col_dims(cdims)),
-                alpha::T=T(1), beta::T=T(0)) where T
+                alpha::T=T(1), beta::T=T(0),
+                ntasks::Int=nthreads()) where T
     check_dims(size(dx), size(w), size(dy), cdims)
 
     M = prod(output_size(cdims))
