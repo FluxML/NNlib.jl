@@ -47,7 +47,7 @@ function conv_im2col!(
 
     parts = collect(Iterators.partition(axes(x, 5), ceil(Int, size(x, 5) / ntasks)))
 
-    @sync for task_n in 1:ntasks
+    @sync for task_n in eachindex(parts)
         Threads.@spawn begin
             col_slice = col_slice = view(col, :, :, task_n) # col_slice is a task-local workspace
             for batch_idx in parts[task_n]
@@ -152,7 +152,7 @@ function ∇conv_data_im2col!(
 
     parts = collect(Iterators.partition(axes(dx, 5), ceil(Int, size(dx, 5) / ntasks)))
 
-    @sync for task_n in 1:ntasks
+    @sync for task_n in eachindex(parts)
         Threads.@spawn begin
             col_slice = col_slice = view(col, :, :, task_n) # col_slice is a task-local workspace
             for batch_idx in parts[task_n]

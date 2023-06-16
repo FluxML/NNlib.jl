@@ -30,7 +30,7 @@ function depthwiseconv_im2col!(
 
     dcdims = DenseConvDims(cdims)
 
-    @sync for task_n in 1:ntasks
+    @sync for task_n in eachindex(parts)
         Threads.@spawn begin
             col_slice = col_slice = view(col, :, :, task_n) # col_slice is a task-local workspace
             for batch_idx in parts[task_n]
@@ -117,7 +117,7 @@ function ∇depthwiseconv_data_im2col!(
 
     parts = collect(Iterators.partition(axes(dx)[end], ceil(Int, size(dx, 5) / ntasks)))
 
-    @sync for task_n in 1:ntasks
+    @sync for task_n in eachindex(parts)
         Threads.@spawn begin
             col_slice = col_slice = view(col, :, :, task_n) # col_slice is a task-local workspace
             for batch_idx in parts[task_n]
