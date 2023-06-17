@@ -34,4 +34,8 @@ cuDNN = "1"
 GPUArraysCore = "0.1"
 KernelAbstractions = "0.9.2"
 Requires = "1.0"
-julia = "1.9"
+julia = "1.6"
+
+[extras]
+CUDA = "052768ef-5323-5732-b1bb-66c8b64840ba"
+cuDNN = "02a925ec-e4fe-4b08-9a7e-0d78e3d38ccd"

@@ -120,4 +120,12 @@ include("impl/depthwiseconv_im2col.jl")
 include("impl/pooling_direct.jl")
 include("deprecations.jl")
 
+if !isdefined(Base, :get_extension)
+  @init @require CUDA="052768ef-5323-5732-b1bb-66c8b64840ba" begin
+    include("../ext/NNlibCUDAExt/NNlibCUDAExt.jl")
+    @init @require cuDNN="02a925ec-e4fe-4b08-9a7e-0d78e3d38ccd" begin
+      include("../ext/NNlibCUDACUDNNExt/NNlibCUDACUDNNExt.jl")
+    end
+end
+
 end # module NNlib
