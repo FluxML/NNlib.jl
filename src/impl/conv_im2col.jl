@@ -24,7 +24,8 @@ function conv_im2col!(
                 y::AbstractArray{T,5}, x::AbstractArray{T,5},
                 w::AbstractArray{T,5}, cdims::DenseConvDims;
                 col::AbstractArray{T,3}=similar(x, im2col_dims(cdims)),
-                alpha::T=T(1), beta::T=T(0)) where {T}
+                alpha::T=T(1), beta::T=T(0),
+                ntasks::Int=nthreads()) where {T}
     check_dims(size(x), size(w), size(y), cdims)
 
     #   COL   *    W    ->    Y
@@ -44,16 +45,20 @@ function conv_im2col!(
     N = channels_out(cdims)
     K = prod(kernel_size(cdims))*channels_in(cdims)
 
-    @threads for batch_idx in 1:size(x,5)
-        # col_slice is a thread-local workspace
-        col_slice = view(col, :, :, threadid())
+    parts = Iterators.partition(axes(x, 5), ceil(Int, size(x, 5) / ntasks))
 
-        im2col!(col_slice, view(x, :, :, :, :, batch_idx), cdims)
-        GC.@preserve col_slice w y begin
-            col_ptr = pointer(col_slice)
-            w_ptr = pointer(w)
-            y_ptr = pointer(y, (batch_idx - 1)*M*N + 1)
-            gemm!(Val(false), Val(false), M, N, K, alpha, col_ptr, w_ptr, beta, y_ptr)
+    @sync for (task_n, part) in enumerate(parts)
+        Threads.@spawn begin
+            col_slice = col_slice = view(col, :, :, task_n) # col_slice is a task-local workspace
+            for batch_idx in part
+                im2col!(col_slice, view(x, :, :, :, :, batch_idx), cdims)
+                GC.@preserve col_slice w y begin
+                    col_ptr = pointer(col_slice)
+                    w_ptr = pointer(w)
+                    y_ptr = pointer(y, (batch_idx - 1)*M*N + 1)
+                    gemm!(Val(false), Val(false), M, N, K, alpha, col_ptr, w_ptr, beta, y_ptr)
+                end
+            end
         end
     end
     return y
@@ -122,7 +127,8 @@ function ∇conv_data_im2col!(
                 dx::AbstractArray{T,5}, dy::AbstractArray{T,5},
                 w::AbstractArray{T,5}, cdims::DenseConvDims;
                 col::AbstractArray{T,3} = similar(dx, im2col_dims(cdims)),
-                alpha::T=T(1), beta::T=T(0)) where {T}
+                alpha::T=T(1), beta::T=T(0),
+                ntasks::Int=nthreads()) where {T}
     check_dims(size(dx), size(w), size(dy), cdims)
 
     #    dY        W'   ->    dX
@@ -144,17 +150,21 @@ function ∇conv_data_im2col!(
     N = prod(kernel_size(cdims))*channels_in(cdims)
     K = channels_out(cdims)
 
-    @threads for batch_idx in 1:size(dx, 5)
-        # col_slice is a thread-local workspace
-        col_slice = view(col, :, :, threadid())
+    parts = Iterators.partition(axes(dx, 5), ceil(Int, size(dx, 5) / ntasks))
 
-        GC.@preserve col_slice w dy begin
-            dy_ptr = pointer(dy, (batch_idx - 1)*M*K + 1)
-            w_ptr = pointer(w)
-            col_ptr = pointer(col_slice)
-            gemm!(Val(false), Val(true), M, N, K, alpha, dy_ptr, w_ptr, T(0), col_ptr)
+    @sync for (task_n, part) in enumerate(parts)
+        Threads.@spawn begin
+            col_slice = col_slice = view(col, :, :, task_n) # col_slice is a task-local workspace
+            for batch_idx in part
+                GC.@preserve col_slice w dy begin
+                    dy_ptr = pointer(dy, (batch_idx - 1)*M*K + 1)
+                    w_ptr = pointer(w)
+                    col_ptr = pointer(col_slice)
+                    gemm!(Val(false), Val(true), M, N, K, alpha, dy_ptr, w_ptr, T(0), col_ptr)
+                end
+                col2im!(view(dx, :, :, :, :, batch_idx), col_slice, cdims)
+            end
         end
-        col2im!(view(dx, :, :, :, :, batch_idx), col_slice, cdims)
     end
     return dx
 end

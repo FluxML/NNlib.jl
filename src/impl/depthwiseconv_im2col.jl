@@ -13,7 +13,8 @@ function depthwiseconv_im2col!(
                 y::AbstractArray{T,5}, x::AbstractArray{T,5},
                 w::AbstractArray{T,5}, cdims::DepthwiseConvDims;
                 col::AbstractArray{T,3} = similar(x, im2col_dims(cdims)),
-                alpha::T=T(1), beta::T=T(0)) where T
+                alpha::T=T(1), beta::T=T(0),
+                ntasks::Int=nthreads()) where T
     check_dims(size(x), size(w), size(y), cdims)
 
     # This functions exactly the same as conv_im2col!(), except that we shard the
@@ -25,21 +26,26 @@ function depthwiseconv_im2col!(
     N = channel_multiplier(cdims)
     K = prod(kernel_size(cdims))
 
+    parts = Iterators.partition(axes(y)[end], ceil(Int, size(y, 5) / ntasks))
+
     dcdims = DenseConvDims(cdims)
-    @threads for batch_idx in 1:size(x)[end]
-        # col_slice is a thread-local workspace
-        col_slice = view(col, :, :, threadid())
 
-        im2col!(col_slice, view(x, :, :, :, :, batch_idx), dcdims)
+    @sync for (task_n, part) in enumerate(parts)
+        Threads.@spawn begin
+            col_slice = col_slice = view(col, :, :, task_n) # col_slice is a task-local workspace
+            for batch_idx in part
+                im2col!(col_slice, view(x, :, :, :, :, batch_idx), dcdims)
 
-        # We do a separate convolution for each channel in x, as we must
-        for c_in in 1:channels_in(cdims)
-            # Walk each pointer forward as we process each input channel
-            GC.@preserve col_slice w y begin
-                col_ptr = pointer(col_slice, (c_in-1)*M*K+1)
-                w_ptr = pointer(w, (c_in-1)*K*N+1)
-                y_ptr = pointer(y, ((batch_idx - 1)*channels_in(cdims) + c_in - 1)*M*N + 1)
-                gemm!(Val(false), Val(false), M, N, K, alpha, col_ptr, w_ptr, beta, y_ptr)
+                # We do a separate convolution for each channel in x, as we must
+                for c_in in 1:channels_in(cdims)
+                    # Walk each pointer forward as we process each input channel
+                    GC.@preserve col_slice w y begin
+                        col_ptr = pointer(col_slice, (c_in-1)*M*K+1)
+                        w_ptr = pointer(w, (c_in-1)*K*N+1)
+                        y_ptr = pointer(y, ((batch_idx - 1)*channels_in(cdims) + c_in - 1)*M*N + 1)
+                        gemm!(Val(false), Val(false), M, N, K, alpha, col_ptr, w_ptr, beta, y_ptr)
+                    end
+                end
             end
         end
     end
@@ -101,28 +107,33 @@ function ∇depthwiseconv_data_im2col!(
                 dx::AbstractArray{T,5}, dy::AbstractArray{T,5},
                 w::AbstractArray{T,5}, cdims::DepthwiseConvDims;
                 col::AbstractArray{T,3} = similar(dx, im2col_dims(cdims)),
-                alpha::T=T(1), beta::T=T(0)) where T
+                alpha::T=T(1), beta::T=T(0),
+                ntasks::Int=nthreads()) where T
     check_dims(size(dx), size(w), size(dy), cdims)
 
     M = prod(output_size(cdims))
     N = prod(kernel_size(cdims))
     K = channel_multiplier(cdims)
 
-    @threads for batch_idx in 1:size(dx)[end]
-        # col_slice is a thread-local workspace
-        col_slice = view(col, :, :, threadid())
+    parts = Iterators.partition(axes(dx)[end], ceil(Int, size(dx, 5) / ntasks))
 
-        # We do a separate convolution for each channel in x, as we must
-        for cidx in 1:channels_in(cdims)
-            GC.@preserve col_slice w dy begin
-                # Walk each pointer forward as we process each input channel
-                dy_ptr = pointer(dy, (batch_idx - 1)*M*K*channels_in(cdims)+(cidx - 1)*K*M + 1)
-                w_ptr = pointer(w, (cidx - 1)*K*N + 1)
-                col_ptr = pointer(col_slice, (cidx - 1)*M*N + 1)
-                gemm!(Val(false), Val(true), M, N, K, alpha, dy_ptr, w_ptr, T(0), col_ptr)
+    @sync for (task_n, part) in enumerate(parts)
+        Threads.@spawn begin
+            col_slice = col_slice = view(col, :, :, task_n) # col_slice is a task-local workspace
+            for batch_idx in part
+                # We do a separate convolution for each channel in x, as we must
+                for cidx in 1:channels_in(cdims)
+                    GC.@preserve col_slice w dy begin
+                        # Walk each pointer forward as we process each input channel
+                        dy_ptr = pointer(dy, (batch_idx - 1)*M*K*channels_in(cdims)+(cidx - 1)*K*M + 1)
+                        w_ptr = pointer(w, (cidx - 1)*K*N + 1)
+                        col_ptr = pointer(col_slice, (cidx - 1)*M*N + 1)
+                        gemm!(Val(false), Val(true), M, N, K, alpha, dy_ptr, w_ptr, T(0), col_ptr)
+                    end
+                end
+                col2im!(view(dx, :, :, :, :, batch_idx), col_slice, cdims)
             end
         end
-        col2im!(view(dx, :, :, :, :, batch_idx), col_slice, cdims)
     end
     return dx
 end
