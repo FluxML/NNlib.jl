@@ -931,17 +931,15 @@ maxpool_answer_nature = Dict(
             end
         end
     end
-    #=
-    # This is how to test #484 with ReverseDiff, which is not a test dependency atm:
-    import ReverseDiff as RD
+    
+    # This is how to test #484 with ReverseDiff:
     x = reshape(Float32[ 1 2; 3 4 ], (2,2,1,1))
     @test only(maxpool(x, (2,2))) == 4
-    # @test RD.gradient(_x -> only(maxpool(_x,(2,2))), x)[:,:,1,1] == [0 0; 0 1]
+    # define typemin, because of https://github.com/JuliaDiff/ReverseDiff.jl/issues/225
+    Base.typemin(tr::Type{<:T}) where{V, D, O, T<:RD.TrackedReal{V, D, O}} = T(typemin(V))
+    @test RD.gradient(_x -> only(maxpool(_x,(2,2))), x)[:,:,1,1] == [0 0; 0 1]
     @test only(meanpool(x, (2,2))) == 2.5
     @test all( RD.gradient(_x -> only(meanpool(_x,(2,2))), x) .== 0.25 )
-    end
-    =#
-
 
     # if NNlib.is_nnpack_available()
     #     if NNlib.nnpack_supported_operation(pdims1)
