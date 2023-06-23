@@ -1,3 +1,4 @@
+using Dates
 
 """
     softmax(x; dims = 1)
@@ -58,6 +59,7 @@ softmax(x::AbstractArray{T}; dims = 1) where {T} = softmax!(similar(x, float(T))
 softmax!(x::AbstractArray; dims = 1) = softmax!(x, x; dims)
 
 function softmax!(out::AbstractArray{T}, x::AbstractArray; dims = 1) where {T}
+    sleep(Millisecond(20)) # slow down intentionally
     max_ = fast_maximum(x; dims)
     if all(isfinite, max_)
         @fastmath out .= exp.(x .- max_)
