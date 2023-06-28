@@ -2,8 +2,8 @@
 # the inner loop operation and a few initialization parameters.
 for name in (:max, :mean, :lpnorm)
     @eval function $((Symbol("$(name)pool_direct!")))(
-                    y::AbstractArray{T, 5}, x::AbstractArray{R, 5},
-                    pdims::PoolDims; alpha=1, beta=0, kwargs...) where {T, R}
+                    y::AbstractArray{<:Any, 5}, x::AbstractArray{<:Any, 5},
+                    pdims::PoolDims; alpha=1, beta=0, kwargs...) 
         $((Symbol("$(name)pool_direct!")))(
             y, x, pdims,
             Val(kernel_size(pdims)), Val(channels_out(pdims)),
@@ -18,7 +18,7 @@ for name in (:max, :mean, :lpnorm)
         # kernel size, channels out, padding, dilation, stride
         ::Val{K}, ::Val{C}, ::Val{P}, ::Val{D}, ::Val{S};
         alpha=1, beta=0, kwargs...
-    ) where {T, R, K, C, P, D, S}
+    ) where {T, K, C, P, D, S}
         @assert iszero(beta) "beta not supported yet"
         check_dims(size(x), size(y), pdims)
 
@@ -170,9 +170,9 @@ for name in (:max, :mean, :lpnorm)
     end
 
     @eval function $((Symbol("∇$(name)pool_direct!")))(
-                    dx::AbstractArray{DX,5}, dy::AbstractArray{DY,5},
-                    y::AbstractArray{Y,5}, x::AbstractArray{X,5},
-                    pdims::PoolDims; kwargs...) where {X, Y, DX, DY}
+                    dx::AbstractArray{<:Any,5}, dy::AbstractArray{<:Any,5},
+                    y::AbstractArray{<:Any,5}, x::AbstractArray{<:Any,5},
+                    pdims::PoolDims; kwargs...)
         $((Symbol("∇$(name)pool_direct!")))(
             dx, dy, y, x, pdims, Val(kernel_size(pdims)); kwargs...)
         return dx
@@ -181,10 +181,10 @@ for name in (:max, :mean, :lpnorm)
     # Same story for gradients, and although this is very similar to the forward pass,
     # it's unfortunately different enough that I think we need a separate function.  :(
     @eval function $((Symbol("∇$(name)pool_direct!")))(
-                    dx::AbstractArray{DX,5}, dy::AbstractArray{DY,5},
-                    y::AbstractArray{Y,5}, x::AbstractArray{X,5},
+                    dx::AbstractArray{T,5}, dy::AbstractArray{<:Any,5},
+                    y::AbstractArray{<:Any,5}, x::AbstractArray{<:Any,5},
                     pdims::PoolDims, ::Val{K}; # == kernel_size(pdims)
-                    alpha=1, beta=0, kwargs...) where {DX, DY, X, Y, K}
+                    alpha=1, beta=0, kwargs...) where {T, K}
         check_dims(size(x), size(dy), pdims)
 
         width, height, depth = input_size(pdims)
@@ -208,9 +208,9 @@ for name in (:max, :mean, :lpnorm)
         # If we're doing mean pooling, we represent division by kernel size by rolling
         # it into the `_alpha` multiplier.
         _alpha = if $(name == :mean)
-            DX(alpha / prod(K))
+            T(alpha / prod(K))
         else
-            DX(alpha)
+            T(alpha)
         end
 
         p = if $(name != :lpnorm) 0 else
