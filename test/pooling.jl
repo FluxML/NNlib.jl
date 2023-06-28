@@ -939,7 +939,7 @@ maxpool_answer_nature = Dict(
     Base.typemin(tr::Type{<:T}) where{V, D, O, T<:RD.TrackedReal{V, D, O}} = T(typemin(V))
     @test RD.gradient(_x -> only(maxpool(_x,(2,2))), x)[:,:,1,1] == [0 0; 0 1]
     @test only(meanpool(x, (2,2))) == 2.5
-    @test all( RD.gradient(_x -> only(meanpool(_x,(2,2))), x) .== 0.25 )
+    @test all(==(0.25), RD.gradient(_x -> only(meanpool(_x,(2,2))), x))
 
     # if NNlib.is_nnpack_available()
     #     if NNlib.nnpack_supported_operation(pdims1)
