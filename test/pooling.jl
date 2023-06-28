@@ -936,7 +936,7 @@ maxpool_answer_nature = Dict(
     x = reshape(Float32[ 1 2; 3 4 ], (2,2,1,1))
     @test only(maxpool(x, (2,2))) == 4
     # define typemin, because of https://github.com/JuliaDiff/ReverseDiff.jl/issues/225
-    Base.typemin(tr::Type{<:T}) where{V, D, O, T<:RD.TrackedReal{V, D, O}} = T(typemin(V))
+    Base.typemin(tr::Type{<:T}) where{V, T<:RD.TrackedReal{V, <:Any, <:Any}} = T(typemin(V))
     @test RD.gradient(_x -> only(maxpool(_x,(2,2))), x)[:,:,1,1] == [0 0; 0 1]
     @test only(meanpool(x, (2,2))) == 2.5
     @test all(==(0.25), RD.gradient(_x -> only(meanpool(_x,(2,2))), x))
