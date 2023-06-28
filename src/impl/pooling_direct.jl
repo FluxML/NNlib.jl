@@ -13,7 +13,7 @@ for name in (:max, :mean, :lpnorm)
     end
 
     @eval function $((Symbol("$(name)pool_direct!")))(
-        y::AbstractArray{T,5}, x::AbstractArray{R,5},
+        y::AbstractArray{T,5}, x::AbstractArray{<:Any,5},
         pdims::PoolDims,
         # kernel size, channels out, padding, dilation, stride
         ::Val{K}, ::Val{C}, ::Val{P}, ::Val{D}, ::Val{S};
