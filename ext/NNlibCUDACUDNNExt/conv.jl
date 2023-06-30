@@ -9,6 +9,7 @@ using cuDNN: scalingParameter, CUDNN_CONVOLUTION, convdims,
              cudnnConvolutionBackwardBias
 
 const CUDNNFloat = Union{Float16,Float32,Float64}
+const CUDNNComplexFloat = Union{ComplexF16,ComplexF32,ComplexF64}
 
 function cudnnConvolutionDescriptorAndPaddedInput(cdims::DenseConvDims, x::DenseCuArray{T}) where T
     # The main purpose of this function is to catch asymmetric padding which cudnn does not support
@@ -49,7 +50,7 @@ function cudnnConvolutionDescriptor(cdims::DenseConvDims, x::DenseCuArray{T}, pa
                                convdims(NNlib.stride(cdims),size(x),1),
                                convdims(NNlib.dilation(cdims),size(x),1),
                                mode,
-                               cudnnDataType(T),
+                               cudnnDataType(real(T)),
                                math_mode(),
                                CUDNN_DEFAULT_REORDER,
                                Cint(NNlib.groupcount(cdims)))
@@ -67,6 +68,23 @@ function conv!(y::DenseCuArray{T}, x::DenseCuArray{T}, w::DenseCuArray{T}, cdims
     cudnnConvolutionForward!(y, w, x, d; alpha, beta, z=y)
 end
 
+function conv!(y::DenseCuArray{T}, x::DenseCuArray{T}, w::DenseCuArray{T}, cdims::DenseConvDims;
+               alpha=1, beta=0, algo=-1) where T<:CUDNNComplexFloat
+    xr, xi = reim(x)
+    wr, wi = reim(w)
+    a = conv!(similar(real(y)), xr, wr, cdims; algo=algo)
+    b = conv!(similar(a), xi, wi, cdims; algo=algo)
+    c = conv!(similar(a), xr + xi, wr + wi, cdims; algo=algo)
+    # if y is from similar(), it may have NaNs, and beta*NaN will propagate.
+    if beta != 0
+        @. y = alpha*((a - b) + im*(c - a - b)) + beta*y
+    else
+        @. y = alpha*((a - b) + im*(c - a - b))
+    end
+    any(isnan.(abs.(y))) && @warn "abs(y) isnan"
+    return y
+end
+
 function conv_bias_act!(y::DenseCuArray{T}, x::DenseCuArray{T}, w::DenseCuArray{T},
                         cdims::DenseConvDims, bias::DenseCuArray{T}, σ=identity;
                         z::DenseCuArray{T}=y, alpha=1, beta=0, algo=-1) where T<:CUDNNFloat
@@ -82,6 +100,23 @@ function conv_bias_act!(y::DenseCuArray{T}, x::DenseCuArray{T}, w::DenseCuArray{
     cudnnConvolutionForward!(y, w, x, d; z, bias, activation, alpha, beta)
     if activation === CUDNN_ACTIVATION_IDENTITY && σ ∉ (nothing, identity)
         y = σ.(y)
+    end
+    return y
+end
+
+function conv_bias_act!(y::DenseCuArray{T}, x::DenseCuArray{T}, w::DenseCuArray{T},
+                        cdims::DenseConvDims, bias::DenseCuArray{T}, σ=identity;
+                        z::DenseCuArray{T}=y, alpha=1, beta=0, algo=-1) where T<:CUDNNComplexFloat
+    xr, xi = reim(x)
+    wr, wi = reim(w)
+    a = conv!(similar(real(y)), xr, wr, cdims; alpha=1, beta=0, algo=algo)
+    b = conv!(similar(a), xi, wi, cdims; alpha=1, beta=0, algo=algo)
+    c = conv!(similar(a), xr + xi, wr + wi, cdims; alpha=1, beta=0, algo=algo)
+    # if y is from similar(), it may have NaNs, and beta*NaN will propagate.
+    if beta != 0
+        @. y = σ(alpha*((a - b) + im*(c - a - b) + bias) + beta*y)
+    else
+        @. y = σ(alpha*((a - b) + im*(c - a - b) + bias))
     end
     return y
 end
@@ -104,6 +139,23 @@ function ∇conv_data!(dx::DenseCuArray{T}, dy::DenseCuArray{T}, w::DenseCuArray
     return depad(dx)
 end
 
+function ∇conv_data!(dx::DenseCuArray{T}, dy::DenseCuArray{T}, w::DenseCuArray{T},
+                     cdims::DenseConvDims; alpha=1, beta=0, algo=-1) where T<:CUDNNComplexFloat
+    dyr, dyi = reim(dy)
+    wr, wi = reim(w)
+    # note: w is conjugated, i.e. wi is negated below
+    a = ∇conv_data!(similar(real(dx)), dyr, wr, cdims; alpha=1, beta=0, algo=algo)
+    b = ∇conv_data!(similar(a), dyi, -wi, cdims; alpha=1, beta=0, algo=algo)
+    c = ∇conv_data!(similar(a), dyr + dyi, wr - wi, cdims; alpha=1, beta=0, algo=algo)
+    # if dx is from similar(), it may have NaNs, and beta*NaN will propagate.
+    if beta != 0
+        @. dx = alpha*((a - b) + im*(c - a - b)) + beta*dx
+    else
+        @. dx = alpha*((a - b) + im*(c - a - b)) 
+    end
+    return dx
+end
+
 function ∇conv_filter!(dw::DenseCuArray{T}, x::DenseCuArray{T}, dy::DenseCuArray{T},
                        cdims::DenseConvDims; alpha=1, beta=0, algo=-1) where T<:CUDNNFloat
     if cudnnversion() < v"6"
@@ -118,6 +170,23 @@ function ∇conv_filter!(dw::DenseCuArray{T}, x::DenseCuArray{T}, dy::DenseCuArr
     p = cudnnConvolutionBwdFilterAlgoPerf(xDesc, x, yDesc, dy, convDesc, wDesc, dw, beta!=0);
     with_workspace(p.memory) do workspace
         cudnnConvolutionBackwardFilter(handle(), alpha, xDesc, x, yDesc, dy, convDesc, p.algo, workspace, sizeof(workspace), beta, wDesc, dw);
+    end
+    return dw
+end
+
+function ∇conv_filter!(dw::DenseCuArray{T}, x::DenseCuArray{T}, dy::DenseCuArray{T},
+                       cdims::DenseConvDims; alpha=1, beta=0, algo=-1) where T<:CUDNNComplexFloat
+    xr, xi = reim(x)
+    dyr, dyi = reim(dy)
+    # note: x is conjugated, i.e. xi is negated below
+    a = ∇conv_filter!(similar(real(dw)), xr, dyr, cdims; alpha=1, beta=0, algo=algo)
+    b = ∇conv_filter!(similar(a), -xi, dyi, cdims; alpha=1, beta=0, algo=algo)
+    c = ∇conv_filter!(similar(a), xr - xi, dyr + dyi, cdims; alpha=1, beta=0, algo=algo)
+    # if dw is from similar(), it may have NaNs, and beta*NaN will propagate.
+    if beta != 0
+        @. dw = alpha*((a - b) + im*(c - a - b)) + beta*dw
+    else
+        @. dw = alpha*((a - b) + im*(c - a - b)) 
     end
     return dw
 end
