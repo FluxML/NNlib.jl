@@ -68,6 +68,15 @@ function conv!(y::DenseCuArray{T}, x::DenseCuArray{T}, w::DenseCuArray{T}, cdims
     cudnnConvolutionForward!(y, w, x, d; alpha, beta, z=y)
 end
 
+# Complex convolution with Gauss's trick (1 complex mul === 3 real mul):
+# Consider x = xr + im*xi, y = yr + im*yi,
+# so x*y = (xr*yr - xi*yi) + im*(xr*yi + xi*yr).
+# Let a = xr*yr,
+#     b = xi*yi,
+#     c = (xr + xi)*(yr + yi) = xr*yr + xr*yi + xi*yr + xi*yi.
+# Then,
+# x*y = (a - b) * im*(c - a - b).
+# Convolution is linear so this multiplication trick translates to convolution.
 function conv!(y::DenseCuArray{T}, x::DenseCuArray{T}, w::DenseCuArray{T}, cdims::DenseConvDims;
                alpha=1, beta=0, algo=-1) where T<:CUDNNComplexFloat
     xr, xi = reim(x)
@@ -81,7 +90,6 @@ function conv!(y::DenseCuArray{T}, x::DenseCuArray{T}, w::DenseCuArray{T}, cdims
     else
         @. y = alpha*((a - b) + im*(c - a - b))
     end
-    any(isnan.(abs.(y))) && @warn "abs(y) isnan"
     return y
 end
 
