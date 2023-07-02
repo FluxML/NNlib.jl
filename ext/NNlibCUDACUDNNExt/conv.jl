@@ -85,7 +85,7 @@ end
 #     b = xi*yi,
 #     c = (xr + xi)*(yr + yi) = xr*yr + xr*yi + xi*yr + xi*yi.
 # Then,
-# x*y = (a - b) * im*(c - a - b).
+# x*y = (a - b) + im*(c - a - b).
 # Convolution is linear so this multiplication trick translates to convolution.
 function conv!(y::DenseCuArray{T}, x::DenseCuArray{T}, w::DenseCuArray{T}, cdims::DenseConvDims;
                alpha=1, beta=0, algo=-1) where T<:CUDNNComplexFloat
