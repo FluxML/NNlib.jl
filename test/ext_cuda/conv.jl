@@ -9,6 +9,15 @@ using NNlib: DenseConvDims
     @test ∇conv_data(c, b, cdims) ≈ collect(∇conv_data(dc, db, cdims))
     @test ∇conv_filter(a, c, cdims) ≈ collect(∇conv_filter(da, dc, cdims))
 
+    if T <: Complex
+        @testset "mixed real and complex" begin
+            @test NNlib.conv(real(a), b, cdims) ≈ collect(NNlib.conv(real(da), db, cdims))
+            @test NNlib.conv(a, real(b), cdims) ≈ collect(NNlib.conv(da, real(db), cdims))
+            @test ∇conv_data(c, real(b), cdims) ≈ collect(∇conv_data(dc, real(db), cdims))
+            @test ∇conv_filter(real(a), c, cdims) ≈ collect(∇conv_filter(real(da), dc, cdims))
+        end
+    end
+
     # Test Conv Bias Activation
     bias = rand(T, 1, 1, 4, 1)
     dbias = CuArray(bias)
@@ -55,12 +64,22 @@ using NNlib: DenseConvDims
             @testset "cpu==gpu" begin
                 @testset "conv" begin
                     gputest((x, w) -> act.(NNlib.conv(x, w, cdims)), x, w)
+                    if T <: Complex
+                        gputest((x, w) -> act.(NNlib.conv(x, w, cdims)), real(x), w)
+                        gputest((x, w) -> act.(NNlib.conv(x, w, cdims)), x, real(w))
+                    end
                 end
                 @testset "∇conv_data" begin
                     gputest((y, w) -> act.(NNlib.∇conv_data(y, w, cdims)), y, w)
+                    if T <: Complex
+                        gputest((y, w) -> act.(NNlib.∇conv_data(y, w, cdims)), y, real(w))
+                    end
                 end
                 @testset "∇conv_filter" begin
                     gputest((x, y) -> act.(NNlib.∇conv_filter(x, y, cdims)), x, y, checkgrad=false) # TODO fix grad
+                    if T <: Complex
+                        gputest((x, y) -> act.(NNlib.∇conv_filter(x, y, cdims)), real(x), y, checkgrad=false) # TODO fix grad
+                    end
                 end
             end
 
@@ -69,12 +88,26 @@ using NNlib: DenseConvDims
                 gputest((x, w) -> act.(NNlib.conv(x, w, cdims; alpha=T(2.0))), x, w, checkgrad=false) # TODO
                 gputest((y, w) -> act.(NNlib.∇conv_data(y, w, cdims; alpha=T(2.0))), y, w, checkgrad=false) # TODO
                 gputest((x, y) -> act.(NNlib.∇conv_filter(x, y, cdims; alpha=T(2.0))), x, y, checkgrad=false) # TODO
+
+                if T <: Complex
+                    gputest((x, w) -> act.(NNlib.conv(x, w, cdims; alpha=T(2.0))), real(x), w, checkgrad=false) # TODO
+                    gputest((x, w) -> act.(NNlib.conv(x, w, cdims; alpha=T(2.0))), x, real(w), checkgrad=false) # TODO
+                    gputest((y, w) -> act.(NNlib.∇conv_data(y, w, cdims; alpha=T(2.0))), y, real(w), checkgrad=false) # TODO
+                    gputest((x, y) -> act.(NNlib.∇conv_filter(x, y, cdims; alpha=T(2.0))), real(x), y, checkgrad=false) # TODO
+                end
             end
 
             @testset "scale-beta" begin
                 gputest((y, x, w) -> act.(NNlib.conv!(copy(y), x, w, cdims; beta=T(2.0))), y, x, w, checkgrad=false) # TODO
-                # @test_broken gputest((x, y, w) -> NNlib.∇conv_data!(copy(x), y, w, cdims; beta=2.0), x, y, w, checkgrad=false) #TODO
+                # @test_broken gputest((x, y, w) -> act.(NNlib.∇conv_data!(copy(x), y, w, cdims; beta=T(2.0))), x, y, w, checkgrad=false) #TODO
                 gputest((w, x, y) -> act.(NNlib.∇conv_filter!(copy(w), x, y, cdims; beta=T(2.0))), w, x, y, checkgrad=false) # TODO
+
+                if T <: Complex
+                    gputest((y, x, w) -> act.(NNlib.conv!(copy(y), x, w, cdims; beta=T(2.0))), y, real(x), w, checkgrad=false) # TODO
+                    gputest((y, x, w) -> act.(NNlib.conv!(copy(y), x, w, cdims; beta=T(2.0))), y, x, real(w), checkgrad=false) # TODO
+                    # below is broken for padding=1
+                    # gputest((w, x, y) -> act.(NNlib.∇conv_filter!(copy(w), x, y, cdims; beta=T(2.0))), w, real(x), y, checkgrad=false) # TODO
+                end
             end
 
         end

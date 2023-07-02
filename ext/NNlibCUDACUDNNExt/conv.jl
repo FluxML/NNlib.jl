@@ -56,6 +56,16 @@ function cudnnConvolutionDescriptor(cdims::DenseConvDims, x::DenseCuArray{T}, pa
                                Cint(NNlib.groupcount(cdims)))
 end
 
+@inline function _complex!(y::DenseCuArray{T1}, yr::DenseCuArray{T2}, yi::DenseCuArray{T2}; bias=zero(T1), alpha=one(T1), beta=zero(T1), σ=identity) where {T1 <: CUDNNComplexFloat, T2<:CUDNNFloat}
+    # if y is from similar(), it may have NaNs, and beta*NaN will propagate.
+    if beta != 0
+        @. y = σ(alpha*(yr + im*yi) + bias + beta*y)
+    else
+        @. y = σ(alpha*(yr + im*yi) + bias)
+    end
+    return y
+end
+
 function conv!(y::DenseCuArray{T}, x::DenseCuArray{T}, w::DenseCuArray{T}, cdims::DenseConvDims;
                alpha=1, beta=0, algo=-1) where T<:CUDNNFloat
     if cudnnversion() < v"6"
@@ -84,13 +94,25 @@ function conv!(y::DenseCuArray{T}, x::DenseCuArray{T}, w::DenseCuArray{T}, cdims
     a = conv!(similar(real(y)), xr, wr, cdims; algo=algo)
     b = conv!(similar(a), xi, wi, cdims; algo=algo)
     c = conv!(similar(a), xr + xi, wr + wi, cdims; algo=algo)
-    # if y is from similar(), it may have NaNs, and beta*NaN will propagate.
-    if beta != 0
-        @. y = alpha*((a - b) + im*(c - a - b)) + beta*y
-    else
-        @. y = alpha*((a - b) + im*(c - a - b))
-    end
-    return y
+    return _complex!(y, a - b, c - a - b; alpha=alpha, beta=beta)
+end
+
+# (xr + im*xi) * w = xr*w + im*(xi*w)
+function conv!(y::DenseCuArray{T1}, x::DenseCuArray{T1}, w::DenseCuArray{T2}, cdims::DenseConvDims;
+               alpha=1, beta=0, algo=-1) where {T1<:CUDNNComplexFloat, T2<:CUDNNFloat}
+    xr, xi = reim(x)
+    yr = conv!(similar(real(y)), xr, w, cdims; algo=algo)
+    yi = conv!(similar(yr), xi, w, cdims; algo=algo)
+    return _complex!(y, yr, yi; alpha=alpha, beta=beta)
+end
+
+# x * (wr + im*wi) = x*wr + im*(x*wi)
+function conv!(y::DenseCuArray{T1}, x::DenseCuArray{T2}, w::DenseCuArray{T1}, cdims::DenseConvDims;
+               alpha=1, beta=0, algo=-1) where {T1<:CUDNNComplexFloat, T2<:CUDNNFloat}
+    wr, wi = reim(w)
+    yr = conv!(similar(real(y)), x, wr, cdims; algo=algo)
+    yi = conv!(similar(yr), x, wi, cdims; algo=algo)
+    return _complex!(y, yr, yi; alpha=alpha, beta=beta)
 end
 
 function conv_bias_act!(y::DenseCuArray{T}, x::DenseCuArray{T}, w::DenseCuArray{T},
@@ -120,13 +142,7 @@ function conv_bias_act!(y::DenseCuArray{T}, x::DenseCuArray{T}, w::DenseCuArray{
     a = conv!(similar(real(y)), xr, wr, cdims; alpha=1, beta=0, algo=algo)
     b = conv!(similar(a), xi, wi, cdims; alpha=1, beta=0, algo=algo)
     c = conv!(similar(a), xr + xi, wr + wi, cdims; alpha=1, beta=0, algo=algo)
-    # if y is from similar(), it may have NaNs, and beta*NaN will propagate.
-    if beta != 0
-        @. y = σ(alpha*((a - b) + im*(c - a - b) + bias) + beta*y)
-    else
-        @. y = σ(alpha*((a - b) + im*(c - a - b) + bias))
-    end
-    return y
+    return _complex!(y, a - b, c - a - b; bias=bias, alpha=alpha, beta=beta, σ=σ)
 end
 
 function ∇conv_data!(dx::DenseCuArray{T}, dy::DenseCuArray{T}, w::DenseCuArray{T},
@@ -155,13 +171,16 @@ function ∇conv_data!(dx::DenseCuArray{T}, dy::DenseCuArray{T}, w::DenseCuArray
     a = ∇conv_data!(similar(real(dx)), dyr, wr, cdims; alpha=1, beta=0, algo=algo)
     b = ∇conv_data!(similar(a), dyi, -wi, cdims; alpha=1, beta=0, algo=algo)
     c = ∇conv_data!(similar(a), dyr + dyi, wr - wi, cdims; alpha=1, beta=0, algo=algo)
-    # if dx is from similar(), it may have NaNs, and beta*NaN will propagate.
-    if beta != 0
-        @. dx = alpha*((a - b) + im*(c - a - b)) + beta*dx
-    else
-        @. dx = alpha*((a - b) + im*(c - a - b)) 
-    end
-    return dx
+    return _complex!(dx, a - b, c - a - b; alpha=alpha, beta=beta)
+end
+
+# dx = (dyr + im*dyi)*w = dyr*w + im*(dyi*w)
+function ∇conv_data!(dx::DenseCuArray{T1}, dy::DenseCuArray{T1}, w::DenseCuArray{T2},
+                     cdims::DenseConvDims; alpha=1, beta=0, algo=-1) where {T1<:CUDNNComplexFloat, T2<:CUDNNFloat}
+    dyr, dyi = reim(dy)
+    dxr = ∇conv_data!(similar(real(dx)), dyr, w, cdims; alpha=1, beta=0, algo=algo)
+    dxi = ∇conv_data!(similar(dxr), dyi, w, cdims; alpha=1, beta=0, algo=algo)
+    return _complex!(dx, dxr, dxi; alpha=alpha, beta=beta)
 end
 
 function ∇conv_filter!(dw::DenseCuArray{T}, x::DenseCuArray{T}, dy::DenseCuArray{T},
@@ -190,13 +209,16 @@ function ∇conv_filter!(dw::DenseCuArray{T}, x::DenseCuArray{T}, dy::DenseCuArr
     a = ∇conv_filter!(similar(real(dw)), xr, dyr, cdims; alpha=1, beta=0, algo=algo)
     b = ∇conv_filter!(similar(a), -xi, dyi, cdims; alpha=1, beta=0, algo=algo)
     c = ∇conv_filter!(similar(a), xr - xi, dyr + dyi, cdims; alpha=1, beta=0, algo=algo)
-    # if dw is from similar(), it may have NaNs, and beta*NaN will propagate.
-    if beta != 0
-        @. dw = alpha*((a - b) + im*(c - a - b)) + beta*dw
-    else
-        @. dw = alpha*((a - b) + im*(c - a - b)) 
-    end
-    return dw
+    return _complex!(dw, a - b, c - a - b; alpha=alpha, beta=beta)
+end
+
+# dw = x*(dyr + im*dyi) = x*dyr + im*(x*dyi)
+function ∇conv_filter!(dw::DenseCuArray{T1}, x::DenseCuArray{T2}, dy::DenseCuArray{T1},
+                       cdims::DenseConvDims; alpha=1, beta=0, algo=-1) where {T1<:CUDNNComplexFloat, T2<:CUDNNFloat}
+    dyr, dyi = reim(dy)
+    dwr = ∇conv_filter!(similar(real(dw)), x, dyr, cdims; alpha=1, beta=0, algo=algo)
+    dwi = ∇conv_filter!(similar(dwr), x, dyi, cdims; alpha=1, beta=0, algo=algo)
+    return _complex!(dw, dwr, dwi; alpha=alpha, beta=beta)
 end
 
 function ∇conv_bias!(db::DenseCuArray{T}, dy::DenseCuArray{T}; alpha=1, beta=0) where T<:CUDNNFloat
@@ -204,4 +226,11 @@ function ∇conv_bias!(db::DenseCuArray{T}, dy::DenseCuArray{T}; alpha=1, beta=0
     bDesc, yDesc = cudnnTensorDescriptor.((db,dy))
     cudnnConvolutionBackwardBias(handle(), alpha, yDesc, dy, beta, bDesc, db)
     return db
+end
+
+function ∇conv_bias!(db::DenseCuArray{T}, dy::DenseCuArray{T}; alpha=1, beta=0) where T<:CUDNNComplexFloat
+    dyr, dyi = reim(dy)
+    dbr = ∇conv_bias!(similar(real(db)), dyr; alpha=1, beta=0)
+    dbi = ∇conv_bias!(similar(dbr), dyi; alpha=1, beta=0)
+    return _complex!(db, dbr, dbi; alpha=alpha, beta=beta)
 end
