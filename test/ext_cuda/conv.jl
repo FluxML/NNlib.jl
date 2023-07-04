@@ -50,6 +50,7 @@ using NNlib: DenseConvDims
         @testset "opts #$i" for (i,opts) in enumerate(options)
             opts[:groups] = groups
 
+
             if :padding in keys(opts)
                 padding = opts[:padding]
                 if 1 < length(padding) && length(padding) != 2num_spatial_dims
@@ -105,8 +106,7 @@ using NNlib: DenseConvDims
                 if T <: Complex
                     gputest((y, x, w) -> act.(NNlib.conv!(copy(y), x, w, cdims; beta=T(2.0))), y, real(x), w, checkgrad=false) # TODO
                     gputest((y, x, w) -> act.(NNlib.conv!(copy(y), x, w, cdims; beta=T(2.0))), y, x, real(w), checkgrad=false) # TODO
-                    # below is broken for padding=1
-                    # gputest((w, x, y) -> act.(NNlib.∇conv_filter!(copy(w), x, y, cdims; beta=T(2.0))), w, real(x), y, checkgrad=false) # TODO
+                    gputest((w, x, y) -> act.(NNlib.∇conv_filter!(copy(w), x, y, cdims; beta=T(2.0))), w, real(x), y, checkgrad=false) # TODO
                 end
             end
 
