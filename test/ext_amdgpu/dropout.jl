@@ -4,7 +4,7 @@
     @test size(@inferred dropout(x, 0.2; dims=2)) == (3, 4)
     @test size(@inferred dropout(x, 0.3; dims=(1, 2))) == (3, 4)
 
-    rng = AMDGPU.rocRAND.default_rng()
+    rng = AMDGPU.rocrand_rng()
     @test size(@inferred dropout(rng, x, 0.1)) == (3, 4)
     @test size(@inferred dropout(rng, x, 0.1; dims=2)) == (3, 4)
 
