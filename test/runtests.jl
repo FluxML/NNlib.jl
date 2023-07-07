@@ -75,6 +75,7 @@ end
             if AMDGPU.functional()
                 @testset "ROCBackend" begin
                     nnlib_testsuite(ROCBackend)
+                    AMDGPU.synchronize(; blocking=false)
                 end
             else
                 @info "AMDGPU.jl is not functional. Skipping test suite for ROCBackend."
@@ -109,6 +110,7 @@ end
                 @show AMDGPU.MIOpen.version()
                 @testset "AMDGPU" begin
                     include("ext_amdgpu/runtests.jl")
+                    AMDGPU.synchronize(; blocking=false)
                 end
             else
                 @info "AMDGPU.jl package is not functional. Skipping AMDGPU tests."
