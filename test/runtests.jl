@@ -69,10 +69,7 @@ end
         if get(ENV, "NNLIB_TEST_AMDGPU", "false") == "true"
             import Pkg
             test_info = Pkg.project()
-            # Add MIOpen_jll to AMDGPU.
             Pkg.develop("AMDGPU")
-            Pkg.activate(joinpath(Pkg.devdir(), "AMDGPU"))
-            Pkg.add("MIOpen_jll")
             Pkg.update()
             # Update test project.
             Pkg.activate(test_info.path)
