@@ -192,7 +192,7 @@ function ∇conv_filter_direct!(dw::AbstractArray{wT,5}, x::AbstractArray{xT,5},
     ctdims = DenseConvDims(dy, x; padding=transpose_pad(cdims),
                                     stride=dilation(cdims))
     dw_ = if flipkernel(cdims)
-        view(dw, size(dw,1):-1:1, size(dw,2):-1:1, size(dw,3):-1:1, :, :)
+        view(dw, reverse(axes(dw, 1)), reverse(axes(dw, 2)), reverse(axes(dw, 3)), :, :)
     else
         dw
     end
