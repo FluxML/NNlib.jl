@@ -1,0 +1,22 @@
+name: Benchmark Trigger
+
+on:
+  pull_request:
+    types: [ labeled ]
+
+jobs:
+  benchmark_trigger:
+    if: ${{ github.event.label.name == 'benchmark' }}
+    runs-on: ubuntu-latest
+    env:
+      REPOSITORY: ${{ github.event.repository.full_name }}
+      PR_ID: ${{ github.event.pull_request.number }}
+      TARGET_URL: ${{ format("{0}#{1}", github.event.pull_request.head.html_url, github.event.pull_request.head.sha) }}
+      BASELINE_URL: ${{ format("{0}#{1}"", github.event.pull_request.base.repo.html_url, github.event.pull_request.base.sha) }}
+    steps:
+      - uses: benc-uk/workflow-dispatch@v1
+        with:
+          repo: FluxML/FluxMLBenchmarks.jl
+          workflow: Benchmark.yml
+          token: ${{ secrets.PAT }}
+          inputs: '{ "repo": $REPOSITORY, "pr_id": $PR_ID, "target_url": $TARGET_URL, "baseline_url": $BASELINE_URL }'
