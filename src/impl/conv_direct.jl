@@ -191,9 +191,11 @@ function ∇conv_filter_direct!(dw::AbstractArray{wT,5}, x::AbstractArray{xT,5},
     dy = transpose_swapbatch(predilate(dy, stride(cdims)))
     ctdims = DenseConvDims(dy, x; padding=transpose_pad(cdims),
                                     stride=dilation(cdims))
-    conv_direct!(dw, dy, x, ctdims; alpha=alpha, beta=beta)
-    if flipkernel(cdims)
-        dw .= dw[end:-1:1, end:-1:1, end:-1:1, :, :]
+    dw_ = if flipkernel(cdims)
+        view(dw, reverse(axes(dw, 1)), reverse(axes(dw, 2)), reverse(axes(dw, 3)), :, :)
+    else
+        dw
     end
+    conv_direct!(dw_, dy, x, ctdims; alpha=alpha, beta=beta)
     return dw
 end
