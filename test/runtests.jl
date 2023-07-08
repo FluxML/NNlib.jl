@@ -69,19 +69,13 @@ end
         if get(ENV, "NNLIB_TEST_AMDGPU", "false") == "true"
             import Pkg
             test_info = Pkg.project()
-            # Add MIOpen_jll to AMDGPU.
             Pkg.develop("AMDGPU")
-            Pkg.activate(joinpath(Pkg.devdir(), "AMDGPU"))
-            Pkg.add("MIOpen_jll")
-            Pkg.update()
-            # Update test project.
-            Pkg.activate(test_info.path)
-            Pkg.update()
 
             using AMDGPU
             if AMDGPU.functional()
                 @testset "ROCBackend" begin
                     nnlib_testsuite(ROCBackend)
+                    AMDGPU.synchronize(; blocking=false)
                 end
             else
                 @info "AMDGPU.jl is not functional. Skipping test suite for ROCBackend."
@@ -108,14 +102,7 @@ end
         if get(ENV, "NNLIB_TEST_AMDGPU", "false") == "true"
             import Pkg
             test_info = Pkg.project()
-            # Add MIOpen_jll to AMDGPU.
             Pkg.develop("AMDGPU")
-            Pkg.activate(joinpath(Pkg.devdir(), "AMDGPU"))
-            Pkg.add("MIOpen_jll")
-            Pkg.update()
-            # Update test project.
-            Pkg.activate(test_info.path)
-            Pkg.update()
 
             using AMDGPU
             AMDGPU.versioninfo()
@@ -123,6 +110,7 @@ end
                 @show AMDGPU.MIOpen.version()
                 @testset "AMDGPU" begin
                     include("ext_amdgpu/runtests.jl")
+                    AMDGPU.synchronize(; blocking=false)
                 end
             else
                 @info "AMDGPU.jl package is not functional. Skipping AMDGPU tests."
