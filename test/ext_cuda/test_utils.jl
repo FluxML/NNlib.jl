@@ -1,10 +1,10 @@
-function gputest(f, xs...; checkgrad=true, atol=1e-10, kws...)
+function gputest(f, xs...; checkgrad=true, rtol=1e-7, atol=1e-10, broken=false, broken_grad=false, kws...)
     cpu_in = xs
     gpu_in = CuArray.(xs)
 
     cpu_out = f(cpu_in...; kws...)
     gpu_out = f(gpu_in...; kws...)
-    @test collect(cpu_out) ≈ collect(gpu_out)
+    @test collect(cpu_out) ≈ collect(gpu_out) rtol=rtol atol=atol broken=broken 
 
     if checkgrad
         # use mean instead of sum to prevent error accumulation (for larger
@@ -15,7 +15,7 @@ function gputest(f, xs...; checkgrad=true, atol=1e-10, kws...)
             if cpu_g === nothing
                 @test gpu_g === nothing
             else
-                @test collect(cpu_g) ≈ collect(gpu_g)  atol=atol
+                @test collect(cpu_g) ≈ collect(gpu_g) rtol=rtol atol=atol broken=broken_grad 
             end
         end
     end
