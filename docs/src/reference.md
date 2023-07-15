@@ -74,7 +74,8 @@ pad_zeros
 
 ## Convolution
 
-`Flux`'s `Conv` and `CrossCor` layers use `NNlib.DenseConvDims` and `NNlib.conv` internally. 
+`Flux`'s `Conv` and `CrossCor` layers use `NNlib.DenseConvDims` and `NNlib.conv` internally.
+`NNlib.conv` supports complex datatypes on CPU and CUDA devices.
 
 !!! AMDGPU MIOpen supports only cross-correlation (flipkernel=true).
     Therefore for every regular convolution (flipkernel=false)
