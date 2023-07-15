@@ -9,6 +9,8 @@ using StableRNGs
 using Documenter
 using Adapt
 using KernelAbstractions
+import ReverseDiff as RD        # used in `pooling.jl`
+
 DocMeta.setdocmeta!(NNlib, :DocTestSetup, :(using NNlib, UnicodePlots); recursive=true)
 
 ENV["NNLIB_TEST_CUDA"] = true # uncomment to run CUDA tests

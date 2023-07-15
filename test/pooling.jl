@@ -905,6 +905,42 @@ maxpool_answer_nature = Dict(
     -0.25,  -0.5,  -0.25], (3, 3, 1, 1))
     @test all(pool .== valid)
 
+    # issue #484
+    # Description: some in-place pooling functions only accepted arrays with the same eltype.
+    # The strict method signatures were based on assumption on the return type of `similar`.
+    # For ReverseDiff, this caused problems, e.g. with taking derivatives of pooling 
+    # operations.
+    # Now, if explicitly calling an in-place pooling functions, a different `yT` is allowed.
+    for xT in (Int32, Int64, Float16, Float32, Float64, BigFloat)
+        for (xsz, psz) in (     # test a few different data and kernel sizes
+            ((1,1), (1,1)),
+            ((1,2), (1,1)), ((1,2), (1,2)),
+            ((2,1), (1,1)), ((2,1), (2,1)),
+            ((2,2), (1,1)), ((2,2), (1,2)), ((2,2), (2,1)),
+        )
+            x = ones(xT, xsz..., 1, 1)
+            pdims = PoolDims(x, psz)
+            for yT in (Float16, Float32, Float64, BigFloat) 
+                # `yT` is the target eltype and we do not test integer types here
+                # because those cannot always store the pooling results.
+                y = similar(x, yT, NNlib.output_size(pdims)..., NNlib.channels_out(pdims), size(x, 4))
+                @test maxpool!(y, x, pdims) isa Array{yT}
+                @test meanpool!(y, x, pdims) isa Array{yT}
+                @test lpnormpool!(y, x, pdims; p=2) isa Array{yT}
+                @test lpnormpool!(y, x, pdims; p=1.0) isa Array{yT}
+            end
+        end
+    end
+    
+    # This is how to test #484 with ReverseDiff:
+    x = reshape(Float32[ 1 2; 3 4 ], (2,2,1,1))
+    @test only(maxpool(x, (2,2))) == 4
+    # define typemin, because of https://github.com/JuliaDiff/ReverseDiff.jl/issues/225
+    Base.typemin(tr::Type{<:T}) where{V, T<:RD.TrackedReal{V, <:Any, <:Any}} = T(typemin(V))
+    @test RD.gradient(_x -> only(maxpool(_x,(2,2))), x)[:,:,1,1] == [0 0; 0 1]
+    @test only(meanpool(x, (2,2))) == 2.5
+    @test all(==(0.25), RD.gradient(_x -> only(meanpool(_x,(2,2))), x))
+
     # if NNlib.is_nnpack_available()
     #     if NNlib.nnpack_supported_operation(pdims1)
     #         @test NNlib.maxpool_nnpack(x, pdims1) isa Array{Float32, 4}

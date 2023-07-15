@@ -36,8 +36,8 @@ for (front_name, backend) in (
     # We only define 3d pooling primitives, we reshape lower down to get 1d and 2d pooling
     @eval begin
         function $(Symbol("$(front_name)!"))(
-                y::AbstractArray{T,5}, x::AbstractArray{T,5},
-                pdims::PoolDims; kwargs...) where {T}
+                y::AbstractArray{<:Any,5}, x::AbstractArray{<:Any,5},
+                pdims::PoolDims; kwargs...)
             $(Symbol("$(front_name)_$(backend)!"))(y, x, pdims; kwargs...)
         end
     end
@@ -51,9 +51,9 @@ for (front_name, backend) in (
     )
     @eval begin
         function $(Symbol("$(front_name)!"))(
-                        dx::AbstractArray{T,5}, dy::AbstractArray{T,5},
-                        y::AbstractArray{T,5}, x::AbstractArray{T,5},
-                        pdims::PoolDims; kwargs...) where {T}
+                        dx::AbstractArray{<:Any,5}, dy::AbstractArray{<:Any,5},
+                        y::AbstractArray{<:Any,5}, x::AbstractArray{<:Any,5},
+                        pdims::PoolDims; kwargs...)
             $(Symbol("$(front_name)_$(backend)!"))(dx, dy, y, x, pdims; kwargs...)
         end
     end
@@ -68,8 +68,8 @@ for front_name in (:maxpool, :meanpool, :lpnormpool)
         for N in (3, 4)
             @eval begin
                 function $(Symbol("$(front_name)$(backend)!"))(
-                                y::AbstractArray{T,$N}, x::AbstractArray{T,$N},
-                                pdims::PoolDims; kwargs...) where {T}
+                                y::AbstractArray{<:Any,$N}, x::AbstractArray{<:Any,$N},
+                                pdims::PoolDims; kwargs...)
                     $(Symbol("$(front_name)$(backend)!"))(
                         insert_singleton_spatial_dimension(y, $(5 - N)),
                         insert_singleton_spatial_dimension(x, $(5 - N)),
@@ -84,9 +84,9 @@ for front_name in (:maxpool, :meanpool, :lpnormpool)
 
                 # backprops too
                 function $(Symbol("∇$(front_name)$(backend)!"))(
-                                dx::AbstractArray{T,$N}, dy::AbstractArray{T,$N},
-                                y::AbstractArray{T,$N}, x::AbstractArray{T,$N},
-                                pdims::PoolDims; kwargs...) where {T}
+                                dx::AbstractArray{<:Any,$N}, dy::AbstractArray{<:Any,$N},
+                                y::AbstractArray{<:Any,$N}, x::AbstractArray{<:Any,$N},
+                                pdims::PoolDims; kwargs...)
                     $(Symbol("∇$(front_name)$(backend)!"))(
                         insert_singleton_spatial_dimension(dx, $(5 - N)),
                         insert_singleton_spatial_dimension(dy, $(5 - N)),
@@ -112,20 +112,20 @@ for backend in (Symbol(), :_direct, :_nnpack)
     for name in (:maxpool, :meanpool, :lpnormpool)
         @eval begin
             function $(Symbol("$(name)$(backend)"))(
-                            x::AbstractArray{xT,N},
-                            pdims::PoolDims; kwargs...) where {xT, N}
+                            x::AbstractArray{<:Any,N},
+                            pdims::PoolDims; kwargs...) where {N}
                 y = similar(x, output_size(pdims)..., channels_out(pdims), size(x, N))
-                fill!(y, xT(0))
+                fill!(y, 0)
                 return $(Symbol("$(name)$(backend)!"))(y, x, pdims; kwargs...)
             end
 
             # Backprops too
             function $(Symbol("∇$(name)$(backend)"))(
-                            dy::AbstractArray{T,N}, y::AbstractArray{T,N},
-                            x::AbstractArray{T,N}, pdims::PoolDims;
-                            kwargs...) where {T, N}
+                            dy::AbstractArray{<:Any,N}, y::AbstractArray{<:Any,N},
+                            x::AbstractArray{<:Any,N}, pdims::PoolDims;
+                            kwargs...) where {N}
                 dx = similar(x, input_size(pdims)..., channels_in(pdims), size(dy, N))
-                fill!(dx, T(0))
+                fill!(dx, 0)
                 return $(Symbol("∇$(name)$(backend)!"))(dx, dy, y, x, pdims; kwargs...)
             end
         end

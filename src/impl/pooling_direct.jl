@@ -2,8 +2,8 @@
 # the inner loop operation and a few initialization parameters.
 for name in (:max, :mean, :lpnorm)
     @eval function $((Symbol("$(name)pool_direct!")))(
-                    y::AbstractArray{T, 5}, x::AbstractArray{T, 5},
-                    pdims::PoolDims; alpha::T=T(1), beta::T=T(0), kwargs...) where T
+                    y::AbstractArray{<:Any, 5}, x::AbstractArray{<:Any, 5},
+                    pdims::PoolDims; alpha=1, beta=0, kwargs...) 
         $((Symbol("$(name)pool_direct!")))(
             y, x, pdims,
             Val(kernel_size(pdims)), Val(channels_out(pdims)),
@@ -13,13 +13,13 @@ for name in (:max, :mean, :lpnorm)
     end
 
     @eval function $((Symbol("$(name)pool_direct!")))(
-        y::AbstractArray{T,5}, x::AbstractArray{T,5},
+        y::AbstractArray{T,5}, x::AbstractArray{<:Any,5},
         pdims::PoolDims,
         # kernel size, channels out, padding, dilation, stride
         ::Val{K}, ::Val{C}, ::Val{P}, ::Val{D}, ::Val{S};
-        alpha::T=T(1), beta::T=T(0), kwargs...
+        alpha=1, beta=0, kwargs...
     ) where {T, K, C, P, D, S}
-        @assert beta == T(0) "beta not supported yet"
+        @assert iszero(beta) "beta not supported yet"
         check_dims(size(x), size(y), pdims)
 
         width, height, depth = input_size(pdims)
@@ -36,10 +36,21 @@ for name in (:max, :mean, :lpnorm)
         @inline project(idx, stride, pad) = (idx - 1) * stride - pad + 1
 
         # If we're doing mean pooling, we represent division by kernel size by rolling it
-        # into the `alpha` multiplier.
-        if $(name == :mean)
-            alpha = alpha / prod(K)
+        # into the `alpha` multiplier. 
+        # The type might change here, that's why we prepend the underscore 
+        # (does it make a difference, though?)
+        _alpha = if $(name == :mean)
+            T(alpha / prod(K))
+        else
+            T(alpha)
         end
+        # _beta = T(beta)
+
+        # A quick note on the array element types `T` and `R`:
+        # Ideally, `T == R`, but in some edge-cases, this might not be the case 
+        # (e.g. with `ReverseDiff.TrackedArray`, see issue #484).
+        # If the types differ, we will initialize variables (like `_alpha` above) with the 
+        # target eltype `T`.
 
         p = if $(name != :lpnorm) 0 else
             !haskey(kwargs, :p) && error("lpnormpool needs keyword argument `p`")
@@ -94,7 +105,7 @@ for name in (:max, :mean, :lpnorm)
             # for lpnormpool, y = (∑ᵢ xᵢ^p)^(1 / p)
             m = $(name == :lpnorm) ? m^(T(1) / p) : m
 
-            y[w, h, d, c, batch_idx] = alpha * m # + beta * y[w, h, d, c, batch_idx]
+            y[w, h, d, c, batch_idx] = _alpha * m # + _beta * y[w, h, d, c, batch_idx]
             end
             end
             end
@@ -148,7 +159,7 @@ for name in (:max, :mean, :lpnorm)
                     end
                 end
                 $(name == :lpnorm) && (m = m^(T(1) / p))
-                y[w, h, d, c, batch_idx] = alpha * m # + beta * y[w, h, d, c, batch_idx]
+                y[w, h, d, c, batch_idx] = _alpha * m # + _beta * y[w, h, d, c, batch_idx]
                 end
                 end
                 end
@@ -159,9 +170,9 @@ for name in (:max, :mean, :lpnorm)
     end
 
     @eval function $((Symbol("∇$(name)pool_direct!")))(
-                    dx::AbstractArray{T,5}, dy::AbstractArray{T,5},
-                    y::AbstractArray{T,5}, x::AbstractArray{T,5},
-                    pdims::PoolDims; kwargs...) where T
+                    dx::AbstractArray{<:Any,5}, dy::AbstractArray{<:Any,5},
+                    y::AbstractArray{<:Any,5}, x::AbstractArray{<:Any,5},
+                    pdims::PoolDims; kwargs...)
         $((Symbol("∇$(name)pool_direct!")))(
             dx, dy, y, x, pdims, Val(kernel_size(pdims)); kwargs...)
         return dx
@@ -170,10 +181,10 @@ for name in (:max, :mean, :lpnorm)
     # Same story for gradients, and although this is very similar to the forward pass,
     # it's unfortunately different enough that I think we need a separate function.  :(
     @eval function $((Symbol("∇$(name)pool_direct!")))(
-                    dx::AbstractArray{T,5}, dy::AbstractArray{T,5},
-                    y::AbstractArray{T,5}, x::AbstractArray{T,5},
+                    dx::AbstractArray{T,5}, dy::AbstractArray{<:Any,5},
+                    y::AbstractArray{<:Any,5}, x::AbstractArray{<:Any,5},
                     pdims::PoolDims, ::Val{K}; # == kernel_size(pdims)
-                    alpha::T=T(1), beta::T=T(0), kwargs...) where {T, K}
+                    alpha=1, beta=0, kwargs...) where {T, K}
         check_dims(size(x), size(dy), pdims)
 
         width, height, depth = input_size(pdims)
@@ -183,6 +194,10 @@ for name in (:max, :mean, :lpnorm)
         dil_w, dil_h, dil_d = dilation(pdims)
         stride_w, stride_h, stride_d = stride(pdims)
 
+        # Concerning array eltypes `DX, DY, X, Y`, we want handle them like above, i.e.,
+        # initialize everything with the left-hand-side type (target type).
+        # Of course, ideally the types are all the same anyways.
+
         # We use calc_padding_regions to split outselves up into separate regions that
         # may or may not need to worry about padding:
         padded_regions, central_region = calc_padding_regions(pdims)
@@ -191,9 +206,11 @@ for name in (:max, :mean, :lpnorm)
         @inline project(idx, stride, pad) = (idx - 1) * stride - pad + 1
 
         # If we're doing mean pooling, we represent division by kernel size by rolling
-        # it into the `alpha` multiplier.
-        if $(name == :mean)
-            alpha = alpha / prod(K)
+        # it into the `_alpha` multiplier.
+        _alpha = if $(name == :mean)
+            T(alpha / prod(K))
+        else
+            T(alpha)
         end
 
         p = if $(name != :lpnorm) 0 else
@@ -236,7 +253,7 @@ for name in (:max, :mean, :lpnorm)
                     # Uncomment line below if using with non-precise output (e.g. by NNPACK)
                     # if abs(y_idx - x[x_idxs...]) < 1e-5 && !maxpool_already_chose
                     if y_idx ≈ x[input_kw, input_kh, input_kd, c, batch_idx]
-                        dx[input_kw, input_kh, input_kd, c, batch_idx] += dy_idx * alpha #+ beta * dx[x_idxs...]
+                        dx[input_kw, input_kh, input_kd, c, batch_idx] += dy_idx * _alpha #+ _beta * dx[x_idxs...]
                         maxpool_already_chose = true
                     # Maxpooling does not support `beta` right now.  :(
                     # else
@@ -244,7 +261,7 @@ for name in (:max, :mean, :lpnorm)
                     end
                 elseif $(name == :mean)
                     # Either does meanpool :(
-                    dx[input_kw, input_kh, input_kd, c, batch_idx] += dy_idx * alpha
+                    dx[input_kw, input_kh, input_kd, c, batch_idx] += dy_idx * _alpha
                 elseif $(name == :lpnorm)
                     # y = (∑ᵢ xᵢ^p)^(1 / p), ∂y/∂xᵢ = xᵢ^(p-1) × y^(1-p)
                     grad = x[input_kw, input_kh, input_kd, c, batch_idx]^(p-1) * y_idx^(1-p)
@@ -302,13 +319,13 @@ for name in (:max, :mean, :lpnorm)
                                 # Uncomment line below if using with non-precise output
                                 # if abs(y_idx - x[x_idxs...]) < 1e-5 && !maxpool_already_chose
                                 if y_idx ≈ x[input_kw, input_kh, input_kd, c, batch_idx]
-                                    dx[input_kw, input_kh, input_kd, c, batch_idx] += dy_idx * alpha #+ beta * dx[x_idxs...]
+                                    dx[input_kw, input_kh, input_kd, c, batch_idx] += dy_idx * _alpha #+ _beta * dx[x_idxs...]
                                     maxpool_already_chose = true
                                 # else
                                 #    dx[x_idxs...] = T(0) + beta*dx[x_idxs...]
                                 end
                             elseif $(name == :mean)
-                                dx[input_kw, input_kh, input_kd, c, batch_idx] += dy_idx * alpha #+ beta * dx[x_idxs...]
+                                dx[input_kw, input_kh, input_kd, c, batch_idx] += dy_idx * _alpha #+ _beta * dx[x_idxs...]
                             elseif $(name == :lpnorm)
                                 grad = x[input_kw, input_kh, input_kd, c, batch_idx]^(p-1) * y_idx^(1-p)
                                 dx[input_kw, input_kh, input_kd, c, batch_idx] += dy_idx * grad
