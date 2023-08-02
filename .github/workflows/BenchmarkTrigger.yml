@@ -25,9 +25,18 @@ jobs:
       TARGET_URL: ${{ github.event.inputs.target_url || format("{0}#{1}", github.event.pull_request.head.html_url, github.event.pull_request.head.sha) }}
       BASELINE_URL: ${{ github.event.inputs.baseline_url || format("{0}#{1}"", github.event.pull_request.base.repo.html_url, github.event.pull_request.base.sha) }}
     steps:
-      - uses: benc-uk/workflow-dispatch@v1
+      -
+        name: Get app installation token (ghs)
+        id: get-app-token
+        uses: tibdex/github-app-token@v1
+        with: 
+          app_id: ${{ secrets.BENCH_APP_ID }}
+          installation_id: ${{ secrets.BENCH_INSTALL_ID }}
+          private_key: ${{ secrets.BENCH_PRIVATE_KEY }}
+      -
+        uses: benc-uk/workflow-dispatch@v1
         with:
           repo: FluxML/FluxMLBenchmarks.jl
           workflow: Benchmark.yml
-          token: ${{ secrets.PAT }}
+          token: ${{ steps.get-app-token.outputs.token }}
           inputs: '{ "repo": $REPOSITORY, "pr_id": $PR_ID, "target_url": $TARGET_URL, "baseline_url": $BASELINE_URL }'
