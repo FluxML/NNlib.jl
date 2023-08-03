@@ -1,7 +1,7 @@
 name: Benchmark Trigger
 
 on:
-  pull_request:
+  pull_request_target:
     types: [ labeled ]
   workflow_dispatch:
     inputs:
@@ -22,7 +22,7 @@ jobs:
     env:
       REPOSITORY: ${{ github.event.repository.full_name }}
       PR_ID: ${{ github.event.inputs.pr_id || github.event.pull_request.number }}
-      TARGET_URL: ${{ github.event.inputs.target_url || format('{0}#{1}', github.event.pull_request.head.html_url, github.event.pull_request.head.sha) }}
+      TARGET_URL: ${{ github.event.inputs.target_url || format('{0}#{1}', github.event.pull_request.head.repo.html_url, github.event.pull_request.head.sha) }}
       BASELINE_URL: ${{ github.event.inputs.baseline_url || format('{0}#{1}', github.event.pull_request.base.repo.html_url, github.event.pull_request.base.sha) }}
     steps:
       -
