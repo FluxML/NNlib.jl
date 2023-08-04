@@ -39,4 +39,4 @@ jobs:
           repo: FluxML/FluxMLBenchmarks.jl
           workflow: Benchmark.yml
           token: ${{ steps.get-app-token.outputs.token }}
-          inputs: '{ "repo": $REPOSITORY, "pr_id": $PR_ID, "target_url": $TARGET_URL, "baseline_url": $BASELINE_URL }'
+          inputs: '{ "repo": ${{ env.REPOSITORY }}, "pr_id": ${{ env.PR_ID }}, "target_url": ${{ env.TARGET_URL }}, "baseline_url": ${{ env.BASELINE_URL }} }'
