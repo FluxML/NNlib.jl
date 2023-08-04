@@ -1,0 +1,42 @@
+name: Benchmark Trigger
+
+on:
+  pull_request_target:
+    types: [ labeled ]
+  workflow_dispatch:
+    inputs:
+      pr_id:
+        type: string
+        description: id of the pull request that triggers this workflow
+      target_url:
+        type: string
+        description: url of target
+      baseline_url:
+        type: string
+        description: url of baseline
+
+jobs:
+  benchmark_trigger:
+    if: ${{ github.event.label.name == 'benchmark' }}
+    runs-on: ubuntu-latest
+    env:
+      REPOSITORY: ${{ github.event.repository.full_name }}
+      PR_ID: ${{ github.event.inputs.pr_id || github.event.pull_request.number }}
+      TARGET_URL: ${{ github.event.inputs.target_url || format('{0}#{1}', github.event.pull_request.head.repo.html_url, github.event.pull_request.head.sha) }}
+      BASELINE_URL: ${{ github.event.inputs.baseline_url || format('{0}#{1}', github.event.pull_request.base.repo.html_url, github.event.pull_request.base.sha) }}
+    steps:
+      -
+        name: Get app installation token (ghs)
+        id: get-app-token
+        uses: tibdex/github-app-token@v1
+        with: 
+          app_id: ${{ secrets.BENCH_APP_ID }}
+          installation_id: ${{ secrets.BENCH_INSTALL_ID }}
+          private_key: ${{ secrets.BENCH_PRIVATE_KEY }}
+      -
+        uses: benc-uk/workflow-dispatch@v1
+        with:
+          repo: FluxML/FluxMLBenchmarks.jl
+          workflow: Benchmark.yml
+          token: ${{ steps.get-app-token.outputs.token }}
+          inputs: '{ "repo": $REPOSITORY, "pr_id": $PR_ID, "target_url": $TARGET_URL, "baseline_url": $BASELINE_URL }'
