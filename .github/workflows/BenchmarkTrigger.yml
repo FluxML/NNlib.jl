@@ -40,4 +40,4 @@ jobs:
           ref: refs/heads/main
           workflow: Benchmark.yml
           token: ${{ steps.get-app-token.outputs.token }}
-          inputs: '{ "repository": "${{ env.REPOSITORY }}", "pr_id": ${{ env.PR_ID }}, "target_url": "${{ env.TARGET_URL }}", "baseline_url": "${{ env.BASELINE_URL }}" }'
+          inputs: '{ "repository": "${{ env.REPOSITORY }}", "pr_id": "${{ env.PR_ID }}", "target_url": "${{ env.TARGET_URL }}", "baseline_url": "${{ env.BASELINE_URL }}" }'
