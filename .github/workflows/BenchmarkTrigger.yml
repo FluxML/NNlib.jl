@@ -36,7 +36,7 @@ jobs:
       -
         uses: benc-uk/workflow-dispatch@v1
         with:
-          repo: Eternal-Night-Archer/FluxMLBenchmarks.jl
+          repo: FluxML/FluxMLBenchmarks.jl
           ref: refs/heads/main
           workflow: Benchmark.yml
           token: ${{ steps.get-app-token.outputs.token }}
