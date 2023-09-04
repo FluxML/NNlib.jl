@@ -53,15 +53,21 @@ ChainRulesCore.rrule(::typeof(within_gradient), x) = true, _ -> (NoTangent(), No
 """
     safe_div(x, y)
 
-Safely divide `x` by `y`. If `y` is zero, return `x` directly.
+Returns `x/y` unless `y==0`, in which case it just returns `x`.
+(Used internally by `scatter`.)
 """
 safe_div(x, y) = ifelse(iszero(y), x, x/y)
 
 """
     maximum_dims(dims)
 
-Return the maximum value for each dimension. An array of dimensions `dims` is accepted.
-The maximum of each dimension in the element is computed.
+Given an array of `CartesianIndex{N}` or `NTuple{N,Int}`,
+returns a tuple containing the maximum of all the 1st entries,
+all the 2nd entries, and so on up to `N`.
+
+Given an array of integers, returns `(maximum(dims),)`.
+
+(These arguments are what [`scatter`](@ref NNlib.scatter) understands.)
 """
 maximum_dims(dims::AbstractArray{<:Integer}) = (maximum(dims), )
 maximum_dims(dims::AbstractArray{NTuple{N, T}}) where {N,T} = ntuple(i -> maximum(x->x[i], dims), N)
@@ -105,4 +111,54 @@ function reverse_indices(idx::AbstractArray{<:Any,N}) where N
     return reverse_indices!(rev, idx)
 end
 
-unsqueeze(x) = reshape(x, 1, size(x)...) 
+unsqueeze(x) = reshape(x, 1, size(x)...)
+
+
+"""
+    _fast_broadcast!(f, x, y, z...)
+
+This does `x .= f.(x, y, z...)`, but works around
+an issue with broadcasting that prevents SIMD in such cases.
+Can perhaps be removed once https://github.com/JuliaLang/julia/issues/43153 is fixed.
+
+Has an `rrule` to avoid mutation within derivatives.
+
+!!! warning
+    Not intended for general use.
+    Uses `@inbounds` but does not check sizes!
+    Assumes that `f` has no derivative!
+"""
+function _fast_broadcast!(f::F, x::Array, yz...) where {F<:Function}
+    bc = Broadcast.instantiate(Broadcast.broadcasted(f, x, yz...))
+    @simd ivdep for I in eachindex(bc)
+        @inbounds x[I] = bc[I]
+    end
+    return x
+end
+function _fast_broadcast!(f::F, x::AbstractArray, yz...) where {F<:Function}
+    # CUDA does not suffer from this bug
+    broadcast!(f, x, x, yz...)
+end
+
+function rrule(cfg::RuleConfig{>:HasReverseMode}, ::typeof(_fast_broadcast!), f::F, x::AbstractArray, ys...)  where {F<:Function}
+    rrule_via_ad(cfg, broadcast, f, x, ys...)
+end
+
+# Could get this from Compat.jl instead
+# https://github.com/JuliaLang/julia/pull/39794
+if VERSION < v"1.7.0-DEV.793"
+    struct Returns{V} <: Function
+        value::V
+        Returns{V}(value) where {V} = new{V}(value)
+        Returns(value) = new{Core.Typeof(value)}(value)
+    end
+
+    (obj::Returns)(args...; kw...) = obj.value
+    function Base.show(io::IO, obj::Returns)
+        show(io, typeof(obj))
+        print(io, "(")
+        show(io, obj.value)
+        print(io, ")")
+    end
+end
+

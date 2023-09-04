@@ -125,27 +125,6 @@ end
 # and seems about as fast, but needs a method `copy(::CUDA.RNG)` and careful checking.
 # https://github.com/FluxML/NNlib.jl/pull/454#issuecomment-1369357402
 
-"""
-    _fast_broadcast!(f, x, y, z...)
-
-This does `x .= f.(x, y, z...)`, but works around
-an issue with broadcasting that prevents SIMD in such cases.
-Can be removed once https://github.com/JuliaLang/julia/issues/43153 is fixed.
-
-Not intended for general use. Does not check sizes!
-"""
-function _fast_broadcast!(f::F, x::Array, yz...) where {F<:Function}
-    bc = Broadcast.instantiate(Broadcast.broadcasted(f, x, yz...))
-    @simd ivdep for I in eachindex(bc)
-        @inbounds x[I] = bc[I]
-    end
-    return x
-end
-function _fast_broadcast!(f::F, x::AbstractArray, yz...) where {F<:Function}
-    # CUDA does not suffer from this bug
-    broadcast!(f, x, x, yz...)
-end
-
 
 """
     _rng_from_array(x)

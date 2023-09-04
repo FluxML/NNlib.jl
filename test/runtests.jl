@@ -127,6 +127,7 @@ end
 
         @testset "Activation Functions" begin
             include("activations.jl")
+            include("bias_act.jl")
         end
 
         @testset "Attention" begin
