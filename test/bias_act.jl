@@ -47,8 +47,7 @@ ACTIVATION_FUNCTIONS =
                                                     [x->x, x -> 1/(x^2+2), x -> leakyrelu(x, 0.33)])
         # Only some of these go the fast path, `cbrt` is an example of a function NNlib knows nothing about.
         fun == rrelu && continue # this one is randomised!
-	fun == hardσ && continue # this one has heisenbugs, not solved by 
-discontinuity-avoidance code below
+        fun == hardσ && continue # this one has heisenbugs, not solved by discontinuity-avoidance code below
 
         @test bias_act!(fun, copy(x), b) ≈ fun.(x .+ b)
         @test bias_act!(fun, copy(x), false) ≈ fun.(x)
