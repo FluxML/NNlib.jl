@@ -14,9 +14,10 @@ steps:
       queue: "juliagpu"
       cuda: "*"
     env:
-      NNLIB_TEST_CUDA: true
+      NNLIB_TEST_CUDA: "true"
+      NNLIB_TEST_CPU: "false"
     if: build.message !~ /\[skip tests\]/
-    timeout_in_minutes: 60
+    timeout_in_minutes: 180
     matrix:
       setup:
         julia:
@@ -47,9 +48,9 @@ steps:
       JULIA_AMDGPU_CORE_MUST_LOAD: "1"
       JULIA_AMDGPU_HIP_MUST_LOAD: "1"
       JULIA_AMDGPU_DISABLE_ARTIFACTS: "1"
-      NNLIB_TEST_AMDGPU: true
+      NNLIB_TEST_AMDGPU: "true"
+      NNLIB_TEST_CPU: "false"
       JULIA_NUM_THREADS: 4
-
 
   - label: "Benchmarks"
     plugins:
