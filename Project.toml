@@ -25,7 +25,7 @@ NNlibCUDAExt = "CUDA"
 NNlibCUDACUDNNExt = ["CUDA", "cuDNN"]
 
 [compat]
-AMDGPU = "0.4.8, 0.5"
+AMDGPU = "0.5, 0.6"
 Adapt = "3.2"
 Atomix = "0.1"
 ChainRulesCore = "1.13"
