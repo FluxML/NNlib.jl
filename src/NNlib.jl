@@ -123,10 +123,6 @@ include("impl/depthwiseconv_im2col.jl")
 include("impl/pooling_direct.jl")
 include("deprecations.jl")
 
-@init @static if !isdefined(Base, :get_extension)
-    @require EnzymeCore="f151be2c-9106-41f4-ab19-57ee4f262869" begin
-        include("../ext/NNlibEnzymeCoreExt/NNlibEnzymeCoresExt.jl")
-    end
-end
+include("enzyme.jl")
 
 end # module NNlib
