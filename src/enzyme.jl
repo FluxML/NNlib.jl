@@ -1,9 +1,12 @@
 import EnzymeCore
 
-function EnzymeCore.EnzymeRules.augmented_primal(config, func::EnzymeCore.Const{typeof(NNlib.conv!)}, ::Type{RT}, y::OutType, x, w, cdims; kwargs...) where {OutType, RT}
+for name in (typeof(NNlib.conv!), typeof(NNlib.depthwiseconv!))
+    @eval begin
+
+function EnzymeCore.EnzymeRules.augmented_primal(config, func::EnzymeCore.Const{$name}, ::Type{RT}, y::OutType, x, w, cdims; kwargs...) where {OutType, RT}
 
     @assert !(OutType <: EnzymeCore.Const)
-    if OutType <: EnzymeCore.Duplicated || OutType <: EnzymeCore.DuplicatedNoNeed
+    if OutType <: EnzymeCore.Duplicated || OutType <: EnzymeCore.BatchDuplicated
         func.val(y.val, x.val, w.val, cdims.val; kwargs...)
     end
 
@@ -29,7 +32,7 @@ function EnzymeCore.EnzymeRules.augmented_primal(config, func::EnzymeCore.Const{
     return EnzymeCore.EnzymeRules.AugmentedReturn(primal, shadow, cache)
 end
 
-function EnzymeCore.EnzymeRules.reverse(config, func::EnzymeCore.Const{typeof(NNlib.conv!)}, ::Type{RT}, cache, y, x, w, cdims; kwargs...) where {RT}
+function EnzymeCore.EnzymeRules.reverse(config, func::EnzymeCore.Const{$name}, ::Type{RT}, cache, y, x, w, cdims; kwargs...) where {RT}
     cache_x, cache_w = cache
 
     # Don't cache x if not overwritten and w is active (and thus required)
@@ -71,11 +74,13 @@ function EnzymeCore.EnzymeRules.reverse(config, func::EnzymeCore.Const{typeof(NN
     return (nothing, nothing, nothing, nothing)
 end
 
+end
+end
 
 function EnzymeCore.EnzymeRules.augmented_primal(config, func::EnzymeCore.Const{typeof(NNlib.gather!)}, ::Type{RT}, dst::OutType, src, idx::EnzymeCore.Const) where {OutType, RT}
 
     @assert !(OutType <: EnzymeCore.Const)
-    if OutType <: EnzymeCore.Duplicated || OutType <: EnzymeCore.DuplicatedNoNeed
+    if OutType <: EnzymeCore.Duplicated || OutType <: EnzymeCore.BatchDuplicated
         func.val(dst.val, src.val, idx.val)
     end
 
@@ -114,14 +119,76 @@ function EnzymeCore.EnzymeRules.reverse(config, func::EnzymeCore.Const{typeof(NN
     end
 
     for (ddst, dsrc) in zip(ddsts, dsrcs)
-        if !(typeof(src) <: EnzymeCore.Const) && ddst !== dst.val
-            src_size = size(src.val)
-            NNlib.∇gather_src(ddst, src_size, cache_idx)
+        if !(typeof(src) <: EnzymeCore.Const) && dsrc !== src.val &&
+           !(typeof(dst) <: EnzymeCore.Const) && ddst !== dst.val
+            NNlib.scatter!(+, dsrc, ddst, cache_idx)
         end
-        if !(typeof(w) <: EnzymeCore.Const) && dw !== w
+        if !(typeof(dst) <: EnzymeCore.Const) && ddst !== dst.val
             ddst .= 0
+        end
+    end
+
+    return (nothing, nothing, nothing)
+end
+
+
+
+function EnzymeCore.EnzymeRules.augmented_primal(config, func::EnzymeCore.Const{typeof(NNlib.scatter!)}, ::Type{RT}, op::EnzymeCore.Const, dst::OutType, src, idx::EnzymeCore.Const) where {OutType, RT}
+
+    @assert !(OutType <: EnzymeCore.Const)
+    if OutType <: EnzymeCore.Duplicated || OutType <: EnzymeCore.BatchDuplicated
+        func.val(op.val, dst.val, src.val, idx.val)
+    end
+
+    primal = if EnzymeCore.EnzymeRules.needs_primal(config)
+        dst.val
+    else
+        nothing
+    end
+    shadow = if EnzymeCore.EnzymeRules.needs_shadow(config)
+        dst.dval
+    else
+        nothing
+    end
+
+    # Cache idx if its overwritten
+    cache_idx = ( EnzymeCore.EnzymeRules.overwritten(config)[4] && !(typeof(src) <: EnzymeCore.Const) ) ? copy(idx.val) : nothing
+
+    return EnzymeCore.EnzymeRules.AugmentedReturn(primal, shadow, cache_idx)
+end
+
+function EnzymeCore.EnzymeRules.reverse(config, func::EnzymeCore.Const{typeof(NNlib.scatter!)}, ::Type{RT}, cache_idx, op::Union{EnzymeCore.Const{typeof(+)},EnzymeCore.Const{typeof(-)}}, dst::OutType, src, idx::EnzymeCore.Const) where {OutType, RT}
+
+    # Don't cache idx if not overwritten
+    if !(typeof(src) <: EnzymeCore.Const)
+        if !EnzymeCore.EnzymeRules.overwritten(config)[4]
+            cache_idx = idx.val
+        end
+    end
+
+    ddsts = dst.dval
+    dsrcs = src.dval
+
+    if EnzymeCore.EnzymeRules.width(config) == 1
+        ddsts = (ddsts,)
+        dsrcs = (dsrcs,)
+    end
+
+    for (ddst, dsrc) in zip(ddsts, dsrcs)
+        if !(typeof(src) <: EnzymeCore.Const) && dsrc !== src.val &&
+            !(typeof(dst) <: EnzymeCore.Const) && ddst !== dst.val
+
+            if eltype(typeof(op)) == typeof(+)
+                dsrc .+= NNlib.gather(ddst, cache_idx)
+            else
+                @assert eltype(typeof(op)) == typeof(-)
+                dsrc .-= NNlib.gather(ddst, cache_idx)
+            end
         end
     end
 
     return (nothing, nothing, nothing, nothing)
 end
+
+
+

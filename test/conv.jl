@@ -870,7 +870,7 @@ end
   w = rand(rng, repeat([3], spatial_rank)..., 3, 3)
   cdims = DenseConvDims(x, w)
   gradtest((x, w) -> conv(x, w, cdims), x, w)
-  gradtest((x, w) -> sum(conv(x, w, cdims)), x, w; check_enzyme_rrule=true)  # https://github.com/FluxML/Flux.jl/issues/1055
+  gradtest((x, w) -> sum(conv(x, w, cdims)), x, w)  # https://github.com/FluxML/Flux.jl/issues/1055
 
   y = conv(x, w, cdims)
   gradtest((y, w) -> ∇conv_data(y, w, cdims), y, w)
@@ -885,4 +885,26 @@ end
   y = depthwiseconv(x, w, dcdims)
   gradtest((y, w) -> ∇depthwiseconv_data(y, w, dcdims), y, w)
   gradtest((y, w) -> sum(∇depthwiseconv_data(y, w, dcdims)), y, w)
+end
+
+@testset "EnzymeRules: conv! spatial_rank=$spatial_rank" for spatial_rank in (1, 2, 3)
+  x = rand(rng, repeat([5], spatial_rank)..., 3, 2)
+  w = rand(rng, repeat([3], spatial_rank)..., 3, 3)
+  cdims = DenseConvDims(x, w)
+
+  for name in (:conv, :depthwiseconv)
+    curconv = @eval $(Symbol("$(name)"))
+    curconv! = @eval $(Symbol("$(name)!"))
+    dst = curconv(x, w, cdims)
+
+    for Tret in (EnzymeCore.Const, EnzymeCore.Duplicated, EnzymeCore.BatchDuplicated),
+        Tdst in (EnzymeCore.Duplicated, EnzymeCore.BatchDuplicated),
+        Tx in (EnzymeCore.Const, EnzymeCore.Duplicated, EnzymeCore.BatchDuplicated),
+        Tw in (EnzymeCore.Const, EnzymeCore.Duplicated, EnzymeCore.BatchDuplicated)
+
+        EnzymeTestUtils.are_activities_compatible(Tret, Tdst, Tsrc) || continue
+
+        EnzymeTestUtils.test_reverse(curconv!, Tret, (dst, Tdst), (x, Tx), (x, Tw), (idx, EnzymeCore.Const))
+    end
+  end
 end
