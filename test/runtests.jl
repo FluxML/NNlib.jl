@@ -2,6 +2,7 @@ using NNlib, Test, Statistics, Random
 using ChainRulesCore, ChainRulesTestUtils
 using Base.Broadcast: broadcasted
 import EnzymeTestUtils
+using EnzymeCore
 import FiniteDifferences
 import ForwardDiff
 import Zygote

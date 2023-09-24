@@ -870,7 +870,7 @@ end
   w = rand(rng, repeat([3], spatial_rank)..., 3, 3)
   cdims = DenseConvDims(x, w)
   gradtest((x, w) -> conv(x, w, cdims), x, w)
-  gradtest((x, w) -> sum(conv(x, w, cdims)), x, w; check_enzyme_rule=true)  # https://github.com/FluxML/Flux.jl/issues/1055
+  gradtest((x, w) -> sum(conv(x, w, cdims)), x, w; check_enzyme_rrule=true)  # https://github.com/FluxML/Flux.jl/issues/1055
 
   y = conv(x, w, cdims)
   gradtest((y, w) -> ∇conv_data(y, w, cdims), y, w)

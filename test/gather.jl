@@ -1,4 +1,6 @@
 using NNlib: gather, gather!
+import EnzymeTestUtils
+using EnzymeCore
 
 function gather_testsuite(Backend)
     device(x) = adapt(Backend(), x)
@@ -150,6 +152,17 @@ function gather_testsuite(Backend)
         Backend == CPU ?
             gradtest_fn(xs -> gather(xs, idx), src) :
             gradtest_fn((s, i) -> gather(s, i), src, idx)
+
+        if Backend == CPU
+            for Tret in (EnzymeCore.Const, EnzymeCore.Duplicated),
+                Tdst in (EnzymeCore.Duplicated, EnzymeCore.BatchDuplicated),
+                Tsrc in (EnzymeCore.Duplicated, EnzymeCore.BatchDuplicated)
+
+                EnzymeTestUtils.are_activities_compatible(Tret, Tdst, Tsrc) || continue
+
+                EnzymeTestUtils.test_reverse(fun, Tret, (dst, Tdst), (src, Tsrc), (idx, EnzymeCore.Const))
+            end
+        end
     end
 
     @testset "gather gradient for tuple index" begin
