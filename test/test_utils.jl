@@ -22,13 +22,13 @@ function gradtest(
     end
     if check_enzyme_rrule
         if len(xs) == 2
-            for Tret in (Const, Active),
-                Tx in (Const, Duplicated, BatchDuplicated),
-                Ty in (Const, Duplicated, BatchDuplicated)
+            for Tret in (EnzymeCore.Const, EnzymeCore.Active),
+                Tx in (EnzymeCore.Const, EnzymeCore.Duplicated, EnzymeCore.BatchDuplicated),
+                Ty in (EnzymeCore.Const, EnzymeCore.Duplicated, EnzymeCore.BatchDuplicated)
 
-                are_activities_compatible(Tret, Tx, Ty) || continue
+                EnzymeTestUtils.are_activities_compatible(Tret, Tx, Ty) || continue
 
-                test_reverse(fun, Tret, (xs[1], Tx), (ys[1], Ty); atol, rtol)
+                EnzymeTestUtils.test_reverse(fun, Tret, (xs[1], Tx), (ys[1], Ty); atol, rtol)
             end
         else
             throw(AssertionError("Unsupported arg count for testing"))
