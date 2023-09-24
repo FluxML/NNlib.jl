@@ -123,11 +123,9 @@ include("impl/depthwiseconv_im2col.jl")
 include("impl/pooling_direct.jl")
 include("deprecations.jl")
 
-function __init__()
-    @static if !isdefined(Base, :get_extension)
-        @require Enzyme="7da242da-08ed-463a-9acd-ee780be4f1d9" begin
-            include("../ext/NNlibEnzymeExt.jl")
-        end
+@init @static if !isdefined(Base, :get_extension)
+    @require Enzyme="7da242da-08ed-463a-9acd-ee780be4f1d9" begin
+        include("../ext/NNlibEnzymeExt/NNlibEnzymeExt.jl")
     end
 end
 
