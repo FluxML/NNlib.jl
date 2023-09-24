@@ -124,8 +124,8 @@ include("impl/pooling_direct.jl")
 include("deprecations.jl")
 
 @init @static if !isdefined(Base, :get_extension)
-    @require Enzyme="7da242da-08ed-463a-9acd-ee780be4f1d9" begin
-        include("../ext/NNlibEnzymeExt/NNlibEnzymeExt.jl")
+    @require EnzymeCore="f151be2c-9106-41f4-ab19-57ee4f262869" begin
+        include("../ext/NNlibEnzymeCoreExt/NNlibEnzymeCoresExt.jl")
     end
 end
 
