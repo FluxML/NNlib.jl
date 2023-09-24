@@ -6,6 +6,7 @@ version = "0.9.6"
 Adapt = "79e6a3ab-5dfb-504d-930d-738a2a938a0e"
 Atomix = "a9b6321e-bd34-4604-b9c9-b65b8de01458"
 ChainRulesCore = "d360d2e6-b24c-11e9-a2a3-2a2ae2dbcce4"
+EnzymeCore = "f151be2c-9106-41f4-ab19-57ee4f262869"
 GPUArraysCore = "46192b85-c4d5-4398-a991-12ede77f4527"
 KernelAbstractions = "63c18a36-062a-441e-b654-da1e3ab1ce7c"
 LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
@@ -16,6 +17,7 @@ Statistics = "10745b16-79ce-11e8-11f9-7d13ad32a3b2"
 
 [weakdeps]
 AMDGPU = "21141c5a-9bdb-4563-92ae-f87d6854732e"
+Enzyme = "7da242da-08ed-463a-9acd-ee780be4f1d9"
 cuDNN = "02a925ec-e4fe-4b08-9a7e-0d78e3d38ccd"
 CUDA = "052768ef-5323-5732-b1bb-66c8b64840ba"
 
@@ -23,6 +25,7 @@ CUDA = "052768ef-5323-5732-b1bb-66c8b64840ba"
 NNlibAMDGPUExt = "AMDGPU"
 NNlibCUDAExt = "CUDA"
 NNlibCUDACUDNNExt = ["CUDA", "cuDNN"]
+NNlibEnzymeExt = "Enzyme"
 
 [compat]
 AMDGPU = "0.5, 0.6"
@@ -41,6 +44,7 @@ AMDGPU = "21141c5a-9bdb-4563-92ae-f87d6854732e"
 CUDA = "052768ef-5323-5732-b1bb-66c8b64840ba"
 ChainRulesTestUtils = "cdddcdb0-9152-4a09-a978-84456f9df70a"
 Documenter = "e30172f5-a6a5-5a46-863b-614d45cd2de4"
+Enzyme = "7da242da-08ed-463a-9acd-ee780be4f1d9"
 FiniteDifferences = "26cc04aa-876d-5657-8c51-4c34ba976000"
 ForwardDiff = "f6369f11-7733-5829-9624-2563aa707210"
 Logging = "56ddb016-857b-54e1-b83d-db4d58db5568"
@@ -54,4 +58,4 @@ cuDNN = "02a925ec-e4fe-4b08-9a7e-0d78e3d38ccd"
 [targets]
 test = ["AMDGPU", "CUDA", "ChainRulesTestUtils", "Documenter", 
         "FiniteDifferences", "ForwardDiff", "Logging", "ReverseDiff", 
-        "StableRNGs", "Test", "UnicodePlots", "Zygote", "cuDNN"]
+        "StableRNGs", "Test", "UnicodePlots", "Zygote", "cuDNN", "Enzyme"]
