@@ -12,13 +12,29 @@ Applies also `ChainRulesTestUtils.test_rrule` if the rrule for `f` is explicitly
 """
 function gradtest(
     f, xs...; atol = 1e-6, rtol = 1e-6, fkwargs = NamedTuple(),
-    check_rrule = false, fdm = :central, check_broadcast = false,
+    check_rrule = false, check_enzyme_rrule = false, fdm = :central, check_broadcast = false,
     skip = false, broken = false,
 )
     # TODO: revamp when https://github.com/JuliaDiff/ChainRulesTestUtils.jl/pull/166
     # is merged
     if check_rrule
         test_rrule(f, xs...; fkwargs = fkwargs)
+    end
+    if check_enzyme_rrule
+        if len(xs) == 2
+            for Tret in (Const, Active),
+                Tx in (Const, Duplicated, BatchDuplicated),
+                Ty in (Const, Duplicated, BatchDuplicated)
+
+                are_activities_compatible(Tret, Tx, Ty) || continue
+
+                test_reverse(fun, Tret, (xs[1], Tx), (ys[1], Ty); atol, rtol)
+            end
+        else
+            throw(AssertionError("Unsupported arg count for testing"))
+        end
+
+        EnzymeTestUtils.test_rrule(f, xs...; fkwargs = fkwargs)
     end
 
     if check_broadcast
