@@ -202,8 +202,6 @@ function EnzymeCore.EnzymeRules.reverse(config, func::EnzymeCore.Const{typeof(NN
                 end
             end
 
-            ddst .= 0
-
         end
     end
 
