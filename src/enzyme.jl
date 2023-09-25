@@ -212,7 +212,7 @@ end
 
 for pool in [:maxpool, :meanpool, :lpnormpool]
     pool! = Symbol(pool, :!)
-    ∇pool = Symbol(:∇, pool)
+    ∇pool = Symbol(:∇, pool, :!)
 
     @eval begin
 
@@ -277,7 +277,7 @@ function EnzymeCore.EnzymeRules.reverse(config, func::EnzymeCore.Const{typeof($p
         if !(typeof(y) <: EnzymeCore.Const) && dy !== y.val
 
             if !(typeof(x) <: EnzymeCore.Const) && dx !== x.val
-                NNlib.$(∇pool)(dx, dy, cache_y, cache_x, dims; alpha=eltype(dx)(1), beta=eltype(dx)(1), kwargs...)
+                NNlib.$(∇pool)(dx, dy, cache_y, cache_x, dims.val; alpha=eltype(dx)(1), beta=eltype(dx)(1), kwargs...)
             end
 
             dy .= 0
