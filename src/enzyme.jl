@@ -292,4 +292,75 @@ end
 end
 end
 
+function EnzymeCore.EnzymeRules.augmented_primal(config, func::EnzymeCore.Const{typeof(NNlib._dropout!)}, ::Type{RT}, rng, dst::OutType, src, p, dims) where {OutType, RT}
 
+    T = float(real(eltype(dst.val)))
+    val = convert(T, 1/(1-p.val))
+    keep = if dims.val isa Colon
+        similar(dst.val, T, size(dst.val))
+    else
+        similar(dst.val, T, ntuple(d -> d in dims.val ? size(dst.val,d) : 1, ndims(dst.val)))
+    end
+    rand!(rng.val, keep)
+    
+    keep = keep .> p.val
+
+    if OutType <: EnzymeCore.Duplicated || OutType <: EnzymeCore.BatchDuplicated
+        dst.val .= (keep .* val) .* src.val
+    end
+
+    primal = if EnzymeCore.EnzymeRules.needs_primal(config)
+        dst.val
+    else
+        nothing
+    end
+    shadow = if EnzymeCore.EnzymeRules.needs_shadow(config)
+        dst.dval
+    else
+        nothing
+    end
+
+    if typeof(dst) <: EnzymeCore.Const || typeof(src) <: EnzymeCore.Const
+        keep = nothing
+    end
+
+    # Cache idx if its overwritten
+    cache_idx = ( EnzymeCore.EnzymeRules.overwritten(config)[4]
+                    && !(typeof(src) <: EnzymeCore.Const)
+                    && !(typeof(dst) <: EnzymeCore.Const)
+                    ) ? copy(idx.val) : nothing
+
+    return EnzymeCore.EnzymeRules.AugmentedReturn(primal, shadow, keep)
+end
+
+function EnzymeCore.EnzymeRules.reverse(config, func::EnzymeCore.Const{typeof(NNlib._dropout!)}, ::Type{RT}, keep, rng, dst::OutType, src, p, dims) where {OutType, RT}
+    T = float(real(eltype(dst.val)))
+    val = convert(T, 1/(1-p.val))
+
+    ddsts = dst.dval
+    dsrcs = src.dval
+
+    if EnzymeCore.EnzymeRules.width(config) == 1
+        ddsts = (ddsts,)
+        dsrcs = (dsrcs,)
+    end
+
+    for (ddst, dsrc) in zip(ddsts, dsrcs)
+        if !(typeof(dst) <: EnzymeCore.Const) && ddst !== dst.val
+
+            if !(typeof(src) <: EnzymeCore.Const) && dsrc !== src.val
+                dsrc .+= (keep .* val) .* ddst
+            end
+
+            ddst .= 0
+        end
+    end
+
+    dp = if typeof(p) <: EnzymeCore.Active
+        typeof(p.val)(0)
+    else
+        nothing
+    end
+
+    return (nothing, nothing, nothing, dp, nothing)
+end
