@@ -967,3 +967,22 @@ end
   gradtest(x -> sum(maxpool(x, k)), x, skip = spatial_rank==2)
   gradtest(x -> sum(meanpool(x, k)), x)
 end
+
+
+@testset "EnzymeRules: pooling! $pool spatial_rank=$spatial_rank " for spatial_rank in (1, 2),
+                                                                                (pool, pool!) in ((maxpool, maxpool!), (meanpool, meanpool!))
+
+  x = rand(rng, repeat([10], spatial_rank)..., 3, 2)
+  pdims = PoolDims(x, 2)
+  y = pool(x, pdims)
+
+  for Tret in (EnzymeCore.Const, EnzymeCore.Duplicated, EnzymeCore.BatchDuplicated),
+    Tdst in (EnzymeCore.Duplicated, EnzymeCore.BatchDuplicated),
+    Tsrc in (EnzymeCore.Duplicated, EnzymeCore.BatchDuplicated)
+
+    EnzymeTestUtils.are_activities_compatible(Tret, Tdst, Tsrc) || continue
+
+    EnzymeTestUtils.test_reverse(pool!, Tret, (y, Tdst), (x, Tsrc), (pdims, EnzymeCore.Const))
+  end
+
+end
