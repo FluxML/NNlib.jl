@@ -904,7 +904,7 @@ end
 
         EnzymeTestUtils.are_activities_compatible(Tret, Tdst, Tw, Tw) || continue
 
-        EnzymeTestUtils.test_reverse(curconv!, Tret, (dst, Tdst), (x, Tx), (x, Tw), (idx, EnzymeCore.Const))
+        EnzymeTestUtils.test_reverse(curconv!, Tret, (dst, Tdst), (x, Tx), (x, Tw), (cdims, EnzymeCore.Const))
     end
   end
 end
