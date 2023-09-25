@@ -887,19 +887,36 @@ end
   gradtest((y, w) -> sum(∇depthwiseconv_data(y, w, dcdims)), y, w)
 end
 
-@testset "EnzymeRules: $conv ! spatial_rank=$spatial_rank" for spatial_rank in (1, 2, 3),
-                                                             name in (:conv, :depthwiseconv)
+@testset "EnzymeRules: conv! spatial_rank=$spatial_rank" for spatial_rank in (1, 2, 3)
   x = rand(rng, repeat([5], spatial_rank)..., 3, 2)
   w = rand(rng, repeat([3], spatial_rank)..., 3, 3)
   
-  cdims = if name == :conv
-    DenseConvDims(x, w)
-  else
-    DepthwiseConvDims(x, w)
-  end
+  cdims = DenseConvDims(x, w)
 
-  curconv = @eval $(Symbol("$(name)"))
-  curconv! = @eval $(Symbol("$(name)!"))
+  curconv = conv
+  curconv! = conv!
+  dst = curconv(x, w, cdims)
+
+  for Tret in (EnzymeCore.Const, EnzymeCore.Duplicated, EnzymeCore.BatchDuplicated),
+    Tdst in (EnzymeCore.Duplicated, EnzymeCore.BatchDuplicated),
+    Tx in (EnzymeCore.Const, EnzymeCore.Duplicated, EnzymeCore.BatchDuplicated),
+    Tw in (EnzymeCore.Const, EnzymeCore.Duplicated, EnzymeCore.BatchDuplicated)
+
+    EnzymeTestUtils.are_activities_compatible(Tret, Tdst, Tw, Tw) || continue
+
+    EnzymeTestUtils.test_reverse(curconv!, Tret, (dst, Tdst), (x, Tx), (w, Tw), (cdims, EnzymeCore.Const))
+  end
+end
+
+
+@testset "EnzymeRules: depthwiseconv! spatial_rank=$spatial_rank" for spatial_rank in (1, 2, 3)
+  x = rand(rng, repeat([5], spatial_rank)..., 3, 2)
+  w = rand(rng, repeat([3], spatial_rank)..., 3, 3)
+  
+  cdims = DepthwiseConvDims(x, w)
+
+  curconv = depthwiseconv
+  curconv! = depthwiseconv!
   dst = curconv(x, w, cdims)
 
   for Tret in (EnzymeCore.Const, EnzymeCore.Duplicated, EnzymeCore.BatchDuplicated),
