@@ -273,7 +273,7 @@ function EnzymeCore.EnzymeRules.reverse(config, func::EnzymeCore.Const{typeof($p
         dxs = (dxs,)
     end
 
-    for (dy, dx, dw) in zip(dys, dxs)
+    for (dy, dx) in zip(dys, dxs)
         if !(typeof(y) <: EnzymeCore.Const) && dy !== y.val
 
             if !(typeof(x) <: EnzymeCore.Const) && dx !== x.val
