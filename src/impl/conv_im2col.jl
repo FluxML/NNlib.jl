@@ -308,7 +308,7 @@ function col2im!(x::AbstractArray{T,4}, col::AbstractArray{T,2}, cdims::ConvDims
     elseif beta == T(1)
         # nothing
     else
-        x .* beta
+        x .*= beta
     end
 
     # Reshape col for easy access.
