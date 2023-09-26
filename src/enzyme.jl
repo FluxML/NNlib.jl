@@ -1,6 +1,7 @@
 import EnzymeCore
 
-for name in (typeof(NNlib.conv!), typeof(NNlib.depthwiseconv!))
+for (name, dataname, filtername) in ((typeof(NNlib.conv!), NNlib.∇conv_data!, NNlib.∇conv_filter!),
+                                     (typeof(NNlib.depthwiseconv!), NNlib.∇depthwiseconv_data!, NNlib.∇depthwiseconv_filter!) )
     @eval begin
 
 function EnzymeCore.EnzymeRules.augmented_primal(config, func::EnzymeCore.Const{$name}, ::Type{RT},
@@ -77,11 +78,11 @@ function EnzymeCore.EnzymeRules.reverse(config, func::EnzymeCore.Const{$name}, :
 
             if !(typeof(x) <: EnzymeCore.Const) && dx !== x.val
                 # dx += grad wrt x.val
-                NNlib.∇conv_data!(dx, dy, cache_w, cdims.val; alpha=xT(1), beta=xT(1), kwargs...)
+                $dataname(dx, dy, cache_w, cdims.val; alpha=xT(1), beta=xT(1), kwargs...)
             end
             if !(typeof(w) <: EnzymeCore.Const) && dw !== w.val
                 # dw += grad wrt w.val
-                NNlib.∇conv_filter!(dw, cache_x, dy, cdims.val; alpha=wT(1), beta=wT(1), kwargs...)
+                $filtername(dw, cache_x, dy, cdims.val; alpha=wT(1), beta=wT(1), kwargs...)
             end
             
             dy .= 0
