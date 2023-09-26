@@ -154,6 +154,7 @@ function gather_testsuite(Backend)
             gradtest_fn((s, i) -> gather(s, i), src, idx)
     end
 
+    @static if Test_Enzyme
 
     @testset "EnzymeRules: gather! gradient for scalar index" begin
         src = device(Float64[3, 4, 5, 6, 7])
@@ -170,6 +171,8 @@ function gather_testsuite(Backend)
 
             EnzymeTestUtils.test_reverse(gather!, Tret, (dst, Tdst), (src, Tsrc), (idx, EnzymeCore.Const))
         end
+    end
+
     end
 
     @testset "gather gradient for tuple index" begin

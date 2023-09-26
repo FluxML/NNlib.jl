@@ -968,6 +968,7 @@ end
   gradtest(x -> sum(meanpool(x, k)), x)
 end
 
+@static if Test_Enzyme
 
 @testset "EnzymeRules: pooling! $pool spatial_rank=$spatial_rank " for spatial_rank in (1, 2),
                                                                                 (pool, pool!) in ((maxpool, maxpool!), (meanpool, meanpool!))
@@ -984,5 +985,7 @@ end
 
     EnzymeTestUtils.test_reverse(pool!, Tret, (y, Tdst), (x, Tsrc), (pdims, EnzymeCore.Const))
   end
+
+end
 
 end

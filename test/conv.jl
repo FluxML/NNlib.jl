@@ -887,6 +887,8 @@ end
   gradtest((y, w) -> sum(∇depthwiseconv_data(y, w, dcdims)), y, w)
 end
 
+@static if Test_Enzyme
+
 @testset "EnzymeRules: conv! spatial_rank=$spatial_rank" for spatial_rank in (1, 2, 3)
   x = rand(rng, repeat([5], spatial_rank)..., 3, 2)
   w = rand(rng, repeat([3], spatial_rank)..., 3, 3)
@@ -908,7 +910,6 @@ end
   end
 end
 
-
 @testset "EnzymeRules: depthwiseconv! spatial_rank=$spatial_rank" for spatial_rank in (1, 2, 3)
   x = rand(rng, repeat([5], spatial_rank)..., 3, 2)
   w = rand(rng, repeat([3], spatial_rank)..., 3, 3)
@@ -928,4 +929,6 @@ end
 
     EnzymeTestUtils.test_reverse(curconv!, Tret, (dst, Tdst), (x, Tx), (w, Tw), (cdims, EnzymeCore.Const))
   end
+end
+
 end

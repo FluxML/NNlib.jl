@@ -13,6 +13,8 @@ using Adapt
 using KernelAbstractions
 import ReverseDiff as RD        # used in `pooling.jl`
 
+const Test_Enzyme = VERSION <= v"1.10" && !Sys.iswindows()
+
 DocMeta.setdocmeta!(NNlib, :DocTestSetup, :(using NNlib, UnicodePlots); recursive=true)
 
 # ENV["NNLIB_TEST_CUDA"] = "true" # uncomment to run CUDA tests

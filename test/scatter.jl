@@ -208,6 +208,8 @@ function scatter_testsuite(Backend)
             end
         end
 
+        @static if Test_Enzyme
+
         @testset "EnzymeRules" begin
             idx = device([2, 2, 3, 4, 4])
             src = device(ones(T, 3, 5))
@@ -225,6 +227,8 @@ function scatter_testsuite(Backend)
                     EnzymeTestUtils.test_reverse(scatter!, Tret, (op, EnzymeCore.Const), (dst, Tdst), (src, Tsrc), (idx, EnzymeCore.Const))
                 end
             end
+        end
+
         end
     end
 end

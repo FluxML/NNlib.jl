@@ -76,6 +76,8 @@ using Zygote, StableRNGs, ChainRulesCore, Enzyme
     @test_throws ArgumentError dropout!(y1, x1, 3)
 end
 
+@static if Test_Enzyme
+
 @testset "EnzymeRules: dropout " begin
     rng = Random.default_rng()
 
@@ -99,4 +101,6 @@ end
     val = convert(Float32, 1/(1-p))
 
     @test dx1[tape[1]] ≈ (val * dout)[tape[1]]
+end
+
 end
