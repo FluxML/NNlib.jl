@@ -39,6 +39,12 @@ is_nnpack_available() = false
   end
 end
 
+@static if !isdefined(Base, :get_extension)
+@init @require EnzymeCore="f151be2c-9106-41f4-ab19-57ee4f262869" begin
+    include("../ext/NNlibEnzymeCore/NNlibEnzymeCoreExt.jl")
+end
+end
+
 include("activations.jl")
 for f in ACTIVATIONS
     @eval export $(f)
@@ -122,7 +128,5 @@ include("impl/depthwiseconv_im2col.jl")
 # Direct implementations of pooling
 include("impl/pooling_direct.jl")
 include("deprecations.jl")
-
-include("enzyme.jl")
 
 end # module NNlib
