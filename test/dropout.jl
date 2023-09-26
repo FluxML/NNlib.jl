@@ -76,7 +76,7 @@ using Zygote, StableRNGs, ChainRulesCore, Enzyme
     @test_throws ArgumentError dropout!(y1, x1, 3)
 end
 
-@testset "EnzymeRules: dropout " 
+@testset "EnzymeRules: dropout " begin
     rng = Random.default_rng()
 
     x1 = randn(Float32, 3000, 4000)
