@@ -3,9 +3,13 @@ import EnzymeCore
 for name in (typeof(NNlib.conv!), typeof(NNlib.depthwiseconv!))
     @eval begin
 
-function EnzymeCore.EnzymeRules.augmented_primal(config, func::EnzymeCore.Const{$name}, ::Type{RT}, y::OutType, x, w, cdims; kwargs...) where {OutType, RT}
+function EnzymeCore.EnzymeRules.augmented_primal(config, func::EnzymeCore.Const{$name}, ::Type{RT},
+                                                y::EnzymeCore.Annotation{<:AbstractArray{yT, N}},
+                                                x::EnzymeCore.Annotation{<:AbstractArray{xT, N}},
+                                                w::EnzymeCore.Annotation{<:AbstractArray{wT, N}},
+                                                cdims; kwargs...) where {RT, yT, xT, wT, N}
 
-    if OutType <: EnzymeCore.Duplicated || OutType <: EnzymeCore.BatchDuplicated
+    if typeof(y) <: EnzymeCore.Duplicated || typeof(y) <: EnzymeCore.BatchDuplicated
         func.val(y.val, x.val, w.val, cdims.val; kwargs...)
     end
 
@@ -37,7 +41,11 @@ function EnzymeCore.EnzymeRules.augmented_primal(config, func::EnzymeCore.Const{
     return EnzymeCore.EnzymeRules.AugmentedReturn(primal, shadow, cache)
 end
 
-function EnzymeCore.EnzymeRules.reverse(config, func::EnzymeCore.Const{$name}, ::Type{RT}, cache, y, x, w, cdims; kwargs...) where {RT}
+function EnzymeCore.EnzymeRules.reverse(config, func::EnzymeCore.Const{$name}, ::Type{RT}, cache,
+                                                y::EnzymeCore.Annotation{<:AbstractArray{yT, N}},
+                                                x::EnzymeCore.Annotation{<:AbstractArray{xT, N}},
+                                                w::EnzymeCore.Annotation{<:AbstractArray{wT, N}},
+                                                cdims; kwargs...) where {RT, yT, xT, wT, N}
     cache_x, cache_w = cache
 
     # Don't cache x if not overwritten and w is active (and thus required)
@@ -65,15 +73,15 @@ function EnzymeCore.EnzymeRules.reverse(config, func::EnzymeCore.Const{$name}, :
     end
 
     for (dy, dx, dw) in zip(dys, dxs, dws)
-        if !(typeof(y) <: EnzymeCore.Const) && dy !== w.val
+        if !(typeof(y) <: EnzymeCore.Const) && dy !== y.val
 
             if !(typeof(x) <: EnzymeCore.Const) && dx !== x.val
                 # dx += grad wrt x.val
-                NNlib.∇conv_data!(dx, dy, cache_w, cdims.val; alpha=eltype(dw)(1), beta=eltype(dw)(1), kwargs...)
+                NNlib.∇conv_data!(dx, dy, cache_w, cdims.val; alpha=xT(1), beta=xT(1), kwargs...)
             end
             if !(typeof(w) <: EnzymeCore.Const) && dw !== w.val
                 # dw += grad wrt w.val
-                NNlib.∇conv_filter!(dw, cache_x, dy, cdims.val; alpha=eltype(dw)(1), beta=eltype(dw)(1), kwargs...)
+                NNlib.∇conv_filter!(dw, cache_x, dy, cdims.val; alpha=wT(1), beta=wT(1), kwargs...)
             end
             
             dy .= 0
