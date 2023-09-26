@@ -162,7 +162,7 @@ function ∇conv_data_im2col!(
                     col_ptr = pointer(col_slice)
                     gemm!(Val(false), Val(true), M, N, K, alpha, dy_ptr, w_ptr, T(0), col_ptr)
                 end
-                col2im!(view(dx, :, :, :, :, batch_idx), col_slice, cdims)
+                col2im!(view(dx, :, :, :, :, batch_idx), col_slice, cdims, beta)
             end
         end
     end
@@ -276,7 +276,7 @@ end
 
 
 """
-    col2im!(x, col, cdims)
+    col2im!(x, col, cdims, beta=0)
 
 Does the inverse of `im2col!()`, converting `col` back into a 3d image, used for backward
 passes, transposed convolutions, etc...
@@ -287,7 +287,7 @@ desperate enough yet.
 """
 col2im!
 
-function col2im!(x::AbstractArray{T,4}, col::AbstractArray{T,2}, cdims::ConvDims) where T
+function col2im!(x::AbstractArray{T,4}, col::AbstractArray{T,2}, cdims::ConvDims, beta::T=T(0)) where T
     if spatial_dims(cdims) != 3
         throw(DimensionMismatch("col2im!() only accepts 3d convoluitional inputs"))
     end
@@ -303,7 +303,13 @@ function col2im!(x::AbstractArray{T,4}, col::AbstractArray{T,2}, cdims::ConvDims
 
     # TODO: Rewrite this method so we don't have this fill!() at the beginning!
     # Calculate each output pixel once rather than accumulating into it?
-    fill!(x, T(0))
+    if beta == T(0)
+        fill!(x, T(0))
+    elseif beta == T(1)
+        # nothing
+    else
+        x .* beta
+    end
 
     # Reshape col for easy access.
     col_reshaped = reshape(col, (
