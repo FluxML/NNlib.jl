@@ -902,7 +902,7 @@ end
     Tx in (EnzymeCore.Const, EnzymeCore.Duplicated, EnzymeCore.BatchDuplicated),
     Tw in (EnzymeCore.Const, EnzymeCore.Duplicated, EnzymeCore.BatchDuplicated)
 
-    EnzymeTestUtils.are_activities_compatible(Tret, Tdst, Tw, Tw) || continue
+    EnzymeTestUtils.are_activities_compatible(Tret, Tdst, Tx, Tw) || continue
 
     EnzymeTestUtils.test_reverse(curconv!, Tret, (dst, Tdst), (x, Tx), (w, Tw), (cdims, EnzymeCore.Const))
   end
@@ -924,7 +924,7 @@ end
     Tx in (EnzymeCore.Const, EnzymeCore.Duplicated, EnzymeCore.BatchDuplicated),
     Tw in (EnzymeCore.Const, EnzymeCore.Duplicated, EnzymeCore.BatchDuplicated)
 
-    EnzymeTestUtils.are_activities_compatible(Tret, Tdst, Tw, Tw) || continue
+    EnzymeTestUtils.are_activities_compatible(Tret, Tdst, Tx, Tw) || continue
 
     EnzymeTestUtils.test_reverse(curconv!, Tret, (dst, Tdst), (x, Tx), (w, Tw), (cdims, EnzymeCore.Const))
   end
