@@ -16,7 +16,7 @@ DocMeta.setdocmeta!(NNlib, :DocTestSetup, :(using NNlib, UnicodePlots); recursiv
 # ENV["NNLIB_TEST_CUDA"] = "true" # uncomment to run CUDA tests
 # ENV["NNLIB_TEST_AMDGPU"] = "true" # uncomment to run AMDGPU tests
 # ENV["NNLIB_TEST_LOOPVECTORIZATION"] = "false" # uncomment to skip LoopVectorization tests
-ENV["NNLIB_TEST_CPU"] = "false" # uncomment to skip CPU tests
+# ENV["NNLIB_TEST_CPU"] = "false" # uncomment to skip CPU tests
 
 const rng = StableRNG(123)
 include("test_utils.jl")
