@@ -15,7 +15,8 @@ DocMeta.setdocmeta!(NNlib, :DocTestSetup, :(using NNlib, UnicodePlots); recursiv
 
 # ENV["NNLIB_TEST_CUDA"] = "true" # uncomment to run CUDA tests
 # ENV["NNLIB_TEST_AMDGPU"] = "true" # uncomment to run AMDGPU tests
-# ENV["NNLIB_TEST_CPU"] = "false" # uncomment to skip CPU tests
+# ENV["NNLIB_TEST_LOOPVECTORIZATION"] = "false" # uncomment to skip LoopVectorization tests
+ENV["NNLIB_TEST_CPU"] = "false" # uncomment to skip CPU tests
 
 const rng = StableRNG(123)
 include("test_utils.jl")
@@ -155,4 +156,18 @@ end
     else
         @info "Skipping AMDGPU tests, set NNLIB_TEST_AMDGPU=true to run them."
     end
+
+    if get(ENV, "NNLIB_TEST_LOOPVECTORIZATION", "true") == "true"
+        @testset "CPU" begin
+            # Don't import LoopVectorization here! 
+            # Because the LV-impls are simply tested against NNlib's standard CPU impls,
+            # importing LoopVectorization here would load NNlibLoopVectorizationExt too early!
+            @testset "LoopVectorization" begin
+                include("ext_loopvectorization/runtests.jl") 
+            end
+        end
+    else
+        @info "Skipping LoopVectorization tests, set NNLIB_TEST_LOOPVECTORIZATION=true to run them."
+    end
+
 end
