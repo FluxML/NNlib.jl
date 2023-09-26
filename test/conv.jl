@@ -399,6 +399,13 @@ ddims(x) = dropdims(x, dims=(ndims(x)-1, ndims(x)))
                 end
             end
 
+            # Test im2col
+            cache_dx, cache_dy, cache_w = ([0.17;;; 0.19;;; 0.23], [0.11;;; 0.13;;; 0.15], [1.0;;;])
+            dx_old = copy(cache_dx)
+            cdims = DenseConvDims(cache_dx, cache_w)            
+            NNlib.∇conv_data_im2col!(cache_dx, cache_dy, cache_w, cdims; alpha=1.0, beta=1.0)
+            @test isapprox(cache_dx, dx_old + cache_dy, rtol = 1.0e-7)
+
             # Test all in-place implementations/interfaces 
             for (∇conv_filter!, ∇conv_data!) in (
                     (NNlib.∇conv_filter!,        NNlib.∇conv_data!),
