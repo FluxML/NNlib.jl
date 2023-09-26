@@ -131,7 +131,7 @@ function ∇depthwiseconv_data_im2col!(
                         gemm!(Val(false), Val(true), M, N, K, alpha, dy_ptr, w_ptr, T(0), col_ptr)
                     end
                 end
-                col2im!(view(dx, :, :, :, :, batch_idx), col_slice, cdims)
+                col2im!(view(dx, :, :, :, :, batch_idx), col_slice, cdims, beta)
             end
         end
     end
