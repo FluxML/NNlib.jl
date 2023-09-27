@@ -72,8 +72,13 @@ end
     @test all(isapprox.(pool_outs_std, pool_outs_lv))
 
     @info isapprox(conv_grads_std[1], conv_grads_lv[1])
+    println(sum(conv_grads_std[1])); println(sum(conv_grads_lv[1]))
+
     @info isapprox(conv_grads_std[2], conv_grads_lv[2])
+    println(sum(conv_grads_std[2])); println(sum(conv_grads_lv[2]))
+
     @info isapprox(conv_grads_std[3], conv_grads_lv[3])
+    println(sum(conv_grads_std[3])); println(sum(conv_grads_lv[3]))
 
     @testset "Conv impl 1" begin
         @test isapprox(conv_grads_std[1], conv_grads_lv[1])
