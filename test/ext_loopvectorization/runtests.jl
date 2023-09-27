@@ -34,7 +34,7 @@ end
 
 @testset "Convolution & Pooling" begin
     
-    dtype = Float32
+    dtype = Float64 # Float32
     batch_size = 64
     input = rand(dtype, 224, 224, 3, batch_size) # for conv & pool
     weight_ungrouped = rand(dtype, 5, 5, 3, 27) # for conv
@@ -67,8 +67,22 @@ end
 
     # validate conv
     @test all(isapprox.(conv_outs_std, conv_outs_lv))
-    @test all(isapprox.(conv_grads_std, conv_grads_lv))
+    # @test all(isapprox.(conv_grads_std, conv_grads_lv)) # seems to be wrong on some CI devices, reason unknown
     # validate pool
     @test all(isapprox.(pool_outs_std, pool_outs_lv))
+
+    @info isapprox(conv_grads_std[1], conv_grads_lv[1])
+    @info isapprox(conv_grads_std[2], conv_grads_lv[2])
+    @info isapprox(conv_grads_std[3], conv_grads_lv[3])
+
+    @testset "Conv impl 1" begin
+        @test isapprox(conv_grads_std[1], conv_grads_lv[1])
+    end
+    @testset "Conv impl 2" begin
+        @test isapprox(conv_grads_std[2], conv_grads_lv[2])
+    end
+    @testset "Conv impl 3" begin
+        @test isapprox(conv_grads_std[3], conv_grads_lv[3])
+    end
 
 end
