@@ -37,7 +37,7 @@ GPUArraysCore = "0.1"
 KernelAbstractions = "0.9.2"
 Requires = "1.0"
 julia = "1.9"
-# LoopVectorization = "=0.12.146"
+LoopVectorization = "=0.12.146"
 
 [extras]
 AMDGPU = "21141c5a-9bdb-4563-92ae-f87d6854732e"
