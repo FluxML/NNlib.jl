@@ -41,6 +41,7 @@ julia = "1.9"
 
 [extras]
 AMDGPU = "21141c5a-9bdb-4563-92ae-f87d6854732e"
+BenchmarkTools = "6e4b80f9-dd63-53aa-95a3-0cdb28fa8baf"
 CUDA = "052768ef-5323-5732-b1bb-66c8b64840ba"
 ChainRulesTestUtils = "cdddcdb0-9152-4a09-a978-84456f9df70a"
 Documenter = "e30172f5-a6a5-5a46-863b-614d45cd2de4"
@@ -56,6 +57,6 @@ Zygote = "e88e6eb3-aa80-5325-afca-941959d7151f"
 cuDNN = "02a925ec-e4fe-4b08-9a7e-0d78e3d38ccd"
 
 [targets]
-test = ["AMDGPU", "CUDA", "ChainRulesTestUtils", "Documenter", 
+test = ["AMDGPU", "BenchmarkTools", "CUDA", "ChainRulesTestUtils", "Documenter", 
         "FiniteDifferences", "ForwardDiff", "Logging", "LoopVectorization",
         "ReverseDiff", "StableRNGs", "Test", "UnicodePlots", "Zygote", "cuDNN"]
