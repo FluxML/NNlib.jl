@@ -13,9 +13,9 @@ import ReverseDiff as RD        # used in `pooling.jl`
 
 DocMeta.setdocmeta!(NNlib, :DocTestSetup, :(using NNlib, UnicodePlots); recursive=true)
 
-# ENV["NNLIB_TEST_CUDA"] = "true" # uncomment to run CUDA tests
+ENV["NNLIB_TEST_CUDA"] = "true" # uncomment to run CUDA tests
 # ENV["NNLIB_TEST_AMDGPU"] = "true" # uncomment to run AMDGPU tests
-# ENV["NNLIB_TEST_CPU"] = "false" # uncomment to skip CPU tests
+ENV["NNLIB_TEST_CPU"] = "false" # uncomment to skip CPU tests
 
 const rng = StableRNG(123)
 include("test_utils.jl")
