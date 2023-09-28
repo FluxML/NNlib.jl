@@ -66,7 +66,7 @@ end
 
 println(cpuinfo())
 
-dtype = Float32 # Float64
+dtype = Float64 # Float32
 batch_size = 5
 input = rand(dtype, 50, 50, 3, batch_size)
 weight = rand(dtype, 5, 5, 3, 9)
