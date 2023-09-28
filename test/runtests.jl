@@ -1,6 +1,8 @@
 using NNlib, Test, Statistics, Random
 using ChainRulesCore, ChainRulesTestUtils
 using Base.Broadcast: broadcasted
+import EnzymeTestUtils
+using EnzymeCore
 import FiniteDifferences
 import ForwardDiff
 import Zygote
@@ -10,6 +12,8 @@ using Documenter
 using Adapt
 using KernelAbstractions
 import ReverseDiff as RD        # used in `pooling.jl`
+
+const Test_Enzyme = VERSION <= v"1.10" && !Sys.iswindows()
 
 DocMeta.setdocmeta!(NNlib, :DocTestSetup, :(using NNlib, UnicodePlots); recursive=true)
 

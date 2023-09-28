@@ -1,5 +1,5 @@
 using NNlib, Test, Statistics, Random, LinearAlgebra
-using Zygote, StableRNGs, ChainRulesCore
+using Zygote, StableRNGs, ChainRulesCore, Enzyme
 
 @testset "dropout" begin
     # Basics
@@ -74,4 +74,33 @@ using Zygote, StableRNGs, ChainRulesCore
     @test_throws ArgumentError dropout(x1, -1)
     @test_throws ArgumentError dropout(x1, 2)
     @test_throws ArgumentError dropout!(y1, x1, 3)
+end
+
+@static if Test_Enzyme
+
+@testset "EnzymeRules: dropout " begin
+    rng = Random.default_rng()
+
+    x1 = randn(Float32, 3000, 4000)
+    dx1 = zeros(Float32, 3000, 4000)
+
+    dout = randn(Float32, 3000, 4000)
+
+    p = 0.2f0
+
+    forward, reverse = Enzyme.autodiff_thunk(ReverseSplitWithPrimal, typeof(Const(dropout)), Duplicated, typeof(Const(rng)), typeof(Duplicated(x1, dx1)), typeof(Const(0.2f0)))
+
+    tape, primal, shadow = forward(Const(dropout), Const(rng), Duplicated(x1, dx1), Const(p))
+
+    shadow .= dout
+
+    reverse(Const(dropout), Const(rng), Duplicated(x1, dx1), Const(p), tape)
+
+    @test dx1[.!tape[1]] ≈ zero(x1)[.!tape[1]]
+
+    val = convert(Float32, 1/(1-p))
+
+    @test dx1[tape[1]] ≈ (val * dout)[tape[1]]
+end
+
 end

@@ -207,5 +207,28 @@ function scatter_testsuite(Backend)
                     gradtest_fn((xs, i) -> scatter(op, xs, i), src, idx)
             end
         end
+
+        @static if Test_Enzyme
+
+        @testset "EnzymeRules" begin
+            idx = device([2, 2, 3, 4, 4])
+            src = device(ones(T, 3, 5))
+
+            for op in (+, -)
+
+                dst = scatter(op, src, idx)
+
+                for Tret in (EnzymeCore.Const, EnzymeCore.Duplicated, EnzymeCore.BatchDuplicated),
+                    Tdst in (EnzymeCore.Duplicated, EnzymeCore.BatchDuplicated),
+                    Tsrc in (EnzymeCore.Duplicated, EnzymeCore.BatchDuplicated)
+
+                    EnzymeTestUtils.are_activities_compatible(Tret, Tdst, Tsrc) || continue
+
+                    EnzymeTestUtils.test_reverse(scatter!, Tret, (op, EnzymeCore.Const), (dst, Tdst), (src, Tsrc), (idx, EnzymeCore.Const))
+                end
+            end
+        end
+
+        end
     end
 end
