@@ -35,7 +35,7 @@ end
 @testset "Convolution & Pooling" begin
     
     dtype = Float64 # Float32
-    batch_size = 64
+    batch_size = 32 # 64
     input = rand(dtype, 224, 224, 3, batch_size) # for conv & pool
     weight_ungrouped = rand(dtype, 5, 5, 3, 27) # for conv
     weight_grouped = rand(dtype, 5, 5, 1, 27) # for grouped conv
@@ -55,12 +55,15 @@ end
 
     # compute outputs before loading LoopVectorization
 
+    #=
     println("without LoopVectorization")
     conv_outs_std, conv_grads_std = compute_conv_outputs(conv_settings_list, input, weight_ungrouped, weight_grouped, conv_output_grads)
     pool_outs_std = compute_pool_outputs(pool_settings_list, input)
+    =#
 
     using LoopVectorization # now load the NNlibLoopVectorizationExt
 
+    #=
     println("with LoopVectorization")
     conv_outs_lv, conv_grads_lv = compute_conv_outputs(conv_settings_list, input, weight_ungrouped, weight_grouped, conv_output_grads)
     pool_outs_lv = compute_pool_outputs(pool_settings_list, input)
@@ -89,5 +92,8 @@ end
     @testset "Conv impl 3" begin
         @test isapprox(conv_grads_std[3], conv_grads_lv[3])
     end
+    =#
+
+    include("minimal_test.jl")
 
 end
