@@ -18,7 +18,10 @@ function ∇conv_data!_avx(input_gradient::Array{T,4}, output_gradient::Array{T,
         weight = reverse(weight, dims=(1, 2))
     end
 
-    Threads.@threads for index_batch in 1:current_batch_size
+    # because in the actual computation section, values are added, it's saver to reset the given input_gradient first
+    input_gradient .= zero(T)
+
+    for index_batch in 1:current_batch_size # Threads.@threads 
         @turbo for out_channel in 1:out_channels, y_out in 1:output_height, x_out in 1:output_width
             for in_channel in 1:in_channels, y_w in 1:weight_height, x_w in 1:weight_width
                 input_gradient[x_out + x_w - 1, y_out + y_w - 1, in_channel, index_batch] += weight[x_w, y_w, in_channel, out_channel] * output_gradient[x_out, y_out, out_channel, index_batch]
@@ -46,6 +49,9 @@ function ∇conv_data!_noavx(input_gradient::Array{T,4}, output_gradient::Array{
     if !NNlib.flipkernel(cdims)
         weight = reverse(weight, dims=(1, 2))
     end
+
+    # because in the actual computation section, values are added, it's saver to reset the given input_gradient first
+    input_gradient .= zero(T)
 
     for index_batch in 1:current_batch_size # NO @threads here
         for out_channel in 1:out_channels, y_out in 1:output_height, x_out in 1:output_width # NO @turbo here!
