@@ -158,13 +158,11 @@ end
     end
 
     if get(ENV, "NNLIB_TEST_LOOPVECTORIZATION", "true") == "true"
-        @testset "CPU" begin
+        @testset "LoopVectorization" begin
             # Don't import LoopVectorization here! 
             # Because the LV-impls are simply tested against NNlib's standard CPU impls,
             # importing LoopVectorization here would load NNlibLoopVectorizationExt too early!
-            @testset "LoopVectorization" begin
-                include("ext_loopvectorization/runtests.jl") 
-            end
+            include("ext_loopvectorization/runtests.jl") 
         end
     else
         @info "Skipping LoopVectorization tests, set NNLIB_TEST_LOOPVECTORIZATION=true to run them."
