@@ -34,8 +34,8 @@ end
 
 @testset "Convolution & Pooling" begin
     
-    dtype = Float64 # Float32
-    batch_size = 32 # 64
+    dtype = Float32 # Float64
+    batch_size = 64 # 32
     input = rand(dtype, 224, 224, 3, batch_size) # for conv & pool
     weight_ungrouped = rand(dtype, 5, 5, 3, 27) # for conv
     weight_grouped = rand(dtype, 5, 5, 1, 27) # for grouped conv
@@ -53,17 +53,15 @@ end
         NNlib.PoolDims(size(input), (5, 4), stride=(5, 4), padding=(2, 0), dilation=(2, 1)), # test 'general case'
     ]
 
-    # compute outputs before loading LoopVectorization
-
     #=
+    # compute outputs before loading LoopVectorization
+    
     println("without LoopVectorization")
     conv_outs_std, conv_grads_std = compute_conv_outputs(conv_settings_list, input, weight_ungrouped, weight_grouped, conv_output_grads)
     pool_outs_std = compute_pool_outputs(pool_settings_list, input)
-    =#
 
     using LoopVectorization # now load the NNlibLoopVectorizationExt
 
-    #=
     println("with LoopVectorization")
     conv_outs_lv, conv_grads_lv = compute_conv_outputs(conv_settings_list, input, weight_ungrouped, weight_grouped, conv_output_grads)
     pool_outs_lv = compute_pool_outputs(pool_settings_list, input)

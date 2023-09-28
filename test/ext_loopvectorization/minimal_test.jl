@@ -1,4 +1,4 @@
-using NNlib, LoopVectorization
+using NNlib, LoopVectorization, CpuId
 
 function ∇conv_data!_avx(input_gradient::Array{T,4}, output_gradient::Array{T,4}, weight::Array{T,4}, cdims::ConvDims; kw...) where {T<:Real}
 
@@ -63,6 +63,8 @@ function ∇conv_data!_noavx(input_gradient::Array{T,4}, output_gradient::Array{
 
     return input_gradient
 end
+
+println(cpuinfo())
 
 dtype = Float32 # Float64
 batch_size = 5
