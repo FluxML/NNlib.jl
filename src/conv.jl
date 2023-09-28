@@ -47,7 +47,7 @@
 Apply convolution filter `w` to input `x`. `x` and `w` are 3d/4d/5d tensors
 in 1d/2d/3d convolutions respectively. `x` and `w` may have real or complex element types.
 """
-@inline function conv(x, w::AbstractArray{T, N}; stride = 1, pad = 0, dilation = 1, flipped = false, groups = 1) where {T, N}
+function conv(x, w::AbstractArray{T, N}; stride = 1, pad = 0, dilation = 1, flipped = false, groups = 1) where {T, N}
     stride = expand(Val(N - 2), stride)
     padding = expand(Val(N - 2), pad)
     dilation = expand(Val(N - 2), dilation)
@@ -62,7 +62,7 @@ end
 Depthwise convolution operation with filter `w` on input `x`. `x` and `w`
 are 3d/4d/5d tensors in 1d/2d/3d convolutions respectively.
 """
-@inline function depthwiseconv(x, w::AbstractArray{T, N}; stride=1, pad=0, dilation=1, flipped=false) where {T, N}
+function depthwiseconv(x, w::AbstractArray{T, N}; stride=1, pad=0, dilation=1, flipped=false) where {T, N}
     stride = expand(Val(N-2), stride)
     pad = expand(Val(N-2), pad)
     dilation = expand(Val(N-2), dilation)
@@ -80,7 +80,7 @@ for backend in (Symbol(), :_direct, :_im2col, :_nnpack)
     # First make auto-allocating versions of the conv()-like calls:
     for name in (:conv, :depthwiseconv)
         @eval begin
-            @inline function $(Symbol("$(name)$(backend)"))(
+            function $(Symbol("$(name)$(backend)"))(
                             x::AbstractArray{xT,N}, w::AbstractArray{wT,N},
                             cdims::ConvDims; kwargs...) where {xT, wT, N}
                 y = similar(x, promote_type(xT, wT), output_size(cdims)...,
@@ -92,7 +92,7 @@ for backend in (Symbol(), :_direct, :_im2col, :_nnpack)
 
     for name in (:∇conv_data, :∇depthwiseconv_data)
         @eval begin
-            @inline function $(Symbol("$(name)$(backend)"))(
+            function $(Symbol("$(name)$(backend)"))(
                             dy::AbstractArray{yT,N}, w::AbstractArray{wT,N},
                             cdims::C; kwargs...) where {yT, wT, N, C <: ConvDims}
                 dx = similar(dy, input_size(cdims)..., channels_in(cdims), size(dy, N))
@@ -104,7 +104,7 @@ for backend in (Symbol(), :_direct, :_im2col, :_nnpack)
     # We do the conv/depthwiseconv filter backprops separately, as the shape calculation
     # for `w` is slightly different for depthwise than for normal dense convolution.
     @eval begin
-        @inline function $(Symbol("∇conv_filter$(backend)"))(
+        function $(Symbol("∇conv_filter$(backend)"))(
                         x::AbstractArray{xT,N}, dy::AbstractArray{yT,N},
                         cdims::ConvDims; kwargs...) where {xT, yT, N}
             dw = similar(dy, kernel_size(cdims)..., channels_in(cdims) ÷ groupcount(cdims),
@@ -114,7 +114,7 @@ for backend in (Symbol(), :_direct, :_im2col, :_nnpack)
     end
 
     @eval begin
-        @inline function $(Symbol("∇depthwiseconv_filter$(backend)"))(
+        function $(Symbol("∇depthwiseconv_filter$(backend)"))(
                         x::AbstractArray{xT,N}, dy::AbstractArray{yT,N},
                         cdims::ConvDims; kwargs...) where {xT, yT, N}
             dw = similar(dy, kernel_size(cdims)..., channel_multiplier(cdims),
@@ -137,7 +137,7 @@ for front_name in (:conv, :∇conv_data, :∇conv_filter,
     for backend in (Symbol(), :_direct, :_im2col) ## NNPACK  is only for 2d conv
         for N in (3, 4)
             @eval begin
-                @inline function $(Symbol("$(front_name)$(backend)!"))(
+                function $(Symbol("$(front_name)$(backend)!"))(
                                 y::AbstractArray{yT,$N}, x::AbstractArray{xT,$N},
                                 w::AbstractArray{wT,$N}, cdims::ConvDims;
                                 kwargs...) where {yT, xT, wT}
