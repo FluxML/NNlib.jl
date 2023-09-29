@@ -16,26 +16,29 @@ Statistics = "10745b16-79ce-11e8-11f9-7d13ad32a3b2"
 
 [weakdeps]
 AMDGPU = "21141c5a-9bdb-4563-92ae-f87d6854732e"
-cuDNN = "02a925ec-e4fe-4b08-9a7e-0d78e3d38ccd"
 CUDA = "052768ef-5323-5732-b1bb-66c8b64840ba"
+EnzymeCore = "f151be2c-9106-41f4-ab19-57ee4f262869"
+cuDNN = "02a925ec-e4fe-4b08-9a7e-0d78e3d38ccd"
 LoopVectorization = "bdcacae8-1622-11e9-2a5c-532679323890"
 
 [extensions]
 NNlibAMDGPUExt = "AMDGPU"
-NNlibCUDAExt = "CUDA"
 NNlibCUDACUDNNExt = ["CUDA", "cuDNN"]
+NNlibCUDAExt = "CUDA"
+NNlibEnzymeCoreExt = "EnzymeCore"
 NNlibLoopVectorizationExt = "LoopVectorization"
 
 [compat]
 AMDGPU = "0.5, 0.6"
 Adapt = "3.2"
 Atomix = "0.1"
-ChainRulesCore = "1.13"
 CUDA = "4, 5"
-cuDNN = "1"
+ChainRulesCore = "1.13"
+EnzymeCore = "0.5, 0.6"
 GPUArraysCore = "0.1"
 KernelAbstractions = "0.9.2"
 Requires = "1.0"
+cuDNN = "1"
 julia = "1.9"
 # LoopVectorization = "=0.12.146"
 
@@ -46,6 +49,9 @@ CUDA = "052768ef-5323-5732-b1bb-66c8b64840ba"
 ChainRulesTestUtils = "cdddcdb0-9152-4a09-a978-84456f9df70a"
 CpuId = "adafc99b-e345-5852-983c-f28acb93d879"
 Documenter = "e30172f5-a6a5-5a46-863b-614d45cd2de4"
+Enzyme = "7da242da-08ed-463a-9acd-ee780be4f1d9"
+EnzymeCore = "f151be2c-9106-41f4-ab19-57ee4f262869"
+EnzymeTestUtils = "12d8515a-0907-448a-8884-5fe00fdf1c5a"
 FiniteDifferences = "26cc04aa-876d-5657-8c51-4c34ba976000"
 ForwardDiff = "f6369f11-7733-5829-9624-2563aa707210"
 Logging = "56ddb016-857b-54e1-b83d-db4d58db5568"
@@ -58,6 +64,5 @@ Zygote = "e88e6eb3-aa80-5325-afca-941959d7151f"
 cuDNN = "02a925ec-e4fe-4b08-9a7e-0d78e3d38ccd"
 
 [targets]
-test = ["AMDGPU", "BenchmarkTools", "CUDA", "ChainRulesTestUtils", "CpuId", "Documenter", 
-        "FiniteDifferences", "ForwardDiff", "Logging", "LoopVectorization",
-        "ReverseDiff", "StableRNGs", "Test", "UnicodePlots", "Zygote", "cuDNN"]
+test = ["AMDGPU", "BenchmarkTools", "CUDA", "ChainRulesTestUtils", "CpuId", "Documenter", "FiniteDifferences", "ForwardDiff", "Logging", "LoopVectorization", "ReverseDiff", "StableRNGs", "Test", "UnicodePlots", "Zygote", "cuDNN",
+		"Enzyme", "EnzymeCore", "EnzymeTestUtils"]
