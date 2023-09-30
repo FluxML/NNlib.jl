@@ -35,7 +35,7 @@ end
 @testset "Convolution & Pooling" begin
     
     dtype = Float32 # Float64
-    batch_size = 64 # 32
+    batch_size = 64 # 1 # 64 # 32
     input = rand(dtype, 224, 224, 3, batch_size) # for conv & pool
     weight_ungrouped = rand(dtype, 5, 5, 3, 27) # for conv
     weight_grouped = rand(dtype, 5, 5, 1, 27) # for grouped conv
@@ -53,7 +53,6 @@ end
         NNlib.PoolDims(size(input), (5, 4), stride=(5, 4), padding=(2, 0), dilation=(2, 1)), # test 'general case'
     ]
 
-    #=
     # compute outputs before loading LoopVectorization
     
     println("without LoopVectorization")
@@ -90,8 +89,5 @@ end
     @testset "Conv impl 3" begin
         @test isapprox(conv_grads_std[3], conv_grads_lv[3])
     end
-    =#
-
-    include("minimal_test.jl")
 
 end
