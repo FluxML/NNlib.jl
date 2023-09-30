@@ -5,7 +5,7 @@ The speed up is usually lower compared to conv but can be approximately up to 2x
 Since the current state of LoopVectorization ∇meanpool! isn't really faster than the 
 original implementation in some situations, it is left out for the moment.
 
-Implementation inspired from here (Jonas Steinebach, MIT):
+Implementation inspired from here (Jonas Steinebach, MIT license):
 https://github.com/jonas208/GradValley.jl/blob/main/src/functional/gv_pooling.jl
 =#
 
