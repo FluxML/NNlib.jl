@@ -14,8 +14,10 @@ steps:
       queue: "juliagpu"
       cuda: "*"
     env:
+      JULIA_NUM_THREADS: 4
       NNLIB_TEST_CUDA: "true"
-      NNLIB_TEST_CPU: "false"
+      NNLIB_TEST_CPU: "true" # Could be useful to uncover multithreading related issues
+                             # Buildkite workers have more threads.
     if: build.message !~ /\[skip tests\]/
     timeout_in_minutes: 180
     matrix:
@@ -34,6 +36,7 @@ steps:
       - JuliaCI/julia#v1:
           version: "1"
       - JuliaCI/julia-test#v1:
+          test_args: "--quickfail"
       - JuliaCI/julia-coverage#v1:
           codecov: true
           dirs:
@@ -49,8 +52,7 @@ steps:
       JULIA_AMDGPU_HIP_MUST_LOAD: "1"
       JULIA_AMDGPU_DISABLE_ARTIFACTS: "1"
       NNLIB_TEST_AMDGPU: "true"
-      NNLIB_TEST_CPU: "true" # Could be useful to uncover multithreading related issues
-                             # Buildkite workers have more threads. 
+      NNLIB_TEST_CPU: "false"
       JULIA_NUM_THREADS: 4
 
   - label: "Benchmarks"
