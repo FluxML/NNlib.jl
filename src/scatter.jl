@@ -108,7 +108,7 @@ end
 
 @kernel function _scatter!(op::OP, dst, src, idxs) where OP
     i = @index(Global)
-    @inbounds idx = Tuple(idxs[i])
+    @inbounds idx = Tuple(_atomix_convert_i64(idxs[i]))
     @inbounds Atomix.modify!(Atomix.IndexableRef(dst, idx), op, src[i])
     # FIXME `@atomic` macro silently fails to perform atomic op below
     # @atomic dst[idx...] = op(dst[idx...], src[i])
@@ -119,13 +119,19 @@ end
 ) where OP
     i = @index(Global)
     j, k = divrem(i - 1, max_dims_idx)
-    @inbounds idx = (Tuple(dim_ids[k + 1])..., Tuple(idxs[j + 1])...)
+    @inbounds idx = (Tuple(dim_ids[k + 1])..., Tuple(_atomix_convert_i64(idxs[j + 1]))...)
     @inbounds Atomix.modify!(Atomix.IndexableRef(dst, idx), op, src[i])
-    # FIXME
+    # FIXME `@atomic` macro silently fails to perform atomic op below
     # dim_i = Tuple(dim_ids[k + 1])
     # idx = idxs[j + 1]
     # @atomic dst[dim_i..., idx...] = op(dst[dim_i..., idx...], src[i])
 end
+
+# Allow non-Int64 indices by converting them to Int64 when index eltype <: Integer.
+# All other index types (tuples, cartesian indices) must be in Int64 already.
+@inline _atomix_convert_i64(x::Int64) = x
+@inline _atomix_convert_i64(x::Integer) = Int(x)
+@inline _atomix_convert_i64(x) = x
 
 """
     NNlib.scatter(op, src, idx; [init, dstsize])

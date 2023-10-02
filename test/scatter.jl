@@ -69,37 +69,36 @@ res = Dict(
 )
 
 function test_scatter(device, types, ops; pt, ops_skip_types)
-    for T in types
+    for T in types, IT in (Int8, Int64)
         PT = promote_type(T, pt)
-        @testset "$T" begin
-            for op in ops
-                skip_types = get(ops_skip_types, op, [])
-                @testset "$op" begin
-                    for idx = values(idxs), dims = [0, 1]
-                        idx = device(idx)
-                        dst = device(dsts[dims])
+        @testset "eltype $T - idx eltype $IT - $op" for op in ops
+            skip_types = get(ops_skip_types, op, [])
+            for idx = values(idxs), dims = [0, 1]
+                # Tests with indices of different types.
+                eltype(idx) == Int && (idx = IT.(idx);)
 
-                        mutated = true
-                        target_y = res[(op, dims, mutated)]
-                        src = device(srcs[(dims, mutated)])
-                        if op == /
-                            src = src .* T(2)
-                        end
+                idx = device(idx)
+                dst = device(dsts[dims])
 
-                        @test cpu(scatter!(op, T.(dst), T.(src), idx)) == T.(target_y)
-                        @test cpu(scatter!(op, T.(dst), src, idx)) == PT.(target_y)
-                        if op == /
-                            @test cpu(scatter!(op, T.(dst), T.(src), idx)) == PT.(target_y)
-                        else
-                            @test cpu(scatter!(op, copy(dst), T.(src), idx)) == PT.(target_y)
-                        end
+                mutated = true
+                target_y = res[(op, dims, mutated)]
+                src = device(srcs[(dims, mutated)])
+                if op == /
+                    src = src .* T(2)
+                end
 
-                        if T ∉ skip_types
-                            mutated = false
-                            src = device(srcs[(dims, mutated)])
-                            @test cpu(scatter(op, T.(src), idx)) == T.(res[(op, dims, mutated)])
-                        end
-                    end
+                @test cpu(scatter!(op, T.(dst), T.(src), idx)) == T.(target_y)
+                @test cpu(scatter!(op, T.(dst), src, idx)) == PT.(target_y)
+                if op == /
+                    @test cpu(scatter!(op, T.(dst), T.(src), idx)) == PT.(target_y)
+                else
+                    @test cpu(scatter!(op, copy(dst), T.(src), idx)) == PT.(target_y)
+                end
+
+                if T ∉ skip_types
+                    mutated = false
+                    src = device(srcs[(dims, mutated)])
+                    @test cpu(scatter(op, T.(src), idx)) == T.(res[(op, dims, mutated)])
                 end
             end
         end
@@ -174,14 +173,14 @@ function scatter_testsuite(Backend)
             else
                 (+, -, mean, max, min)
             end
-            for op in ops, i in (0, 1)
+            for op in ops, i in (0, 1), IT in (Int8, Int64)
                 PT = ( # If not CPU and CUDA -> use Int64 for min/max.
                     Backend != CPU &&
                     Symbol(Backend) != :CUDABackend &&
                     (op == max || op == min)) ? Int64 : T
 
                 src = device(srcs[(i, true)])
-                idx = device(idxs[:int])
+                idx = device(IT.(idxs[:int]))
                 dst = device(PT.(dsts[i]))
                 Backend == CPU ?
                     gradtest_fn(x -> scatter!(op, copy(x), src, idx), dst; fdm=fdm(op)) :
@@ -195,18 +194,19 @@ function scatter_testsuite(Backend)
             else
                 (+, -, mean, max, min)
             end
-            for op in ops, i in (0, 1)
+            for op in ops, i in (0, 1), IT in (Int8, Int64)
                 PT = ( # If not CPU and CUDA -> use Int64 for min/max.
                     Backend != CPU &&
                     Symbol(Backend) != :CUDABackend &&
                     (op == max || op == min)) ? Int64 : T
                 src = PT.(device(srcs[(i, false)]))
-                idx = device(idxs[:int])
+                idx = device(IT.(idxs[:int]))
                 Backend == CPU ?
                     gradtest_fn(xs -> scatter(op, xs, idx), src; fdm=fdm(op)) :
                     gradtest_fn((xs, i) -> scatter(op, xs, i), src, idx)
             end
         end
+
 
         @static if Test_Enzyme
 
