@@ -191,7 +191,7 @@ end
               running_stats::Union{RunningStats, Nothing} = nothing,
               scale::Union{AbstractVector, Nothing} = nothing,
               bias::Union{AbstractVector, Nothing} = nothing, ϵ = ofeltype(x, 1e-5);
-              training::Bool = within_grad()) where {N}
+              training::Bool) where {N}
 
 Functional [Batch Normalization](https://arxiv.org/abs/1502.03167) operation.
 
@@ -211,7 +211,7 @@ function batchnorm(x::AbstractArray{<:Any, N},
                    running_stats::Union{RunningStats, Nothing} = nothing,
                    scale::Union{AbstractVector, Nothing} = nothing,
                    bias::Union{AbstractVector, Nothing} = nothing, ϵ = ofeltype(x, 1e-5);
-                   training::Bool = within_grad()) where {N}
+                   training::Bool = within_gradient(x)) where {N}
     reduce_dims = ((1:(N - 2))..., N)
     μ, σ² = maybe_norm_stats(running_stats, x, reduce_dims, !training)
     # Because μ and σ² could be updated in-place, we compute the output first
@@ -227,7 +227,7 @@ end
                  running_stats::Union{RunningStats, Nothing} = nothing,
                  scale::Union{AbstractVector, Nothing} = nothing,
                  bias::Union{AbstractVector, Nothing} = nothing, ϵ = ofeltype(x, 1e-5);
-                 training::Bool = within_grad()) where {N}
+                 training::Bool)) where {N}
 
 Functional [Instance Normalization](https://arxiv.org/abs/1607.08022) operation.
 
@@ -246,7 +246,7 @@ function instancenorm(x::AbstractArray{<:Any, N},
                       running_stats::Union{RunningStats, Nothing} = nothing,
                       scale::Union{AbstractVector, Nothing} = nothing,
                       bias::Union{AbstractVector, Nothing} = nothing, ϵ = ofeltype(x, 1e-5);
-                      training::Bool = within_grad()) where {N}
+                      training::Bool = within_gradient(x)) where {N}
     affine_size = (ntuple(_ -> 1, N - 2)..., size(x, N - 1), :)
     reduce_dims = ((1:(N - 2))...,)
     μ, σ² = maybe_norm_stats(running_stats, x, reduce_dims, !training)
