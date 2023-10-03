@@ -42,15 +42,18 @@ end
     
     conv_settings_list = [
         NNlib.DenseConvDims(size(input), size(weight_ungrouped), stride=(1, 1), padding=(0, 0), dilation=(1, 1), groups=1), # test 'very specialized case'
-        NNlib.DenseConvDims(size(input), size(weight_ungrouped), stride=(2, 1), padding=(0, 0), dilation=(2, 1), groups=1), # test 'second specialized case'
-        NNlib.DenseConvDims(size(input), size(weight_grouped), stride=(2, 1), padding=(2, 0), dilation=(2, 1), groups=3), # test 'general case'
+        NNlib.DenseConvDims(size(input), size(weight_ungrouped), stride=(2, 1), padding=(0, 0), dilation=(1, 1), groups=1), # test 'second specialized case'
+        NNlib.DenseConvDims(size(input), size(weight_ungrouped), stride=(2, 1), padding=(0, 0), dilation=(2, 1), groups=1), # test 'third specialized case'
+        ### NNlib.DenseConvDims(size(input), size(weight_grouped), stride=(2, 1), padding=(2, 0), dilation=(2, 1), groups=3), # test 'general case'
+        NNlib.DenseConvDims(size(input), size(weight_grouped), stride=(2, 1), padding=(2, 1), dilation=(2, 1), groups=3), # test 'general case'
     ]
 
     conv_output_grads = [rand(dtype, NNlib.output_size(setting)..., 27, batch_size) for setting in conv_settings_list]
 
     pool_settings_list = [
         NNlib.PoolDims(size(input), (5, 4), stride=(1, 1), padding=(0, 0), dilation=(1, 1)), # test 'specialized case'
-        NNlib.PoolDims(size(input), (5, 4), stride=(5, 4), padding=(2, 0), dilation=(2, 1)), # test 'general case'
+        # NNlib.PoolDims(size(input), (5, 4), stride=(5, 4), padding=(2, 0), dilation=(2, 1)), # test 'general case'
+        NNlib.PoolDims(size(input), (5, 4), stride=(5, 4), padding=(2, 1), dilation=(2, 1)), # test 'general case'
     ]
 
     # compute outputs before loading LoopVectorization
@@ -67,27 +70,8 @@ end
 
     # validate conv
     @test all(isapprox.(conv_outs_std, conv_outs_lv))
-    # @test all(isapprox.(conv_grads_std, conv_grads_lv)) # seems to be wrong on some CI devices, reason unknown
+    @test all(isapprox.(conv_grads_std, conv_grads_lv))
     # validate pool
     @test all(isapprox.(pool_outs_std, pool_outs_lv))
-
-    @info isapprox(conv_grads_std[1], conv_grads_lv[1])
-    println(sum(conv_grads_std[1])); println(sum(conv_grads_lv[1]))
-
-    @info isapprox(conv_grads_std[2], conv_grads_lv[2])
-    println(sum(conv_grads_std[2])); println(sum(conv_grads_lv[2]))
-
-    @info isapprox(conv_grads_std[3], conv_grads_lv[3])
-    println(sum(conv_grads_std[3])); println(sum(conv_grads_lv[3]))
-
-    @testset "Conv impl 1" begin
-        @test isapprox(conv_grads_std[1], conv_grads_lv[1])
-    end
-    @testset "Conv impl 2" begin
-        @test isapprox(conv_grads_std[2], conv_grads_lv[2])
-    end
-    @testset "Conv impl 3" begin
-        @test isapprox(conv_grads_std[3], conv_grads_lv[3])
-    end
 
 end
