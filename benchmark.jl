@@ -1,5 +1,5 @@
 using NNlib, Flux, Metalhead
-using BenchmarkTools
+using BenchmarkTools, Statistics
 using DataFrames, CSV
 
 forward(model, input) = model(input)
@@ -28,8 +28,14 @@ function benchmark(models, dtype, batch_sizes, channels, spatial_size)
             forward(model, input) # compilation
             train_step(model, input) # compilation
 
-            forward_times[i, j] = @belapsed forward($model, $input) # @elapsed
-            train_step_times[i, j] = @belapsed train_step($model, $input) # @elapsed
+            # using @belapsed (minimum time)
+            #=
+            forward_times[i, j] = @belapsed forward($model, $input)
+            train_step_times[i, j] = @belapsed train_step($model, $input)
+            =#
+            # using median time
+            forward_times[i, j] = median(@benchmark forward($model, $input)).time / 10^9
+            train_step_times[i, j] = median(@benchmark train_step($model, $input)).time / 10^9
 
         end
     end
