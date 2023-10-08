@@ -186,9 +186,7 @@ function EnzymeCore.EnzymeRules.augmented_primal(config, func::EnzymeCore.Const{
     cache_running_var = nothing
 
     if !(typeof(y) <: EnzymeCore.Const)
-      if !(typeof(x) <: EnzymeCore.Const)
-         || !(typeof(g) <: EnzymeCore.Const)
-         || !(typeof(b) <: EnzymeCore.Const)
+      if !(typeof(x) <: EnzymeCore.Const) || !(typeof(g) <: EnzymeCore.Const) || !(typeof(b) <: EnzymeCore.Const)
 
         if EnzymeCore.EnzymeRules.overwritten(config)[3]
           cache_g = copy(g.val)
@@ -218,9 +216,7 @@ function EnzymeCore.EnzymeRules.reverse(config, func::EnzymeCore.Const{typeof(cu
     cache_g, cache_x, cache_running_mean, cache_running_var = cache
     
     if !(typeof(y) <: EnzymeCore.Const)
-      if !(typeof(x) <: EnzymeCore.Const)
-         || !(typeof(g) <: EnzymeCore.Const)
-         || !(typeof(b) <: EnzymeCore.Const)
+      if !(typeof(x) <: EnzymeCore.Const) || !(typeof(g) <: EnzymeCore.Const) || !(typeof(b) <: EnzymeCore.Const)
 
         if EnzymeCore.EnzymeRules.overwritten(config)[3]
           cache_g = g.val

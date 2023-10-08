@@ -123,6 +123,4 @@ include("impl/depthwiseconv_im2col.jl")
 include("impl/pooling_direct.jl")
 include("deprecations.jl")
 
-include("enzyme.jl")
-
 end # module NNlib
