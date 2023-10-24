@@ -27,7 +27,7 @@ NNlibCUDAExt = "CUDA"
 NNlibEnzymeCoreExt = "EnzymeCore"
 
 [compat]
-AMDGPU = "0.5, 0.6"
+AMDGPU = "0.6, 0.7"
 Adapt = "3.2"
 Atomix = "0.1"
 CUDA = "4, 5"
