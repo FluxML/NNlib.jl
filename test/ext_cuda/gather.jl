@@ -97,5 +97,10 @@
         outx = NNlib.gather(x, i)
         outv = NNlib.gather(v, i)
         @test outx == outv
+
+        # discontinuous view
+        v2 = view(x, :, [1,3,5])
+        outv2 = NNlib.gather(v2, i)
+        @test collect(outv2) == NNlib.gather(collect(v2), collect(i))        
     end
 end
