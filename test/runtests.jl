@@ -16,7 +16,6 @@ import ReverseDiff as RD        # used in `pooling.jl`
 const Test_Enzyme = VERSION <= v"1.10-" && !Sys.iswindows() &&
     # TODO Enzyme is not working properly with AMDGPU yet.
     get(ENV, "NNLIB_TEST_AMDGPU", "false") != "true"
-const Test_Enzyme = false
 
 DocMeta.setdocmeta!(NNlib, :DocTestSetup, :(using NNlib, UnicodePlots); recursive=true)
 
