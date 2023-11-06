@@ -89,4 +89,18 @@
     @test y isa CuArray{Float32,3}
     @test size(y) == (size(src)[1:Nsrc-M]..., size(index)...)
     gputest(src -> NNlib.gather(src, index), src, checkgrad=true)
+
+    @testset "views" begin
+        x = cu(rand(2, 5))
+        v = view(x, axes(x)...)
+        i = cu([1, 2])   
+        outx = NNlib.gather(x, i)
+        outv = NNlib.gather(v, i)
+        @test outx == outv
+
+        # discontinuous view
+        v2 = view(x, :, [1,3,5])
+        outv2 = NNlib.gather(v2, i)
+        @test collect(outv2) == NNlib.gather(collect(v2), collect(i))        
+    end
 end

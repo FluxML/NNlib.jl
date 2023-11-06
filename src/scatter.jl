@@ -81,7 +81,7 @@ function scatter!(op::OP, dst::AbstractArray, src::AbstractArray, idx::AbstractA
     dst
 end
 
-for AT in (AbstractArray, AbstractGPUArray)
+for AT in (AbstractArray, AnyGPUArray)
     @eval function scatter!(op::typeof(mean), dst::$AT, src::$AT, idx::$AT)
         Ns = scatter!(+, zero(dst), one.(src), idx)
         dst_ = scatter!(+, zero(dst), src, idx)
@@ -90,7 +90,7 @@ for AT in (AbstractArray, AbstractGPUArray)
     end
 end
 
-function scatter!(op::OP, dst::AbstractGPUArray, src::AbstractGPUArray, idx::AbstractGPUArray) where OP
+function scatter!(op::OP, dst::AnyGPUArray, src::AnyGPUArray, idx::AnyGPUArray) where OP
     n_dims = scatter_dims(dst, src, idx)
     args = if n_dims == 0
         ndrange = length(idx)
@@ -228,7 +228,7 @@ end
 
 function ∇scatter_src(
     op::Union{typeof(*), typeof(/)}, Δ, dst,
-    src::AbstractGPUArray{Tsrc, Nsrc}, idx::AbstractGPUArray{Tidx, Nidx},
+    src::AnyGPUArray{Tsrc, Nsrc}, idx::AnyGPUArray{Tidx, Nidx},
 ) where {Tsrc, Nsrc, Tidx, Nidx}
     n_dims = Nsrc - Nidx
     Δsrc = NNlib.modify_src(op, NNlib.gather(Δ, idx), src)

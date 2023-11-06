@@ -411,7 +411,7 @@ end
 end
 
 # Linear (GPU): parallelization along width dimension.
-# TODO replace AbstractArray -> AbstractGPUArray once device arrays subtype it.
+# TODO replace AbstractArray -> AnyGPUArray once device arrays subtype it.
 
 @kernel function _upsample_linear_kernel!(::B, y::T, x::T, rwidth, align::Val{A}) where {
     B <: GPU, T <: AbstractArray{<:Any, 3}, A,
