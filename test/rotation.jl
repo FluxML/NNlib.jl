@@ -77,17 +77,17 @@
                 f(x) = sum(abs2.(NNlib.imrotate(x, deg2rad(angle); method)))
        
                 img2 = randn((14, 14, 1, 1));
-                grad = FiniteDifferences.grad(central_fdm(7, 1), f, img2)[1]
+                grad = FiniteDifferences.grad(FiniteDifferences.central_fdm(7, 1), f, img2)[1]
                 grad2 = Zygote.gradient(f, img2)[1];
                 @test all(.≈(1 .+ grad, 1 .+ grad2, rtol=1f-7))
                 
                 img2 = randn((9, 9, 1, 2));
-                grad = FiniteDifferences.grad(central_fdm(7, 1), f, img2)[1]
+                grad = FiniteDifferences.grad(FiniteDifferences.central_fdm(7, 1), f, img2)[1]
                 grad2 = Zygote.gradient(f, img2)[1];
                 @test all(.≈(1 .+ grad, 1 .+ grad2, rtol=1f-7))
 
                 img2 = randn((8, 12, 1, 1));
-                grad = FiniteDifferences.grad(central_fdm(7, 1), f, img2)[1]
+                grad = FiniteDifferences.grad(FiniteDifferences.central_fdm(7, 1), f, img2)[1]
                 grad2 = Zygote.gradient(f, img2)[1];
                 @test all(.≈(1 .+ grad, 1 .+ grad2, rtol=1f-7))
             end
