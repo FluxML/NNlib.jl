@@ -28,7 +28,7 @@ NNlibEnzymeCoreExt = "EnzymeCore"
 
 [compat]
 AMDGPU = "0.7, 0.8"
-Adapt = "3.2"
+Adapt = "3.2, 4"
 Atomix = "0.1"
 CUDA = "4, 5"
 ChainRulesCore = "1.13"
