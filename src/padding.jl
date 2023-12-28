@@ -111,6 +111,7 @@ end
 gen_pad(pad::Int, dims, N) = gen_pad(ntuple(_ -> pad, length(dims)), dims, N)
 gen_pad(pad::Int, dims::Colon, N) = ntuple(_ -> (pad, pad), N)
 gen_pad(pad, dims::Colon, N) = gen_pad(pad, ntuple(identity, N), N)
+gen_pad(pad, dims::Int, N) = gen_pad(pad, (dims,), N)
 gen_pad(pad::Int, dims::Int, N) = gen_pad((pad,pad), (dims,), N)
 function gen_pad(pad::NTuple{L,Int}, dims::NTuple{D,Int}, N) where {L,D}
   ntuple(N) do d

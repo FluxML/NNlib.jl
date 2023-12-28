@@ -16,6 +16,9 @@ using NNlib: pad_constant, pad_repeat, pad_zeros, pad_reflect, pad_symmetric, pa
     
     p = NNlib.gen_pad(3, :, 2)
     @test p == ((3, 3), (3, 3))
+
+    p = NNlib.gen_pad((1,0), 1, 2)
+    @test p == ((1,0), (0,0))
     
     y = pad_constant(x, (3, 2, 4))
     @test size(y) == (8, 6, 10)
