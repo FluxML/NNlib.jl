@@ -16,7 +16,7 @@ oftf(x, y) = oftype(float(x), y)
 
 # oftype contains control flow on 1.10+, which can lead to type instabilities under AD 
 function rrule(::typeof(oftf), x, y)
-    oftf_pullback(Δ) = oftype(y, Δ)
+    oftf_pullback(Δ) = (NoTangent(), NoTangent(), oftype(y, Δ))
     return oftf(x, y), oftf_pullback
 end
 
