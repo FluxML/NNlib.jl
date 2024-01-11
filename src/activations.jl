@@ -14,6 +14,13 @@ ACTIVATIONS = [
 # of type float (to allow for integer inputs)
 oftf(x, y) = oftype(float(x), y)
 
+# oftype contains control flow on 1.10+, which can lead to type instabilities under AD 
+function rrule(::typeof(oftf), x, y)
+    proj_y = ChainRulesCore.ProjectTo(y)
+    oftf_pullback(Δ) = (NoTangent(), NoTangent(), proj_y(Δ))
+    return oftf(x, y), oftf_pullback
+end
+
 """
     σ(x) = 1 / (1 + exp(-x))
 
