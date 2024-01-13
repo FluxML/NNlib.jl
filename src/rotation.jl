@@ -92,46 +92,71 @@ function _check_trivial_rotations!(out, arr, θ, midpoint; adjoint=false)
     return false
 end
 
-function _∇check_trivial_rotations!(out, arr, θ, midpoint)
-    if iszero(θ)
-        out .= arr
-        return true 
-    end
-    # check for special cases where rotations are trivial
-    if (iseven(size(arr, 1)) && iseven(size(arr, 2)) && 
-        midpoint[1] ≈ size(arr, 1) ÷ 2 + 0.5 && midpoint[2] ≈ size(arr, 2) ÷ 2 + 0.5) ||
-        (isodd(size(arr, 1)) && isodd(size(arr, 2)) && 
-        (midpoint[1] == size(arr, 1) ÷ 2 + 1 && midpoint[1] == size(arr, 2) ÷ 2 + 1))
-        if θ ≈ π / 2 
-            out .= reverse(PermutedDimsArray(arr, (2, 1, 3, 4)), dims=(1,))
-            return true
-        elseif θ ≈ π
-            out .= reverse(arr, dims=(1,2))
-            return true
-        elseif θ ≈ 3 / 2 * π
-            out .= reverse(PermutedDimsArray(arr, (2, 1, 3, 4)), dims=(2,))
-            return true
-        end
-    end
-
-    return false
-end
 
 """
     imrotate(arr::AbstractArray{T, 4}, θ; method=:bilinear, midpoint=size(arr) .÷ 2 .+ 1)
 
-Rotates a matrix around the center pixel `midpoint`.
+Rotates a matrix around the center pixel `midpoint`. `midpoint` is defined such that there
+is a real center pixel for even and odd values which is rotated around.
 The angle `θ` is interpreted in radians.
 
 The adjoint is defined with ChainRulesCore.jl. This method also runs with CUDA (and in principle all KernelAbstractions.jl supported backends).
 
 # Keywords
 * `method=:bilinear` for bilinear interpolation or `method=:nearest` for nearest neighbour
-* `midpoint=size(arr) .÷ 2 .+ 1` means there is always a real center pixel around it is rotated.
+* `midpoint=size(arr) .÷ 2 .+ 1` means there is a real center pixel around it is rotated.
 
 # Examples
 ```julia-repl
+julia> arr = zeros((4,4,1,1)); arr[2,2,1,1] = 1;
 
+julia> arr
+4×4×1×1 Array{Float64, 4}:
+[:, :, 1, 1] =
+ 0.0  0.0  0.0  0.0
+ 0.0  1.0  0.0  0.0
+ 0.0  0.0  0.0  0.0
+ 0.0  0.0  0.0  0.0
+
+julia> NNlib.imrotate(arr, deg2rad(90)) # rotation around (3,3)
+4×4×1×1 Array{Float64, 4}:
+[:, :, 1, 1] =
+ 0.0  0.0  0.0  0.0
+ 0.0  0.0  0.0  1.0
+ 0.0  0.0  0.0  0.0
+ 0.0  0.0  0.0  0.0
+
+julia> NNlib.imrotate(arr, deg2rad(90), midpoint=(2,2))
+4×4×1×1 Array{Float64, 4}:
+[:, :, 1, 1] =
+ 0.0  0.0  0.0  0.0
+ 0.0  1.0  0.0  0.0
+ 0.0  0.0  0.0  0.0
+ 0.0  0.0  0.0  0.0
+
+julia> arr = zeros((3,3,1,1)); arr[1,2,1,1] = 1
+1
+
+julia> arr
+3×3×1×1 Array{Float64, 4}:
+[:, :, 1, 1] =
+ 0.0  1.0  0.0
+ 0.0  0.0  0.0
+ 0.0  0.0  0.0
+
+julia> NNlib.imrotate(arr, deg2rad(45))
+3×3×1×1 Array{Float64, 4}:
+[:, :, 1, 1] =
+ 0.0  0.207107  0.0
+ 0.0  0.0       0.207107
+ 0.0  0.0       0.0
+
+julia> NNlib.imrotate(arr, deg2rad(45), method=:nearest)
+3×3×1×1 Array{Float64, 4}:
+[:, :, 1, 1] =
+ 0.0  0.0  1.0
+ 0.0  0.0  0.0
+ 0.0  0.0  0.0
 ```
 """
 function imrotate(arr::AbstractArray{T, 4}, θ; method=:bilinear, midpoint=size(arr) .÷ 2 .+ 1) where T
@@ -157,17 +182,27 @@ function imrotate(arr::AbstractArray{T, 4}, θ; method=:bilinear, midpoint=size(
 	return out
 end
 
+
 """
-    ∇imrotate(arr::AbstractArray{T, 4}, θ; method=:bilinear, 
+    ∇imrotate(dy, arr::AbstractArray{T, 4}, θ; method=:bilinear,
+                                               midpoint=size(arr) .÷ 2 .+ 1)
 
 Adjoint for `imrotate`. Gradient only with respect to `arr` and not `θ`.
+
+# Arguments
+* `dy`: input gradient 
+* `arr`: Input from primal computation
+* `θ`: rotation angle in radians
+* `method=:bilinear` or `method=:nearest`
+* `midpoint=size(arr) .÷ 2 .+ 1` rotates around a real center pixel for even and odd sized arrays
 """
-function ∇imrotate(arr::AbstractArray{T, 4}, θ; method=:bilinear, 
+function ∇imrotate(dy, arr::AbstractArray{T, 4}, θ; method=:bilinear, 
                                                midpoint=size(arr) .÷ 2 .+ 1) where T
     
     sinθ, cosθ, midpoint, out = _prepare_imrotate(arr, θ, midpoint) 
     # for the adjoint, the trivial rotations go in the other direction!
-    _check_trivial_rotations!(out, arr, θ, midpoint, adjoint=true) && return out
+    # pass dy and not arr
+    _check_trivial_rotations!(out, dy, θ, midpoint, adjoint=true) && return out
 
     backend = KernelAbstractions.get_backend(arr)
     if method == :bilinear
@@ -177,7 +212,8 @@ function ∇imrotate(arr::AbstractArray{T, 4}, θ; method=:bilinear,
     else 
         throw(ArgumentError("No interpolation method such as $method"))
     end
-    kernel!(out, arr, sinθ, cosθ, midpoint, size(arr, 1), size(arr, 2),
+    # don't pass arr but dy! 
+    kernel!(out, dy, sinθ, cosθ, midpoint, size(arr, 1), size(arr, 2),
             ndrange=(size(arr, 1), size(arr, 2), size(arr, 3), size(arr, 4)))
     return out
 end
@@ -238,11 +274,11 @@ end
 
 # is this rrule good? 
 # no @thunk and @unthunk
-function ChainRulesCore.rrule(::typeof(imrotate), array::AbstractArray{T}, θ; 
-                              method=:bilinear, midpoint=size(array) .÷ 2 .+ 1) where T
-    res = imrotate(array, θ; method, midpoint)
+function ChainRulesCore.rrule(::typeof(imrotate), arr::AbstractArray{T}, θ; 
+                              method=:bilinear, midpoint=size(arr) .÷ 2 .+ 1) where T
+    res = imrotate(arr, θ; method, midpoint)
     function pb_rotate(dy)
-        ad = ∇imrotate(unthunk(collect(dy)), θ; method, midpoint)
+        ad = ∇imrotate(unthunk(dy), arr, θ; method, midpoint)
         return NoTangent(), ad, NoTangent()
     end    
 

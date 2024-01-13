@@ -77,7 +77,7 @@ function upsample_testsuite(Backend)
 
     @testset "Test gradients" begin
         for method in [:nearest, :bilinear]
-            for angle in deg2rad.([0, 35,  90, 170, 180, 270, 360])
+            for angle in deg2rad.([0, 0.0, 0.0001, 35, 90, -90, -90.0123, 170, 180, 270, 360, 450, 1234.1234])
                 gradtest_fn(
                     x -> NNlib.imrotate(x, angle; method),
                     device(rand(T, 11,11,1,1)); atol)
