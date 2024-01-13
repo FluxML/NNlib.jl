@@ -79,10 +79,10 @@ function upsample_testsuite(Backend)
         for method in [:nearest, :bilinear]
             for angle in deg2rad.([0, 35,  90, 170, 180, 270, 360])
                 gradtest_fn(
-                    x -> NNlib.imrotate(x, angle),
+                    x -> NNlib.imrotate(x, angle; method),
                     device(rand(T, 11,11,1,1)); atol)
                 gradtest_fn(
-                    x -> NNlib.imrotate(x, angle),
+                    x -> NNlib.imrotate(x, angle; method),
                     device(rand(T, 10,10,1,1)); atol)        
             end
         end

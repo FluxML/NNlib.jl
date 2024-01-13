@@ -23,12 +23,12 @@ end
 Some helper variables
 """
 @inline function bilinear_helper(yrot, xrot, yrot_f, xrot_f)
-        xdiff = (xrot - xrot_f)
-        xdiff_1minus = 1 - xdiff
-        ydiff = (yrot - yrot_f)
-        ydiff_1minus = 1 - ydiff
-        
-        return ydiff, ydiff_1minus, xdiff, xdiff_1minus
+    xdiff = (xrot - xrot_f)
+    xdiff_1minus = 1 - xdiff
+    ydiff = (yrot - yrot_f)
+    ydiff_1minus = 1 - ydiff
+    
+    return ydiff, ydiff_1minus, xdiff, xdiff_1minus
 end
 
 
@@ -59,7 +59,7 @@ For an odd array of size 5, the midpoint would need to be 3.
 
 In those cases, rotations are trivial just by reversing or swapping some axes.
 """
-function _check_trivial_rotations!(out, arr, θ, midpoint)
+function _check_trivial_rotations!(out, arr, θ, midpoint; adjoint=false)
     if iszero(θ)
         out .= arr
         return true 
@@ -70,13 +70,21 @@ function _check_trivial_rotations!(out, arr, θ, midpoint)
         (isodd(size(arr, 1)) && isodd(size(arr, 2)) && 
         (midpoint[1] == size(arr, 1) ÷ 2 + 1 && midpoint[1] == size(arr, 2) ÷ 2 + 1))
         if θ ≈ π / 2 
-            out .= reverse(PermutedDimsArray(arr, (2, 1, 3, 4)), dims=(2,))
+            if adjoint == false
+                out .= reverse(PermutedDimsArray(arr, (2, 1, 3, 4)), dims=(2,))
+            else
+                out .= reverse(PermutedDimsArray(arr, (2, 1, 3, 4)), dims=(1,))
+            end
             return true
         elseif θ ≈ π
             out .= reverse(arr, dims=(1,2))
             return true
         elseif θ ≈ 3 / 2 * π
-            out .= reverse(PermutedDimsArray(arr, (2, 1, 3, 4)), dims=(1,))
+            if adjoint == false
+                out .= reverse(PermutedDimsArray(arr, (2, 1, 3, 4)), dims=(1,))
+            else
+                out .= reverse(PermutedDimsArray(arr, (2, 1, 3, 4)), dims=(2,))
+            end
             return true
         end
     end
@@ -84,6 +92,30 @@ function _check_trivial_rotations!(out, arr, θ, midpoint)
     return false
 end
 
+function _∇check_trivial_rotations!(out, arr, θ, midpoint)
+    if iszero(θ)
+        out .= arr
+        return true 
+    end
+    # check for special cases where rotations are trivial
+    if (iseven(size(arr, 1)) && iseven(size(arr, 2)) && 
+        midpoint[1] ≈ size(arr, 1) ÷ 2 + 0.5 && midpoint[2] ≈ size(arr, 2) ÷ 2 + 0.5) ||
+        (isodd(size(arr, 1)) && isodd(size(arr, 2)) && 
+        (midpoint[1] == size(arr, 1) ÷ 2 + 1 && midpoint[1] == size(arr, 2) ÷ 2 + 1))
+        if θ ≈ π / 2 
+            out .= reverse(PermutedDimsArray(arr, (2, 1, 3, 4)), dims=(1,))
+            return true
+        elseif θ ≈ π
+            out .= reverse(arr, dims=(1,2))
+            return true
+        elseif θ ≈ 3 / 2 * π
+            out .= reverse(PermutedDimsArray(arr, (2, 1, 3, 4)), dims=(2,))
+            return true
+        end
+    end
+
+    return false
+end
 
 """
     imrotate(arr::AbstractArray{T, 4}, θ; method=:bilinear, midpoint=size(arr) .÷ 2 .+ 1)
@@ -135,7 +167,7 @@ function ∇imrotate(arr::AbstractArray{T, 4}, θ; method=:bilinear,
     
     sinθ, cosθ, midpoint, out = _prepare_imrotate(arr, θ, midpoint) 
     # for the adjoint, the trivial rotations go in the other direction!
-    _check_trivial_rotations!(out, arr, -θ, midpoint) && return out
+    _check_trivial_rotations!(out, arr, θ, midpoint, adjoint=true) && return out
 
     backend = KernelAbstractions.get_backend(arr)
     if method == :bilinear
@@ -196,10 +228,10 @@ end
         o = arr[i, j, c, b]
         ydiff, ydiff_1minus, xdiff, xdiff_1minus = 
             bilinear_helper(yrot, xrot, yrot_f, xrot_f)
-        Atomix.@atomic out[yrot_int     ,   xrot_int    , c, b]  += xdiff_1minus   * ydiff_1minus * o
-        Atomix.@atomic out[yrot_int + 1 ,   xrot_int    , c, b]  += xdiff_1minus   * ydiff      * o
-        Atomix.@atomic out[yrot_int     ,   xrot_int + 1, c, b]  += xdiff        * ydiff_1minus * o
-        Atomix.@atomic out[yrot_int + 1 ,   xrot_int + 1, c, b]  += xdiff        * ydiff      * o
+        Atomix.@atomic out[yrot_int     ,   xrot_int    , c, b]  += xdiff_1minus    * ydiff_1minus * o
+        Atomix.@atomic out[yrot_int + 1 ,   xrot_int    , c, b]  += xdiff_1minus    * ydiff      * o
+        Atomix.@atomic out[yrot_int     ,   xrot_int + 1, c, b]  += xdiff           * ydiff_1minus * o
+        Atomix.@atomic out[yrot_int + 1 ,   xrot_int + 1, c, b]  += xdiff           * ydiff      * o
     end
 end
 
@@ -210,7 +242,7 @@ function ChainRulesCore.rrule(::typeof(imrotate), array::AbstractArray{T}, θ;
                               method=:bilinear, midpoint=size(array) .÷ 2 .+ 1) where T
     res = imrotate(array, θ; method, midpoint)
     function pb_rotate(dy)
-        ad = imrotate(unthunk(collect(dy)), θ; method, midpoint)
+        ad = ∇imrotate(unthunk(collect(dy)), θ; method, midpoint)
         return NoTangent(), ad, NoTangent()
     end    
 
