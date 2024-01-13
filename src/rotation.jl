@@ -1,5 +1,9 @@
-# this rotates the coordinates and either applies round(nearest neighbour)
-# or floor (:bilinear interpolation)
+"""
+    rotate_coordinates(sinθ, cosθ, i, j, midpoint, round_or_floor)
+
+this rotates the coordinates and either applies round(nearest neighbour)
+or floor for :bilinear interpolation)
+"""
 @inline function rotate_coordinates(sinθ, cosθ, i, j, midpoint, round_or_floor)
     y = i - midpoint[1]
     x = j - midpoint[2]
@@ -14,21 +18,14 @@ end
 
 
 # helper function for bilinear
+
 @inline function bilinear_helper(yrot, xrot, yrot_f, xrot_f, yrot_int, xrot_int, imax, jmax)
         xdiff = (xrot - xrot_f)
-        xdiff_diff = 1 - xdiff
+        xdiff_1minus = 1 - xdiff
         ydiff = (yrot - yrot_f)
-        ydiff_diff = 1 - ydiff
-        # in case we hit the boundary stripe, then we need to avoid out of bounds access
-        Δi = 1#yrot_int != imax
-        Δj = 1#xrot_int != jmax
-      
-        # we need to avoid that we access arr[0]
-        # in rare cases the rounding clips off values on the left and top border
-        # we still try to access them with this extra comparison
-        Δi_min = 0#yrot_int == 0
-        Δj_min = 0#xrot_int == 0
-        return Δi, Δj, Δi_min, Δj_min, ydiff, ydiff_diff, xdiff, xdiff_diff
+        ydiff_1minus = 1 - ydiff
+        
+        return ydiff, ydiff_1minus, xdiff, xdiff_1minus
 end
 
 """
@@ -66,13 +63,14 @@ function _check_trivial_rotations!(out, arr, θ, midpoint)
     if ((midpoint[1] ≈ size(arr, 1) ÷ 2 + 0.5 && midpoint[2] ≈ size(arr, 2) ÷ 2 + 0.5) ||
         (midpoint[1] == size(arr, 1) ÷ 2 + 1 && midpoint[1] == size(arr, 2) ÷ 2 + 1))
         if θ ≈ π / 2 
-            out .= reverse(PermutedDimsArray(out, (2, 1, 3, 4)), dims=(2,))
+            @show "hallo"
+            out .= reverse(PermutedDimsArray(arr, (2, 1, 3, 4)), dims=(2,))
             return true
         elseif θ ≈ π
-            out .= reverse(out, dims=(1,2))
+            out .= reverse(arr, dims=(1,2))
             return true
         elseif θ ≈ 3 / 2 * π
-            out .= reverse(PermutedDimsArray(out, (2, 1, 3, 4)), dims=(1,))
+            out .= reverse(PermutedDimsArray(arr, (2, 1, 3, 4)), dims=(1,))
             return true
         end
     end
@@ -126,13 +124,14 @@ function ∇imrotate(arr::AbstractArray{T, 4}, θ; method=:bilinear,
                                                midpoint=size(arr) .÷ 2 .+ 1) where T
     
     sinθ, cosθ, midpoint, out = _prepare_imrotate(arr, θ, midpoint) 
-    _check_trivial_rotations!(out, arr, θ, midpoint) || return out
+    # for the adjoint, the trivial rotations go in the other direction!
+    _check_trivial_rotations!(out, arr, -θ, midpoint) && return out
 
     backend = get_backend(arr)
     if method == :bilinear
-        kernel! = ∇imrotate_kernel_bilinear_adj!(backend)
+        kernel! = ∇imrotate_kernel_bilinear!(backend)
     elseif method == :nearest
-        kernel! = ∇imrotate_kernel_nearest_adj!(backend)
+        kernel! = ∇imrotate_kernel_nearest!(backend)
     else 
         throw(ArgumentError("No interpolation method such as $method"))
     end
@@ -158,13 +157,13 @@ end
     yrot, xrot, yrot_f, xrot_f, yrot_int, xrot_int = rotate_coordinates(sinθ, cosθ, i, j, midpoint, floor) 
     if 1 ≤ yrot_int ≤ imax - 1&& 1 ≤ xrot_int ≤ jmax - 1 
 
-        Δi, Δj, Δi_min, Δj_min, ydiff, ydiff_diff, xdiff, xdiff_diff = 
+        ydiff, ydiff_1minus, xdiff, xdiff_1minus = 
             bilinear_helper(yrot, xrot, yrot_f, xrot_f, yrot_int, xrot_int, imax, jmax)
         @inbounds out[i, j, c, b] = 
-            (   xdiff_diff  * ydiff_diff    * arr[yrot_int + Δi_min, xrot_int + Δj_min, c, b]
-             +  xdiff_diff  * ydiff         * arr[yrot_int + Δi,     xrot_int + Δj_min, c, b]
-             +  xdiff       * ydiff_diff    * arr[yrot_int + Δi_min, xrot_int + Δj,     c, b] 
-             +  xdiff       * ydiff         * arr[yrot_int + Δi,     xrot_int + Δj,     c, b])
+            (   xdiff_1minus  * ydiff_1minus    * arr[yrot_int      , xrot_int      , c, b]
+             +  xdiff_1minus  * ydiff         * arr[yrot_int + 1  , xrot_int      , c, b]
+             +  xdiff       * ydiff_1minus    * arr[yrot_int      , xrot_int + 1  , c, b] 
+             +  xdiff       * ydiff         * arr[yrot_int + 1  , xrot_int + 1  , c, b])
     end
 end
 
@@ -185,12 +184,12 @@ end
     yrot, xrot, yrot_f, xrot_f, yrot_int, xrot_int = rotate_coordinates(sinθ, cosθ, i, j, midpoint, floor) 
     if 1 ≤ yrot_int ≤ imax - 1 && 1 ≤ xrot_int ≤ jmax - 1
         o = arr[i, j, c, b]
-        Δi, Δj, Δi_min, Δj_min, ydiff, ydiff_diff, xdiff, xdiff_diff = 
+        ydiff, ydiff_1minus, xdiff, xdiff_1minus = 
             bilinear_helper(yrot, xrot, yrot_f, xrot_f, yrot_int, xrot_int, imax, jmax)
-        Atomix.@atomic out[yrot_int + Δi_min,   xrot_int + Δj_min, c, b]  += (1 - xdiff)  * (1 - ydiff) * o
-        Atomix.@atomic out[yrot_int + Δi,       xrot_int + Δj_min, c, b]  += (1 - xdiff)  * ydiff       * o
-        Atomix.@atomic out[yrot_int + Δi_min,   xrot_int + Δj,     c, b]  += xdiff        * (1 - ydiff) * o
-        Atomix.@atomic out[yrot_int + Δi,       xrot_int + Δj,     c, b]  += xdiff        * ydiff       * o
+        Atomix.@atomic out[yrot_int     ,   xrot_int    , c, b]  += xdiff_1minus   * ydiff_1minus * o
+        Atomix.@atomic out[yrot_int + 1 ,   xrot_int    , c, b]  += xdiff_1minus   * ydiff      * o
+        Atomix.@atomic out[yrot_int     ,   xrot_int + 1, c, b]  += xdiff        * ydiff_1minus * o
+        Atomix.@atomic out[yrot_int + 1 ,   xrot_int + 1, c, b]  += xdiff        * ydiff      * o
     end
 end
 
