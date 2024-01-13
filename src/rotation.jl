@@ -102,8 +102,7 @@ The adjoint is defined with ChainRulesCore.jl. This method also runs with CUDA (
 
 ```
 """
-function imrotate(arr::AbstractArray{T, 4}, θ; method=:bilinear, midpoint=size(arr) .÷ 2 .+ 1,
-                  adjoint=false) where T
+function imrotate(arr::AbstractArray{T, 4}, θ; method=:bilinear, midpoint=size(arr) .÷ 2 .+ 1) where T
     @assert (T <: Integer && method==:nearest || !(T <: Integer)) "If the array has an Int eltype, only method=:nearest is supported"
     @assert typeof(midpoint) <: Tuple "midpoint keyword has to be a tuple"
     
@@ -113,7 +112,7 @@ function imrotate(arr::AbstractArray{T, 4}, θ; method=:bilinear, midpoint=size(
     _check_trivial_rotations!(out, arr, θ, midpoint) && return out
 
     # KernelAbstractions specific
-    backend = get_backend(arr)
+    backend = KernelAbstractions.get_backend(arr)
     if method == :bilinear
         kernel! = imrotate_kernel_bilinear!(backend)
     elseif method == :nearest
@@ -138,7 +137,7 @@ function ∇imrotate(arr::AbstractArray{T, 4}, θ; method=:bilinear,
     # for the adjoint, the trivial rotations go in the other direction!
     _check_trivial_rotations!(out, arr, -θ, midpoint) && return out
 
-    backend = get_backend(arr)
+    backend = KernelAbstractions.get_backend(arr)
     if method == :bilinear
         kernel! = ∇imrotate_kernel_bilinear!(backend)
     elseif method == :nearest
@@ -207,11 +206,13 @@ end
 
 # is this rrule good? 
 # no @thunk and @unthunk
-function ChainRulesCore.rrule(::typeof(imrotate), array, θ; method=:bilinear, midpoint=size(array) .÷ 2 .+ 1)
+function ChainRulesCore.rrule(::typeof(imrotate), array::AbstractArray{T}, θ; 
+                              method=:bilinear, midpoint=size(array) .÷ 2 .+ 1) where T
     res = imrotate(array, θ; method, midpoint)
     function pb_rotate(dy)
-        ad = imrotate(dy, θ; method, midpoint, adjoint=true)
+        ad = imrotate(unthunk(collect(dy)), θ; method, midpoint)
         return NoTangent(), ad, NoTangent()
     end    
+
 	return res, pb_rotate
 end

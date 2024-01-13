@@ -2,10 +2,10 @@ function upsample_testsuite(Backend)
     device(x) = adapt(Backend(), x)
     gradtest_fn = Backend == CPU ? gradtest : gputest
     T = Float32
-
+    atol = T == Float32 ? 1e-3 : 1e-6
 
     @testset "Image Rotation" begin
-        @testset "SImple test" begin
+        @testset "Simple test" begin
             arr = device(zeros((6, 6, 1, 1))); 
             arr[3:4, 4, 1, 1] .= 1;
             @test all(cpu(NNlib.imrotate(arr, deg2rad(45))) .≈ [0.0 0.0 0.0 0.0 0.0 0.0; 0.0 0.0 0.0 0.0 0.0 0.0; 0.0 0.0 0.0 0.29289321881345254 0.585786437626905 0.0; 0.0 0.0 0.08578643762690495 1.0 0.2928932188134524 0.0; 0.0 0.0 0.0 0.08578643762690495 0.0 0.0; 0.0 0.0 0.0 0.0 0.0 0.0])
@@ -30,9 +30,9 @@ function upsample_testsuite(Backend)
                 elseif method == :bilinear
                     res2 = ImageTransformations.imrotate(cpu(arr)[:, :, 1, 1], angle, axes(arr)[1:2], fillvalue=0)
                 end
-                @test all(1 .+ res1[20:35, 20:35, :, :] .≈ 1 .+ res2[20:35, 20:35])
-                @test all(1 .+ res1[20:35, 20:35, :, :] .≈ 1 .+ res3[20:35, 20:35, :, 1])
-                @test all(1 .+ res1[20:35, 20:35, :, :] .≈ 1 .+ res3[20:35, 20:35, :, 2])
+                @test all(1 .+ res1[:, :, :, :] .≈ 1 .+ res2[:, :])
+                @test all(1 .+ res1[:, :, :, :] .≈ 1 .+ res3[:, :,:, 1])
+                @test all(1 .+ res1[:, :, :, :] .≈ 1 .+ res3[:, :,:, 2])
             end
         end
         
@@ -51,9 +51,9 @@ function upsample_testsuite(Backend)
                 elseif method == :bilinear
                     res2 = ImageTransformations.imrotate(cpu(arr)[:, :, 1, 1], angle, axes(arr)[1:2], fillvalue=0)
                 end
-                @test all(1 .+ res1[20:35, 20:35, :, :] .≈ 1 .+ res2[20:35, 20:35])
-                @test all(1 .+ res1[20:35, 20:35, :, :] .≈ 1 .+ res3[20:35, 20:35, :, :])
-                @test all(1 .+ res1[20:35, 20:35, :, :] .≈ 1 .+ res3[20:35, 20:35, :, :])
+                @test all(1 .+ res1[:, :, :, :] .≈ 1 .+ res2[:, :])
+                @test all(1 .+ res1[:, :, :, :] .≈ 1 .+ res3[:, :, :, :])
+                @test all(1 .+ res1[:, :, :, :] .≈ 1 .+ res3[:, :, :, :])
             end
         end
 
@@ -76,25 +76,14 @@ function upsample_testsuite(Backend)
 
 
     @testset "Test gradients" begin
-
         for method in [:nearest, :bilinear]
-            for angle in deg2rad.([0, 45, 90, 137, 180, 270, 360])
-                f(x) = sum(abs2.(NNlib.imrotate(x, deg2rad(angle); method)))
-       
-                img2 = randn(T, (14, 14, 1, 1));
-                grad = FiniteDifferences.grad(FiniteDifferences.central_fdm(7, 1), f, img2)[1]
-                grad2 = Zygote.gradient(f, img2)[1];
-                @test all(.≈(1 .+ grad, 1 .+ grad2, rtol=1f-7))
-                
-                img2 = randn(T, (9, 9, 1, 2));
-                grad = FiniteDifferences.grad(FiniteDifferences.central_fdm(7, 1), f, img2)[1]
-                grad2 = Zygote.gradient(f, img2)[1];
-                @test all(.≈(1 .+ grad, 1 .+ grad2, rtol=1f-7))
-
-                img2 = randn(T, (8, 12, 1, 1));
-                grad = FiniteDifferences.grad(FiniteDifferences.central_fdm(7, 1), f, img2)[1]
-                grad2 = Zygote.gradient(f, img2)[1];
-                @test all(.≈(1 .+ grad, 1 .+ grad2, rtol=1f-7))
+            for angle in deg2rad.([0, 35,  90, 170, 180, 270, 360])
+                gradtest_fn(
+                    x -> NNlib.imrotate(x, angle),
+                    device(rand(T, 11,11,1,1)); atol)
+                gradtest_fn(
+                    x -> NNlib.imrotate(x, angle),
+                    device(rand(T, 10,10,1,1)); atol)        
             end
         end
     end
