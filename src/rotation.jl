@@ -17,9 +17,12 @@ or floor for :bilinear interpolation)
 end
 
 
-# helper function for bilinear
+"""
+   bilinear_helper(yrot, xrot, yrot_f, xrot_f, yrot_int, xrot_int) 
 
-@inline function bilinear_helper(yrot, xrot, yrot_f, xrot_f, yrot_int, xrot_int, imax, jmax)
+Some helper variables
+"""
+@inline function bilinear_helper(yrot, xrot, yrot_f, xrot_f)
         xdiff = (xrot - xrot_f)
         xdiff_1minus = 1 - xdiff
         ydiff = (yrot - yrot_f)
@@ -27,6 +30,7 @@ end
         
         return ydiff, ydiff_1minus, xdiff, xdiff_1minus
 end
+
 
 """
     _prepare_imrotate(arr, θ, midpoint)
@@ -43,6 +47,7 @@ function _prepare_imrotate(arr::AbstractArray{T}, θ, midpoint) where T
     fill!(out, 0)
     return sinθ, cosθ, midpoint, out
 end
+
 
 """
     _check_trivial_rotations!(out, arr, θ, midpoint) 
@@ -120,6 +125,11 @@ function imrotate(arr::AbstractArray{T, 4}, θ; method=:bilinear, midpoint=size(
 	return out
 end
 
+"""
+    ∇imrotate(arr::AbstractArray{T, 4}, θ; method=:bilinear, 
+
+Adjoint for `imrotate`. Gradient only with respect to `arr` and not `θ`.
+"""
 function ∇imrotate(arr::AbstractArray{T, 4}, θ; method=:bilinear, 
                                                midpoint=size(arr) .÷ 2 .+ 1) where T
     
@@ -158,12 +168,12 @@ end
     if 1 ≤ yrot_int ≤ imax - 1&& 1 ≤ xrot_int ≤ jmax - 1 
 
         ydiff, ydiff_1minus, xdiff, xdiff_1minus = 
-            bilinear_helper(yrot, xrot, yrot_f, xrot_f, yrot_int, xrot_int, imax, jmax)
+            bilinear_helper(yrot, xrot, yrot_f, xrot_f)
         @inbounds out[i, j, c, b] = 
-            (   xdiff_1minus  * ydiff_1minus    * arr[yrot_int      , xrot_int      , c, b]
-             +  xdiff_1minus  * ydiff         * arr[yrot_int + 1  , xrot_int      , c, b]
-             +  xdiff       * ydiff_1minus    * arr[yrot_int      , xrot_int + 1  , c, b] 
-             +  xdiff       * ydiff         * arr[yrot_int + 1  , xrot_int + 1  , c, b])
+            (   xdiff_1minus    * ydiff_1minus  * arr[yrot_int      , xrot_int      , c, b]
+             +  xdiff_1minus    * ydiff         * arr[yrot_int + 1  , xrot_int      , c, b]
+             +  xdiff           * ydiff_1minus  * arr[yrot_int      , xrot_int + 1  , c, b] 
+             +  xdiff           * ydiff         * arr[yrot_int + 1  , xrot_int + 1  , c, b])
     end
 end
 
@@ -185,7 +195,7 @@ end
     if 1 ≤ yrot_int ≤ imax - 1 && 1 ≤ xrot_int ≤ jmax - 1
         o = arr[i, j, c, b]
         ydiff, ydiff_1minus, xdiff, xdiff_1minus = 
-            bilinear_helper(yrot, xrot, yrot_f, xrot_f, yrot_int, xrot_int, imax, jmax)
+            bilinear_helper(yrot, xrot, yrot_f, xrot_f)
         Atomix.@atomic out[yrot_int     ,   xrot_int    , c, b]  += xdiff_1minus   * ydiff_1minus * o
         Atomix.@atomic out[yrot_int + 1 ,   xrot_int    , c, b]  += xdiff_1minus   * ydiff      * o
         Atomix.@atomic out[yrot_int     ,   xrot_int + 1, c, b]  += xdiff        * ydiff_1minus * o
