@@ -197,7 +197,7 @@ end
     i, j, c, b = @index(Global, NTuple)
     
     yrot, xrot, yrot_f, xrot_f, yrot_int, xrot_int = rotate_coordinates(sinθ, cosθ, i, j, midpoint, floor) 
-    if 1 ≤ yrot_int ≤ imax - 1&& 1 ≤ xrot_int ≤ jmax - 1 
+    if 1 ≤ yrot_int ≤ imax - 1 && 1 ≤ xrot_int ≤ jmax - 1 
 
         ydiff, ydiff_1minus, xdiff, xdiff_1minus = 
             bilinear_helper(yrot, xrot, yrot_f, xrot_f)
