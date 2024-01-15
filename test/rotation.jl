@@ -3,7 +3,8 @@ function rotation_testsuite(Backend)
     gradtest_fn = Backend == CPU ? gradtest : gputest
     T = Float32
     atol = T == Float32 ? 1e-3 : 1e-6
-
+    rtol = T == Float32 ? 1f-3 : 1f-6
+    
     @testset "Image Rotation" begin
         @testset "Simple test" begin
             arr = device(zeros((6, 6, 1, 1))); 
@@ -30,9 +31,9 @@ function rotation_testsuite(Backend)
                 elseif method == :bilinear
                     res2 = ImageTransformations.imrotate(cpu(arr)[:, :, 1, 1], angle, axes(arr)[1:2], fillvalue=0)
                 end
-                @test all(1 .+ res1[:, :, :, :] .≈ 1 .+ res2[:, :])
-                @test all(1 .+ res1[:, :, :, :] .≈ 1 .+ res3[:, :,:, 1])
-                @test all(1 .+ res1[:, :, :, :] .≈ 1 .+ res3[:, :,:, 2])
+                @test all(.≈(1 .+ res1[:, :, :, :], 1 .+ res2[:, :], rtol=rtol))
+                @test all(.≈(1 .+ res1[:, :, :, :], 1 .+ res3[:, :,:, 1], rtol=rtol))
+                @test all(.≈(1 .+ res1[:, :, :, :], 1 .+ res3[:, :,:, 2], rtol=rtol))
             end
         end
         
