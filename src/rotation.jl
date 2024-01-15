@@ -178,7 +178,7 @@ function imrotate(arr::AbstractArray{T, 4}, θ; method=:bilinear, midpoint=size(
         throw(ArgumentError("No interpolation method such as $method"))
     end
     kernel!(out, arr, sinθ, cosθ, midpoint, size(arr, 1), size(arr, 2),
-            ndrange=(size(arr, 1), size(arr, 2), size(arr, 3), size(arr, 4)))
+            ndrange=size(arr))
 	return out
 end
 
@@ -214,7 +214,7 @@ function ∇imrotate(dy, arr::AbstractArray{T, 4}, θ; method=:bilinear,
     end
     # don't pass arr but dy! 
     kernel!(out, dy, sinθ, cosθ, midpoint, size(arr, 1), size(arr, 2),
-            ndrange=(size(arr, 1), size(arr, 2), size(arr, 3), size(arr, 4)))
+            ndrange=size(arr))
     return out
 end
 
