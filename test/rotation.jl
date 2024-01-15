@@ -1,4 +1,4 @@
-function upsample_testsuite(Backend)
+function rotation_testsuite(Backend)
     device(x) = adapt(Backend(), x)
     gradtest_fn = Backend == CPU ? gradtest : gputest
     T = Float32

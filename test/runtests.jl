@@ -52,7 +52,7 @@ function nnlib_testsuite(Backend; skip_tests = Set{String}())
         upsample_testsuite(Backend)
     end
     @conditional_testset "rotation" skip_tests begin
-        upsample_testsuite(Backend)
+        rotation_testsuite(Backend)
     end
     @conditional_testset "Gather" skip_tests begin
         gather_testsuite(Backend)
