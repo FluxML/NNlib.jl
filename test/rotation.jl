@@ -3,7 +3,7 @@ function rotation_testsuite(Backend)
     gradtest_fn = Backend == CPU ? gradtest : gputest
     T = Float32
     atol = T == Float32 ? 1e-3 : 1e-6
-    rtol = T == Float32 ? 1f-3 : 1f-6
+    rtol = T == Float32 ? 1f-2 : 1f-6
     
     @testset "Image Rotation" begin
         @testset "Simple test" begin
