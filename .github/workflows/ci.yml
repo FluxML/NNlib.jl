@@ -9,6 +9,11 @@ on:
     tags: '*'
   pull_request:
 
+# needed to allow julia-actions/cache to delete old caches that it has created
+permissions:
+  actions: write
+  contents: read
+
 defaults:
   run:
     shell: bash
@@ -82,6 +87,7 @@ jobs:
       - uses: julia-actions/setup-julia@v1
         with:
           version: '1.9'
+      - uses: julia-actions/cache@v1
       - run: |
           julia --project=docs -e '
             using Pkg

@@ -5,6 +5,11 @@ on:
     tags: [v*]
   pull_request:
 
+# needed to allow julia-actions/cache to delete old caches that it has created
+permissions:
+  actions: write
+  contents: read
+
 jobs:
   test:
     name: ${{ matrix.package.repo }}/${{ matrix.package.group }}
