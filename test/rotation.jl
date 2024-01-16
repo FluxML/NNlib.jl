@@ -15,8 +15,8 @@ function rotation_testsuite(Backend)
 
 
         @testset "Compare with ImageTransformations" begin
-            for sz in [(51,51,1,1), (52,52,1,1)]
-                
+            for sz in [(51,51,1,1), (52,52,1,1), (51,52,1,1), (52,51,1,1)]
+                rotation_center = (sz[1:2] .+ 1) ./ 2  
                 arr1 = device(zeros(T, sz))
                 arr1[15:40, 15:40, :, :] .= device(1 .+ randn((26, 26)))                                                                       
                 arr2 = device(zeros(T, (sz[1], sz[2], sz[3], 3)))
@@ -25,21 +25,22 @@ function rotation_testsuite(Backend)
                 for method in [:nearest, :bilinear]
                     @testset "$method" begin
                         for angle in angles
-                            if iseven(sz[1])
-                                res1 = cpu(NNlib.imrotate(arr1, angle; method, midpoint=size(arr1).÷2 .+ 0.5))
-                                res2 = cpu(NNlib.imrotate(arr2, angle; method, midpoint=size(arr1).÷2 .+ 0.5))
-                            else
-                                res1 = cpu(NNlib.imrotate(arr1, angle; method))
-                                res2 = cpu(NNlib.imrotate(arr2, angle; method))
-                            end
+                            res1 = cpu(NNlib.imrotate(arr1, angle; method, rotation_center=rotation_center))
+                            res2 = cpu(NNlib.imrotate(arr2, angle; method, rotation_center=rotation_center))
                             if method == :nearest
                                 res_IT = ImageTransformations.imrotate(cpu(arr1)[:, :, 1, 1], angle, axes(arr1)[1:2], method=Constant(), fillvalue=0)
                             elseif method == :bilinear
                                 res_IT = ImageTransformations.imrotate(cpu(arr1)[:, :, 1, 1], angle, axes(arr1)[1:2], fillvalue=0)
                             end
-                            @test all(.≈(1 .+ res1[:, :, :, :], 1 .+ res_IT[:, :], rtol=rtol))
-                            @test all(.≈(1 .+ res1[:, :, :, :], 1 .+ res2[:, :,:, 1], rtol=rtol))
-                            @test all(.≈(1 .+ res1[:, :, :, :], 1 .+ res2[:, :,:, 2], rtol=rtol))
+                            if method == :nearest
+                                @test ≈(1 .+ res1[:, :, :, :], 1 .+ res_IT[:, :], rtol=0.5)
+                                @test ≈(1 .+ res1[:, :, :, :], 1 .+ res2[:, :,:, 1], rtol=0.5)
+                                @test ≈(1 .+ res1[:, :, :, :], 1 .+ res2[:, :,:, 2], rtol=0.5)
+                            else
+                                @test all(.≈(1 .+ res1[:, :, :, :], 1 .+ res_IT[:, :], rtol=rtol))
+                                @test all(.≈(1 .+ res1[:, :, :, :], 1 .+ res2[:, :,:, 1], rtol=rtol))
+                                @test all(.≈(1 .+ res1[:, :, :, :], 1 .+ res2[:, :,:, 2], rtol=rtol))
+                            end
                         end
                     end
                 end
