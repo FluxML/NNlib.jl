@@ -4,7 +4,7 @@ function rotation_testsuite(Backend)
     T = Float32
     atol = T == Float32 ? 1e-3 : 1e-6
     rtol = T == Float32 ? 1f-2 : 1f-6
-    angles = deg2rad.([0, 0.0, 0.0001, 35, 90, -90, -90.0123, 170, 180, 270, 360, 450, 1234.1234]) 
+    angles = deg2rad.([0, 0.0001, 35, 90, -90, -90.0123, 170, 180, 270, 360, 450, 1234.1234]) 
 
     @testset "imrotate" begin
         @testset "Simple test" begin
@@ -15,7 +15,7 @@ function rotation_testsuite(Backend)
 
 
         @testset "Compare with ImageTransformations" begin
-            for sz in [(51,51,1,1)]
+            for sz in [(51,51,1,1), (52,52,1,1)]
                 
                 arr1 = device(zeros(T, sz))
                 arr1[15:40, 15:40, :, :] .= device(1 .+ randn((26, 26)))                                                                       
@@ -37,7 +37,6 @@ function rotation_testsuite(Backend)
                             elseif method == :bilinear
                                 res_IT = ImageTransformations.imrotate(cpu(arr1)[:, :, 1, 1], angle, axes(arr1)[1:2], fillvalue=0)
                             end
-                            @show res1, res_IT 
                             @test all(.≈(1 .+ res1[:, :, :, :], 1 .+ res_IT[:, :], rtol=rtol))
                             @test all(.≈(1 .+ res1[:, :, :, :], 1 .+ res2[:, :,:, 1], rtol=rtol))
                             @test all(.≈(1 .+ res1[:, :, :, :], 1 .+ res2[:, :,:, 2], rtol=rtol))
@@ -52,7 +51,7 @@ function rotation_testsuite(Backend)
                 arr = device(zeros(T, (10, 10, 1, 3)))
                 arr[6, 6, :, 1] .= 1
                 arr[6, 6, :, 2] .= 2
-                arr[6, 6, :, 3] .= 2
+                arr[6, 6, :, 3] .= 3
 
                 for method in [:bilinear, :nearest]
                     @test all(.≈(arr , NNlib.imrotate(arr, deg2rad(0); method)))
