@@ -159,10 +159,10 @@ julia> NNlib.imrotate(arr, deg2rad(45), method=:nearest)
  0.0  0.0  0.0
 ```
 """
-function imrotate(arr::AbstractArray{T, 4}, θ; method=:bilinear, rotation_center=size(arr) .÷ 2 .+ 1) where T
-    @assert (T <: Integer && method==:nearest || !(T <: Integer)) "If the array has an Int eltype, only method=:nearest is supported"
-    @assert typeof(rotation_center) <: Tuple "rotation_center keyword has to be a tuple"
-    
+function imrotate(arr::AbstractArray{T, 4}, θ; method=:bilinear, rotation_center::Tuple=size(arr) .÷ 2 .+ 1) where T
+    if (T <: Integer && method==:nearest || !(T <: Integer)) == false
+        throw(ArgumentError("If the array has an Int eltype, only method=:nearest is supported"))
+    end
     # prepare out, the sin and cos and type of rotation_center
     sinθ, cosθ, rotation_center, out = _prepare_imrotate(arr, θ, rotation_center) 
     # such as 0°, 90°, 180°, 270° and only if the rotation_center is suitable
@@ -197,7 +197,7 @@ Adjoint for `imrotate`. Gradient only with respect to `arr` and not `θ`.
 * `rotation_center=size(arr) .÷ 2 .+ 1` rotates around a real center pixel for even and odd sized arrays
 """
 function ∇imrotate(dy, arr::AbstractArray{T, 4}, θ; method=:bilinear, 
-                                               rotation_center=size(arr) .÷ 2 .+ 1) where T
+                                               rotation_center::Tuple=size(arr) .÷ 2 .+ 1) where T
     
     sinθ, cosθ, rotation_center, out = _prepare_imrotate(arr, θ, rotation_center) 
     # for the adjoint, the trivial rotations go in the other direction!
