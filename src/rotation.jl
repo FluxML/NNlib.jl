@@ -1,10 +1,10 @@
 """
-    rotate_coordinates(sinθ, cosθ, i, j, rotation_center, round_or_floor)
+    _rotate_coordinatess(sinθ, cosθ, i, j, rotation_center, round_or_floor)
 
 this rotates the coordinates and either applies round(nearest neighbour)
 or floor for :bilinear interpolation)
 """
-@inline function rotate_coordinates(sinθ, cosθ, i, j, rotation_center, round_or_floor)
+@inline function _rotate_coordinatess(sinθ, cosθ, i, j, rotation_center, round_or_floor)
     y = i - rotation_center[1]
     x = j - rotation_center[2]
     yrot = cosθ * y - sinθ * x + rotation_center[1]
@@ -18,11 +18,11 @@ end
 
 
 """
-   bilinear_helper(yrot, xrot, yrot_f, xrot_f, yrot_int, xrot_int) 
+   _bilinear_helper(yrot, xrot, yrot_f, xrot_f, yrot_int, xrot_int) 
 
 Some helper variables
 """
-@inline function bilinear_helper(yrot, xrot, yrot_f, xrot_f)
+@inline function _bilinear_helper(yrot, xrot, yrot_f, xrot_f)
     xdiff = (xrot - xrot_f)
     xdiff_1minus = 1 - xdiff
     ydiff = (yrot - yrot_f)
@@ -96,8 +96,10 @@ end
 """
     imrotate(arr::AbstractArray{T, 4}, θ; method=:bilinear, rotation_center=size(arr) .÷ 2 .+ 1)
 
-Rotates a matrix around the center pixel `rotation_center`. `rotation_center` is defined such that there
-is a real center pixel for even and odd values which is rotated around.
+Rotates an array in the first two dimensions around the center pixel `rotation_center`. 
+`rotation_center` is defined such that there is a real center pixel for even and odd values which is rotated around.
+For an even sized array of size `(4,4)` this would be `(3,3)`, for an odd array of size `(3,3)` this would be `(2,2)`
+
 The angle `θ` is interpreted in radians.
 
 The adjoint is defined with ChainRulesCore.jl. This method also runs with CUDA (and in principle all KernelAbstractions.jl supported backends).
@@ -223,7 +225,7 @@ end
     i, j, c, b = @index(Global, NTuple)
 
     r(x...) = round(x..., RoundNearestTiesAway)
-    _, _, _, _, yrot_int, xrot_int = rotate_coordinates(sinθ, cosθ, i, j, rotation_center, r) 
+    _, _, _, _, yrot_int, xrot_int = _rotate_coordinatess(sinθ, cosθ, i, j, rotation_center, r) 
     if 1 ≤ yrot_int ≤ imax && 1 ≤ xrot_int ≤ jmax
         @inbounds out[i, j, c, b] = arr[yrot_int, xrot_int, c, b]
     end
@@ -233,11 +235,11 @@ end
 @kernel function imrotate_kernel_bilinear!(out, arr, sinθ, cosθ, rotation_center, imax, jmax)
     i, j, c, b = @index(Global, NTuple)
     
-    yrot, xrot, yrot_f, xrot_f, yrot_int, xrot_int = rotate_coordinates(sinθ, cosθ, i, j, rotation_center, floor) 
+    yrot, xrot, yrot_f, xrot_f, yrot_int, xrot_int = _rotate_coordinatess(sinθ, cosθ, i, j, rotation_center, floor) 
     if 1 ≤ yrot_int ≤ imax - 1 && 1 ≤ xrot_int ≤ jmax - 1 
 
         ydiff, ydiff_1minus, xdiff, xdiff_1minus = 
-            bilinear_helper(yrot, xrot, yrot_f, xrot_f)
+            _bilinear_helper(yrot, xrot, yrot_f, xrot_f)
         @inbounds out[i, j, c, b] = 
             (   xdiff_1minus    * ydiff_1minus  * arr[yrot_int      , xrot_int      , c, b]
              +  xdiff_1minus    * ydiff         * arr[yrot_int + 1  , xrot_int      , c, b]
@@ -251,7 +253,7 @@ end
     i, j, c, b = @index(Global, NTuple)
 
     r(x...) = round(x..., RoundNearestTiesAway)
-    _, _, _, _, yrot_int, xrot_int = rotate_coordinates(sinθ, cosθ, i, j, rotation_center, r) 
+    _, _, _, _, yrot_int, xrot_int = _rotate_coordinatess(sinθ, cosθ, i, j, rotation_center, r) 
     if 1 ≤ yrot_int ≤ imax && 1 ≤ xrot_int ≤ jmax 
         Atomix.@atomic out[yrot_int, xrot_int, c, b] += arr[i, j, c, b]
     end
@@ -261,11 +263,11 @@ end
 @kernel function ∇imrotate_kernel_bilinear!(out, arr, sinθ, cosθ, rotation_center, imax, jmax)
     i, j, c, b = @index(Global, NTuple)
 
-    yrot, xrot, yrot_f, xrot_f, yrot_int, xrot_int = rotate_coordinates(sinθ, cosθ, i, j, rotation_center, floor) 
+    yrot, xrot, yrot_f, xrot_f, yrot_int, xrot_int = _rotate_coordinatess(sinθ, cosθ, i, j, rotation_center, floor) 
     if 1 ≤ yrot_int ≤ imax - 1 && 1 ≤ xrot_int ≤ jmax - 1
         o = arr[i, j, c, b]
         ydiff, ydiff_1minus, xdiff, xdiff_1minus = 
-            bilinear_helper(yrot, xrot, yrot_f, xrot_f)
+            _bilinear_helper(yrot, xrot, yrot_f, xrot_f)
         Atomix.@atomic out[yrot_int     ,   xrot_int    , c, b]  += xdiff_1minus    * ydiff_1minus * o
         Atomix.@atomic out[yrot_int + 1 ,   xrot_int    , c, b]  += xdiff_1minus    * ydiff      * o
         Atomix.@atomic out[yrot_int     ,   xrot_int + 1, c, b]  += xdiff           * ydiff_1minus * o
