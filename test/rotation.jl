@@ -2,8 +2,8 @@ function rotation_testsuite(Backend)
     device(x) = adapt(Backend(), x)
     gradtest_fn = Backend == CPU ? gradtest : gputest
     T = Float64
-    atol = T == Float32 ? 1e-3 : 5e-5
-    rtol = T == Float32 ? 1f-3 : 5e-5
+    atol = T == Float32 ? 1e-3 : 1e-6
+    rtol = T == Float32 ? 1f-3 : 1f-6
     angles = deg2rad.([0, 0.0001, 35, 90, -90, -90.0123, 170, 180, 270, 360, 450, 1234.1234]) 
 
     @testset "imrotate" begin
