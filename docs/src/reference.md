@@ -111,6 +111,14 @@ upsample_trilinear
 pixel_shuffle
 ```
 
+## Rotation
+Rotate images in the first two dimensions of an array.
+
+```@docs
+imrotate
+∇imrotate
+```
+
 ## Batched Operations
 
 `Flux`'s `Bilinear` layer uses `NNlib.batched_mul` internally.

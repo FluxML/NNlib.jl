@@ -10,6 +10,8 @@ using Zygote: gradient
 using StableRNGs
 using Documenter
 using Adapt
+using ImageTransformations
+using Interpolations: Constant
 using KernelAbstractions
 import ReverseDiff as RD        # used in `pooling.jl`
 
@@ -43,10 +45,14 @@ cpu(x) = adapt(CPU(), x)
 include("gather.jl")
 include("scatter.jl")
 include("upsample.jl")
+include("rotation.jl")
 
 function nnlib_testsuite(Backend; skip_tests = Set{String}())
     @conditional_testset "Upsample" skip_tests begin
         upsample_testsuite(Backend)
+    end
+    @conditional_testset "rotation" skip_tests begin
+        rotation_testsuite(Backend)
     end
     @conditional_testset "Gather" skip_tests begin
         gather_testsuite(Backend)
