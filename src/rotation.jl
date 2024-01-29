@@ -1,7 +1,7 @@
 """
     _rotate_coordinatess(sinθ, cosθ, i, j, rotation_center, round_or_floor)
 
-this rotates the coordinates and either applies round(nearest neighbour)
+This rotates the coordinates and either applies round(nearest neighbour)
 or floor for :bilinear interpolation)
 """
 @inline function _rotate_coordinatess(sinθ, cosθ, i, j, rotation_center, round_or_floor)
