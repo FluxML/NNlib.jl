@@ -1,10 +1,10 @@
 """
-    _rotate_coordinatess(sinθ, cosθ, i, j, rotation_center, round_or_floor)
+    _rotate_coordinates(sinθ, cosθ, i, j, rotation_center, round_or_floor)
 
 This rotates the coordinates and either applies round(nearest neighbour)
 or floor for :bilinear interpolation)
 """
-@inline function _rotate_coordinatess(sinθ, cosθ, i, j, rotation_center, round_or_floor)
+@inline function _rotate_coordinates(sinθ, cosθ, i, j, rotation_center, round_or_floor)
     y = i - rotation_center[1]
     x = j - rotation_center[2]
     yrot = cosθ * y - sinθ * x + rotation_center[1]
@@ -225,7 +225,7 @@ end
     i, j, c, b = @index(Global, NTuple)
 
     r(x...) = round(x..., RoundNearestTiesAway)
-    _, _, _, _, yrot_int, xrot_int = _rotate_coordinatess(sinθ, cosθ, i, j, rotation_center, r) 
+    _, _, _, _, yrot_int, xrot_int = _rotate_coordinates(sinθ, cosθ, i, j, rotation_center, r) 
     if 1 ≤ yrot_int ≤ imax && 1 ≤ xrot_int ≤ jmax
         @inbounds out[i, j, c, b] = arr[yrot_int, xrot_int, c, b]
     end
@@ -235,7 +235,7 @@ end
 @kernel function imrotate_kernel_bilinear!(out, arr, sinθ, cosθ, rotation_center, imax, jmax)
     i, j, c, b = @index(Global, NTuple)
     
-    yrot, xrot, yrot_f, xrot_f, yrot_int, xrot_int = _rotate_coordinatess(sinθ, cosθ, i, j, rotation_center, floor) 
+    yrot, xrot, yrot_f, xrot_f, yrot_int, xrot_int = _rotate_coordinates(sinθ, cosθ, i, j, rotation_center, floor) 
     if 1 ≤ yrot_int ≤ imax - 1 && 1 ≤ xrot_int ≤ jmax - 1 
 
         ydiff, ydiff_1minus, xdiff, xdiff_1minus = 
@@ -253,7 +253,7 @@ end
     i, j, c, b = @index(Global, NTuple)
 
     r(x...) = round(x..., RoundNearestTiesAway)
-    _, _, _, _, yrot_int, xrot_int = _rotate_coordinatess(sinθ, cosθ, i, j, rotation_center, r) 
+    _, _, _, _, yrot_int, xrot_int = _rotate_coordinates(sinθ, cosθ, i, j, rotation_center, r) 
     if 1 ≤ yrot_int ≤ imax && 1 ≤ xrot_int ≤ jmax 
         Atomix.@atomic out[yrot_int, xrot_int, c, b] += arr[i, j, c, b]
     end
@@ -263,7 +263,7 @@ end
 @kernel function ∇imrotate_kernel_bilinear!(out, arr, sinθ, cosθ, rotation_center, imax, jmax)
     i, j, c, b = @index(Global, NTuple)
 
-    yrot, xrot, yrot_f, xrot_f, yrot_int, xrot_int = _rotate_coordinatess(sinθ, cosθ, i, j, rotation_center, floor) 
+    yrot, xrot, yrot_f, xrot_f, yrot_int, xrot_int = _rotate_coordinates(sinθ, cosθ, i, j, rotation_center, floor) 
     if 1 ≤ yrot_int ≤ imax - 1 && 1 ≤ xrot_int ≤ jmax - 1
         o = arr[i, j, c, b]
         ydiff, ydiff_1minus, xdiff, xdiff_1minus = 
