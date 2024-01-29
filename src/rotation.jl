@@ -97,8 +97,9 @@ end
     imrotate(arr::AbstractArray{T, 4}, θ; method=:bilinear, rotation_center=size(arr) .÷ 2 .+ 1)
 
 Rotates an array in the first two dimensions around the center pixel `rotation_center`. 
-`rotation_center` is defined such that there is a real center pixel for even and odd values which is rotated around.
+The default value of `rotation_center` is defined such that there is a integer center pixel for even and odd sized arrays which it is rotated around.
 For an even sized array of size `(4,4)` this would be `(3,3)`, for an odd array of size `(3,3)` this would be `(2,2)`
+However, `rotation_center` can be also non-integer numbers if specified.
 
 The angle `θ` is interpreted in radians.
 
