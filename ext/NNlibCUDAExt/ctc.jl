@@ -14,7 +14,7 @@ import NNlib: ctc_loss, ctc_alpha, ∇ctc_loss
 
 const MAX_THREADS = 256
 
-function log_plus_f(p1, p2)
+@inline function log_plus_f(p1, p2)
   isinf(p1) && return p2
   isinf(p2) && return p1
   if p1 < p2
