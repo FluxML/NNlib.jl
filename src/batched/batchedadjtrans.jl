@@ -87,6 +87,7 @@ function Base.stride(A::Union{BatchedTranspose, BatchedAdjoint{<:Real}}, d::Inte
     Base.stride(A.parent, d)
 end
 
+Base.pointer(A::BatchedAdjOrTrans) = pointer(parent(A))
 Base.unsafe_convert(::Type{Ptr{T}}, A::BatchedAdjOrTrans{T}) where {T} =
     Base.unsafe_convert(Ptr{T}, parent(A))
 

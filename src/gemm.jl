@@ -80,9 +80,9 @@ for (gemm, elt) in gemm_datatype_mappings
             LinearAlgebra.BLAS.chkstride1(B)
             LinearAlgebra.BLAS.chkstride1(C)
 
-            ptrA = Base.unsafe_convert(Ptr{$elt}, A)
-            ptrB = Base.unsafe_convert(Ptr{$elt}, B)
-            ptrC = Base.unsafe_convert(Ptr{$elt}, C)
+            ptrA = pointer(A)
+            ptrB = pointer(B)
+            ptrC = pointer(C)
 
             strA = size(A, 3) == 1 ? 0 : Base.stride(A, 3)
             strB = size(B, 3) == 1 ? 0 : Base.stride(B, 3)
