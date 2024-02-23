@@ -56,8 +56,8 @@ function dot_product_attention(q::AA3, k::AA3, v::AA3, bias=nothing;
     First dimension in query, key and value must be divisible by `nheads`.
     Instead:
     - size(q): $(size(q))
-    - size(k): $(size(q))
-    - size(v): $(size(q))
+    - size(k): $(size(k))
+    - size(v): $(size(v))
     - nheads: $nheads
     """))
     (size(q, 3) == size(k, 3) == size(v, 3)) || throw(ArgumentError("""
