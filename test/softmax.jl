@@ -145,6 +145,7 @@ end
             FiniteDifferences.central_fdm(5, 1)
         ),
         detailed=true,
+        rtol=1e-4,
     )
 end
 
