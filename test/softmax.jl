@@ -1,12 +1,3 @@
-using Pkg
-Pkg.add(url="https://github.com/gdalle/DifferentiationInterface.jl")
-Pkg.add(url="https://github.com/gdalle/DifferentiationInterface.jl", subdir="lib/DifferentiationInterfaceTest")
-
-import ADTypes
-import DifferentiationInterface as DI
-using DifferentiationInterfaceTest: Scenario
-import DifferentiationInterfaceTest as DIT
-
 using Statistics: mean
 using NNlib: ∇softmax_data, ∇logsoftmax_data
 
@@ -139,7 +130,7 @@ end
 
     DIT.test_differentiation(
         ADTypes.AutoZygote(),
-        [DI.gradient],
+        [DI.gradient, DI.pullback, DI.jacobian],
         scenarios;
         correctness=ADTypes.AutoFiniteDifferences(
             FiniteDifferences.central_fdm(5, 1)

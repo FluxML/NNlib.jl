@@ -1,3 +1,12 @@
+using Pkg
+Pkg.add(url="https://github.com/gdalle/DifferentiationInterface.jl")
+Pkg.add(url="https://github.com/gdalle/DifferentiationInterface.jl", subdir="lib/DifferentiationInterfaceTest")
+
+import ADTypes
+import DifferentiationInterface as DI
+using DifferentiationInterfaceTest: Scenario
+import DifferentiationInterfaceTest as DIT
+
 using NNlib, Test, Statistics, Random
 using ChainRulesCore, ChainRulesTestUtils
 using Base.Broadcast: broadcasted
