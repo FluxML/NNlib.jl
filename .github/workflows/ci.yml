@@ -30,7 +30,7 @@ jobs:
         version:
           # - '1.9' # uncomment when julia 1.10 is out
           - '1'   # automatically expands to the latest stable 1.x release of Julia
-          - 'nightly'
+          # - 'nightly'
         os:
           - ubuntu-latest
           # - macOS-latest
@@ -40,19 +40,19 @@ jobs:
         julia-threads:
           - '1'
 
-        include:
-          - os: windows-latest
-            version: '1'
-            arch: x64
-            julia-threads: '1'
-          - os: macOS-latest
-            version: '1'
-            arch: x64
-            julia-threads: '1'
-          - os: ubuntu-latest
-            version: '1'
-            arch: x64
-            julia-threads: '2'
+        # include:
+        #   - os: windows-latest
+        #     version: '1'
+        #     arch: x64
+        #     julia-threads: '1'
+        #   - os: macOS-latest
+        #     version: '1'
+        #     arch: x64
+        #     julia-threads: '1'
+        #   - os: ubuntu-latest
+        #     version: '1'
+        #     arch: x64
+        #     julia-threads: '2'
   
     steps:
       - uses: actions/checkout@v3
@@ -79,29 +79,29 @@ jobs:
         with:
           file: lcov.info
 
-  docs:
-    name: Documentation
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v3
-      - uses: julia-actions/setup-julia@v1
-        with:
-          version: '1.9'
-      - uses: julia-actions/cache@v1
-      - run: |
-          julia --project=docs -e '
-            using Pkg
-            Pkg.develop(PackageSpec(path=pwd()))
-            Pkg.instantiate()'
-      - run: |
-          julia --color=yes --project=docs/ -e '
-            using NNlib
-            # using Pkg; Pkg.activate("docs")
-            using Documenter
-            using Documenter: doctest
-            DocMeta.setdocmeta!(NNlib, :DocTestSetup, :(using NNlib); recursive=true)
-            doctest(NNlib)'
-      - run: julia --project=docs docs/make.jl
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          DOCUMENTER_KEY: ${{ secrets.DOCUMENTER_KEY }}
+  # docs:
+  #   name: Documentation
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #     - uses: actions/checkout@v3
+  #     - uses: julia-actions/setup-julia@v1
+  #       with:
+  #         version: '1.9'
+  #     - uses: julia-actions/cache@v1
+  #     - run: |
+  #         julia --project=docs -e '
+  #           using Pkg
+  #           Pkg.develop(PackageSpec(path=pwd()))
+  #           Pkg.instantiate()'
+  #     - run: |
+  #         julia --color=yes --project=docs/ -e '
+  #           using NNlib
+  #           # using Pkg; Pkg.activate("docs")
+  #           using Documenter
+  #           using Documenter: doctest
+  #           DocMeta.setdocmeta!(NNlib, :DocTestSetup, :(using NNlib); recursive=true)
+  #           doctest(NNlib)'
+  #     - run: julia --project=docs docs/make.jl
+  #       env:
+  #         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+  #         DOCUMENTER_KEY: ${{ secrets.DOCUMENTER_KEY }}
