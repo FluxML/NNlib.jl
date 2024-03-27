@@ -130,7 +130,7 @@ end
 
     DIT.test_differentiation(
         ADTypes.AutoZygote(),
-        [DI.gradient, DI.jacobian],
+        [DI.gradient, DI.pullback],
         scenarios;
         correctness=ADTypes.AutoFiniteDifferences(
             FiniteDifferences.central_fdm(5, 1)
