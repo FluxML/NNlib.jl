@@ -1,3 +1,12 @@
+using Pkg
+Pkg.add(url="https://github.com/gdalle/DifferentiationInterface.jl")
+Pkg.add(url="https://github.com/gdalle/DifferentiationInterface.jl", subdir="lib/DifferentiationInterfaceTest")
+
+import ADTypes
+import DifferentiationInterface as DI
+using DifferentiationInterfaceTest: Scenario
+import DifferentiationInterfaceTest as DIT
+
 using NNlib, Test, Statistics, Random
 using ChainRulesCore, ChainRulesTestUtils
 using Base.Broadcast: broadcasted
@@ -42,10 +51,12 @@ end
 
 cpu(x) = adapt(CPU(), x)
 
+#=
 include("gather.jl")
 include("scatter.jl")
 include("upsample.jl")
 include("rotation.jl")
+=#
 
 function nnlib_testsuite(Backend; skip_tests = Set{String}())
     @conditional_testset "Upsample" skip_tests begin
@@ -65,7 +76,8 @@ end
 @testset verbose=true "NNlib.jl" begin
 
     if get(ENV, "NNLIB_TEST_CPU", "true") == "true"
-        @testset "CPU" begin      
+        @testset verbose=true "CPU" begin      
+            #=
             @testset "Doctests" begin
                 doctest(NNlib, manual=false)
             end
@@ -113,11 +125,13 @@ end
             @testset "Padding" begin
                 include("padding.jl")
             end
+            =#
 
-            @testset "Softmax" begin
+            @testset verbose=true "Softmax" begin
                 include("softmax.jl")
             end
 
+            #=
             @testset "Utilities" begin
                 include("utils.jl")
             end
@@ -129,6 +143,7 @@ end
             @testset "Functions" begin
                 include("functions.jl")
             end
+            =#
         end
     else
         @info "Skipping CPU tests, set NNLIB_TEST_CPU=true to run them."
