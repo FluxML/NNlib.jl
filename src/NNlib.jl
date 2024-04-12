@@ -124,6 +124,6 @@ include("impl/pooling_direct.jl")
 include("deprecations.jl")
 
 include("rotation.jl")
-export imrotate
+export imrotate, ∇imrotate
 
 end # module NNlib
