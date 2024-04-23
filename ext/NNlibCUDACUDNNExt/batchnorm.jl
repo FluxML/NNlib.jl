@@ -84,7 +84,15 @@ function cudnnBNForward!(y::DenseCuArray{T}, g::DenseCuArray{T}, b::DenseCuArray
       cache.ivar = ivar
     end
   else
-    cudnnBatchNormalizationForwardInference(handle(), CUDNN_BATCHNORM_SPATIAL, scalingParameter(T, alpha), scalingParameter(T, beta), xd, x, yd, y, gd, g, b, running_mean, running_var, eps)
+    if track_stats
+      cudnnBatchNormalizationForwardInference(handle(), CUDNN_BATCHNORM_SPATIAL, scalingParameter(T, alpha), scalingParameter(T, beta), xd, x, yd, y, gd, g, b, running_mean, running_var, eps)
+    else
+      # cudnnBatchNormalizationForwardInference does not accept CV_NULL for running_mean
+      # and running_var. We could calculate mean and var of `x` here, but instead use
+      # cudnnBatchNormalizationFowardTraining. cudnnBatchNormalizationForwardTraining does
+      # accept CV_NULL and will calculate mean and var itself.
+      cudnnBatchNormalizationForwardTraining(handle(), CUDNN_BATCHNORM_SPATIAL, scalingParameter(T, alpha), scalingParameter(T, beta), xd, x, yd, y, gd, g, b, momentum, CU_NULL, CU_NULL, eps, CU_NULL, CU_NULL)
+    end
   end
   return y
 end
