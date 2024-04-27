@@ -12,6 +12,7 @@ makedocs(modules = [NNlib],
             #   analytics = "UA-36890222-9",
               assets = ["assets/flux.css"],
               prettyurls = get(ENV, "CI", nothing) == "true"),
+              warnonly=[:missing_docs,]
         )
 
 deploydocs(repo = "github.com/FluxML/NNlib.jl.git",
