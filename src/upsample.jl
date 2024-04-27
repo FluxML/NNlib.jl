@@ -173,6 +173,16 @@ function upsample_nearest(x::AbstractArray{T,N}, scales::NTuple{S, <:Integer}) w
     out
 end
 
+"""
+    ∇upsample_nearest(Δ::AbstractArray{T,3}, scales::NTuple{S, <:Integer}) where T
+
+# Arguments
+- `Δ`: Incoming gradient array, backpropagated from downstream layers
+- `scales`: scales by which the image was upsampled in the first place
+
+# Outputs
+- `dx`: Downsampled version of `Δ`
+"""
 function ∇upsample_nearest(x::AbstractArray{T,N}, scales::NTuple{S, <:Integer}) where {T,N,S}
     outsize = ntuple(N) do d
         d > S && return size(x,d)
