@@ -129,7 +129,7 @@ function conv_bias_act!(y::DenseCuArray{T}, x::DenseCuArray{T}, w::DenseCuArray{
     activation = (σ == NNlib.relu ? CUDNN_ACTIVATION_RELU : CUDNN_ACTIVATION_IDENTITY)
     cudnnConvolutionForward!(y, w, x, d; z, bias, activation, alpha, beta)
     if activation === CUDNN_ACTIVATION_IDENTITY && σ ∉ (nothing, identity)
-        y = σ.(y)
+        @. y = σ(y)
     end
     return y
 end
