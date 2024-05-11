@@ -910,6 +910,50 @@ end
   end
 end
 
+@testset "EnzymeRules: ∇conv_data! spatial_rank=$spatial_rank" for spatial_rank in (1, 2, 3)
+  x = rand(rng, repeat([5], spatial_rank)..., 3, 2)
+  w = rand(rng, repeat([3], spatial_rank)..., 3, 3)
+  y = conv(x, w, cdims)
+  
+  cdims = DenseConvDims(x, w)
+
+  curconv = ∇conv_data
+  curconv! = ∇conv_data!
+  dst = curconv(y, w, cdims)
+
+  for Tret in (EnzymeCore.Const, EnzymeCore.Duplicated, EnzymeCore.BatchDuplicated),
+    Tdst in (EnzymeCore.Duplicated, EnzymeCore.BatchDuplicated),
+    Ty in (EnzymeCore.Const, EnzymeCore.Duplicated, EnzymeCore.BatchDuplicated),
+    Tw in (EnzymeCore.Const, EnzymeCore.Duplicated, EnzymeCore.BatchDuplicated)
+
+    EnzymeTestUtils.are_activities_compatible(Tret, Tdst, Tx, Tw) || continue
+
+    EnzymeTestUtils.test_reverse(curconv!, Tret, (dst, Tdst), (y, Ty), (w, Tw), (cdims, EnzymeCore.Const))
+  end
+end
+
+@testset "EnzymeRules: ∇conv_filter! spatial_rank=$spatial_rank" for spatial_rank in (1, 2, 3)
+  x = rand(rng, repeat([5], spatial_rank)..., 3, 2)
+  w = rand(rng, repeat([3], spatial_rank)..., 3, 3)
+  y = conv(x, w, cdims)
+  
+  cdims = DenseConvDims(x, w)
+
+  curconv = ∇conv_filter
+  curconv! = ∇conv_filter!
+  dst = curconv(x, w, cdims)
+
+  for Tret in (EnzymeCore.Const, EnzymeCore.Duplicated, EnzymeCore.BatchDuplicated),
+    Tdst in (EnzymeCore.Duplicated, EnzymeCore.BatchDuplicated),
+    Tx in (EnzymeCore.Const, EnzymeCore.Duplicated, EnzymeCore.BatchDuplicated),
+    Ty in (EnzymeCore.Const, EnzymeCore.Duplicated, EnzymeCore.BatchDuplicated)
+
+    EnzymeTestUtils.are_activities_compatible(Tret, Tdst, Tx, Ty) || continue
+
+    EnzymeTestUtils.test_reverse(curconv!, Tret, (dst, Tdst), (x, Tx), (y, Ty), (cdims, EnzymeCore.Const))
+  end
+end
+
 @testset "EnzymeRules: depthwiseconv! spatial_rank=$spatial_rank" for spatial_rank in (1, 2, 3)
   x = rand(rng, repeat([5], spatial_rank)..., 3, 2)
   w = rand(rng, repeat([3], spatial_rank)..., 3, 3)
