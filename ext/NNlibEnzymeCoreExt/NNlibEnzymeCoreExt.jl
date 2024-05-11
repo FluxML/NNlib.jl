@@ -6,8 +6,12 @@ using Random
 
 using EnzymeCore.EnzymeRules
 
-for (name, dataname, filtername) in ((typeof(NNlib.conv!), NNlib.∇conv_data!, NNlib.∇conv_filter!),
-                                     (typeof(NNlib.depthwiseconv!), NNlib.∇depthwiseconv_data!, NNlib.∇depthwiseconv_filter!) )
+for (name, dataname, filtername) in (
+                                     (typeof(NNlib.conv!), NNlib.∇conv_data!, NNlib.∇conv_filter!),
+                                     (typeof(NNlib.depthwiseconv!), NNlib.∇depthwiseconv_data!, NNlib.∇depthwiseconv_filter!),
+                                     (typeof(NNlib.∇conv_data!), NNlib.conv!, NNlib.∇conv_filter!),
+                                     (typeof(NNlib.∇conv_filter!), NNlib.∇conv_data!, NNlib.conv!),
+                                    )
     @eval begin
 
 		function EnzymeRules.augmented_primal(config, func::EnzymeCore.Const{$name}, ::Type{RT},
@@ -84,11 +88,11 @@ for (name, dataname, filtername) in ((typeof(NNlib.conv!), NNlib.∇conv_data!, 
 
 		            if !(typeof(x) <: EnzymeCore.Const) && dx !== x.val
 		                # dx += grad wrt x.val
-		                $dataname(dx, dy, cache_w, cdims.val; alpha=xT(1), beta=xT(1), kwargs...)
+		                $dataname(dx, $(name != typeof(NNlib.∇conv_filter!) ? :dy : :cache_w), $(name != typeof(NNlib.∇conv_filter!) ? :cache_w : :dy), cdims.val; alpha=xT(1), beta=xT(1), kwargs...)
 		            end
 		            if !(typeof(w) <: EnzymeCore.Const) && dw !== w.val
 		                # dw += grad wrt w.val
-		                $filtername(dw, cache_x, dy, cdims.val; alpha=wT(1), beta=wT(1), kwargs...)
+                        $filtername(dw, $(name != typeof(NNlib.∇conv_data!) ? :cache_x : :dy), $(name != typeof(NNlib.∇conv_data!) ? :dy : :cache_x), cdims.val; alpha=wT(1), beta=wT(1), kwargs...)
 		            end
 		            
 		            dy .= 0
