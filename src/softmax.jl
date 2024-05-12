@@ -113,7 +113,8 @@ function logsoftmax!(out::AbstractArray{T}, x::AbstractArray; dims = 1) where {T
     if all(isfinite, max_)
         out .= x .- max_
     else
-        @. out = ifelse(isequal(max_,Inf), ifelse(isequal(x,Inf), 0, -Inf), x - max_)
+        _zero, _minf, _inf = T(0), T(-Inf), T(Inf)
+        @. out = ifelse(isequal(max_,_inf), ifelse(isequal(x,_inf), _zero, _minf), x - max_)
     end
     @fastmath log_ = log.(sum(exp, out; dims))
     out .-= log_
