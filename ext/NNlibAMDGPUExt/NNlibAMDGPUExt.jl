@@ -53,7 +53,6 @@ include("batched_mul.jl")
 
     include("conv.jl")
     include("pool.jl")
-    include("softmax.jl")
     include("activations.jl")
 else
     @warn """
