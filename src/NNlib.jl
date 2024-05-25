@@ -17,6 +17,7 @@ using Random
 using Requires
 using Statistics
 using Statistics: mean
+using FFTW
 
 const libblas = Base.libblas_name
 
@@ -125,5 +126,26 @@ include("deprecations.jl")
 
 include("rotation.jl")
 export imrotate, ∇imrotate
+
+include("audio/stft.jl")
+
+function main()
+    w = hann_window(10)
+    @show w
+    w = hann_window(10, Float32; periodic=false)
+    @show w
+
+    w = hamming_window(10)
+    @show w
+    w = hamming_window(10, Float32; periodic=false)
+    @show w
+
+    println()
+
+    x = Float32.(collect(0:16))
+    x = ones(Float32, 16)
+    stft(x; n_fft=16, center=true)
+    return
+end
 
 end # module NNlib
