@@ -163,3 +163,12 @@ NNlib.glu
 NNlib.within_gradient
 bias_act!
 ```
+
+## Spectral
+
+```@docs
+hann_window
+hamming_window
+stft
+istft
+```

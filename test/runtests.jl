@@ -40,10 +40,11 @@ end
 
 cpu(x) = adapt(CPU(), x)
 
-include("gather.jl")
-include("scatter.jl")
-include("upsample.jl")
-include("rotation.jl")
+include("testsuite/gather.jl")
+include("testsuite/scatter.jl")
+include("testsuite/upsample.jl")
+include("testsuite/rotation.jl")
+include("testsuite/spectral.jl")
 
 function nnlib_testsuite(Backend; skip_tests = Set{String}())
     @conditional_testset "Upsample" skip_tests begin
@@ -58,12 +59,15 @@ function nnlib_testsuite(Backend; skip_tests = Set{String}())
     @conditional_testset "Scatter" skip_tests begin
         scatter_testsuite(Backend)
     end
+    @conditional_testset "Spectral" skip_tests begin
+        spectral_testsuite(Backend)
+    end
 end
 
 @testset verbose=true "NNlib.jl" begin
 
     if get(ENV, "NNLIB_TEST_CPU", "true") == "true"
-        @testset "CPU" begin      
+        @testset "CPU" begin
             @testset "Doctests" begin
                 doctest(NNlib, manual=false)
             end
@@ -145,7 +149,7 @@ end
         end
     else
         @info "Skipping CUDA tests, set NNLIB_TEST_CUDA=true to run them"
-    end 
+    end
 
     if get(ENV, "NNLIB_TEST_AMDGPU", "false") == "true"
         using AMDGPU
