@@ -14,6 +14,7 @@ using ImageTransformations
 using Interpolations: Constant
 using KernelAbstractions
 import ReverseDiff as RD        # used in `pooling.jl`
+import Pkg
 
 const Test_Enzyme = VERSION <= v"1.10-"
 
@@ -137,6 +138,8 @@ end
     end
 
     if get(ENV, "NNLIB_TEST_CUDA", "false") == "true"
+        Pkg.add(["CUDA", "cuDNN"])
+
         using CUDA
         if CUDA.functional()
             @testset "CUDA" begin
@@ -152,6 +155,8 @@ end
     end
 
     if get(ENV, "NNLIB_TEST_AMDGPU", "false") == "true"
+        Pkg.add("AMDGPU")
+
         using AMDGPU
         AMDGPU.versioninfo()
         if AMDGPU.functional() && AMDGPU.functional(:MIOpen)
