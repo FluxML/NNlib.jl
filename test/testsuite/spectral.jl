@@ -1,6 +1,9 @@
 using NNlib
 
 function spectral_testsuite(Backend)
+    cpu(x) = adapt(CPU(), x)
+    device(x) = adapt(Backend(), x)
+
     @testset "Window functions" begin
         for window_fn in (hann_window, hamming_window)
             @inferred window_fn(10, Float32)
@@ -18,9 +21,6 @@ function spectral_testsuite(Backend)
     end
 
     @testset "STFT" begin
-        cpu(x) = adapt(CPU(), x)
-        device(x) = adapt(Backend(), x)
-
         for batch in ((), (3,))
             @testset "Batch $batch" begin
                 x = device(ones(Float32, 16, batch...))
@@ -84,5 +84,41 @@ function spectral_testsuite(Backend)
                 end
             end
         end
+    end
+
+    @testset "Spectrogram" begin
+        x = device(rand(Float32, 1024))
+        window = device(hann_window(1024))
+
+        y = stft(x;
+            n_fft=1024, hop_length=128, window,
+            center=true, normalized=false)
+        spec = spectrogram(x;
+            n_fft=1024, hop_length=128, window,
+            center=true, normalized=false)
+
+        @test abs.(y).^2 ≈ spec
+
+        # Batched.
+        x = device(rand(Float32, 1024, 3))
+        spec = spectrogram(x;
+            n_fft=1024, hop_length=128, window,
+            center=true, normalized=false)
+        for i in 1:3
+            y = stft(x[:, i];
+                n_fft=1024, hop_length=128, window,
+                center=true, normalized=false)
+            @test abs.(y).^2 ≈ spec[:, :, i]
+        end
+    end
+
+    @testset "Power to dB" begin
+        x = device(rand(Float32, 1024))
+        window = device(hann_window(1024))
+        spec = spectrogram(x; pad=0, n_fft=1024, hop_length=128, window)
+
+        @test spec ≈ NNlib.db_to_power(NNlib.power_to_db(spec))
+        @inferred NNlib.power_to_db(spec)
+        @inferred NNlib.db_to_power(NNlib.power_to_db(spec))
     end
 end

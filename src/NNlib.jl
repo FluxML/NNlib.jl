@@ -128,6 +128,7 @@ include("rotation.jl")
 export imrotate, ∇imrotate
 
 include("audio/stft.jl")
-export stft, istft, hann_window, hamming_window
+include("audio/spectrogram.jl")
+export stft, istft, hann_window, hamming_window, spectrogram
 
 end # module NNlib
