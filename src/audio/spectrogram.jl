@@ -1,4 +1,9 @@
 """
+    spectrogram(waveform;
+        pad::Int = 0, n_fft::Int, hop_length::Int, window,
+        center::Bool = true, power::Real = 2.0,
+        normalized::Bool = false, window_normalized::Bool = false,
+    )
 
 Create a spectrogram or a batch of spectrograms from a raw audio signal.
 
@@ -6,10 +11,8 @@ Create a spectrogram or a batch of spectrograms from a raw audio signal.
 
 - `pad::Int`:
     Then amount of padding to apply on both sides.
-    Default is `0`.
 - `window_normalized::Bool`:
     Whether to normalize the waveform by the window’s L2 energy.
-    Default is `false`.
 - `power::Real`:
     Exponent for the magnitude spectrogram (must be ≥ 0)
     e.g., `1` for magnitude, `2` for power, etc.
@@ -21,19 +24,6 @@ See [`stft`](@ref) for other arguments.
 
 Spectrogram in the shape `(T, F, B)`, where
 `T` is the number of window hops and `F = n_fft ÷ 2 + 1`.
-
-# Example
-
-```julia
-julia> waveform, sampling_rate = load("test.flac");
-
-julia> spec = spectrogram(waveform;
-    n_fft=1024, hop_length=128, window=hann_window(1024));
-
-julia> spec_db = NNlib.power_to_db(spec);
-
-julia> Makie.heatmap(spec_db[:, :, 1])
-```
 """
 function spectrogram(waveform;
     pad::Int = 0, n_fft::Int, hop_length::Int, window,
@@ -48,7 +38,7 @@ function spectrogram(waveform;
         n_fft, hop_length, window, center, normalized)
     # Unpack batch dimensions.
     spec = reshape(spec_, (size(spec_)[1:2]..., sz[2:end]...))
-    window_normalized && (spec .*= inv(norm(window));)
+    window_normalized && (spec = spec .* inv(norm(window));)
 
     if power > 0
         p = real(eltype(spec)(power))
@@ -65,10 +55,10 @@ Convert a power spectrogram (amplitude squared) to decibel (dB) units.
 # Arguments
 
 - `s`: Input power.
-- `ref`: Scalar w.r.t. which the input is scaled. Default is `1`.
-- `amin`: Minimum threshold for `s`. Default is `1f-10`.
+- `ref`: Scalar w.r.t. which the input is scaled.
+- `amin`: Minimum threshold for `s`.
 - `top_db`: Threshold the output at `top_db` below the peak:
-    `max.(s_db, maximum(s_db) - top_db)`. Default is `80`.
+    `max.(s_db, maximum(s_db) - top_db)`.
 
 # Returns
 

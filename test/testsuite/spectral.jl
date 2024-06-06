@@ -3,6 +3,7 @@ using NNlib
 function spectral_testsuite(Backend)
     cpu(x) = adapt(CPU(), x)
     device(x) = adapt(Backend(), x)
+    gradtest_fn = Backend == CPU ? gradtest : gputest
 
     @testset "Window functions" begin
         for window_fn in (hann_window, hamming_window)
@@ -22,6 +23,23 @@ function spectral_testsuite(Backend)
 
     @testset "STFT" begin
         for batch in ((), (3,))
+            @testset "Grads" begin
+                if Backend != CPU
+                    x = rand(Float32, 16, batch...)
+                    window = hann_window(16)
+
+                    gradtest_fn(s -> abs.(stft(s; n_fft=16)), x)
+                    gradtest_fn((s, w) -> abs.(stft(s; n_fft=16, window=w)), x, window)
+
+                    x = rand(Float32, 2045, batch...)
+                    n_fft = 256
+                    window = hann_window(n_fft)
+                    gradtest_fn((s, w) -> abs.(stft(s; n_fft, window=w)), x, window)
+                    gradtest_fn((s, w) -> abs.(stft(s; n_fft, window=w, center=false)), x, window)
+                    gradtest_fn((s, w) -> abs.(stft(s; n_fft, window=w, normalized=true)), x, window)
+                end
+            end
+
             @testset "Batch $batch" begin
                 x = device(ones(Float32, 16, batch...))
                 # TODO fix type stability for pad_reflect
@@ -42,6 +60,12 @@ function spectral_testsuite(Backend)
                 y = stft(x; n_fft=1024)
                 xx = istft(y; n_fft=1024)
                 @test cpu(x) ≈ cpu(xx)
+
+                if ndims(x) == 2
+                    for b in 1:size(x, 2)
+                        @test cpu(stft(x[:, b]; n_fft=1024)) ≈ cpu(@view(y[:, :, b]))
+                    end
+                end
 
                 # Test odd sizes.
                 x = device(rand(Float32, 1111, batch...))
@@ -109,6 +133,17 @@ function spectral_testsuite(Backend)
                 n_fft=1024, hop_length=128, window,
                 center=true, normalized=false)
             @test abs.(y).^2 ≈ spec[:, :, i]
+        end
+
+        @testset "Grads" begin
+            if Backend != CPU
+                x = rand(Float32, 2045, batch...)
+                n_fft = 256
+                window = hann_window(n_fft)
+                gradtest_fn((s, w) -> spectrogram(s; n_fft, hop_length=n_fft ÷ 4, window=w), x, window)
+                gradtest_fn((s, w) -> spectrogram(s; n_fft, hop_length=n_fft ÷ 4, window=w, center=false), x, window)
+                gradtest_fn((s, w) -> spectrogram(s; n_fft, hop_length=n_fft ÷ 4, window=w, normalized=true), x, window)
+            end
         end
     end
 

@@ -1,105 +1,38 @@
 """
-    hann_window(
-        window_length::Int, ::Type{T} = Float32; periodic::Bool = true,
-    ) where T <: Real
-
-Hann window function.
-
-``w[n] = \\frac{1}{2}[1 - cos(\\frac{2 \\pi n}{N - 1})]``
-
-Where ``N`` is the window length.
-
-```julia
-julia> lineplot(hann_window(100))
-     ┌────────────────────────────────────────┐
-   1 │⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⡠⠎⠉⠉⠉⠣⢄⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀│
-     │⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⠎⠀⠀⠀⠀⠀⠀⠀⠣⡀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀│
-     │⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢠⠊⠀⠀⠀⠀⠀⠀⠀⠀⠀⠱⡄⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀│
-     │⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢠⠃⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠑⡄⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀│
-     │⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢠⠃⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠱⡄⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀│
-     │⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⠇⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠱⡀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀│
-     │⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⡎⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢣⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀│
-     │⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⡜⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢇⠀⠀⠀⠀⠀⠀⠀⠀⠀│
-     │⠀⠀⠀⠀⠀⠀⠀⠀⠀⡜⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢇⠀⠀⠀⠀⠀⠀⠀⠀│
-     │⠀⠀⠀⠀⠀⠀⠀⠀⡰⠁⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠈⡆⠀⠀⠀⠀⠀⠀⠀│
-     │⠀⠀⠀⠀⠀⠀⠀⡰⠃⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠘⡄⠀⠀⠀⠀⠀⠀│
-     │⠀⠀⠀⠀⠀⠀⡠⠃⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠘⡄⠀⠀⠀⠀⠀│
-     │⠀⠀⠀⠀⠀⡰⠃⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠘⢄⠀⠀⠀⠀│
-     │⠀⠀⠀⠀⡔⠁⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠈⢆⠀⠀⠀│
-   0 │⣀⣀⡔⠊⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠑⢆⣀│
-     └────────────────────────────────────────┘
-     ⠀0⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀100⠀
-```
-
-# Arguments:
-
-- `window_length::Int`: Size of the window.
-- `::Type{T}`: Elemet type of the window. Default is `Float32`.
-
-# Keyword Arguments:
-
-- `periodic::Bool`: If `true` (default), returns a window to be used as
-    periodic function. If `false`, return a symmetric window.
-
-    Following always holds:
-
-```julia
-hann_window(N; periodic=true) ≈ hann_window(N + 1; periodic=false)[1:end - 1]
-```
-
-# Returns:
-
-Vector of length `window_length` and eltype `T`.
-"""
-function hann_window(
-    window_length::Int, ::Type{T} = Float32; periodic::Bool = true,
-) where T <: Real
-    window_length < 1 && throw(ArgumentError(
-        "`window_length` must be > 0, instead: `$window_length`."))
-
-    n::T = ifelse(periodic, window_length, window_length - 1)
-    scale = T(2) * π / n
-    [T(0.5) * (T(1) - cos(scale * T(k))) for k in 0:(window_length - 1)]
-end
-
-"""
     hamming_window(
         window_length::Int, ::Type{T} = Float32; periodic::Bool = true,
         α::T = T(0.54), β::T = T(0.46),
     ) where T <: Real
 
-Hamming window function. Generalized version of `hann_window`.
+Hamming window function
+(ref: https://en.wikipedia.org/wiki/Window_function#Hann_and_Hamming_windows).
+Generalized version of `hann_window`.
 
 ``w[n] = \\alpha - \\beta cos(\\frac{2 \\pi n}{N - 1})``
 
 Where ``N`` is the window length.
 
 ```julia
-julia> lineplot(hamming_window(100))
-     ┌────────────────────────────────────────┐
-   1 │⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⡠⠊⠉⠉⠉⠓⢄⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀│
-     │⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢠⠎⠀⠀⠀⠀⠀⠀⠀⠣⡀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀│
-     │⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⡠⠃⠀⠀⠀⠀⠀⠀⠀⠀⠀⠘⡄⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀│
-     │⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⡴⠁⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠈⣆⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀│
-     │⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⡰⠁⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠈⡆⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀│
-     │⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⡰⠁⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠈⡆⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀│
-     │⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⡰⠁⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠘⡆⠀⠀⠀⠀⠀⠀⠀⠀⠀│
-     │⠀⠀⠀⠀⠀⠀⠀⠀⠀⣠⠃⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠘⡄⠀⠀⠀⠀⠀⠀⠀⠀│
-     │⠀⠀⠀⠀⠀⠀⠀⠀⢠⠃⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠙⡄⠀⠀⠀⠀⠀⠀⠀│
-     │⠀⠀⠀⠀⠀⠀⠀⣠⠃⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠑⡄⠀⠀⠀⠀⠀⠀│
-     │⠀⠀⠀⠀⠀⠀⡠⠃⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠙⡄⠀⠀⠀⠀⠀│
-     │⠀⠀⠀⠀⠀⡰⠃⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠘⢄⠀⠀⠀⠀│
-     │⠀⠀⠀⢀⠎⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠈⠣⡀⠀⠀│
-     │⣀⠤⠖⠁⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠈⠢⠤│
-   0 │⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀│
-     └────────────────────────────────────────┘
-     ⠀0⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀100⠀
+julia> lineplot(hamming_window(100); width=30, height=10)
+     ┌──────────────────────────────┐
+   1 │⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⡠⠚⠉⠉⠉⠢⡄⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀│
+     │⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⠎⠁⠀⠀⠀⠀⠀⠈⢢⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀│
+     │⠀⠀⠀⠀⠀⠀⠀⠀⠀⢠⠊⠀⠀⠀⠀⠀⠀⠀⠀⠀⢣⡀⠀⠀⠀⠀⠀⠀⠀⠀│
+     │⠀⠀⠀⠀⠀⠀⠀⠀⢰⠃⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠱⡀⠀⠀⠀⠀⠀⠀⠀│
+     │⠀⠀⠀⠀⠀⠀⠀⣠⠃⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠳⡀⠀⠀⠀⠀⠀⠀│
+     │⠀⠀⠀⠀⠀⠀⢰⠁⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠱⡄⠀⠀⠀⠀⠀│
+     │⠀⠀⠀⠀⠀⡰⠃⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠱⡀⠀⠀⠀⠀│
+     │⠀⠀⠀⢀⠴⠁⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠘⢄⠀⠀⠀│
+     │⠀⢀⡠⠊⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠳⣀⠀│
+   0 │⠉⠉⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠉│
+     └──────────────────────────────┘
+     ⠀0⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀100⠀
 ```
 
 # Arguments:
 
 - `window_length::Int`: Size of the window.
-- `::Type{T}`: Elemet type of the window. Default is `Float32`.
+- `::Type{T}`: Elemet type of the window.
 
 # Keyword Arguments:
 
@@ -108,8 +41,11 @@ julia> lineplot(hamming_window(100))
 
     Following always holds:
 
-```julia
-hamming_window(N; periodic=true) ≈ hamming_window(N + 1; periodic=false)[1:end - 1]
+```jldoctest
+julia> N = 256;
+
+julia> hamming_window(N; periodic=true) ≈ hamming_window(N + 1; periodic=false)[1:end - 1]
+true
 ```
 - `α::Real`: Coefficient α in the equation above.
 - `β::Real`: Coefficient β in the equation above.
@@ -127,7 +63,68 @@ function hamming_window(
 
     n::T = ifelse(periodic, window_length, window_length - 1)
     scale = T(2) * π / n
-    [α - β * cos(scale * T(k)) for k in 0:(window_length - 1)]
+    return [α - β * cos(scale * T(k)) for k in 0:(window_length - 1)]
+end
+
+"""
+    hann_window(
+        window_length::Int, ::Type{T} = Float32; periodic::Bool = true,
+    ) where T <: Real
+
+Hann window function
+(ref: https://en.wikipedia.org/wiki/Window_function#Hann_and_Hamming_windows).
+
+``w[n] = \\frac{1}{2}[1 - cos(\\frac{2 \\pi n}{N - 1})]``
+
+Where ``N`` is the window length.
+
+```julia
+julia> lineplot(hann_window(100); width=30, height=10)
+     ┌──────────────────────────────┐
+   1 │⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣠⠚⠉⠉⠉⠢⡀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀│
+     │⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⡔⠁⠀⠀⠀⠀⠀⠘⢄⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀│
+     │⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⠞⠀⠀⠀⠀⠀⠀⠀⠀⠈⢆⠀⠀⠀⠀⠀⠀⠀⠀⠀│
+     │⠀⠀⠀⠀⠀⠀⠀⠀⢀⡎⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠈⢣⠀⠀⠀⠀⠀⠀⠀⠀│
+     │⠀⠀⠀⠀⠀⠀⠀⠀⡎⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠈⢦⠀⠀⠀⠀⠀⠀⠀│
+     │⠀⠀⠀⠀⠀⠀⢀⠞⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠈⢆⠀⠀⠀⠀⠀⠀│
+     │⠀⠀⠀⠀⠀⢀⡜⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠈⢇⠀⠀⠀⠀⠀│
+     │⠀⠀⠀⠀⢀⠎⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠈⢦⠀⠀⠀⠀│
+     │⠀⠀⠀⢠⠊⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠣⡀⠀⠀│
+   0 │⣀⣀⠔⠁⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠙⢤⣀│
+     └──────────────────────────────┘
+     ⠀0⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀100⠀
+```
+
+# Arguments:
+
+- `window_length::Int`: Size of the window.
+- `::Type{T}`: Elemet type of the window.
+
+# Keyword Arguments:
+
+- `periodic::Bool`: If `true` (default), returns a window to be used as
+    periodic function. If `false`, return a symmetric window.
+
+    Following always holds:
+
+```jldoctest
+julia> N = 256;
+
+julia> hann_window(N; periodic=true) ≈ hann_window(N + 1; periodic=false)[1:end - 1]
+true
+
+julia> hann_window(N) ≈ hamming_window(N; α=0.5f0, β=0.5f0)
+true
+```
+
+# Returns:
+
+Vector of length `window_length` and eltype `T`.
+"""
+function hann_window(
+    window_length::Int, ::Type{T} = Float32; periodic::Bool = true,
+) where T <: Real
+    hamming_window(window_length, T; periodic, α=T(0.5), β=T(0.5))
 end
 
 """
@@ -156,14 +153,13 @@ and ``m`` is the index of the sliding window.
 
 - `n_fft::Int`: Size of Fourier transform.
 - `hop_length::Int`: Distance between neighboring sliding window frames.
-    Default is `n_fft ÷ 4`.
 - `window`: Optional window function to apply.
     Must be 1D vector `0 < length(window) ≤ n_fft`.
     If window is shorter than `n_fft`, it is padded with zeros on both sides.
     If `nothing` (default), then no window is applied.
 - `center::Bool`: Whether to pad input on both sides so that ``t``-th frame
     is centered at time ``t \\times \\text{hop length}``.
-    Default is `true`. Padding is done with `pad_reflect` function.
+    Padding is done with `pad_reflect` function.
 - `normalized::Bool`: Whether to return normalized STFT,
     i.e. multiplied with ``\\text{n fft}^{-0.5}``.
 
@@ -222,7 +218,7 @@ function stft(x;
     use_window && (x = x .* window;)
     y = eltype(x) <: Complex ? fft(x, region) : rfft(x, region)
 
-    normalized && (y .*= n_fft^-0.5;)
+    normalized && (y = y .* n_fft^-0.5;)
     return y
 end
 
@@ -247,16 +243,14 @@ Return the least squares estimation of the original signal
 
 - `n_fft::Int`: Size of Fourier transform.
 - `hop_length::Int`: Distance between neighboring sliding window frames.
-    Default is `n_fft ÷ 4`.
 - `window`: Window function that was applied to the input of `stft`.
     If `nothing` (default), then no window was applied.
 - `center::Bool`: Whether input to `stft` was padded on both sides
     so that ``t``-th frame is centered at time ``t \\times \\text{hop length}``.
-    Default is `true`. Padding is done with `pad_reflect` function.
+    Padding is done with `pad_reflect` function.
 - `normalized::Bool`: Whether input to `stft` was normalized.
 - `return_complex::Bool`: Whether the output should be complex,
     or if the input should be assumed to derive from a real signal and window.
-    Default `false`.
 - `original_length::Union{Nothing, Int}`: Optional size of the first dimension
     of the input to `stft`. Helps restoring the exact `stft` input size.
     Otherwise, the array might be a bit shorter.

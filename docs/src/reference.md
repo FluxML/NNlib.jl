@@ -163,15 +163,3 @@ NNlib.glu
 NNlib.within_gradient
 bias_act!
 ```
-
-## Spectral
-
-```@docs
-hann_window
-hamming_window
-stft
-istft
-spectrogram
-NNlib.power_to_db
-NNlib.db_to_power
-```
