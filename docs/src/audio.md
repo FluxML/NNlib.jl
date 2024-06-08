@@ -27,14 +27,23 @@ Example:
 ```@example 1
 using NNlib
 using FileIO
-using UnicodePlots
+using Makie, CairoMakie
+CairoMakie.activate!()
 
 waveform, sampling_rate = load("./assets/jfk.flac")
-lineplot(reshape(waveform, :); width=50, color=:white)
+fig = lines(reshape(waveform, :))
+save("waveform.png", fig)
+nothing # hide
 ```
 
+![](waveform.png)
+
 ```@example 1
-n_fft = 256
+n_fft = 1024
 spec = spectrogram(waveform; n_fft, hop_length=n_fft ÷ 4, window=hann_window(n_fft))
-heatmap(NNlib.power_to_db(spec)[:, :, 1]; width=80, height=30)
+fig = heatmap(transpose(NNlib.power_to_db(spec)[:, :, 1]))
+save("spectrogram.png", fig)
+nothing # hide
 ```
+
+![](spectrogram.png)
