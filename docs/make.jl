@@ -1,6 +1,7 @@
 using Documenter, NNlib
 
-DocMeta.setdocmeta!(NNlib, :DocTestSetup, :(using NNlib); recursive = true)
+DocMeta.setdocmeta!(NNlib, :DocTestSetup,
+    :(using NNlib, UnicodePlots); recursive = true)
 
 makedocs(modules = [NNlib],
     sitename = "NNlib.jl",
