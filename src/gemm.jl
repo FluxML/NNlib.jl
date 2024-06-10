@@ -3,6 +3,12 @@
 
 using LinearAlgebra.BLAS: get_num_threads, set_num_threads
 
+if isdefined(LinearAlgebra.BLAS, :libblastrampoline)
+    const libblas = LinearAlgebra.BLAS.libblastrampoline
+else
+    const libblas = Base.libblas_name
+end
+
 """
     gemm!()
 
