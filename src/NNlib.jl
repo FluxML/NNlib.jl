@@ -18,8 +18,6 @@ using Requires
 using Statistics
 using Statistics: mean
 
-const libblas = Base.libblas_name
-
 const Numeric = Union{AbstractArray{<:T}, T} where {T<:Number}
 
 # Include APIs
