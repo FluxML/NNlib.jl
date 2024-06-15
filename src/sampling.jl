@@ -121,7 +121,7 @@ end
     ix = compute_source_index(x, iW, padding_mode)
     iy = compute_source_index(y, iH, padding_mode)
     # Get corner pixel values from (ix, iy) in north-east-south-west directions.
-    ix_nw, iy_nw = floor(Int, ix), floor(Int, iy)
+    ix_nw, iy_nw = unsafe_trunc(Int, floor(ix)), unsafe_trunc(Int, floor(iy))
     ix_ne, iy_ne = ix_nw + 1, iy_nw
     ix_sw, iy_sw = ix_nw, iy_nw + 1
     ix_se, iy_se = ix_ne, iy_sw
@@ -194,7 +194,7 @@ end
     ix, gix_mult = ∇compute_source_index(x, iW, padding_mode)
     iy, giy_mult = ∇compute_source_index(y, iH, padding_mode)
     # Get corner pixel values from (ix, iy) in north-east-south-west directions.
-    ix_nw, iy_nw = floor(Int, ix), floor(Int, iy)
+    ix_nw, iy_nw = unsafe_trunc(Int, floor(ix)), unsafe_trunc(Int, floor(iy))
     ix_ne, iy_ne = ix_nw + 1, iy_nw
     ix_sw, iy_sw = ix_nw, iy_nw + 1
     ix_se, iy_se = ix_ne, iy_sw

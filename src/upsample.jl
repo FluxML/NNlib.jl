@@ -395,12 +395,12 @@ end
 @kernel function _upsample_linear_kernel!(::CPU, y::T, x::T, rwidth, align::Val{A}) where {
     T <: AbstractArray{<:Any, 3}, A,
 }
-    @uniform in_width::UInt32, channels::UInt32, batch::UInt32 = size(x)
-    @uniform out_width::UInt32 = size(y, 1)
-    c::UInt32, n::UInt32 = @index(Global, NTuple)
+    @uniform in_width, channels, batch = size(x)
+    @uniform out_width = size(y, 1)
+    c, n = @index(Global, NTuple)
     yv, xv = @view(y[:, c, n]), @view(x[:, c, n])
-    @inbounds for i in UnitRange{UInt32}(one(UInt32), out_width)
-        iw0, iw1, w0λ, w1λ = source_idx_and_λ(rwidth, i - one(UInt32), align, in_width)
+    @inbounds for i in 1:out_width
+        iw0, iw1, w0λ, w1λ = source_idx_and_λ(rwidth, i - 1, align, in_width)
         yv[i] = w0λ * xv[iw0] + w1λ * xv[iw1]
     end
 end
@@ -408,12 +408,12 @@ end
 @kernel function _∇upsample_linear_kernel!(::CPU, dx::T1, Δ::T2, rwidth, align::Val{A}) where {
     T1 <: AbstractArray{<:Any, 3}, T2 <: AbstractArray{<:Any, 3}, A,
 }
-    @uniform in_width::UInt32, channels::UInt32, batch::UInt32 = size(Δ)
-    @uniform out_width::UInt32 = size(dx, 1)
-    c::UInt32, n::UInt32 = @index(Global, NTuple)
+    @uniform in_width, channels, batch = size(Δ)
+    @uniform out_width = size(dx, 1)
+    c, n = @index(Global, NTuple)
     Δv, dxv = @view(Δ[:, c, n]), @view(dx[:, c, n])
-    @inbounds for i in UnitRange{UInt32}(one(UInt32), in_width)
-        ow0, ow1, w0λ, w1λ = source_idx_and_λ(rwidth, i - one(UInt32), align, out_width)
+    @inbounds for i in 1:in_width
+        ow0, ow1, w0λ, w1λ = source_idx_and_λ(rwidth, i - 1, align, out_width)
         val = Δv[i]
         dxv[ow0] += w0λ * val
         dxv[ow1] += w1λ * val
@@ -421,15 +421,14 @@ end
 end
 
 # Linear (GPU): parallelization along width dimension.
-# TODO replace AbstractArray -> AnyGPUArray once device arrays subtype it.
 
 @kernel function _upsample_linear_kernel!(::B, y::T, x::T, rwidth, align::Val{A}) where {
     B <: GPU, T <: AbstractArray{<:Any, 3}, A,
 }
-    @uniform in_width::UInt32, channels::UInt32, batch::UInt32 = size(x)
-    i::UInt32 = @index(Global)
-    iw0, iw1, w0λ, w1λ = source_idx_and_λ(rwidth, i - one(UInt32), align, in_width)
-    @inbounds for n in UnitRange{UInt32}(one(UInt32), batch), c in UnitRange{UInt32}(one(UInt32), channels)
+    @uniform in_width, channels, batch = size(x)
+    i = @index(Global)
+    iw0, iw1, w0λ, w1λ = source_idx_and_λ(rwidth, i - 1, align, in_width)
+    @inbounds for n in 1:batch, c in 1:channels
         y[i, c, n] = w0λ * x[iw0, c, n] + w1λ * x[iw1, c, n]
     end
 end
@@ -437,11 +436,11 @@ end
 @kernel function _∇upsample_linear_kernel!(::B, dx::T, Δ::T, rwidth, align::Val{A}) where {
     B <: GPU, T <: AbstractArray{<:Any, 3}, A,
 }
-    @uniform in_width::UInt32, channels::UInt32, batch::UInt32 = size(Δ)
-    @uniform out_width::UInt32 = size(dx, 1)
-    i::UInt32 = @index(Global)
-    ow0, ow1, w0λ, w1λ = source_idx_and_λ(rwidth, i - one(UInt32), align, out_width)
-    @inbounds for n in UnitRange{UInt32}(one(UInt32), batch), c in UnitRange{UInt32}(one(UInt32), channels)
+    @uniform in_width, channels, batch = size(Δ)
+    @uniform out_width = size(dx, 1)
+    i = @index(Global)
+    ow0, ow1, w0λ, w1λ = source_idx_and_λ(rwidth, i - 1, align, out_width)
+    @inbounds for n in 1:batch, c in 1:channels
         val = Δ[i, c, n]
         @atomic dx[ow0, c, n] += w0λ * val
         @atomic dx[ow1, c, n] += w1λ * val
@@ -453,14 +452,14 @@ end
 @kernel function _upsample_linear_kernel!(::CPU, y::T, x::T, rwidth, rheight, align::Val{A}) where {
     T <: AbstractArray{<:Any, 4}, A,
 }
-    @uniform in_width::UInt32, in_height::UInt32, channels::UInt32, batch::UInt32 = size(x)
-    @uniform out_width::UInt32, out_height::UInt32 = size(y)[1:2]
-    c::UInt32, n::UInt32 = @index(Global, NTuple)
+    @uniform in_width, in_height, channels, batch = size(x)
+    @uniform out_width, out_height = size(y)[1:2]
+    c, n = @index(Global, NTuple)
     yv, xv = @view(y[:, :, c, n]), @view(x[:, :, c, n])
-    for j in UnitRange{UInt32}(one(UInt32), out_height)
-        ih0, ih1, h0λ, h1λ = source_idx_and_λ(rheight, j - one(UInt32), align, in_height)
-        for i in UnitRange{UInt32}(one(UInt32), out_width)
-            iw0, iw1, w0λ, w1λ = source_idx_and_λ(rwidth, i - one(UInt32), align, in_width)
+    for j in 1:out_height
+        ih0, ih1, h0λ, h1λ = source_idx_and_λ(rheight, j - 1, align, in_height)
+        for i in 1:out_width
+            iw0, iw1, w0λ, w1λ = source_idx_and_λ(rwidth, i - 1, align, in_width)
             @inbounds yv[i, j] =
                 h0λ * (w0λ * xv[iw0, ih0] + w1λ * xv[iw1, ih0]) +
                 h1λ * (w0λ * xv[iw0, ih1] + w1λ * xv[iw1, ih1])
@@ -471,14 +470,14 @@ end
 @kernel function _∇upsample_linear_kernel!(::CPU, dx::T1, Δ::T2, rwidth, rheight, align::Val{A}) where {
     T1 <: AbstractArray{<:Any, 4}, T2 <: AbstractArray{<:Any, 4}, A,
 }
-    @uniform in_width::UInt32, in_height::UInt32, channels::UInt32, batch::UInt32 = size(Δ)
-    @uniform out_width::UInt32, out_height::UInt32 = size(dx)[1:2]
-    c::UInt32, n::UInt32 = @index(Global, NTuple)
+    @uniform in_width, in_height, channels, batch = size(Δ)
+    @uniform out_width, out_height = size(dx)[1:2]
+    c, n = @index(Global, NTuple)
     Δv, dxv = @view(Δ[:, :, c, n]), @view(dx[:, :, c, n])
-    for j in UnitRange{UInt32}(one(UInt32), in_height)
-        oh0, oh1, h0λ, h1λ = source_idx_and_λ(rheight, j - one(UInt32), align, out_height)
-        @inbounds for i in UnitRange{UInt32}(one(UInt32), in_width)
-            ow0, ow1, w0λ, w1λ = source_idx_and_λ(rwidth, i - one(UInt32), align, out_width)
+    for j in 1:in_height
+        oh0, oh1, h0λ, h1λ = source_idx_and_λ(rheight, j - 1, align, out_height)
+        @inbounds for i in 1:in_width
+            ow0, ow1, w0λ, w1λ = source_idx_and_λ(rwidth, i - 1, align, out_width)
             val = Δv[i, j]
             dxv[ow0, oh0] += w0λ * h0λ * val
             dxv[ow1, oh0] += w1λ * h0λ * val
@@ -493,11 +492,11 @@ end
 @kernel function _upsample_linear_kernel!(::B, y::T, x::T, rwidth, rheight, align::Val{A}) where {
     B <: GPU, T <: AbstractArray{<:Any, 4}, A,
 }
-    @uniform in_width::UInt32, in_height::UInt32, channels::UInt32, batch::UInt32 = size(x)
-    i::UInt32, j::UInt32 = @index(Global, NTuple)
-    iw0, iw1, w0λ, w1λ = source_idx_and_λ(rwidth, i - one(UInt32), align, in_width)
-    ih0, ih1, h0λ, h1λ = source_idx_and_λ(rheight, j - one(UInt32), align, in_height)
-    @inbounds for n in UnitRange{UInt32}(one(UInt32), batch), c in UnitRange{UInt32}(one(UInt32), channels)
+    @uniform in_width, in_height, channels, batch = size(x)
+    i, j = @index(Global, NTuple)
+    iw0, iw1, w0λ, w1λ = source_idx_and_λ(rwidth, i - 1, align, in_width)
+    ih0, ih1, h0λ, h1λ = source_idx_and_λ(rheight, j - 1, align, in_height)
+    @inbounds for n in 1:batch, c in 1:channels
         y[i, j, c, n] =
             h0λ * (w0λ * x[iw0, ih0, c, n] + w1λ * x[iw1, ih0, c, n]) +
             h1λ * (w0λ * x[iw0, ih1, c, n] + w1λ * x[iw1, ih1, c, n])
@@ -507,12 +506,12 @@ end
 @kernel function _∇upsample_linear_kernel!(::B, dx::T, Δ::T, rwidth, rheight, align::Val{A}) where {
     B <: GPU, T <: AbstractArray{<:Any, 4}, A,
 }
-    @uniform in_width::UInt32, in_height::UInt32, channels::UInt32, batch::UInt32 = size(Δ)
-    @uniform out_width::UInt32, out_height::UInt32 = size(dx)[1:2]
-    i::UInt32, j::UInt32 = @index(Global, NTuple)
-    ow0, ow1, w0λ, w1λ = source_idx_and_λ(rwidth, i - one(UInt32), align, out_width)
-    oh0, oh1, h0λ, h1λ = source_idx_and_λ(rheight, j - one(UInt32), align, out_height)
-    @inbounds for n in UnitRange{UInt32}(one(UInt32), batch), c in UnitRange{UInt32}(one(UInt32), channels)
+    @uniform in_width, in_height, channels, batch = size(Δ)
+    @uniform out_width, out_height = size(dx)[1:2]
+    i, j = @index(Global, NTuple)
+    ow0, ow1, w0λ, w1λ = source_idx_and_λ(rwidth, i - 1, align, out_width)
+    oh0, oh1, h0λ, h1λ = source_idx_and_λ(rheight, j - 1, align, out_height)
+    @inbounds for n in 1:batch, c in 1:channels
         val = Δ[i, j, c, n]
         @atomic dx[ow0, oh0, c, n] += w0λ * h0λ * val
         @atomic dx[ow1, oh0, c, n] += w1λ * h0λ * val
@@ -526,17 +525,17 @@ end
 @kernel function _upsample_linear_kernel!(::CPU, y::T, x::T, rwidth, rheight, rdepth, align::Val{A}) where {
     T <: AbstractArray{<:Any, 5}, A,
 }
-    @uniform in_width::UInt32, in_height::UInt32, in_depth::UInt32 = size(x)[1:3]
-    @uniform channels::UInt32, batch::UInt32 = size(x, 4), size(x, 5)
-    @uniform out_width::UInt32, out_height::UInt32, out_depth::UInt32 = size(y)[1:3]
-    c::UInt32, n::UInt32 = @index(Global, NTuple)
+    @uniform in_width, in_height, in_depth = size(x)[1:3]
+    @uniform channels, batch = size(x, 4), size(x, 5)
+    @uniform out_width, out_height, out_depth = size(y)[1:3]
+    c, n = @index(Global, NTuple)
     yv, xv = @view(y[:, :, :, c, n]), @view(x[:, :, :, c, n])
-    for k in UnitRange{UInt32}(one(UInt32), out_depth)
-        id0, id1, d0λ, d1λ = source_idx_and_λ(rdepth, k - one(UInt32), align, in_depth)
-        for j in UnitRange{UInt32}(one(UInt32), out_height)
-            ih0, ih1, h0λ, h1λ = source_idx_and_λ(rheight, j - one(UInt32), align, in_height)
-            for i in UnitRange{UInt32}(one(UInt32), out_width)
-                iw0, iw1, w0λ, w1λ = source_idx_and_λ(rwidth, i - one(UInt32), align, in_width)
+    for k in 1:out_depth
+        id0, id1, d0λ, d1λ = source_idx_and_λ(rdepth, k - 1, align, in_depth)
+        for j in 1:out_height
+            ih0, ih1, h0λ, h1λ = source_idx_and_λ(rheight, j - 1, align, in_height)
+            for i in 1:out_width
+                iw0, iw1, w0λ, w1λ = source_idx_and_λ(rwidth, i - 1, align, in_width)
                 @inbounds yv[i, j, k] =
                     d0λ * (
                         h0λ * (w0λ * xv[iw0, ih0, id0] + w1λ * xv[iw1, ih0, id0]) +
@@ -552,17 +551,17 @@ end
 @kernel function _∇upsample_linear_kernel!(::CPU, dx::T1, Δ::T2, rwidth, rheight, rdepth, align::Val{A}) where {
     T1 <: AbstractArray{<:Any, 5}, T2 <: AbstractArray{<:Any, 5}, A,
 }
-    @uniform in_width::UInt32, in_height::UInt32, in_depth::UInt32 = size(Δ)[1:3]
-    @uniform channels::UInt32, batch::UInt32 = size(Δ, 4), size(Δ, 5)
-    @uniform out_width::UInt32, out_height::UInt32, out_depth::UInt32 = size(dx)[1:3]
-    c::UInt32, n::UInt32 = @index(Global, NTuple)
+    @uniform in_width, in_height, in_depth = size(Δ)[1:3]
+    @uniform channels, batch = size(Δ, 4), size(Δ, 5)
+    @uniform out_width, out_height, out_depth = size(dx)[1:3]
+    c, n = @index(Global, NTuple)
     Δv, dxv = @view(Δ[:, :, :, c, n]), @view(dx[:, :, :, c, n])
-    for k in UnitRange{UInt32}(one(UInt32), in_depth)
-        od0, od1, d0λ, d1λ = source_idx_and_λ(rdepth, k - one(UInt32), align, out_depth)
-        for j in UnitRange{UInt32}(one(UInt32), in_height)
-            oh0, oh1, h0λ, h1λ = source_idx_and_λ(rheight, j - one(UInt32), align, out_height)
-            @inbounds for i in UnitRange{UInt32}(one(UInt32), in_width)
-                ow0, ow1, w0λ, w1λ = source_idx_and_λ(rwidth, i - one(UInt32), align, out_width)
+    for k in 1:in_depth
+        od0, od1, d0λ, d1λ = source_idx_and_λ(rdepth, k - 1, align, out_depth)
+        for j in 1:in_height
+            oh0, oh1, h0λ, h1λ = source_idx_and_λ(rheight, j - 1, align, out_height)
+            @inbounds for i in 1:in_width
+                ow0, ow1, w0λ, w1λ = source_idx_and_λ(rwidth, i - 1, align, out_width)
                 val = Δv[i, j, k]
                 dxv[ow0, oh0, od0] += w0λ * h0λ * d0λ * val
                 dxv[ow1, oh0, od0] += w1λ * h0λ * d0λ * val
@@ -583,13 +582,13 @@ end
 @kernel function _upsample_linear_kernel!(::B, y::T, x::T, rwidth, rheight, rdepth, align::Val{A}) where {
     B <: GPU, T <: AbstractArray{<:Any, 5}, A,
 }
-    @uniform in_width::UInt32, in_height::UInt32, in_depth::UInt32 = size(x)[1:3]
-    @uniform channels::UInt32, batch::UInt32 = size(x, 4), size(x, 5)
-    i::UInt32, j::UInt32, k::UInt32 = @index(Global, NTuple)
-    iw0, iw1, w0λ, w1λ = source_idx_and_λ(rwidth, i - one(UInt32), align, in_width)
-    ih0, ih1, h0λ, h1λ = source_idx_and_λ(rheight, j - one(UInt32), align, in_height)
-    id0, id1, d0λ, d1λ = source_idx_and_λ(rdepth, k - one(UInt32), align, in_depth)
-    @inbounds for n in UnitRange{UInt32}(one(UInt32), batch), c in UnitRange{UInt32}(one(UInt32), channels)
+    @uniform in_width, in_height, in_depth = size(x)[1:3]
+    @uniform channels, batch = size(x, 4), size(x, 5)
+    i, j, k = @index(Global, NTuple)
+    iw0, iw1, w0λ, w1λ = source_idx_and_λ(rwidth, i - 1, align, in_width)
+    ih0, ih1, h0λ, h1λ = source_idx_and_λ(rheight, j - 1, align, in_height)
+    id0, id1, d0λ, d1λ = source_idx_and_λ(rdepth, k - 1, align, in_depth)
+    @inbounds for n in 1:batch, c in 1:channels
         y[i, j, k, c, n] =
             d0λ * (
                 h0λ * (w0λ * x[iw0, ih0, id0, c, n] + w1λ * x[iw1, ih0, id0, c, n]) +
@@ -603,14 +602,14 @@ end
 @kernel function _∇upsample_linear_kernel!(::B, dx::T, Δ::T, rwidth, rheight, rdepth, align::Val{A}) where {
     B <: GPU, T <: AbstractArray{<:Any, 5}, A,
 }
-    @uniform in_width::UInt32, in_height::UInt32, in_depth::UInt32 = size(Δ)[1:3]
-    @uniform channels::UInt32, batch::UInt32 = size(Δ, 4), size(Δ, 5)
-    @uniform out_width::UInt32, out_height::UInt32, out_depth::UInt32 = size(dx)[1:3]
-    i::UInt32, j::UInt32, k::UInt32 = @index(Global, NTuple)
-    ow0, ow1, w0λ, w1λ = source_idx_and_λ(rwidth, i - one(UInt32), align, out_width)
-    oh0, oh1, h0λ, h1λ = source_idx_and_λ(rheight, j - one(UInt32), align, out_height)
-    od0, od1, d0λ, d1λ = source_idx_and_λ(rdepth, k - one(UInt32), align, out_depth)
-    @inbounds for n in UnitRange{UInt32}(one(UInt32), batch), c in UnitRange{UInt32}(one(UInt32), channels)
+    @uniform in_width, in_height, in_depth = size(Δ)[1:3]
+    @uniform channels, batch = size(Δ, 4), size(Δ, 5)
+    @uniform out_width, out_height, out_depth = size(dx)[1:3]
+    i, j, k = @index(Global, NTuple)
+    ow0, ow1, w0λ, w1λ = source_idx_and_λ(rwidth, i - 1, align, out_width)
+    oh0, oh1, h0λ, h1λ = source_idx_and_λ(rheight, j - 1, align, out_height)
+    od0, od1, d0λ, d1λ = source_idx_and_λ(rdepth, k - 1, align, out_depth)
+    @inbounds for n in 1:batch, c in 1:channels
         val = Δ[i, j, k, c, n]
         @atomic dx[ow0, oh0, od0, c, n] += w0λ * h0λ * d0λ * val
         @atomic dx[ow1, oh0, od0, c, n] += w1λ * h0λ * d0λ * val
@@ -625,17 +624,21 @@ end
 end
 
 @inline function source_idx_and_λ(
-    ratio::T, out_idx::UInt32, ::Val{align}, in_width::UInt32,
+    ratio::T, out_idx::Int, ::Val{align}, in_width::Int,
 ) where {T, align}
     real_index = align ?
         ratio * out_idx :
         max(zero(T), ratio * (out_idx + T(0.5)) - T(0.5))
 
-    iw0 = floor(UInt32, real_index)
-    offset::UInt32 = ifelse(iw0 < in_width - one(UInt32), one(UInt32), zero(UInt32))
-    iw1 = iw0 + offset + one(UInt32)
+    iw0 = if T <: Rational
+        floor(Int, real_index) # Not GPU-friendly, but allows for Rational support.
+    else
+        unsafe_trunc(Int, floor(real_index))
+    end
+    offset = ifelse(iw0 < in_width - 1, 1, 0)
+    iw1 = iw0 + offset + 1
 
     w1lambda = real_index - iw0
     w0lambda = one(T) - w1lambda
-    return iw0 + one(UInt32), iw1, w0lambda, w1lambda
+    return iw0 + 1, iw1, w0lambda, w1lambda
 end
