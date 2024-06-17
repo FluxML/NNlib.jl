@@ -899,6 +899,8 @@ end
     y = Array{MyFloat}(undef, y_size...);
     cdims = DenseConvDims(x_size, w_size)
     y_out = NNlib.conv_direct!(y, x, w, cdims)
+
+    @test eltype(y_out) == MyFloat
     @test size(y_out) == y_size
 end
 
