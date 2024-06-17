@@ -2,6 +2,7 @@ using NNlib, Test
 using NNlib: input_size, kernel_size, channels_in, channels_out, channel_multiplier,
              stride, padding, dilation, flipkernel, output_size,
              groupcount
+using Random: AbstractRNG, SamplerType
 
 @testset "ConvDims" begin
     for T in (DenseConvDims, DepthwiseConvDims)
@@ -863,6 +864,42 @@ end
     @test size(NNlib.conv_direct!(y, x, w, cdims)) == y_size
     @test size(NNlib.∇conv_data_direct!(x, y, w, cdims)) == x_size
     @test size(NNlib.∇conv_filter_direct!(w, x, y, cdims)) == w_size
+end
+
+# https://github.com/FluxML/NNlib.jl/issues/490
+# https://github.com/FluxML/NNlib.jl/issues/405
+@testset "conv_direct! - Unusual input types" begin
+    # Create test type that can't be indexed when undefined.
+    # This simulates the worst-case scenario for custom types.
+    struct MyFloat <: Real
+        set::Set{Float32}
+    end
+    
+    # Test that direct indexing fails when undefined.
+    v = Array{MyFloat}(undef, 3)
+    @test_throws UndefRefError v[1]
+    
+    # Define minimal set of functions required for conv_direct!
+    MyFloat(x::MyFloat) = x
+    MyFloat(x::Real) = MyFloat(Set(Float32(x)))
+    
+    Base.:+(x::MyFloat, y::MyFloat) = MyFloat(only(x.set) + only(y.set))
+    Base.:*(x::MyFloat, y::MyFloat) = MyFloat(only(x.set) * only(y.set))
+    Base.promote_rule(::Type{MyFloat}, ::Type{Float32})   = MyFloat
+    Base.rand(::AbstractRNG, ::SamplerType{MyFloat}) = MyFloat(rand(Float32))
+    Base.zero(::MyFloat) = MyFloat(zero(Float32))
+    Base.zero(::Type{MyFloat}) = MyFloat(zero(Float32))
+    
+    # Test conv_direct!
+    x_size = (6, 7, 8, 5, 3)
+    y_size = (5, 6, 7, 4, 3)
+    w_size = (2, 2, 2, 5, 4)
+    x = rand(MyFloat, x_size);
+    w = randn(Float32, w_size);
+    y = Array{MyFloat}(undef, y_size...);
+    cdims = DenseConvDims(x_size, w_size)
+    y_out = NNlib.conv_direct!(y, x, w, cdims)
+    @test size(y_out) == y_size
 end
 
 @testset "AutoDiff: spatial_rank=$spatial_rank" for spatial_rank in (1, 2, 3)
