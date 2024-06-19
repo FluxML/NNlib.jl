@@ -81,6 +81,11 @@ function conv_direct!(
     # Use `calc_padding_regions` to determine where we do or don't need to worry about padding
     padded_regions, central_region = calc_padding_regions(cdims)
 
+    # Set outputs to zero to support custom datatypes (https://github.com/FluxML/NNlib.jl/issues/490)
+    if iszero(beta)
+        y = fill!(y, zero(yT))
+    end
+
     # Start with the central region
     w_region, h_region, d_region = central_region
     @inbounds for batch in 1:size(x, 5),
