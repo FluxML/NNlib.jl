@@ -255,27 +255,24 @@ julia> pad_reflect(r, (1,2,1,2))
  4  1  4  7  4  1
 ```
 """
-function pad_reflect(x::AbstractArray, pad::NTuple{M,Int}; 
+function pad_reflect(x::AbstractArray, pad::NTuple{M,Int};
                      dims=1:M÷2) where M
   length(dims) == M ÷ 2 ||
     throw(ArgumentError("The number of dims should be equal to the number of padding dimensions"))
   for (i, d) in enumerate(dims)
     x = pad_reflect(x, (pad[2i-1], pad[2i]); dims = d)
-  end  
+  end
   return x
 end
 
-function pad_reflect(x::AbstractArray{F,N}, pad::NTuple{2,Int}; 
-                     dims::Int = 1) where {F,N}
+function pad_reflect(
+  x::AbstractArray{F,N}, pad::NTuple{2,Int}; dims::Int = 1,
+) where {F,N}
   lpad, rpad = pad
-  
   n = size(x, dims)
-  xl = selectdim(x, dims, lpad+1:-1:2)
-  xr = selectdim(x, dims, n-1:-1:n-rpad)
-  # Alternative selection, not sure which is faster...
-  # xl = reverse(selectdim(x, dims, 2:lpad+1), dims)
-  # xr = reverse(selectdim(x, dims, n-rpad:n-1), dims)
-  return cat(xl, x, xr, dims = dims)
+  xl = lpad == 0 ? similar(x, 0) : reverse(selectdim(x, dims, 2:lpad+1); dims)
+  xr = rpad == 0 ? similar(x, 0) : reverse(selectdim(x, dims, n-rpad:n-1); dims)
+  return cat(xl, x, xr; dims)
 end
 
 """
