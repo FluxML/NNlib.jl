@@ -110,21 +110,34 @@ end
     @test logsumexp(x; dims = 1) ≈ flogsoft(x, dims = 1)
 end
 
-@testset "AutoDiff" begin
+@testset verbose=true "AutoDiff" begin
+    scenarios = Scenario[]
+    
     for f in (softmax, logsoftmax), d in (:, 1, 2)
-        gradtest(f, (3,4); fkwargs = (dims = d,), check_rrule = true)
+       push!(scenarios, Scenario(x -> f(x; dims=d), x=randn(3,4)))
     end
-    gradtest(x -> softmax(x) .* (1:3), 3)
-    gradtest(x -> softmax(x) .* (1:3), (3,5), atol = 1e-4)
-    gradtest(x -> softmax(x, dims = 2) .* (1:3), (3,5), atol = 1e-4)
+    push!(scenarios, Scenario(x -> softmax(x) .* (1:3), x=randn(3)))
+    push!(scenarios, Scenario(x -> softmax(x) .* (1:3), x=randn(3,5)))
+    push!(scenarios, Scenario(x -> softmax(x, dims = 2) .* (1:3), x=randn(3,5)))
 
-    gradtest(x -> logsoftmax(x) .* (1:3), 3)
-    gradtest(x -> logsoftmax(x) .* (1:3), (3,5))
-    gradtest(x -> logsoftmax(x, dims = 2) .* (1:3), (3,5))
+    push!(scenarios, Scenario(x -> logsoftmax(x) .* (1:3), x=randn(3)))
+    push!(scenarios, Scenario(x -> logsoftmax(x) .* (1:3), x=randn(3,5)))
+    push!(scenarios, Scenario(x -> logsoftmax(x, dims = 2) .* (1:3), x=randn(3,5)))
 
     for d  in (:, 1, 2)
-        gradtest(logsumexp, (3,4), fkwargs = (dims = d,))
+        push!(scenarios, Scenario(x -> logsumexp(x; dims=d), x=randn(3,4)))
     end
+
+    DIT.test_differentiation(
+        ADTypes.AutoZygote(),
+        [DI.gradient, DI.pullback],
+        scenarios;
+        correctness=ADTypes.AutoFiniteDifferences(
+            FiniteDifferences.central_fdm(5, 1)
+        ),
+        detailed=true,
+        rtol=1e-4,
+    )
 end
 
 @testset "Second derivatives" begin
