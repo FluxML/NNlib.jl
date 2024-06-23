@@ -218,7 +218,7 @@ function stft(x;
     use_window && (x = x .* window;)
     y = eltype(x) <: Complex ? fft(x, region) : rfft(x, region)
 
-    normalized && (y = y .* n_fft^-0.5;)
+    normalized && (y = y .* eltype(y)(n_fft^-0.5);)
     return y
 end
 
@@ -292,7 +292,7 @@ function istft(y;
     x = return_complex ? ifft(y, region) : irfft(y, n_fft, region)
 
     # De-apply window.
-    use_window && (x ./= window;)
+    use_window && (x = x ./ window;)
 
     # col2time.
     expected_output_len = n_fft + hop_length * (n_frames - 1)
