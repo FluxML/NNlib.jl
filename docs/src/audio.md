@@ -1,5 +1,8 @@
 # Reference
 
+!!! note
+    Spectral functions require importing `FFTW` package to enable them.
+
 ## Window functions
 
 ```@docs
@@ -26,6 +29,7 @@ spectrogram
 Example:
 
 ```@example 1
+using FFTW # <- required for STFT support.
 using NNlib
 using FileIO
 using Makie, CairoMakie

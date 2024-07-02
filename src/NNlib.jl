@@ -17,7 +17,6 @@ using Random
 using Requires
 using Statistics
 using Statistics: mean
-using FFTW
 
 const libblas = Base.libblas_name
 

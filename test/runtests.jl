@@ -13,6 +13,7 @@ using Adapt
 using ImageTransformations
 using Interpolations: Constant
 using KernelAbstractions
+using FFTW
 import ReverseDiff as RD        # used in `pooling.jl`
 import Pkg
 
