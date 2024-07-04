@@ -93,14 +93,6 @@ jobs:
             using Pkg
             Pkg.develop(PackageSpec(path=pwd()))
             Pkg.instantiate()'
-      - run: |
-          julia --color=yes --project=docs/ -e '
-            using NNlib
-            # using Pkg; Pkg.activate("docs")
-            using Documenter
-            using Documenter: doctest
-            DocMeta.setdocmeta!(NNlib, :DocTestSetup, :(using NNlib); recursive=true)
-            doctest(NNlib)'
       - run: julia --project=docs docs/make.jl
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

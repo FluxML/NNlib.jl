@@ -124,4 +124,9 @@ include("deprecations.jl")
 include("rotation.jl")
 export imrotate, ∇imrotate
 
+include("audio/stft.jl")
+include("audio/spectrogram.jl")
+include("audio/mel.jl")
+export stft, istft, hann_window, hamming_window, spectrogram, melscale_filterbanks
+
 end # module NNlib

@@ -13,7 +13,9 @@ using Adapt
 using ImageTransformations
 using Interpolations: Constant
 using KernelAbstractions
+using FFTW
 import ReverseDiff as RD        # used in `pooling.jl`
+import Pkg
 
 const Test_Enzyme = VERSION <= v"1.10-"
 
@@ -40,10 +42,11 @@ end
 
 cpu(x) = adapt(CPU(), x)
 
-include("gather.jl")
-include("scatter.jl")
-include("upsample.jl")
-include("rotation.jl")
+include("testsuite/gather.jl")
+include("testsuite/scatter.jl")
+include("testsuite/upsample.jl")
+include("testsuite/rotation.jl")
+include("testsuite/spectral.jl")
 
 function nnlib_testsuite(Backend; skip_tests = Set{String}())
     @conditional_testset "Upsample" skip_tests begin
@@ -58,12 +61,15 @@ function nnlib_testsuite(Backend; skip_tests = Set{String}())
     @conditional_testset "Scatter" skip_tests begin
         scatter_testsuite(Backend)
     end
+    @conditional_testset "Spectral" skip_tests begin
+        spectral_testsuite(Backend)
+    end
 end
 
 @testset verbose=true "NNlib.jl" begin
 
     if get(ENV, "NNLIB_TEST_CPU", "true") == "true"
-        @testset "CPU" begin      
+        @testset "CPU" begin
             @testset "Doctests" begin
                 doctest(NNlib, manual=false)
             end
@@ -133,6 +139,8 @@ end
     end
 
     if get(ENV, "NNLIB_TEST_CUDA", "false") == "true"
+        Pkg.add(["CUDA", "cuDNN"])
+
         using CUDA
         if CUDA.functional()
             @testset "CUDA" begin
@@ -145,19 +153,20 @@ end
         end
     else
         @info "Skipping CUDA tests, set NNLIB_TEST_CUDA=true to run them"
-    end 
+    end
 
     if get(ENV, "NNLIB_TEST_AMDGPU", "false") == "true"
+        Pkg.add("AMDGPU")
+
         using AMDGPU
         AMDGPU.versioninfo()
         if AMDGPU.functional() && AMDGPU.functional(:MIOpen)
-            @show AMDGPU.MIOpen.version()
             @testset "AMDGPU" begin
                 nnlib_testsuite(ROCBackend)
-                AMDGPU.synchronize(; blocking=false)
+                AMDGPU.synchronize(; blocking=false, stop_hostcalls=true)
 
                 include("ext_amdgpu/runtests.jl")
-                AMDGPU.synchronize(; blocking=false)
+                AMDGPU.synchronize(; blocking=false, stop_hostcalls=true)
             end
         else
             @info "AMDGPU.jl package is not functional. Skipping AMDGPU tests."
