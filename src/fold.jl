@@ -1,4 +1,3 @@
-
 """
     unfold(x, kernel_size; stride = 1, pad = 0, dilation = 0, flipped = true)
 
@@ -7,10 +6,10 @@ window_size, batchsize)`. The window size is determined by the `prod(spatial dim
 of kernel)*input_channels`. The number of sliding windows will match those of
 convolution (`conv`) with the same kernel_size and arguments. Note that
 by default `conv` flips the spatial dimensions of its kernel (default
-`flipped=false`), whereas `unfold` does not (default `flipped=true`). 
-Uses `NNlib.im2col!` as backend. 
+`flipped=false`), whereas `unfold` does not (default `flipped=true`).
+Uses `NNlib.im2col!` as backend.
 
-See also [`fold`](@ref), the adjoint/transpose operator 
+See also [`fold`](@ref), the adjoint/transpose operator
 and a potential inverse of `unfold`.
 
 # Example
@@ -23,7 +22,7 @@ julia> w = reshape([1 0 -1], 3, 1, 1);  # 1D conv kernel of length 3
 
 julia> kws = (pad=1, stride=2, flipped=true);  # use same args for conv and unfold
 
-julia> z = NNlib.unfold(x, size(w); kws...) 
+julia> z = NNlib.unfold(x, size(w); kws...)
 4×3×1 Array{Int64, 3}:
 [:, :, 1] =
   0  100   2
@@ -61,8 +60,8 @@ end
 
 The adjoint/transpose operator of `unfold`. It accumulates sliding windows from
 the output of `unfold` into a container tensor of size `output_size`. An inverse
-to `unfold` may be obtained (in some cases) by using `fold` and accounting for scaling issues 
-with a divisor (see example). Uses `NNlib.col2im!` as backend. 
+to `unfold` may be obtained (in some cases) by using `fold` and accounting for scaling issues
+with a divisor (see example). Uses `NNlib.col2im!` as backend.
 
 See also [`unfold`](@ref).
 
@@ -101,7 +100,7 @@ julia> divisor = NNlib.fold(NNlib.unfold(ones(size(x)...), (3,1,1)), size(x), (3
  2.0
  1.0
 
-julia> z ./ divisor 
+julia> z ./ divisor
 7×1×1 Array{Float64, 3}:
 [:, :, 1] =
  100.0
@@ -133,30 +132,30 @@ function unfold(x::AbstractArray{T, N}, cdims::DenseConvDims) where {T, N}
 end
 
 function fold(y::AbstractArray{T, 3}, output_size::NTuple, cdims::DenseConvDims) where {T}
-    x = similar(y, output_size) 
+    x = similar(y, output_size)
     return fold!(x, y, cdims)
 end
 
-# N < 5 -dimension in-place versions 
+# N < 5 -dimension in-place versions
 function unfold!(y::AbstractArray{yT, 3}, x::AbstractArray{xT, N}, cdims::DenseConvDims) where {yT, xT, N}
     unfold!(
-        y, 
-        insert_singleton_spatial_dimension(x, 5-N), 
-        insert_singleton_spatial_dimension(cdims, 5-N), 
+        y,
+        insert_singleton_spatial_dimension(x, 5-N),
+        insert_singleton_spatial_dimension(cdims, 5-N),
     )
     return y
 end
 
 function fold!(x::AbstractArray{xT, N}, y::AbstractArray{yT, 3}, cdims::DenseConvDims) where {yT, xT, N}
     fold!(
-        insert_singleton_spatial_dimension(x, 5-N), 
+        insert_singleton_spatial_dimension(x, 5-N),
         y,
-        insert_singleton_spatial_dimension(cdims, 5-N), 
+        insert_singleton_spatial_dimension(cdims, 5-N),
     )
     return x
 end
 
-# 5-dimension in-place versions 
+# 5-dimension in-place versions
 function unfold!(y::AbstractArray{yT, 3}, x::AbstractArray{xT, 5}, cdims::DenseConvDims) where {yT, xT}
     @threads for batch_idx in 1:size(x, 5)
         y_slice = view(y, :, :, batch_idx)
@@ -170,6 +169,110 @@ function fold!(x::AbstractArray{xT, 5}, y::AbstractArray{yT, 3}, cdims::DenseCon
         y_slice = view(y, :, :, batch_idx)
         col2im!(view(x, :, :, :, :, batch_idx), y_slice, cdims)
     end
+    return x
+end
+
+@kernel function unfold_kernel!(
+    col::AbstractArray{T}, x, col_size,
+    input_size, output_size, kernel_size,
+    flipkernel, stride, pad_lo, dilation, max_idx,
+) where T
+    index = @index(Global)
+
+    @inbounds if index ≤ max_idx
+        i, kw, kh, kd, c, b = CartesianIndices(col_size)[index].I # col indices
+        w, h, d = CartesianIndices(output_size)[i].I # x indices
+
+        # project
+        w, h, d = @. ((w, h, d) - 1) * stride - pad_lo + 1 + ((kw, kh, kd) - 1) * dilation
+
+        if !flipkernel
+            kw, kh, kd = kernel_size .- (kw, kh, kd) .+ 1
+        end
+
+        # check out of bounds
+        if !all(checkindex.(Bool, UnitRange.(1, input_size), (w, h, d)))
+            col[i, kw, kh, kd, c, b] = T(0)
+        else
+            xval::T = x[w, h, d, c, b]
+            col[i, kw, kh, kd, c, b] = xval
+        end
+    end
+end
+
+@kernel function fold_kernel!(
+    x::AbstractArray{T}, col, col_size,
+    input_size, output_size, kernel_size,
+    flipkernel, stride, pad_lo, dilation, max_idx,
+) where T
+    index = @index(Global)
+
+    @inbounds if index ≤ max_idx
+        i, kw, kh, kd, c, b = CartesianIndices(col_size)[index].I # col indices
+        w, h, d = CartesianIndices(output_size)[i].I # x indices
+
+        # project
+        w, h, d = @. ((w, h, d) - 1) * stride - pad_lo + 1 + ((kw, kh, kd) - 1) * dilation
+
+        # check out of bounds
+        if all(checkindex.(Bool, UnitRange.(1, input_size), (w, h, d)))
+            if !flipkernel
+                kw, kh, kd = kernel_size .- (kw, kh, kd) .+ 1
+            end
+
+            cval::T = col[i, kw, kh, kd, c, b]
+            @atomic x[w, h, d, c, b] += cval
+        end
+    end
+end
+
+function unfold!(
+    col::AnyGPUArray{cT,3}, x::AnyGPUArray{xT,5}, cdims::DenseConvDims,
+) where {cT, xT}
+    spatial_dims(cdims) != 3 && throw(DimensionMismatch(
+        "unfold!() only accepts 3d convoluitional inputs"))
+
+    C_in = channels_in(cdims)
+    ker_size = kernel_size(cdims)
+    pad_w_lo, pad_w_hi, pad_h_lo, pad_h_hi, pad_d_lo, pad_d_hi = padding(cdims)
+    pad_lo = (pad_w_lo, pad_h_lo, pad_d_lo)
+
+    out_size = output_size(cdims)
+    col_reshaped = reshape(col, (prod(out_size), ker_size..., C_in, :))
+
+    max_idx = prod(size(col))
+    unfold_kernel!(get_backend(x))(
+        col_reshaped, x, size(col_reshaped),
+        input_size(cdims), out_size, ker_size,
+        flipkernel(cdims), stride(cdims), pad_lo, dilation(cdims), max_idx;
+        ndrange=max_idx)
+    return col
+end
+
+function fold!(
+    x::AnyGPUArray{xT,5}, col::AnyGPUArray{cT,3}, cdims::DenseConvDims,
+) where {xT, cT}
+    spatial_dims(cdims) != 3 && throw(DimensionMismatch(
+        "fold!() only accepts 3d convoluitional inputs"))
+
+    # going to accumulate into x
+    fill!(x, xT(0))
+
+    C_in = channels_in(cdims)
+    ker_size = kernel_size(cdims)
+    pad_w_lo, pad_w_hi, pad_h_lo, pad_h_hi, pad_d_lo, pad_d_hi = padding(cdims)
+    pad_lo = (pad_w_lo, pad_h_lo, pad_d_lo)
+    out_size = output_size(cdims)
+
+    col_reshaped = reshape(col, (prod(out_size), ker_size..., C_in, :))
+
+    max_idx = prod(size(col))
+    fold_kernel!(get_backend(x))(
+        x, col_reshaped, size(col_reshaped),
+        input_size(cdims), out_size, ker_size,
+        flipkernel(cdims), stride(cdims), pad_lo, dilation(cdims), max_idx;
+        ndrange=max_idx)
+
     return x
 end
 

@@ -41,7 +41,7 @@ function NNlib.stft(x;
         ids = [
             row + hop_length * col
             for row in 1:n_fft, col in 0:(n_frames - 1)]
-        x = x[ids, ntuple(_ -> Colon(), ndims(x) - 1)...]
+        x = @inbounds x[ids, ntuple(_ -> Colon(), ndims(x) - 1)...]
     end
 
     region = 1
@@ -113,7 +113,7 @@ function NNlib.istft(y;
     # In case of batched input, reshaped it (n_fft, n_frames, batch) -> (:, batch).
     nd = ntuple(_ -> Colon(), ndims(x) - 2)
     ndims(x) == 3 && (x = reshape(x, (:, size(x, 3)));)
-    x = x[ids, nd...]
+    x = @inbounds x[ids, nd...]
 
     # Trim padding.
     left = center ? (n_fft ÷ 2 + 1) : 1

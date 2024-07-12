@@ -47,6 +47,7 @@ include("testsuite/scatter.jl")
 include("testsuite/upsample.jl")
 include("testsuite/rotation.jl")
 include("testsuite/spectral.jl")
+include("testsuite/fold.jl")
 
 function nnlib_testsuite(Backend; skip_tests = Set{String}())
     @conditional_testset "Upsample" skip_tests begin
@@ -63,6 +64,9 @@ function nnlib_testsuite(Backend; skip_tests = Set{String}())
     end
     @conditional_testset "Spectral" skip_tests begin
         spectral_testsuite(Backend)
+    end
+    @conditional_testset "Fold" skip_tests begin
+        fold_testsuite(Backend)
     end
 end
 
@@ -100,10 +104,6 @@ end
 
             @testset "Dropout" begin
                 include("dropout.jl")
-            end
-
-            @testset "Fold/Unfold" begin
-                include("fold.jl")
             end
 
             @testset "Inference" begin
