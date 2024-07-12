@@ -270,8 +270,12 @@ function pad_reflect(
 ) where {F,N}
   lpad, rpad = pad
   n = size(x, dims)
-  xl = lpad == 0 ? similar(x, 0) : reverse(selectdim(x, dims, 2:lpad+1); dims)
-  xr = rpad == 0 ? similar(x, 0) : reverse(selectdim(x, dims, n-rpad:n-1); dims)
+  xl = lpad == 0 ?
+    similar(x, ntuple(i -> i == dims ? 0 : size(x, i), ndims(x))) :
+    reverse(selectdim(x, dims, 2:lpad+1); dims)
+  xr = rpad == 0 ?
+    similar(x, ntuple(i -> i == dims ? 0 : size(x, i), ndims(x))) :
+    reverse(selectdim(x, dims, n-rpad:n-1); dims)
   return cat(xl, x, xr; dims)
 end
 
@@ -326,8 +330,12 @@ function pad_symmetric(
   lpad, rpad = pad
   n = size(x, dims)
 
-  xl = lpad == 0 ? similar(x, 0) : reverse(selectdim(x, dims, 1:lpad); dims)
-  xr = rpad == 0 ? similar(x, 0) : reverse(selectdim(x, dims, n-rpad+1:n); dims)
+  xl = lpad == 0 ?
+    similar(x, ntuple(i -> i == dims ? 0 : size(x, i), ndims(x))) :
+    reverse(selectdim(x, dims, 1:lpad); dims)
+  xr = rpad == 0 ?
+    similar(x, ntuple(i -> i == dims ? 0 : size(x, i), ndims(x))) :
+    reverse(selectdim(x, dims, n-rpad+1:n); dims)
   return cat(xl, x, xr; dims)
 end
 
