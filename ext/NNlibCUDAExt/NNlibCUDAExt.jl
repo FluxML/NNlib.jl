@@ -9,7 +9,6 @@ include("activations.jl")
 include("batchedadjtrans.jl")
 include("batchedmul.jl")
 include("ctc.jl")
-include("fold.jl")
 include("scatter.jl")
 include("utils.jl")
 

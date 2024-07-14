@@ -149,7 +149,7 @@ and ``m`` is the index of the sliding window.
 - `x`: Input, must be either a 1D time sequence (`(L,)` shape)
     or a 2D batch of time sequence (`(L, B)` shape).
 
-# Positional Arguments:
+# Keyword Arguments:
 
 - `n_fft::Int`: Size of Fourier transform.
 - `hop_length::Int`: Distance between neighboring sliding window frames.
@@ -187,7 +187,7 @@ Return the least squares estimation of the original signal
 - `y`: Input complex array in the `(n_fft, n_frames, B)` shape.
     Where `B` is the optional batch dimension.
 
-# Positional Arguments:
+# Keyword Arguments:
 
 - `n_fft::Int`: Size of Fourier transform.
 - `hop_length::Int`: Distance between neighboring sliding window frames.

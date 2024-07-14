@@ -41,7 +41,7 @@ function spectrogram(waveform;
     window_normalized && (spec = spec .* inv(norm(window));)
 
     if power > 0
-        p = real(eltype(spec)(power))
+        p = eltype(waveform)(power)
         spec = abs.(spec).^p
     end
     return spec
