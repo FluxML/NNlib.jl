@@ -4,6 +4,7 @@ version = "0.9.20"
 
 [deps]
 Adapt = "79e6a3ab-5dfb-504d-930d-738a2a938a0e"
+ArrayInterface = "4fba245c-0d91-5ea0-9b3e-6abc04ee57a9"
 Atomix = "a9b6321e-bd34-4604-b9c9-b65b8de01458"
 ChainRulesCore = "d360d2e6-b24c-11e9-a2a3-2a2ae2dbcce4"
 GPUArraysCore = "46192b85-c4d5-4398-a991-12ede77f4527"
@@ -31,6 +32,7 @@ NNlibFFTWExt = "FFTW"
 [compat]
 AMDGPU = "0.9.4"
 Adapt = "3.2, 4"
+ArrayInterface = "7.10"
 Atomix = "0.1"
 CUDA = "4, 5"
 ChainRulesCore = "1.13"
