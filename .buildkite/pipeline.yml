@@ -23,7 +23,6 @@ steps:
     matrix:
       setup:
         julia:
-          # - "1.9" # uncomment when 1.10 is out
           - "1"
           - "nightly"
       adjustments:
