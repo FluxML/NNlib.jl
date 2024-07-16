@@ -24,17 +24,9 @@ jobs:
         package:
           - {user: FluxML, repo: Flux.jl, group: All}
           - {user: FluxML, repo: Tracker.jl, group: All}
-          - {user: avik-pal, repo: Lux.jl, group: All}
+          - {user: LuxDL, repo: Lux.jl, group: All}
     steps:
       - uses: actions/checkout@v3
-      # for OptimalTransport.jl
-      - name: Install python
-        uses: actions/setup-python@v4
-        with:
-          python-version: '3.9'
-          architecture: ${{ matrix.arch }}
-      # for OptimalTransport.jl
-      - run: python -m pip install pot
       - uses: julia-actions/setup-julia@v1
         with:
           version: ${{ matrix.julia-version }}
@@ -63,3 +55,7 @@ jobs:
             @info "Not compatible with this release. No problem." exception=err
             exit(0)  # Exit immediately, as a success
           end
+        env:
+          RETESTITEMS_NWORKERS: 4
+          BACKEND_GROUP: CPU  # for Lux.jl
+
