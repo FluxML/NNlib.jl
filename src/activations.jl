@@ -823,7 +823,10 @@ julia> hardσ(0.2f0)
 0.53333336f0
 ```
 """
-@inline function sigmoid_fast(x::Real)
+function sigmoid_fast(x::Real)
+    @static if VERSION ≥ v"1.11-"
+        @inline
+    end
     t = @fastmath exp(-abs(x))
     y = ifelse(x ≥ 0, inv(1 + t), t / (1 + t))
     ifelse(x > 40, one(y), ifelse(x < -80, zero(y), y))

@@ -41,3 +41,13 @@ end
     @test Array(y) == [tanh(1f0)]
     @test Array(x) == [tanh(tanh(1f0))]
 end
+
+@testset "fused act addition broadcast" begin
+    x = CUDA.rand(Float32, 10, 10)
+    b = CUDA.rand(Float32, 10)
+
+    for act in getfield.((NNlib,), NNlib.ACTIVATIONS)
+        fused_act_add = act ∘ +
+        @test fused_act_add.(x, b) ≈ act.(x .+ b)
+    end
+end
