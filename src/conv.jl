@@ -192,6 +192,7 @@ for (front_name, backend, signature) in (
                 @warn string("Slow fallback implementation invoked for ", $(string(front_name)), "!  ",
                         "You probably don't want this; check your datatypes.") yT T1 T2 maxlog=1
             end
+            assert_all_fast_scalar_indexing(Val($(Meta.quot(Symbol(front_name, "!")))), out, in1, in2)
 
             x_cs = Iterators.partition(1:size(in1, 4),
                                     channels_in(cdims) ÷ groupcount(cdims))
@@ -233,7 +234,7 @@ for (front_name, backend, signature) in (
                 @warn string("Slow fallback implementation invoked for ", $(string(front_name)), "!  ",
                         "You probably don't want this; check your datatypes.") yT T1 T2 maxlog=1
             end
-
+            assert_all_fast_scalar_indexing(Val($(Meta.quot(Symbol(front_name, "!")))), out, in1, in2)
 
             dx_cs = Iterators.partition(1:size(out, 4),
                                         channels_in(cdims) ÷ groupcount(cdims))
@@ -276,6 +277,7 @@ for (front_name, backend, signature) in (
                 @warn string("Slow fallback implementation invoked for ", $(string(front_name)), "!  ",
                         "You probably don't want this; check your datatypes.") yT T1 T2 maxlog=1
             end
+            assert_all_fast_scalar_indexing(Val($(Meta.quot(Symbol(front_name, "!")))), out, in1, in2)
 
             dw_cs = Iterators.partition(1:size(out, 5),
                                         channels_out(cdims) ÷ groupcount(cdims))
@@ -327,6 +329,8 @@ for (front_name, backend, signature) in (
                 @warn string("Slow fallback implementation invoked for ", $(string(front_name)), "!  ",
                         "You probably don't want this; check your datatypes.") yT T1 T2 maxlog=1
             end
+            assert_all_fast_scalar_indexing(Val($(Meta.quot(Symbol(front_name, "!")))), out, in1, in2)
+
             $(Symbol("$(front_name)_$(backend)!"))(out, in1, in2, cdims; kwargs...)
         end
     end
