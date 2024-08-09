@@ -29,7 +29,7 @@ NNlibEnzymeCoreExt = "EnzymeCore"
 NNlibFFTWExt = "FFTW"
 
 [compat]
-AMDGPU = "0.9.4"
+AMDGPU = "0.9.4, 1"
 Adapt = "3.2, 4"
 Atomix = "0.1"
 CUDA = "4, 5"
