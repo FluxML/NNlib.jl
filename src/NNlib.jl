@@ -12,7 +12,6 @@ using KernelAbstractions: @atomic
 using LinearAlgebra
 using LinearAlgebra.BLAS: @blasfunc, BlasInt
 using LinearAlgebra: AdjOrTransAbsMat, Adjoint, BlasFloat, Transpose
-using Pkg
 using Random
 using Requires
 using Statistics
@@ -25,17 +24,6 @@ include("dim_helpers.jl")
 export ConvDims, DenseConvDims, PoolDims, DepthwiseConvDims
 
 is_nnpack_available() = false
-
-@init @require NNPACK_jll="a6bfbf70-4841-5cb9-aa18-3a8ad3c413ee"  begin
-  if isdefined(NNPACK_jll, :libnnpack)
-    include("nnpack/NNPACK.jl")
-  else
-    @warn "NNPACK not available for your platform: " *
-          "$( Pkg.BinaryPlatforms.platform_name(Pkg.BinaryPlatforms.platform_key_abi()))" *
-          "($( Pkg.BinaryPlatforms.triplet(Pkg.BinaryPlatforms.platform_key_abi())))
-          You will be able to use only the default Julia NNlib backend"
-  end
-end
 
 include("activations.jl")
 for f in ACTIVATIONS
