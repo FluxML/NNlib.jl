@@ -23,8 +23,6 @@ const Numeric = Union{AbstractArray{<:T}, T} where {T<:Number}
 include("dim_helpers.jl")
 export ConvDims, DenseConvDims, PoolDims, DepthwiseConvDims
 
-is_nnpack_available() = false
-
 include("activations.jl")
 for f in ACTIVATIONS
     @eval export $(f)

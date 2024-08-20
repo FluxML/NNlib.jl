@@ -132,16 +132,6 @@ for backend in (Symbol(), :_direct, :_nnpack)
     end
 end
 
-## Use NNPACK if it is available and operation is supported.
-## The corresponding gradient is not available in NNPACK
-## Commented out due to #210
-# if is_nnpack_available()
-#     function maxpool(x::Array{Float32, 4}, pdims::PoolDims{2, K, S, P, (1, 1)}; kwargs...) where {T, K, S, P}
-#         func = nnpack_supported_operation(pdims) ? maxpool_nnpack : maxpool_direct
-#         return func(x, pdims; kwargs...)
-#     end
-# end
-
 expand(N, i::Tuple) = i
 expand(N, i::Integer) = ntuple(_ -> i, N)
 
