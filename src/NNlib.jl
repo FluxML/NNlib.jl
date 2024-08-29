@@ -12,7 +12,6 @@ using KernelAbstractions: @atomic
 using LinearAlgebra
 using LinearAlgebra.BLAS: @blasfunc, BlasInt
 using LinearAlgebra: AdjOrTransAbsMat, Adjoint, BlasFloat, Transpose
-using Pkg
 using Random
 using Statistics
 using Statistics: mean
