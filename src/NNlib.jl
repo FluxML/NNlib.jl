@@ -14,7 +14,6 @@ using LinearAlgebra.BLAS: @blasfunc, BlasInt
 using LinearAlgebra: AdjOrTransAbsMat, Adjoint, BlasFloat, Transpose
 using Pkg
 using Random
-using Requires
 using Statistics
 using Statistics: mean
 
