@@ -76,7 +76,7 @@ end
 # Let's generate auto-allocating versions of all our functions, for all backends.
 # We `@timeit` these methods separately, as we want to know how much time is spent in
 # allocation.  :P
-for backend in (Symbol(), :_direct, :_im2col, :_nnpack)
+for backend in (Symbol(), :_direct, :_im2col)
     # First make auto-allocating versions of the conv()-like calls:
     for name in (:conv, :depthwiseconv)
         @eval begin
@@ -134,7 +134,7 @@ end
 # since we can specialize on sizes.
 for front_name in (:conv, :∇conv_data, :∇conv_filter,
                    :depthwiseconv, :∇depthwiseconv_data, :∇depthwiseconv_filter)
-    for backend in (Symbol(), :_direct, :_im2col) ## NNPACK  is only for 2d conv
+    for backend in (Symbol(), :_direct, :_im2col)
         for N in (3, 4)
             @eval begin
                 function $(Symbol("$(front_name)$(backend)!"))(
@@ -381,26 +381,3 @@ function rrule(::typeof(∇conv_filter), x, dy, cdims; kw...)
     end
     return ∇conv_filter(x, dy, cdims; kw...), ∇conv_filter_pullback
 end
-
-# Use NNPACK if it is available and the operation is supported
-# commented out 'till proper benchmarking and more correctness test are performed
-# if is_nnpack_available()
-#     function conv(x::Array{Float32, 4}, w::Array{Float32, 4},
-#                   cdims::DenseConvDims{2, K, C_in, C_out, (1, 1), P, (1, 1), F};
-#                   kwargs...) where {K, C_in, C_out, P, F}
-#         return conv_nnpack(x, w, cdims; kwargs...)
-#     end
-
-#     function ∇conv_data(dy::Array{Float32, 4}, w::Array{Float32, 4},
-#                 cdims::DenseConvDims{2, K, C_in, C_out, (1, 1), P, (1, 1), F};
-#                 kwargs...) where {K, C_in, C_out, P, F}
-#         return ∇conv_data_nnpack(dy, w, cdims; kwargs...)
-#     end
-
-#     function ∇conv_filter(x::Array{Float32, 4}, dy::Array{Float32, 4},
-#                 cdims::DenseConvDims{2, K, C_in, C_out, (1, 1), P, (1, 1), F};
-#                 kwargs...) where {K, C_in, C_out, P, F}
-#         return ∇conv_filter_nnpack(x, dy, cdims; kwargs...)
-#     end
-# end
-########################################################

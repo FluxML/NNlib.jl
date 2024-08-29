@@ -37,10 +37,6 @@ for rank in (2,),
             (NNlib.depthwiseconv_im2col!, NNlib.∇depthwiseconv_data_im2col!, NNlib.∇depthwiseconv_filter_im2col!, DepthwiseConvDims, "im2col"),
     ]
 
-    if NNlib.is_nnpack_available()
-        push!(benchmark_items, (NNlib.conv_nnpack!, NNlib.∇conv_data_nnpack!, NNlib.∇conv_filter_nnpack!, DenseConvDims, "nnpack"))
-    end
-
     for (conv!, ∇conv_data!, ∇conv_filter!, cT, backend) in benchmark_items
 
         x = zeros(Float32, repeat([N], rank)..., C_in, 1)
@@ -104,16 +100,5 @@ for rank in (2,),
 
         @show(pdims)
         @save "results.jld2" results
-    end
-
-    if NNlib.is_nnpack_available()
-        if NNlib.nnpack_supported_operation(pdims)
-            t_fwd  = @benchmark NNlib.maxpool_nnpack!($y, $x, $pdims)
-
-            add_result(t_fwd, "maxpool2d", "nnpack", pdims)
-
-            @show(pdims)
-            @save "results.jld2" results
-        end
     end
 end
