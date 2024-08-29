@@ -869,16 +869,6 @@ maxpool_answer_nature = Dict(
         @test y_maxpool_dir ≈ y_maxpool  atol = 1e-6
         @test isapprox(config.dx_maxpool, NNlib.∇maxpool_direct(dy, y_maxpool_dir, x, pdims), rtol=1e-5)
         @test isapprox(config.dx_meanpool, NNlib.∇meanpool_direct(dy, y_meanpool_dir, x, pdims), rtol=1e-5)
-
-        # CHECK NNPACK
-        if NNlib.is_nnpack_available() && T == Float32
-            if NNlib.nnpack_supported_operation(pdims)
-                y_maxpool_nnp = NNlib.maxpool_nnpack(x, pdims)
-                @test y_maxpool_nnp ≈ y_maxpool  atol = 1e-6
-                # NNPACK maxpool gradient still missing
-                # @test isapprox(config.dx_maxpool, NNlib.∇maxpool_nnpack(dy, y_maxpool_nnp, config.x, pdims), rtol=1e-5)
-            end
-        end
     end
 
     for (rank_name, config_dict) in maxpool_answer_nature
@@ -940,16 +930,6 @@ maxpool_answer_nature = Dict(
     @test RD.gradient(_x -> only(maxpool(_x,(2,2))), x)[:,:,1,1] == [0 0; 0 1]
     @test only(meanpool(x, (2,2))) == 2.5
     @test all(==(0.25), RD.gradient(_x -> only(meanpool(_x,(2,2))), x))
-
-    # if NNlib.is_nnpack_available()
-    #     if NNlib.nnpack_supported_operation(pdims1)
-    #         @test NNlib.maxpool_nnpack(x, pdims1) isa Array{Float32, 4}
-    #     end
-    #     if NNlib.nnpack_supported_operation(pdims2)
-    #         print("you should not see this")
-    #         @test NNlib.maxpool_nnpack(x, pdims2) isa Array{Float32, 4}
-    #     end
-    # end
 end
 
 @testset "AutoDiff: spatial_rank=$spatial_rank" for spatial_rank in (1, 2)

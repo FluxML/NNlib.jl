@@ -277,13 +277,7 @@ ddims(x) = dropdims(x, dims=(ndims(x)-1, ndims(x)))
             w = reshape(Float64[1:prod(size(dw));], size(dw)..., 1, 1)
 
             convs = [NNlib.conv, NNlib.conv_im2col, NNlib.conv_direct,]
-            NNlib.is_nnpack_available() && push!(convs, NNlib.conv_nnpack)
             for conv in convs
-                if NNlib.is_nnpack_available()
-                    if conv == NNlib.conv_nnpack && !NNlib.nnpack_supported_operation(DenseConvDims(x, w))
-                        continue
-                    end
-                end
                 @testset "$(conv)" begin
                     cdims = DenseConvDims(x, w)
                     # First, your basic convolution with no parameters
@@ -313,13 +307,7 @@ ddims(x) = dropdims(x, dims=(ndims(x)-1, ndims(x)))
 
             # Test all in-place implementations/interfaces 
             convs = [NNlib.conv!, NNlib.conv_im2col!, NNlib.conv_direct!,]
-            NNlib.is_nnpack_available() && push!(convs, NNlib.conv_nnpack!)
             for conv! in convs
-                if NNlib.is_nnpack_available()
-                    if conv! == NNlib.conv_nnpack! && !NNlib.nnpack_supported_operation(DenseConvDims(x, w))
-                        continue
-                    end
-                end
                 α, β = 2e0, -1e0
 
                 @testset "$(conv!)" begin
@@ -470,13 +458,7 @@ end
     w = reshape(complex.(Float64[1:4;] .+ 2, Float64[1:4;] .+ 3), 1, 4, 1)
     cdims = DenseConvDims(x, w)
     convs = [NNlib.conv, NNlib.conv_im2col, NNlib.conv_direct,]
-    NNlib.is_nnpack_available() && push!(convs, NNlib.conv_nnpack)
     for conv in convs
-        if NNlib.is_nnpack_available()
-            if conv == NNlib.conv_nnpack && !NNlib.nnpack_supported_operation(cdims)
-                continue
-            end
-        end
         @testset "$(conv)" begin
             @test isapprox(ddims(conv(x, w, cdims)), [transpose(vec(w)) * vec(x)], rtol = 1.0e-7)
         end
