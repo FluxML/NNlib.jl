@@ -82,11 +82,6 @@ export upsample_nearest, ∇upsample_nearest,
 include("gather.jl")
 include("scatter.jl")
 include("utils.jl")
-@init @require ForwardDiff = "f6369f11-7733-5829-9624-2563aa707210" begin
-    using .ForwardDiff
-    within_gradient(x::ForwardDiff.Dual) = true
-    within_gradient(x::AbstractArray{<:ForwardDiff.Dual}) = true
-end
 
 include("sampling.jl")
 include("functions.jl")
