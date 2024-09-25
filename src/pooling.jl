@@ -162,7 +162,7 @@ Perform mean pool operation with window size `k` on input tensor `x`.
 
 Arguments:
 
-* `x` and `k`: Expects `ndim(x) ∈ 3:5``, and always `length(k) == ndim(x) - 2`
+* `x` and `k`: Expects `ndim(x) ∈ 3:5`, and always `length(k) == ndim(x) - 2`
 * `pad`: See [`pad_zeros`](@ref) for details.
 * `stride`: Either a tuple with the same length as `k`, or one integer for all directions. Default is `k`.
 """
@@ -182,7 +182,7 @@ This pooling operator from [Learned-Norm Pooling for Deep Feedforward and Recurr
 
 Arguments:
 
-* `x` and `k`: Expects `ndim(x) ∈ 3:5``, and always `length(k) == ndim(x) - 2`
+* `x` and `k`: Expects `ndim(x) ∈ 3:5`, and always `length(k) == ndim(x) - 2`
 * `p` is restricted to `0 < p < Inf`.
 * `pad`: See [`pad_zeros`](@ref) for details.
 * `stride`: Either a tuple with the same length as `k`, or one integer for all directions. Default is `k`.
