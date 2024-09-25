@@ -8,7 +8,7 @@ Hamming window function
 (ref: https://en.wikipedia.org/wiki/Window_function#Hann_and_Hamming_windows).
 Generalized version of `hann_window`.
 
-``w[n] = \\alpha - \\beta cos(\\frac{2 \\pi n}{N - 1})``
+``w[n] = \\alpha - \\beta \\cos(\\frac{2 \\pi n}{N - 1})``
 
 Where ``N`` is the window length.
 
@@ -74,7 +74,7 @@ end
 Hann window function
 (ref: https://en.wikipedia.org/wiki/Window_function#Hann_and_Hamming_windows).
 
-``w[n] = \\frac{1}{2}[1 - cos(\\frac{2 \\pi n}{N - 1})]``
+``w[n] = \\frac{1}{2}[1 - \\cos(\\frac{2 \\pi n}{N - 1})]``
 
 Where ``N`` is the window length.
 
@@ -138,7 +138,7 @@ Short-time Fourier transform (STFT).
 The STFT computes the Fourier transform of short overlapping windows of the input,
 giving frequency components of the signal as they change over time.
 
-``Y[\\omega, m] = \\sum_{k = 0}^{N - 1} \\text{window}[k] \\text{input}[m \\times \\text{hop length} + k] exp(-j \\frac{2 \\pi \\omega k}{\\text{n fft}})``
+``Y[\\omega, m] = \\sum_{k = 0}^{N - 1} \\text{window}[k] \\text{input}[m \\times \\text{hop length} + k] \\exp(-j \\frac{2 \\pi \\omega k}{\\text{n fft}})``
 
 where ``N`` is the window length,
 ``\\omega`` is the frequency ``0 \\le \\omega < \\text{n fft}``
