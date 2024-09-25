@@ -12,7 +12,7 @@ i.e. each row of a matrix is either zero or not.
 Optional first argument is the random number generator used.
 
 # Examples
-```
+```julia-repl
 julia> dropout(ones(2, 10), 0.2)
 2×10 Matrix{Float64}:
  1.25  1.25  0.0   1.25  1.25  1.25  1.25  1.25  1.25  1.25

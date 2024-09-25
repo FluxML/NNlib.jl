@@ -12,7 +12,7 @@ Generalized version of `hann_window`.
 
 Where ``N`` is the window length.
 
-```julia
+```julia-repl
 julia> lineplot(hamming_window(100); width=30, height=10)
      ┌──────────────────────────────┐
    1 │⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⡠⠚⠉⠉⠉⠢⡄⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀│
@@ -78,7 +78,7 @@ Hann window function
 
 Where ``N`` is the window length.
 
-```julia
+```julia-repl
 julia> lineplot(hann_window(100); width=30, height=10)
      ┌──────────────────────────────┐
    1 │⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣠⠚⠉⠉⠉⠢⡀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀│

@@ -10,7 +10,7 @@ pass it an array whose gradient is of interest.
 There is also an overload for ForwardDiff.jl's `Dual` types (and arrays of them).
 
 # Examples
-```
+```julia-repl
 julia> using ForwardDiff, Zygote, NNlib
 
 julia> f_good(x) = if NNlib.within_gradient(x)
