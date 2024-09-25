@@ -808,7 +808,7 @@ tanh_fast(x::Number) = Base.tanh(x)
     sigmoid_fast(x)
 
 This is a faster, and very slightly less accurate, version of `sigmoid`.
-For `x::Float32, perhaps 3 times faster, and maximum errors 2 eps instead of 1.
+For `x::Float32`, perhaps 3 times faster, and maximum errors 2 eps instead of 1.
 
 See also [`tanh_fast`](@ref).
 
