@@ -23,7 +23,8 @@ function logaddexp(a, b)
 end
 
 """
-  add_blanks(z)
+    add_blanks(z)
+
 Adds blanks to the start and end of `z`, and between items in `z`
 """
 function add_blanks(z, blank)
