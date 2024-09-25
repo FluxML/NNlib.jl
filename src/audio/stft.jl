@@ -5,7 +5,7 @@
     ) where T <: Real
 
 Hamming window function
-(ref: https://en.wikipedia.org/wiki/Window_function#Hann_and_Hamming_windows).
+(ref: [Window function § Hann and Hamming windows - Wikipedia](https://en.wikipedia.org/wiki/Window_function#Hann_and_Hamming_windows)).
 Generalized version of `hann_window`.
 
 ``w[n] = \\alpha - \\beta \\cos(\\frac{2 \\pi n}{N - 1})``
@@ -72,7 +72,7 @@ end
     ) where T <: Real
 
 Hann window function
-(ref: https://en.wikipedia.org/wiki/Window_function#Hann_and_Hamming_windows).
+(ref: [Window function § Hann and Hamming windows - Wikipedia](https://en.wikipedia.org/wiki/Window_function#Hann_and_Hamming_windows)).
 
 ``w[n] = \\frac{1}{2}[1 - \\cos(\\frac{2 \\pi n}{N - 1})]``
 

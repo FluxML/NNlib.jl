@@ -4,7 +4,7 @@
         fmin::Float32 = 0f0, fmax::Float32 = Float32(sample_rate ÷ 2))
 
 Create triangular Mel scale filter banks
-(ref: https://en.wikipedia.org/wiki/Mel_scale).
+(ref: [Mel scale - Wikipedia](https://en.wikipedia.org/wiki/Mel_scale)).
 Each column is a filterbank that highlights its own frequency.
 
 # Arguments:
