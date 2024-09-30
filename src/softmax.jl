@@ -39,7 +39,7 @@ Note that, when used with Flux.jl, `softmax` must not be passed to layers like `
 which accept an activation function. The activation is broadcasted over the result,
 thus applies to individual numbers. But `softmax` always needs to see the whole column.
 
-```julia
+```julia-repl
 julia> using Flux
 
 julia> x = randn(Float32, 4, 4, 3, 13);

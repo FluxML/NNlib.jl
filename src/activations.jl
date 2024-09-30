@@ -31,7 +31,7 @@ The ascii name `sigmoid` is also exported.
 
 See also [`sigmoid_fast`](@ref).
 
-```
+```julia-repl
 julia> using UnicodePlots
 
 julia> lineplot(sigmoid, -5, 5, height=7)
@@ -63,7 +63,7 @@ const sigmoid = σ
 
 Piecewise linear approximation of [`sigmoid`](@ref).
 
-```
+```julia-repl
 julia> lineplot(hardsigmoid, -5, 5, height=7)
           ┌────────────────────────────────────────┐         
         1 │⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⡇⠀⠀⠀⠀⠀⠀⠀⢀⡠⠖⠋⠉⠉⠉⠉⠉⠉⠉⠉│ hardσ(x)
@@ -102,7 +102,7 @@ const hardsigmoid = hardσ
 
 Return `log(σ(x))` which is computed in a numerically stable way.
 
-```
+```julia-repl
 julia> lineplot(logsigmoid, -5, 5, height=7)
            ┌────────────────────────────────────────┐        
          0 │⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣀⡧⠤⠔⠒⠒⠒⠉⠉⠉⠉⠉⠉⠉⠉⠉⠉⠉⠉⠉⠉│ logσ(x)
@@ -128,7 +128,7 @@ Segment-wise linear approximation of `tanh`, much cheaper to compute.
 See ["Large Scale Machine Learning"](https://ronan.collobert.com/pub/matos/2004_phdthesis_lip6.pdf).
 
 See also [`tanh_fast`](@ref).
-```
+```julia-repl
 julia> lineplot(hardtanh, -2, 2, height=7)
            ┌────────────────────────────────────────┐            
          1 │⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⡇⠀⠀⠀⠀⠀⠀⣀⠔⠋⠉⠉⠉⠉⠉⠉⠉⠉⠉⠉│ hardtanh(x)
@@ -164,7 +164,7 @@ hardtanh(x) = clamp(x, oftype(x, -1), oftype(x, 1))  # clamp(x, -1, 1) is type-s
 [Rectified Linear Unit](https://en.wikipedia.org/wiki/Rectifier_(neural_networks))
 activation function.
 
-```
+```julia-repl
 julia> lineplot(relu, -2, 2, height=7)
           ┌────────────────────────────────────────┐        
         2 │⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⡇⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣀⠔⠋│ relu(x)
@@ -188,7 +188,7 @@ Leaky [Rectified Linear Unit](https://en.wikipedia.org/wiki/Rectifier_(neural_ne
 activation function.
 You can also specify the coefficient explicitly, e.g. `leakyrelu(x, 0.01)`.
 
-```julia
+```julia-repl
 julia> lineplot(x -> leakyrelu(x, 0.5), -2, 2, height=7)
            ┌────────────────────────────────────────┐       
          2 │⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⡇⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣀⠤⠒⠉│ #42(x)
@@ -220,7 +220,7 @@ const leakyrelu_a = 0.01  # also used in gradient below
 activation function capped at 6.
 See ["Convolutional Deep Belief Networks"](https://www.cs.toronto.edu/~kriz/conv-cifar10-aug2010.pdf) from CIFAR-10.
 
-```
+```julia-repl
 julia> lineplot(relu6, -10, 10, height=7)
           ┌────────────────────────────────────────┐         
         6 │⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⡇⠀⠀⠀⠀⠀⠀⠀⠀⠀⣀⠎⠉⠉⠉⠉⠉⠉⠉⠉│ relu6(x)
@@ -245,7 +245,7 @@ Randomized Leaky Rectified Linear Unit activation function.
 See ["Empirical Evaluation of Rectified Activations"](https://arxiv.org/abs/1505.00853)
 You can also specify the bound explicitly, e.g. `rrelu(x, 0.0, 1.0)`.
 
-```julia
+```julia-repl
 julia> lineplot(rrelu, -20, 10, height=7)
             ┌────────────────────────────────────────┐         
          10 │⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢸⠀⠀⠀⠀⠀⠀⠀⠀⠀⣀⡤⠖⠋│ rrelu(x)
@@ -275,7 +275,7 @@ Exponential Linear Unit activation function.
 See ["Fast and Accurate Deep Network Learning by Exponential Linear Units"](https://arxiv.org/abs/1511.07289).
 You can also specify the coefficient explicitly, e.g. `elu(x, 1)`.
 
-```
+```julia-repl
 julia> lineplot(elu, -2, 2, height=7)
            ┌────────────────────────────────────────┐       
          2 │⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⡇⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣀⠤⠒⠉│ elu(x)
@@ -305,7 +305,7 @@ deriv_elu(Ω, α=1) = ifelse(Ω ≥ 0, one(Ω), Ω + oftype(Ω, α))
 
 Activation function from ["Gaussian Error Linear Units"](https://arxiv.org/abs/1606.08415).
 
-```
+```julia-repl
 julia> lineplot(gelu, -2, 2, height=7)
            ┌────────────────────────────────────────┐        
          2 │⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⡇⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⡠⠔⠊│ gelu(x)
@@ -363,7 +363,7 @@ end
 Self-gated activation function.
 See ["Swish: a Self-Gated Activation Function"](https://arxiv.org/abs/1710.05941).
 
-```
+```julia-repl
 julia> lineplot(swish, -2, 2, height=7)
            ┌────────────────────────────────────────┐         
          2 │⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⡇⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣀⡤│ swish(x)
@@ -386,7 +386,7 @@ julia> lineplot(swish, -2, 2, height=7)
 Hard-Swish activation function.
 See ["Searching for MobileNetV3"](https://arxiv.org/abs/1905.02244).
 
-```
+```julia-repl
 julia> lineplot(hardswish, -2, 5, height = 7)
            ┌────────────────────────────────────────┐             
          5 │⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⡇⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣀⡤⠔⠒⠉│ hardswish(x)
@@ -430,7 +430,7 @@ deriv_hardswish(x) = ifelse(x < -3, oftf(x,0), ifelse(x > 3, oftf(x,1), x/3 + of
 Activation function from 
 ["LiSHT: Non-Parametric Linearly Scaled Hyperbolic Tangent ..."](https://arxiv.org/abs/1901.05894)
 
-```
+```julia-repl
 julia> lineplot(lisht, -2, 2, height=7)
           ┌────────────────────────────────────────┐         
         2 │⠢⣄⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⡇⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣀⠔│ lisht(x)
@@ -469,7 +469,7 @@ lisht(x) = x * tanh_fast(x)
 Scaled exponential linear units.
 See ["Self-Normalizing Neural Networks"](https://arxiv.org/abs/1706.02515).
 
-```
+```julia-repl
 julia> lineplot(selu, -3, 2, height=7)
            ┌────────────────────────────────────────┐        
          3 │⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⡇⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀│ selu(x)
@@ -507,7 +507,7 @@ end
 
 Activation function from ["Continuously Differentiable Exponential Linear Units"](https://arxiv.org/abs/1704.07483).
 
-```
+```julia-repl
 julia> lineplot(celu, -2, 2, height=7)
            ┌────────────────────────────────────────┐        
          2 │⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⡇⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣀⠤⠒⠉│ celu(x)
@@ -535,7 +535,7 @@ deriv_celu(Ω, α=1) = ifelse(Ω > 0, oftf(Ω, 1), Ω / oftf(Ω, α) + 1)
 Threshold gated rectified linear activation function.
 See ["Zero-bias autoencoders and the benefits of co-adapting features"](https://arxiv.org/abs/1402.3337)
 
-```
+```julia-repl
 julia> lineplot(trelu, -2, 4, height=7)
           ┌────────────────────────────────────────┐         
         4 │⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⡇⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣀⡤⠖⠋│ trelu(x)
@@ -559,7 +559,7 @@ const thresholdrelu = trelu
 
 See ["Quadratic Polynomials Learn Better Image Features"](http://www.iro.umontreal.ca/~lisa/publications2/index.php/attachments/single/205) (2009).
 
-```
+```julia-repl
 julia> lineplot(softsign, -5, 5, height=7)
            ┌────────────────────────────────────────┐            
          1 │⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⡇⠀⠀⠀⠀⠀⠀⠀⠀⠀⣀⣀⣀⣀⣀⠤⠤⠤⠤⠤│ softsign(x)
@@ -602,7 +602,7 @@ deriv_softsign(x) = 1 / (1 + abs(x))^2
 
 See ["Deep Sparse Rectifier Neural Networks"](http://proceedings.mlr.press/v15/glorot11a/glorot11a.pdf), JMLR 2011.
 
-```
+```julia-repl
 julia> lineplot(softplus, -3, 3, height=7)
           ┌────────────────────────────────────────┐            
         4 │⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⡇⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀│ softplus(x)
@@ -640,7 +640,7 @@ softplus(x) = log1p(exp(-abs(x))) + relu(x)
 
 Return `log(cosh(x))` which is computed in a numerically stable way.
 
-```
+```julia-repl
 julia> lineplot(logcosh, -5, 5, height=7)
           ┌────────────────────────────────────────┐           
         5 │⡀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⡇⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀│ logcosh(x)
@@ -664,7 +664,7 @@ const log2 = log(2)
 
 Activation function from ["Mish: A Self Regularized Non-Monotonic Neural Activation Function"](https://arxiv.org/abs/1908.08681).
 
-```
+```julia-repl
 julia> lineplot(mish, -5, 5, height=7)
            ┌────────────────────────────────────────┐        
          5 │⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⡇⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⡠⠖⠋│ mish(x)
@@ -686,7 +686,7 @@ mish(x) = x * tanh(softplus(x))
 
 See ["Tanhshrink Activation Function"](https://www.gabormelli.com/RKB/Tanhshrink_Activation_Function).
 
-```
+```julia-repl
 julia> lineplot(tanhshrink, -3, 3, height=7)
            ┌────────────────────────────────────────┐              
          3 │⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⡇⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀│ tanhshrink(x)
@@ -712,7 +712,7 @@ tanhshrink(x) = x - tanh_fast(x)
 
 See ["Softshrink Activation Function"](https://www.gabormelli.com/RKB/Softshrink_Activation_Function).
 
-```
+```julia-repl
 julia> lineplot(softshrink, -2, 2, height=7)
            ┌────────────────────────────────────────┐              
          2 │⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⡇⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣀│ softshrink(x)
@@ -770,7 +770,7 @@ For any other number types, it just calls `tanh`.
 
 See also [`sigmoid_fast`](@ref).
 
-```
+```julia-repl
 julia> tanh(0.5f0)
 0.46211717f0
 
@@ -808,11 +808,11 @@ tanh_fast(x::Number) = Base.tanh(x)
     sigmoid_fast(x)
 
 This is a faster, and very slightly less accurate, version of `sigmoid`.
-For `x::Float32, perhaps 3 times faster, and maximum errors 2 eps instead of 1.
+For `x::Float32`, perhaps 3 times faster, and maximum errors 2 eps instead of 1.
 
 See also [`tanh_fast`](@ref).
 
-```
+```julia-repl
 julia> sigmoid(0.2f0)
 0.54983395f0
 
