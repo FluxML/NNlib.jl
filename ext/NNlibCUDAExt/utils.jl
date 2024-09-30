@@ -34,3 +34,10 @@ function NNlib.reverse_indices(idx::AnyCuArray{<:Any,N}) where N
     NNlib.reverse_indices!(rev, idx)
     return map(cu, rev)
 end
+
+for op in (:conv!, :∇conv_data!, :∇conv_filter!, :depthwiseconv!, :∇depthwiseconv_data!, :∇depthwiseconv_filter!)
+    error_msg = "`$(op)` requires all arguments to support fast scalar indexing. You might be missing an `using cuDNN` or `import cuDNN` statement."
+    @eval function NNlib.special_scalar_indexing_error(::Val{$(Meta.quot(op))}, ::CUDA.AnyCuArray)
+        throw(AssertionError($(error_msg)))
+    end
+end
