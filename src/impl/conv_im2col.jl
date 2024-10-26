@@ -45,6 +45,10 @@ function conv_im2col!(
     N = channels_out(cdims)
     K = prod(kernel_size(cdims))*channels_in(cdims)
 
+    # Set BLAS threads to 1 since we are threading over BLAS calls
+    old_threads = BLAS.get_num_threads()
+    BLAS.set_num_threads(1)
+
     parts = Iterators.partition(axes(x, 5), ceil(Int, size(x, 5) / ntasks))
 
     @sync for (task_n, part) in enumerate(parts)
@@ -61,6 +65,10 @@ function conv_im2col!(
             end
         end
     end
+
+    # Restore BLAS threads
+    BLAS.set_num_threads(old_threads)
+
     return y
 end
 
@@ -150,6 +158,10 @@ function ∇conv_data_im2col!(
     N = prod(kernel_size(cdims))*channels_in(cdims)
     K = channels_out(cdims)
 
+    # Set BLAS threads to 1 since we are threading over BLAS calls
+    old_threads = BLAS.get_num_threads()
+    BLAS.set_num_threads(1)
+
     parts = Iterators.partition(axes(dx, 5), ceil(Int, size(dx, 5) / ntasks))
 
     @sync for (task_n, part) in enumerate(parts)
@@ -166,6 +178,10 @@ function ∇conv_data_im2col!(
             end
         end
     end
+
+    # Restore BLAS threads
+    BLAS.set_num_threads(old_threads)
+
     return dx
 end
 
