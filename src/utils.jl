@@ -162,3 +162,11 @@ if VERSION < v"1.7.0-DEV.793"
     end
 end
 
+function assert_all_fast_scalar_indexing(call::Val{C}, args::AbstractArray...) where {C}
+    if !all(ArrayInterface.fast_scalar_indexing, args)
+        foreach(Base.Fix1(special_scalar_indexing_error, call), args)
+        throw(AssertionError("`$(C)` requires all arguments to support fast scalar indexing"))
+    end
+end
+
+special_scalar_indexing_error(::Val, ::AbstractArray) = nothing

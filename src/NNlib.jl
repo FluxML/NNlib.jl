@@ -3,6 +3,7 @@ module NNlib
 import Atomix
 import ChainRulesCore: rrule
 
+using ArrayInterface: ArrayInterface
 using Base.Broadcast: broadcasted
 using Base.Threads
 using ChainRulesCore
