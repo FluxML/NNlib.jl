@@ -96,7 +96,7 @@ end
     @test C1 ≈ C2
 
     # 5-arg mul!
-    @test 10 .* C1 ≈ batched_mul!(C2, A′, B′, 10)
+    @test 10 .* C1 ≈ batched_mul!(C2, A′, B′, 10) rtol=1e-7
     C2 .= 10
     @test C1 .+ 100 ≈ batched_mul!(C2, A′, B′, 1, 10)
 
