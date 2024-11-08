@@ -25,7 +25,7 @@ By default, NNlib will print warnings the first time various slow fallback paths
 Calling `allowslow(false)` will instead make these into errors.
 """
 allowslow(flag::Bool) = (SLOWERROR[] = !flag; nothing)
-const SLOWERROR = Ref(true)
+const SLOWERROR = Ref(false)
 
 # Include APIs
 include("dim_helpers.jl")
