@@ -25,4 +25,3 @@ for CUDA support, or
 using NNlib, AMDGPU
 ```
 for AMDGPU support.
-
