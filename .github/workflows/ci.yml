@@ -29,8 +29,9 @@ jobs:
       matrix:
         version:
           # - '1.9' # uncomment when julia 1.10 is out
+          - 'lts'
           - '1'   # automatically expands to the latest stable 1.x release of Julia
-          - 'nightly'
+          - 'pre'
         os:
           - ubuntu-latest
           # - macOS-latest
