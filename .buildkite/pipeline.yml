@@ -1,7 +1,7 @@
 steps:
   - label: ":julia: Julia {{matrix.julia}} + CUDA GPU"
     plugins:
-      - JuliaCI/julia#v2:
+      - JuliaCI/julia#v1:
           version: "{{matrix.julia}}"
       - JuliaCI/julia-test#v1:
           test_args: "--quickfail"
@@ -32,7 +32,7 @@ steps:
 
   - label: ":julia: Julia 1 + AMD GPU"
     plugins:
-      - JuliaCI/julia#v2:
+      - JuliaCI/julia#v1:
           version: "lts"
       - JuliaCI/julia-test#v1:
           test_args: "--quickfail"
