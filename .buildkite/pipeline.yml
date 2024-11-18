@@ -23,7 +23,7 @@ steps:
     matrix:
       setup:
         julia:
-          - "lts"
+          - "1.10"
           - "nightly"
       adjustments:
         - with:
@@ -33,7 +33,7 @@ steps:
   - label: ":julia: Julia 1 + AMD GPU"
     plugins:
       - JuliaCI/julia#v1:
-          version: "lts"
+          version: "1.10"
       - JuliaCI/julia-test#v1:
           test_args: "--quickfail"
       - JuliaCI/julia-coverage#v1:
