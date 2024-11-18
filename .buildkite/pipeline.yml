@@ -1,7 +1,7 @@
 steps:
   - label: ":julia: Julia {{matrix.julia}} + CUDA GPU"
     plugins:
-      - JuliaCI/julia#v1:
+      - JuliaCI/julia#v2:
           version: "{{matrix.julia}}"
       - JuliaCI/julia-test#v1:
           test_args: "--quickfail"
@@ -23,8 +23,7 @@ steps:
     matrix:
       setup:
         julia:
-          # - "1.9" # uncomment when 1.10 is out
-          - "1"
+          - "lts"
           - "nightly"
       adjustments:
         - with:
@@ -33,8 +32,8 @@ steps:
 
   - label: ":julia: Julia 1 + AMD GPU"
     plugins:
-      - JuliaCI/julia#v1:
-          version: "1.10"
+      - JuliaCI/julia#v2:
+          version: "lts"
       - JuliaCI/julia-test#v1:
           test_args: "--quickfail"
       - JuliaCI/julia-coverage#v1:
