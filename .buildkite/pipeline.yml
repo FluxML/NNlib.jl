@@ -1,5 +1,7 @@
 steps:
   - label: ":julia: Julia {{matrix.julia}} + CUDA GPU"
+    command:
+      - echo 'CUDA = "052768ef-5323-5732-b1bb-66c8b64840ba"' >> test/Project.toml
     plugins:
       - JuliaCI/julia#v1:
           version: "{{matrix.julia}}"
