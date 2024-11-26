@@ -16,35 +16,35 @@ and a potential inverse of `unfold`.
 The below example demonstrates that `unfold` uses the same sliding windows as `conv`.
 In general [`batched_mul`](@ref) + `unfold` should not be used to achieve convolution.
 ```jldoctest
-julia> x = reshape([100 2 3 40 5 6 700], 7, 1, 1);  # 1D data, 1 channel, batch of 1
+julia> x = reshape(Float32[100 2 3 40 5 6 700], 7, 1, 1);  # 1D data, 1 channel, batch of 1
 
-julia> w = reshape([1 0 -1], 3, 1, 1);  # 1D conv kernel of length 3
+julia> w = reshape(Float32[1 0 -1], 3, 1, 1);  # 1D conv kernel of length 3
 
 julia> kws = (pad=1, stride=2, flipped=true);  # use same args for conv and unfold
 
 julia> z = NNlib.unfold(x, size(w); kws...)
-4×3×1 Array{Int64, 3}:
+4×3×1 Array{Float32, 3}:
 [:, :, 1] =
-  0  100   2
-  2    3  40
- 40    5   6
-  6  700   0
+  0.0  100.0   2.0
+  2.0    3.0  40.0
+ 40.0    5.0   6.0
+  6.0  700.0   0.0
 
 julia> y1 = conv(x, w; kws...)
-4×1×1 Array{Int64, 3}:
+4×1×1 Array{Float32, 3}:
 [:, :, 1] =
-  -2
- -38
-  34
-   6
+  -2.0
+ -38.0
+  34.0
+   6.0
 
 julia> y2 = z ⊠ w  # ⊠ (\\boxtimes) is NNlib.batched_mul
-4×1×1 Array{Int64, 3}:
+4×1×1 Array{Float32, 3}:
 [:, :, 1] =
-  -2
- -38
-  34
-   6
+  -2.0
+ -38.0
+  34.0
+   6.0
 ```
 """
 function unfold(x::AbstractArray{T, N}, kernel_size::NTuple{K}; stride = 1, pad = 0, dilation = 1, flipped = true) where {T, K, N}

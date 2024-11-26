@@ -191,6 +191,7 @@ for (front_name, backend, signature) in (
             if $(string(backend)) == "direct" && yT == Float64  # warn for Float32 + accidental Float64, but don't print warning for ForwardDiff.Dual
                 @warn string("Slow fallback implementation invoked for ", $(string(front_name)), "!  ",
                         "You probably don't want this; check your datatypes.") yT T1 T2 maxlog=1
+                SLOWERROR[] && error(string("calling slow fallback method for ", $(string(front_name))))
             end
 
             x_cs = Iterators.partition(1:size(in1, 4),
@@ -232,6 +233,7 @@ for (front_name, backend, signature) in (
             if $(string(backend)) == "direct" && yT == Float64  # warn for Float32 + accidental Float64, but don't print warning for ForwardDiff.Dual
                 @warn string("Slow fallback implementation invoked for ", $(string(front_name)), "!  ",
                         "You probably don't want this; check your datatypes.") yT T1 T2 maxlog=1
+                SLOWERROR[] && error(string("calling slow fallback method for ", $(string(front_name))))
             end
 
 
@@ -275,6 +277,7 @@ for (front_name, backend, signature) in (
             if $(string(backend)) == "direct" && yT == Float64  # warn for Float32 + accidental Float64, but don't print warning for ForwardDiff.Dual
                 @warn string("Slow fallback implementation invoked for ", $(string(front_name)), "!  ",
                         "You probably don't want this; check your datatypes.") yT T1 T2 maxlog=1
+                SLOWERROR[] && error(string("calling slow fallback method for ", $(string(front_name))))
             end
 
             dw_cs = Iterators.partition(1:size(out, 5),
@@ -326,6 +329,7 @@ for (front_name, backend, signature) in (
             if $(string(backend)) == "direct" && yT == Float64  # warn for Float32 + accidental Float64, but don't print warning for ForwardDiff.Dual
                 @warn string("Slow fallback implementation invoked for ", $(string(front_name)), "!  ",
                         "You probably don't want this; check your datatypes.") yT T1 T2 maxlog=1
+                SLOWERROR[] && error(string("calling slow fallback method for ", $(string(front_name))))
             end
             $(Symbol("$(front_name)_$(backend)!"))(out, in1, in2, cdims; kwargs...)
         end

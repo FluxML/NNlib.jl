@@ -303,3 +303,14 @@ FiniteDifferences.to_vec(x::BatchedTranspose) = FiniteDifferences.to_vec(collect
 
     gradtest(batched_vec, randn(rng, M, P, B), randn(rng, P))
 end
+
+@testset "warning / error" begin
+    prev = NNlib.SLOWERROR[]
+    NNlib.allowslow(true)
+    A = rand(1:99, 3,4,7)
+    B = rand(1:99, 4,5,7)
+    @test batched_mul(A, B) isa Array  # no error!
+    NNlib.allowslow(false)
+    @test_throws Exception batched_mul(A, B)
+    NNlib.SLOWERROR[] = prev
+end
