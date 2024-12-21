@@ -25,11 +25,11 @@ See [`stft`](@ref) for other arguments.
 Spectrogram in the shape `(T, F, B)`, where
 `T` is the number of window hops and `F = n_fft ÷ 2 + 1`.
 """
-function spectrogram(waveform;
+function spectrogram(waveform::AbstractArray{T};
     pad::Int = 0, n_fft::Int, hop_length::Int, window,
     center::Bool = true, power::Real = 2.0,
     normalized::Bool = false, window_normalized::Bool = false,
-)
+) where T
     pad > 0 && (waveform = pad_zeros(waveform, pad; dims=1);)
 
     # Pack batch dimensions.
@@ -41,8 +41,8 @@ function spectrogram(waveform;
     window_normalized && (spec = spec .* inv(norm(window));)
 
     if power > 0
-        p = eltype(waveform)(power)
-        spec = abs.(spec).^p
+        p = T(power)
+        spec = abs.(spec .+ eps(T)).^p
     end
     return spec
 end
