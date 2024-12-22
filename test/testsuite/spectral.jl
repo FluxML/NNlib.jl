@@ -110,8 +110,18 @@ function spectral_testsuite(Backend)
         spec = spectrogram(x;
             n_fft=1024, hop_length=128, window,
             center=true, normalized=false)
-
         @test abs.(y).^2 ≈ spec
+
+        # Gradient with `0`s in spectrogram.
+        # We add small ϵ to spectrogram before computing power
+        # to prevent `NaN` in gradient due to `abs(0)`.
+        x = device(ones(Float32, 1024))
+        g = Zygote.gradient(x) do x
+            sum(spectrogram(x;
+                n_fft=1024, hop_length=128, window,
+                center=true, normalized=false))
+        end
+        @test !any(isnan.(g[1]))
 
         # Batched.
         x = device(rand(Float32, 1024, 3))
