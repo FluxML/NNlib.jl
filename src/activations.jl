@@ -805,26 +805,41 @@ const deriv_telu_taylor_expansion = (tanh(1.0), 8*exp(1)^2 / (1+exp(1)^2)^2)
 # Various cutoffs for numerical evaluations of telu'(x)
 const sqrt_eps_f16, sqrt_eps_f32, sqrt_eps_f64 = sqrt(eps(Float16)), sqrt(eps(Float32)), sqrt(eps(Float64))
 const minus_log_cutoff_f16, minus_log_cutoff_f32, minus_log_cutoff_f64 = -log(sqrt_eps_f16), -log(sqrt_eps_f32), -log(sqrt_eps_f64) # positive cutoff to e.g. prevent `exp` from overflow
-@inline small_x_cutoff_deriv_telu(::Float16) = sqrt_eps_f16
-@inline small_x_cutoff_deriv_telu(::Float32) = sqrt_eps_f32
-@inline small_x_cutoff_deriv_telu(::Float64) = sqrt_eps_f64
-@inline small_x_cutoff_deriv_telu(::T) where T <: AbstractFloat = sqrt(eps(T))
-@inline minus_log_cutoff(::Float16) = minus_log_cutoff_f16
-@inline minus_log_cutoff(::Float32) = minus_log_cutoff_f32
-@inline minus_log_cutoff(::Float64) = minus_log_cutoff_f64
-@inline minus_log_cutoff(::T) where T <: AbstractFloat = -log(small_x_cutoff_deriv_telu(zero(T)))
 
-@inline function _deriv_telu_taylor_expansion(x::T) where {T <: Union{Float16, Float32, Float64}}
-    convert(T, deriv_telu_taylor_expansion[1]) + x * convert(T, deriv_telu_taylor_expansion[2])
+@inline function _deriv_telu_taylor_expansion(x::Float64)
+    deriv_telu_taylor_expansion[1] + x * deriv_telu_taylor_expansion[2]
+end
+
+@inline function _deriv_telu_taylor_expansion(x::Float32)
+    convert(Float32, deriv_telu_taylor_expansion[1]) + x * convert(Float32, deriv_telu_taylor_expansion[2])
+end
+
+@inline function _deriv_telu_taylor_expansion(x::Float16)
+    convert(Float16, deriv_telu_taylor_expansion[1]) + x * convert(Float16, deriv_telu_taylor_expansion[2])
 end
 
 @inline function _deriv_telu_taylor_expansion(x::T) where {T <: AbstractFloat}
     tanh(one(T)) + x * 8*exp(one(T))^2 / (one(T)+exp(one(T))^2)^2
 end
 
-function deriv_telu_fast(x, Ω)
-    ifelse(abs(x) < small_x_cutoff_deriv_telu(x), _deriv_telu_taylor_expansion(x), # if x is close to 0, return linear-order Taylor expansion
-           ifelse(x >= minus_log_cutoff(x), one(x), _deriv_telu_fast(x, Ω))) # cut off large x to prevent `exp(x)` overflow. This cutoff is good for all types (Float16, 32, 64) in terms of both preventing overflow and maintaining accuracy
+function deriv_telu_fast(x::Float64, Ω)
+    ifelse(abs(x) < sqrt_eps_f64, _deriv_telu_taylor_expansion(x), # if x is close to 0, return linear-order Taylor expansion
+           ifelse(x >= minus_log_cutoff_f64, one(x), _deriv_telu_fast(x, Ω))) # cut off large x to prevent `exp(x)` overflow.
+end
+
+function deriv_telu_fast(x::Float32, Ω)
+    ifelse(abs(x) < sqrt_eps_f32, _deriv_telu_taylor_expansion(x), # if x is close to 0, return linear-order Taylor expansion
+           ifelse(x >= minus_log_cutoff_f32, one(x), _deriv_telu_fast(x, Ω))) # cut off large x to prevent `exp(x)` overflow.
+end
+
+function deriv_telu_fast(x::Float16, Ω)
+    ifelse(abs(x) < sqrt_eps_f16, _deriv_telu_taylor_expansion(x), # if x is close to 0, return linear-order Taylor expansion
+           ifelse(x >= minus_log_cutoff_f16, one(x), _deriv_telu_fast(x, Ω))) # cut off large x to prevent `exp(x)` overflow.
+end
+
+function deriv_telu_fast(x::T, Ω) where T <: AbstractFloat
+    ifelse(abs(x) < sqrt(eps(T)), _deriv_telu_taylor_expansion(x), # if x is close to 0, return linear-order Taylor expansion
+           ifelse(x >= -log(sqrt(eps(T))), one(x), _deriv_telu_fast(x, Ω))) # cut off large x to prevent `exp(x)` overflow.
 end
 
 @inline function _deriv_telu_fast(x, Ω)
