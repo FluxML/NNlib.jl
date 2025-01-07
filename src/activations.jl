@@ -7,8 +7,8 @@ ACTIVATIONS = [
     :σ, :hardσ, :hardtanh, :relu,
     :leakyrelu, :relu6, :rrelu, :elu, :gelu, :swish, :hardswish, :selu,
     :celu, :softplus, :softsign, :logσ, :logcosh,
-    :mish, :tanhshrink, :softshrink, :trelu, :lisht,
-    :tanh_fast, :sigmoid_fast,
+    :mish, :tanhshrink, :softshrink, :trelu, :lisht, :telu,
+    :tanh_fast, :sigmoid_fast, :telu_fast
 ]
 
 # of type float (to allow for integer inputs)
@@ -749,6 +749,62 @@ function softshrink(x, λ = 0.5)
     ifelse(hi > 0, ifelse(lo < 0, zero(hi), lo), hi)
 end
 
+"""
+    telu(x) = x * tanh(exp(x))
+
+See e.g. ["TeLU Activation Function for Fast and Stable Deep Learning"](https://arxiv.org/abs/2412.20269).
+
+```julia-repl
+julia> lineplot(telu, -2, 2, height=7)
+           ┌────────────────────────────────────────┐        
+         2 │⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⡇⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣀⠤⠒⠉│ telu(x)
+           │⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⡇⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⡠⠔⠊⠉⠀⠀⠀⠀│        
+           │⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⡇⠀⠀⠀⠀⠀⠀⢀⡠⠔⠊⠁⠀⠀⠀⠀⠀⠀⠀⠀│        
+   f(x)    │⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⡇⠀⠀⣀⡤⠔⠊⠁⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀│        
+           │⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⣤⡤⡧⠶⠯⠥⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤│        
+           │⠒⠒⠒⠒⠒⠒⠒⠒⠒⠒⠒⠒⠒⠒⠒⠊⠉⠉⠀⠀⡇⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀│        
+        -1 │⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⡇⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀│        
+           └────────────────────────────────────────┘        
+           ⠀-2⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀2⠀        
+           ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀x⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀        
+
+julia> lineplot(telu, -5, 0, height=7)
+             ┌────────────────────────────────────────┐        
+           0 │⠤⠤⢄⣀⣀⡀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⡸│ telu(x)
+             │⠀⠀⠀⠀⠀⠈⠉⠉⠒⠒⠤⢄⣀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⠇│        
+             │⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠉⠓⠢⢄⣀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⡎⠀│        
+   f(x)      │⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠉⠒⢄⡀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⡜⠀⠀│        
+             │⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠈⠑⠦⣄⡀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⠎⠀⠀⠀│        
+             │⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠉⠒⠤⣀⡀⠀⠀⠀⣀⡤⠃⠀⠀⠀⠀│        
+        -0.4 │⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠉⠉⠉⠉⠁⠀⠀⠀⠀⠀⠀│        
+             └────────────────────────────────────────┘        
+             ⠀-5⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀0⠀        
+             ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀x⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀        
+
+```
+"""
+telu(x) = x * tanh(exp(x))
+
+"""
+    telu_fast(x)
+
+This is faster but less accruate version of `telu`. This function is associated with a hard-coded derivative,
+`deriv_telu_fast`, which is faster but less accurate that `deriv_telu`.
+    """
+telu_fast(x) = x * tanh_fast(exp(x))
+
+# Adapted from the Discourse post: <https://discourse.julialang.org/t/how-to-compute-tanhexp-telu-function-accurately/124464/7>
+function deriv_telu(x)
+    exp_x = exp(x)
+    tanh(exp_x) + 4x / (exp(exp_x - x/2) + exp(-exp_x - x/2))^2
+end
+
+function deriv_telu_fast(x)
+    tanh_exp_x = tanh(exp(x))
+    sech_exp_x_squared = 1 - tanh_exp_x^2
+    ifelse(x >= 4, one(x), tanh_exp_x + x * exp(x) * sech_exp_x_squared) # cut off large x to prevent `exp(x)` overflow. This cutoff is good for all types (Float16, 32, 64) in terms of both preventing overflow and maintaining accuracy
+end
+
 # Define broadcasts for activation functions on arrays
 for f in ACTIVATIONS
   @eval $(f)(x::AbstractArray, args...) = $(f).(x, args...)
@@ -888,9 +944,11 @@ UNARY_ACTS = [ # f, dfdx
     # mish
     (:tanhshrink,    :((x - Ω)^2)),
     (:softshrink,    :(Ω != 0)),
+    (:telu,          :(deriv_telu(x))),
     ## Fast variants are the same!
     (:tanh_fast,    :(conj(1 - Ω^2))),
     (:sigmoid_fast, :(conj(Ω * (1 - Ω)))),
+    (:telu_fast,    :(deriv_telu_fast(x)))
 ]
 
 for (f, dfdx) in UNARY_ACTS

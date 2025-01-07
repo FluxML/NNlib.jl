@@ -31,6 +31,8 @@ swish
 hardswish
 tanhshrink
 trelu
+telu
+telu_fast
 ```
 
 ## Attention 
