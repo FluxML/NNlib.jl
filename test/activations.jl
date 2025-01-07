@@ -214,7 +214,7 @@ end
 
 ## Faster variants
 
-using NNlib: tanh_fast, sigmoid_fast, telu_fast, deriv_telu, deriv_telu_fast
+using NNlib: tanh_fast, sigmoid_fast, telu_fast, deriv_telu, _deriv_telu_fast
 
 function countepsfrom(x::T, xtrue) where {T<:AbstractFloat}
     target = T(xtrue)
@@ -269,8 +269,8 @@ end
         mean_eps(telu, telu, x64) # 0.1146
         worst_eps(telu, telu, x64) # 2
 
-        @test mean_eps(telu_fast, telu, x64) < 0.13 # 0.12204
-        @test worst_eps(telu_fast, telu, x64) <= 3 # 2
+        @test mean_eps(telu_fast, telu, x64) < 0.14 # 0.1338
+        @test worst_eps(telu_fast, telu, x64) <= 4 # 3
 
         @test telu_fast.(xbig[1:end-1]) ≈ telu.(xbig[1:end-1])
         @test telu_fast.(-xbig[1:end-1]) ≈ telu.(-xbig[1:end-1])
@@ -279,11 +279,11 @@ end
         mean_eps(deriv_telu, deriv_telu, x64) # 0.09304
         worst_eps(deriv_telu, deriv_telu, x64) # 2
 
-        @test mean_eps(deriv_telu_fast, deriv_telu, x64) < 2.1 # 2.05944
-        @test worst_eps(deriv_telu_fast, deriv_telu, x64) <= 29 # 28
+        @test mean_eps(_deriv_telu_fast, deriv_telu, x64) < 4.1 # 4.06396
+        @test worst_eps(_deriv_telu_fast, deriv_telu, x64) <= 125 # 120
 
-        @test deriv_telu_fast.(xbig[1:end-1]) ≈ deriv_telu.(xbig[1:end-1])
-        @test deriv_telu_fast.(-xbig[1:end-1]) ≈ deriv_telu.(-xbig[1:end-1])
+        @test _deriv_telu_fast.(xbig[1:end-1]) ≈ deriv_telu.(xbig[1:end-1])
+        @test _deriv_telu_fast.(-xbig[1:end-1]) ≈ deriv_telu.(-xbig[1:end-1])
     end
 end
 
@@ -335,11 +335,11 @@ end
         mean_eps(deriv_telu, deriv_telu, x32) # 0.07228
         worst_eps(deriv_telu, deriv_telu, x32) # 1
 
-        @test mean_eps(deriv_telu_fast, deriv_telu, x32) < 0.69 # 0.68772
-        @test worst_eps(deriv_telu_fast, deriv_telu, x32) <= 11 # 10
+        @test mean_eps(_deriv_telu_fast, deriv_telu, x32) < 2.4 # 2.31772
+        @test worst_eps(_deriv_telu_fast, deriv_telu, x32) <= 70 # 66
 
-        @test deriv_telu_fast.(xbig32[1:end-1]) ≈ deriv_telu.(xbig32[1:end-1])
-        @test deriv_telu_fast.(-xbig32[1:end-1]) ≈ deriv_telu.(-xbig32[1:end-1])
+        @test _deriv_telu_fast.(xbig32[1:end-1]) ≈ deriv_telu.(xbig32[1:end-1])
+        @test _deriv_telu_fast.(-xbig32[1:end-1]) ≈ deriv_telu.(-xbig32[1:end-1])
     end
 end
 

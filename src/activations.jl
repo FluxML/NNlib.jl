@@ -791,7 +791,7 @@ telu(x) = x * tanh(exp(x))
 This is faster but less accruate version of `telu`. This function is associated with a hard-coded derivative,
 `deriv_telu_fast`, which is faster but less accurate that `deriv_telu`.
     """
-telu_fast(x) = x * tanh_fast(exp(x))
+telu_fast(x) = @fastmath x * tanh_fast(exp(x))
 
 # Adapted from the Discourse post: <https://discourse.julialang.org/t/how-to-compute-tanhexp-telu-function-accurately/124464/7>
 function deriv_telu(x)
@@ -799,11 +799,42 @@ function deriv_telu(x)
     tanh(exp_x) + 4x / (exp(exp_x - x/2) + exp(-exp_x - x/2))^2
 end
 
-function deriv_telu_fast(x)
-    tanh_exp_x = tanh(exp(x))
-    sech_exp_x_squared = 1 - tanh_exp_x^2
-    ifelse(x >= 4, one(x), tanh_exp_x + x * exp(x) * sech_exp_x_squared) # cut off large x to prevent `exp(x)` overflow. This cutoff is good for all types (Float16, 32, 64) in terms of both preventing overflow and maintaining accuracy
+# 0th and 1st order Taylor expansion for telu'(x) around x=0
+const deriv_telu_taylor_expansion = (tanh(1.0), 8*exp(1)^2 / (1+exp(1)^2)^2)
+
+# Various cutoffs for numerical evaluations of telu'(x)
+const sqrt_eps_f16, sqrt_eps_f32, sqrt_eps_f64 = sqrt(eps(Float16)), sqrt(eps(Float32)), sqrt(eps(Float64))
+const minus_log_cutoff_f16, minus_log_cutoff_f32, minus_log_cutoff_f64 = -log(sqrt_eps_f16), -log(sqrt_eps_f32), -log(sqrt_eps_f64) # positive cutoff to e.g. prevent `exp` from overflow
+@inline small_x_cutoff_deriv_telu(::Float16) = sqrt_eps_f16
+@inline small_x_cutoff_deriv_telu(::Float32) = sqrt_eps_f32
+@inline small_x_cutoff_deriv_telu(::Float64) = sqrt_eps_f64
+@inline small_x_cutoff_deriv_telu(::T) where T <: AbstractFloat = sqrt(eps(T))
+@inline minus_log_cutoff(::Float16) = minus_log_cutoff_f16
+@inline minus_log_cutoff(::Float32) = minus_log_cutoff_f32
+@inline minus_log_cutoff(::Float64) = minus_log_cutoff_f64
+@inline minus_log_cutoff(::T) where T <: AbstractFloat = -log(small_x_cutoff_deriv_telu(zero(T)))
+
+@inline function _deriv_telu_taylor_expansion(x::T) where {T <: Union{Float16, Float32, Float64}}
+    convert(T, deriv_telu_taylor_expansion[1]) + x * convert(T, deriv_telu_taylor_expansion[2])
 end
+
+@inline function _deriv_telu_taylor_expansion(x::T) where {T <: AbstractFloat}
+    tanh(one(T)) + x * 8*exp(one(T))^2 / (one(T)+exp(one(T))^2)^2
+end
+
+function deriv_telu_fast(x, Ω)
+    ifelse(abs(x) < small_x_cutoff_deriv_telu(x), _deriv_telu_taylor_expansion(x), # if x is close to 0, return linear-order Taylor expansion
+           ifelse(x >= minus_log_cutoff(x), one(x), _deriv_telu_fast(x, Ω))) # cut off large x to prevent `exp(x)` overflow. This cutoff is good for all types (Float16, 32, 64) in terms of both preventing overflow and maintaining accuracy
+end
+
+@inline function _deriv_telu_fast(x, Ω)
+    tanh_exp_x = Ω / x
+    sech_exp_x_squared = 1 - tanh_exp_x^2
+    tanh_exp_x + x * exp(x) * sech_exp_x_squared
+end
+
+# for testing accuracy
+_deriv_telu_fast(x) = deriv_telu_fast(x, telu_fast(x))
 
 # Define broadcasts for activation functions on arrays
 for f in ACTIVATIONS
@@ -948,7 +979,7 @@ UNARY_ACTS = [ # f, dfdx
     ## Fast variants are the same!
     (:tanh_fast,    :(conj(1 - Ω^2))),
     (:sigmoid_fast, :(conj(Ω * (1 - Ω)))),
-    (:telu_fast,    :(deriv_telu_fast(x)))
+    (:telu_fast,    :(deriv_telu_fast(x, Ω)))
 ]
 
 for (f, dfdx) in UNARY_ACTS
