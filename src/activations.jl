@@ -799,45 +799,11 @@ function deriv_telu(x)
     tanh(exp_x) + 4x / (exp(exp_x - x/2) + exp(-exp_x - x/2))^2
 end
 
-# 0th and 1st order Taylor expansion for telu'(x) around x=0
-const deriv_telu_taylor_expansion = (tanh(1.0), 8*exp(1)^2 / (1+exp(1)^2)^2)
-
-# Various cutoffs for numerical evaluations of telu'(x)
-const sqrt_eps_f16, sqrt_eps_f32, sqrt_eps_f64 = sqrt(eps(Float16)), sqrt(eps(Float32)), sqrt(eps(Float64))
-const minus_log_cutoff_f16, minus_log_cutoff_f32, minus_log_cutoff_f64 = -log(sqrt_eps_f16), -log(sqrt_eps_f32), -log(sqrt_eps_f64) # positive cutoff to e.g. prevent `exp` from overflow
-
-@inline function _deriv_telu_taylor_expansion(x::Float64)
-    deriv_telu_taylor_expansion[1] + x * deriv_telu_taylor_expansion[2]
-end
-
-@inline function _deriv_telu_taylor_expansion(x::Float32)
-    convert(Float32, deriv_telu_taylor_expansion[1]) + x * convert(Float32, deriv_telu_taylor_expansion[2])
-end
-
-@inline function _deriv_telu_taylor_expansion(x::Float16)
-    convert(Float16, deriv_telu_taylor_expansion[1]) + x * convert(Float16, deriv_telu_taylor_expansion[2])
-end
-
-@inline function _deriv_telu_taylor_expansion(x::T) where {T <: AbstractFloat}
+@inline function _deriv_telu_taylor_expansion(x::T) where T
     tanh(one(T)) + x * 8*exp(one(T))^2 / (one(T)+exp(one(T))^2)^2
 end
 
-function deriv_telu_fast(x::Float64, Ω)
-    ifelse(abs(x) < sqrt_eps_f64, _deriv_telu_taylor_expansion(x), # if x is close to 0, return linear-order Taylor expansion
-           ifelse(x >= minus_log_cutoff_f64, one(x), _deriv_telu_fast(x, Ω))) # cut off large x to prevent `exp(x)` overflow.
-end
-
-function deriv_telu_fast(x::Float32, Ω)
-    ifelse(abs(x) < sqrt_eps_f32, _deriv_telu_taylor_expansion(x), # if x is close to 0, return linear-order Taylor expansion
-           ifelse(x >= minus_log_cutoff_f32, one(x), _deriv_telu_fast(x, Ω))) # cut off large x to prevent `exp(x)` overflow.
-end
-
-function deriv_telu_fast(x::Float16, Ω)
-    ifelse(abs(x) < sqrt_eps_f16, _deriv_telu_taylor_expansion(x), # if x is close to 0, return linear-order Taylor expansion
-           ifelse(x >= minus_log_cutoff_f16, one(x), _deriv_telu_fast(x, Ω))) # cut off large x to prevent `exp(x)` overflow.
-end
-
-function deriv_telu_fast(x::T, Ω) where T <: AbstractFloat
+function deriv_telu_fast(x::T, Ω) where T
     ifelse(abs(x) < sqrt(eps(T)), _deriv_telu_taylor_expansion(x), # if x is close to 0, return linear-order Taylor expansion
            ifelse(x >= -log(sqrt(eps(T))), one(x), _deriv_telu_fast(x, Ω))) # cut off large x to prevent `exp(x)` overflow.
 end
