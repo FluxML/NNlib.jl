@@ -348,7 +348,7 @@ for conv in [:conv, :depthwiseconv]
             return (
                 NoTangent(),
                 @thunk($∇conv_data(Δ, w, cdims, kw...)),
-                @thunk($∇conv_filter(x, unthunk(Δ), cdims, kw...)),
+                @thunk($∇conv_filter(x, Δ, cdims, kw...)),
                 NoTangent(),
             )
         end
@@ -361,7 +361,7 @@ for conv in [:conv, :depthwiseconv]
             return (
                 NoTangent(),
                 @thunk($conv(Δ, w, cdims, kw...)),
-                @thunk($∇conv_filter(unthunk(Δ), x, cdims, kw...)),
+                @thunk($∇conv_filter(Δ, x, cdims, kw...)),
                 NoTangent(),
             )
         end
