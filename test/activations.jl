@@ -26,6 +26,7 @@ BINARY_ACTIVATIONS = filter(f -> hasmethod(f, Tuple{Float64, Float64}), ACTIVATI
 @test mish(0.0) == 0.0
 @test tanhshrink(0.0) == 0.0
 @test softshrink(0.0) == 0.0
+@test telu(0.0) == 0.0
 
 @test sigmoid(1.0) == 1.0 / (1.0 + exp(-1.0))
 @test hardsigmoid(1.0) == max(0,min(1, (1 + 3)/6))
@@ -48,6 +49,7 @@ BINARY_ACTIVATIONS = filter(f -> hasmethod(f, Tuple{Float64, Float64}), ACTIVATI
 @test mish(1.0) ≈ tanh(log(1.0 + exp(1.0)))
 @test tanhshrink(1.0) ≈ 0.23840584404423515
 @test softshrink(1.0) == 0.5
+@test telu(1.0) ≈ 0.99132891580059984
 
 @test sigmoid(-1.0) == exp(-1.0) / (1.0 + exp(-1.0))
 @test hardsigmoid(-1.0) == max(0,min(1,(-1+3)/6 ))
@@ -70,6 +72,7 @@ BINARY_ACTIVATIONS = filter(f -> hasmethod(f, Tuple{Float64, Float64}), ACTIVATI
 @test mish(-1.0) ≈ -tanh(log(1.0 + exp(-1.0)))
 @test tanhshrink(-1.0) ≈ -0.23840584404423515
 @test softshrink(-1.0) == -0.5
+@test telu(-1.0) ≈ -0.35213549054658698
 
 @testset "Float inference" begin
     @testset "$(a): " for a in ACTIVATION_FUNCTIONS
@@ -111,10 +114,10 @@ end
 
         # Ideally +-Inf would not lead to NaN, but perhaps
         # these aren't worth the complication of fixing:
-        a == softsign && continue
+        a in [softsign, telu] && continue
         @test !isnan(a(Inf32))
 
-        a in [gelu, swish, hardswish, logcosh, mish] && continue
+        a in [gelu, swish, hardswish, logcosh, mish, telu, telu_fast] && continue
         @test !isnan(a(-Inf32))
     end
 end
@@ -211,7 +214,7 @@ end
 
 ## Faster variants
 
-using NNlib: tanh_fast, sigmoid_fast
+using NNlib: tanh_fast, sigmoid_fast, telu_fast, deriv_telu, _deriv_telu_fast
 
 function countepsfrom(x::T, xtrue) where {T<:AbstractFloat}
     target = T(xtrue)
@@ -228,7 +231,7 @@ function find_worst(f, g, xs)
     c, xs[i]
 end
 
-@testset "tanh_fast & sigmoid_fast: Float64" begin
+@testset "tanh_fast, sigmoid_fast, telu_fast & deriv_telu_fast: Float64" begin
     
     x64 = 1e-6:1e-4:5
     xbig = vcat(6:3:200.0, 1000, 10^6, typemax(Float64))
@@ -262,9 +265,29 @@ end
         @test sigmoid_fast.(xbig) ≈ sigmoid.(xbig)
         @test sigmoid_fast.(-xbig) ≈ sigmoid.(-xbig)
     end
+    @testset "telu" begin
+        mean_eps(telu, telu, x64) # 0.1146
+        worst_eps(telu, telu, x64) # 2
+
+        @test mean_eps(telu_fast, telu, x64) < 0.14 # 0.1338
+        @test worst_eps(telu_fast, telu, x64) <= 4 # 3
+
+        @test telu_fast.(xbig[1:end-1]) ≈ telu.(xbig[1:end-1])
+        @test telu_fast.(-xbig[1:end-1]) ≈ telu.(-xbig[1:end-1])
+    end
+    @testset "deriv_telu" begin
+        mean_eps(deriv_telu, deriv_telu, x64) # 0.09304
+        worst_eps(deriv_telu, deriv_telu, x64) # 2
+
+        @test mean_eps(_deriv_telu_fast, deriv_telu, x64) < 4.1 # 4.06396
+        @test worst_eps(_deriv_telu_fast, deriv_telu, x64) <= 125 # 120
+
+        @test _deriv_telu_fast.(xbig[1:end-1]) ≈ deriv_telu.(xbig[1:end-1])
+        @test _deriv_telu_fast.(-xbig[1:end-1]) ≈ deriv_telu.(-xbig[1:end-1])
+    end
 end
 
-@testset "tanh_fast & sigmoid_fast: Float32" begin
+@testset "tanh_fast, sigmoid_fast, telu_fast & deriv_telu_fast: Float32" begin
     
     x32 = 1f-6:1f-4:5
     xbig32 = vcat(6:3:200f0, 1000, typemax(Float32))
@@ -297,6 +320,26 @@ end
 
         @test sigmoid_fast.(xbig32) ≈ sigmoid.(xbig32)
         @test sigmoid_fast.(-xbig32) ≈ sigmoid.(-xbig32)
+    end
+    @testset "telu" begin
+        mean_eps(telu, telu, x32) # 0.09418
+        worst_eps(telu, telu, x32) # 2
+
+        @test mean_eps(telu_fast, telu, x32) < 0.26 # 0.2555
+        @test worst_eps(telu_fast, telu, x32) <= 5 # 4
+
+        @test telu_fast.(xbig32[1:end-1]) ≈ telu.(xbig32[1:end-1])
+        @test telu_fast.(-xbig32[1:end-1]) ≈ telu.(-xbig32[1:end-1])
+    end
+    @testset "deriv_telu" begin
+        mean_eps(deriv_telu, deriv_telu, x32) # 0.07228
+        worst_eps(deriv_telu, deriv_telu, x32) # 1
+
+        @test mean_eps(_deriv_telu_fast, deriv_telu, x32) < 2.4 # 2.31772
+        @test worst_eps(_deriv_telu_fast, deriv_telu, x32) <= 70 # 66
+
+        @test _deriv_telu_fast.(xbig32[1:end-1]) ≈ deriv_telu.(xbig32[1:end-1])
+        @test _deriv_telu_fast.(-xbig32[1:end-1]) ≈ deriv_telu.(-xbig32[1:end-1])
     end
 end
 
