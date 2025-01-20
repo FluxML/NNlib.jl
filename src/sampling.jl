@@ -26,6 +26,7 @@ end
 
 """
     grid_sample(input::AbstractArray{T, 4}, grid::AbstractArray{T, 4}; padding_mode = :zeros)
+    grid_sample(input::AbstractArray{T, 5}, grid::AbstractArray{T, 4}; padding_mode = :zeros)
 
     Given `input`, compute output by sampling `input` values at pixel
     locations from `grid`. Uses bilinear interpolation to calculate output values.
@@ -36,14 +37,14 @@ end
 
     # Arguments
 
-    - `input`: Input array in `(W_in, H_in, C, N)` shape.
-    - `grid`: Input grid in `(2, W_out, H_out, N)` shape.
-        Where for each `(W_out, H_out, N)` grid contains `(x, y)`
+    - `input`: Input array in `(W_in, H_in, [D_in,] C, N)` shape.
+    - `grid`: Input grid in `(2, W_out, H_out, [D_out,] N)` shape.
+        Where for each `(W_out, H_out, [D_out,] N)` grid contains `(x, y [,z])`
         coordinates that specify sampling locations normalized by the `input` shape.
 
-        Therefore, `x` and `y` should have values in `[-1, 1]` range.
-        For example, `(x = -1, y = -1)` is the left-top pixel of `input`,
-        and `(x = 1, y = 1)` is the right-bottom pixel of `input`.
+        Therefore, `x`, `y` and [`z`] should have values in `[-1, 1]` range.
+        For example, `(x = -1, y = -1, [z = -1])` is the left-top[-front] pixel of `input`,
+        and `(x = 1, y = 1, [z = 1])` is the right-bottom-back pixel of `input`.
 
         Out-of-bound values are handled according to the `padding_mode`.
     - `padding_mode`: Out-of-bound padding.
@@ -53,7 +54,7 @@ end
 
     # Returns
 
-    `(W_out, H_out, C, N)` sampled grid from `input`.
+    `(W_out, H_out, [D_out,] C, N)` sampled grid from `input`.
 
     # Examples
 
