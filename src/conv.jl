@@ -343,12 +343,12 @@ for conv in [:conv, :depthwiseconv]
     conv_pullback, ∇conv_data_pullback = Symbol.([conv, ∇conv_data], :_pullback)
 
     @eval function rrule(::typeof($conv), x, w, cdims; kw...)
-        function $conv_pullback(Δ)
-            Δ = colmajor(Δ)
+        function $conv_pullback(Δraw)
+            Δ = colmajor(unthunk(Δraw))
             return (
                 NoTangent(),
-                @thunk($∇conv_data(unthunk(Δ), w, cdims, kw...)),
-                @thunk($∇conv_filter(x, unthunk(Δ), cdims, kw...)),
+                @thunk($∇conv_data(Δ, w, cdims, kw...)),
+                @thunk($∇conv_filter(x, Δ, cdims, kw...)),
                 NoTangent(),
             )
         end
@@ -356,12 +356,12 @@ for conv in [:conv, :depthwiseconv]
     end
 
     @eval function rrule(::typeof($∇conv_data), x, w, cdims; kw...)
-        function $∇conv_data_pullback(Δ)
-            Δ = colmajor(Δ)
+        function $∇conv_data_pullback(Δraw)
+            Δ = colmajor(unthunk(Δraw))
             return (
                 NoTangent(),
-                @thunk($conv(unthunk(Δ), w, cdims, kw...)),
-                @thunk($∇conv_filter(unthunk(Δ), x, cdims, kw...)),
+                @thunk($conv(Δ, w, cdims, kw...)),
+                @thunk($∇conv_filter(Δ, x, cdims, kw...)),
                 NoTangent(),
             )
         end
