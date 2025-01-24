@@ -86,7 +86,7 @@ end
 function ∇grid_sample_kernel!(n_elem, dx::AbstractArray{T, 5}, dgrid::AbstractArray{V, 5}, Δ::AbstractArray{T, 5}, input::AbstractArray{T, 5}, grid::AbstractArray{V, 5}, padding_mode) where {T,V}
     index = (threadIdx().x - 1) + (blockIdx().x - 1) * blockDim().x
     if index < n_elem
-        iW, iH, iC, _ = size(input)
+        iW, iH, iD, iC, _ = size(input)
         _, gW, gH, gD, _ = size(grid)
 
         w = index % gW + 1
