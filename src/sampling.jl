@@ -156,7 +156,7 @@ end
     se = (ix - ix_nw) * (iy - iy_nw)
     # ∀ channel: Calculate bilinear weighted pixel value.
     @inbounds for c in 1:iC
-        r = 0.0
+        r = zero(T)
         if in_bounds(iy_nw, ix_nw, iH, iW)
             r += input[ix_nw, iy_nw, c, n] * nw
         end
@@ -204,7 +204,7 @@ end
 
     # ∀ channel: Calculate trilinear weighted voxel value.
     @inbounds for c in 1:iC
-        r = 0.0
+        r = zero(T)
         if in_bounds(iy_nw, ix_nw, iz_nw, iH, iW, iD)
             r += input[ix_nw, iy_nw, iz_nw, c, n] * nw
         end
@@ -304,7 +304,7 @@ end
     sw = (ix_ne - ix) * (iy - iy_ne)
     se = (ix - ix_nw) * (iy - iy_nw)
     # ∀ channel: Calculate billinear weighted pixel value.
-    gix, giy = 0.0, 0.0
+    gix, giy = zero(V), zero(V)
     @inbounds for c in 1:iC
         g_out = Δ[w, h, c, n]
         # Calculate dx and dgrid partials.
@@ -378,7 +378,7 @@ end
     # abc are the index of the vertex of the cube (001,010...)
 
     # Initialize gradient accumulators
-    gix, giy, giz = 0.0, 0.0, 0.0
+    gix, giy, giz = zero(V), zero(V), zero(V)
     
     @inbounds for c in 1:iC
         g_out = Δ[w, h, d, c, n]
