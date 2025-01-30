@@ -97,17 +97,13 @@ end
     2.0  4.0
     ```
 """
-function grid_sample(input::AbstractArray{T, 4}, grid; padding_mode = :zeros) where T
-    _, _, iC, iN = size(input)
-    _, gW, gH, _ = size(grid)
-    output = similar(input, T, (gW, gH, iC, iN))
-    grid_sample!(output, input, grid, padding_mode)
-end
-
-function grid_sample(input::AbstractArray{T,5}, grid; padding_mode=:zeros) where {T}
-    _, _, _, iC, iN = size(input)  # Input dimensions: (width, height, depth, channels, batch)
-    _, gW, gH, gD, _ = size(grid)  # Grid dimensions: (3, width, height, depth, batch)
-    output = similar(input, T, (gW, gH, gD, iC, iN))  # Output dimensions: (width, height, depth, channels, batch)
+function grid_sample(input::AbstractArray{T,N}, grid; padding_mode = :zeros) where {T,N}
+    if N ∉ (4,5)
+        error("grid_sample is only supported for 4D and 5D arrays.") 
+    end
+    iC, iN = size(input)[end-1:end] 
+    output_size = size(grid)[2:end-1] # W_out, H_out, [D_out]
+    output = similar(input, T, (output_size..., iC, iN))
     grid_sample!(output, input, grid, padding_mode)
 end
 
@@ -253,7 +249,10 @@ end
 
 `dinput` (same shape as `input`) and `dgrid` (same shape as `grid`) gradients.
 """
-function ∇grid_sample(Δ::Union{AbstractArray{T,4}, AbstractArray{T,5}}, input::Union{AbstractArray{T,4}, AbstractArray{T,5}}, grid; padding_mode=:zeros) where {T}
+function ∇grid_sample(Δ::AbstractArray{T,N}, input::AbstractArray{T,N}, grid; padding_mode=:zeros) where {T, N}
+    if N ∉ (4,5)
+        error("∇grid_sample is only supported for 4D and 5D arrays.") 
+    end
     dx = zeros(T, size(input))
     dgrid = similar(grid)
     ∇grid_sample!(dx, dgrid, Δ, input, grid, padding_mode)
