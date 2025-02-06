@@ -15,6 +15,7 @@ using LinearAlgebra: AdjOrTransAbsMat, Adjoint, BlasFloat, Transpose
 using Random
 using Statistics
 using Statistics: mean
+using SpecialFunctions
 
 const Numeric = Union{AbstractArray{<:T}, T} where {T<:Number}
 
