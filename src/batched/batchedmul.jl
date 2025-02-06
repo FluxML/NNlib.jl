@@ -274,7 +274,10 @@ for (TA, fA) in _BATCHED_LIST, (TB, fB) in _BATCHED_LIST
 
         size(A, 3) == size(C, 3) || size(A, 3) == 1 || throw(DimensionMismatch("batch size mismatch: A != C"))
         size(B, 3) == size(C, 3) || size(B, 3) == 1 || throw(DimensionMismatch("batch size mismatch: B != C"))
-        @debug "calling fallback method for batched_mul!" typeof(A) size(A) typeof(B) size(B) typeof(C)
+        @warn "calling fallback method for batched_mul!" typeof(A) size(A) typeof(B) size(B) typeof(C) maxlog=1
+        if SLOWERROR[]
+            error("calling fallback method for batched_mul!")
+        end
 
         Abase, Bbase = _unbatch(A), _unbatch(B)
         sA, oA = size(A,3) == 1 ? (0,1) : (1,0)
