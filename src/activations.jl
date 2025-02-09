@@ -5,7 +5,7 @@
 
 ACTIVATIONS = [
     :σ, :hardσ, :hardtanh, :relu,
-    :leakyrelu, :relu6, :rrelu, :elu, :gelu, :gelu_fast, :swish, :hardswish, :selu,
+    :leakyrelu, :relu6, :rrelu, :elu, :gelu, :gelu_full, :swish, :hardswish, :selu,
     :celu, :softplus, :softsign, :logσ, :logcosh,
     :mish, :tanhshrink, :softshrink, :trelu, :lisht,
     :tanh_fast, :sigmoid_fast,
@@ -301,9 +301,9 @@ elu(x, α=1) = ifelse(x ≥ 0, float(x), @fastmath oftf(x, α) * (exp(x) - 1))
 deriv_elu(Ω, α=1) = ifelse(Ω ≥ 0, one(Ω), Ω + oftype(Ω, α))
 
 """
-    gelu(x) = xΦ(x) = 0.5x * (1 + erf(x/√2))
+    gelu(x) = 0.5x * (1 + tanh(√(2/π) * (x + 0.044715x^3)))
 
-Activation function from ["Gaussian Error Linear Units"](https://arxiv.org/abs/1606.08415).
+Activation function from ["Gaussian Error Linear Units"](https://arxiv.org/abs/1606.08415) (see also [`gelu_full`](@ref)).
 
 ```julia-repl
 julia> lineplot(gelu, -2, 2, height=7)
@@ -335,20 +335,7 @@ julia> lineplot!(ans, swish)
              ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀x⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀         
 ```
 """
-gelu(x) = x/2*(1 + erf(x/sqrt(oftf(x,2))))
-
-function deriv_gelu(x)
-    SQRT2 = sqrt(oftf(x,2))
-    Φ = (1 + erf(x/SQRT2))/2
-    Φ + x/SQRT2*exp(-(x^2)/2)/sqrt(oftf(x,π))
-end
-
-"""
-    gelu_fast(x) = 0.5x * (1 + tanh(√(2/π) * (x + 0.044715x^3)))
-
-Fast approximation of [`gelu`](@ref) activation function from ["Gaussian Error Linear Units"](https://arxiv.org/abs/1606.08415).
-"""
-function gelu_fast(x)
+function gelu(x)
     α = oftf(x, 0.044715)
     # λ = oftf(x, gelu_λ)
     # x/2 * (1 + tanh(λ * (x + α * x^3)))  # Standard implementation, for reference
@@ -359,7 +346,7 @@ end
 const gelu_λ = √(2 / π)
 const gelu_2λ = √(8 / π)
 
-function deriv_gelu_fast(x)
+function deriv_gelu(x)
     α = oftf(x, 0.044715)
     α2 = oftf(x, 0.08943)
     λλ = oftf(x, gelu_2λ)
@@ -368,6 +355,19 @@ function deriv_gelu_fast(x)
     Ω = sigmoid_fast(λλ * x * t)
     dσ = conj(Ω * (1 - Ω))
     muladd(dσ * λλ * muladd(x2, α2, t), x, Ω)
+end
+
+"""
+    gelu_full(x) = xΦ(x) = 0.5x * (1 + erf(x/√2))
+
+Activation function from ["Gaussian Error Linear Units"](https://arxiv.org/abs/1606.08415) without approximation.
+"""
+gelu_full(x) = x/2*(1 + erf(x/sqrt(oftf(x,2))))
+
+function deriv_gelu_full(x)
+    SQRT2 = sqrt(oftf(x,2))
+    Φ = (1 + erf(x/SQRT2))/2
+    Φ + x/SQRT2*exp(-(x^2)/2)/sqrt(oftf(x,π))
 end
 
 """
@@ -888,7 +888,7 @@ UNARY_ACTS = [ # f, dfdx
     # rrelu is random, can't write a rule.
     (:elu,          :(deriv_elu(Ω))),
     (:gelu,         :(deriv_gelu(x))),
-    (:gelu_fast,    :(deriv_gelu_fast(x))),
+    (:gelu_full,    :(deriv_gelu_full(x))),
     (:swish,        :(Ω + sigmoid_fast(x) * (1 - Ω))),
     (:hardswish,    :(deriv_hardswish(x))),
     # lisht

@@ -12,7 +12,7 @@ BINARY_ACTIVATIONS = filter(f -> hasmethod(f, Tuple{Float64, Float64}), ACTIVATI
 @test rrelu(0.0) == 0.0
 @test elu(0.0) == 0.0
 @test gelu(0.0) == 0.0
-@test gelu_fast(0.0) == 0.0
+@test gelu_full(0.0) == 0.0
 @test swish(0.0) == 0.0
 @test hardswish(0.0) == 0.0
 @test lisht(0.0) == 0.0
@@ -36,8 +36,8 @@ BINARY_ACTIVATIONS = filter(f -> hasmethod(f, Tuple{Float64, Float64}), ACTIVATI
 @test relu6(1.0) == 1.0
 @test rrelu(1.0) == 1.0
 @test elu(1.0) == 1.0
-@test gelu(1.0) == 0.8413447460685429
-@test gelu_fast(1.0) == 0.8411919906082768
+@test gelu(1.0) == 0.8411919906082768
+@test gelu_full(1.0) == 0.8413447460685429
 @test swish(1.0) == sigmoid(1.0)
 @test hardswish(1.0) == hardsigmoid(1.0)
 @test lisht(1.0) ≈ 1.0 * tanh(1.0)
@@ -59,8 +59,8 @@ BINARY_ACTIVATIONS = filter(f -> hasmethod(f, Tuple{Float64, Float64}), ACTIVATI
 @test relu6(-1.0) == 0.0
 @test -1/3.0 <= rrelu(-1.0) <= -1/8.0
 @test elu(-1.0) == exp(-1.0) - 1.0
-@test gelu(-1.0) == -0.15865525393145707
-@test gelu_fast(-1.0) ≈ -0.15880800939172324
+@test gelu(-1.0) ≈ -0.15880800939172324
+@test gelu_full(-1.0) == -0.15865525393145707
 @test swish(-1.0) == -sigmoid(-1.0)
 @test hardswish(-1.0) == -hardsigmoid(-1.0)
 @test lisht(-1.0) ≈ -1.0 * tanh(-1.0)
@@ -117,7 +117,7 @@ end
         a == softsign && continue
         @test !isnan(a(Inf32))
 
-        a in [gelu, gelu_fast, swish, hardswish, logcosh, mish] && continue
+        a in [gelu, gelu_full, swish, hardswish, logcosh, mish] && continue
         @test !isnan(a(-Inf32))
     end
 end
