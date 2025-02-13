@@ -10,6 +10,8 @@ Non-linearities that go between layers of your model. Note that, unless otherwis
 celu
 elu
 gelu
+gelu_tanh
+gelu_erf
 hardsigmoid
 sigmoid_fast
 hardtanh
