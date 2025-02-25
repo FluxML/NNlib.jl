@@ -361,24 +361,10 @@ end
     gelu_erf(x) = xΦ(x) = 0.5x * (1 + erf(x/√2))
 
 Activation function from ["Gaussian Error Linear Units"](https://arxiv.org/abs/1606.08415) without approximation.
+The SpecialFunctions.jl package needs to be loaded to use this function.
 """
-gelu_erf(x) = x/2*(1 + _erf(x/sqrt(oftf(x,2))))
-
-function deriv_gelu_erf(x)
-    SQRT2 = sqrt(oftf(x,2))
-    Φ = (1 + _erf(x/SQRT2))/2
-    Φ + x/SQRT2*exp(-(x^2)/2)/sqrt(oftf(x,π))
-end
-
-_erf(x::Number) = _erf(float(x))
-_erf(x::Float64) = ccall((:erf, libopenlibm), Float64, (Float64,), x)
-_erf(x::Float32) = ccall((:erff, libopenlibm), Float32, (Float32,), x)
-_erf(x::Float16) = Float16(_erf(Float32(x)))
-_erf(x::BigFloat) = begin
-    z = BigFloat(x)
-    ccall((:mpfr_erf, :libmpfr), Int32, (Ref{BigFloat}, Ref{BigFloat}, Int32), z, x, Base.MPFR.ROUNDING_MODE[])
-    return z
-end
+function gelu_erf end
+function deriv_gelu_erf end
 
 """
     gelu(x) = gelu_tanh(x)
