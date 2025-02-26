@@ -1,8 +1,7 @@
 module NNlibSpecialFunctionsExt
 
-using NNlib
-import NNlib: oftf
-using SpecialFunctions
+using NNlib: NNlib, oftf
+using SpecialFunctions: erf
 
 # Full gelu (gelu_erf)
 NNlib.gelu_erf(x) = x/2*(1 + erf(x/sqrt(oftf(x,2))))
