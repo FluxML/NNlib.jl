@@ -26,7 +26,7 @@ include("activations.jl")
 for f in ACTIVATIONS
     @eval export $(f)
 end
-export sigmoid, hardsigmoid, logsigmoid, thresholdrelu # Aliases
+export sigmoid, hardsigmoid, logsigmoid, thresholdrelu, gelu # Aliases
 
 include("attention.jl")
 export dot_product_attention, dot_product_attention_scores, make_causal_mask

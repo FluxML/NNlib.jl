@@ -373,7 +373,6 @@ Activation function from ["Gaussian Error Linear Units"](https://arxiv.org/abs/1
 See [`gelu_tanh`](@ref).
 """
 const gelu = gelu_tanh
-export gelu
 const deriv_gelu = deriv_gelu_tanh
 
 """
