@@ -5,7 +5,7 @@
 
 ACTIVATIONS = [
     :σ, :hardσ, :hardtanh, :relu,
-    :leakyrelu, :relu6, :rrelu, :elu, :gelu, :swish, :hardswish, :selu,
+    :leakyrelu, :relu6, :rrelu, :elu, :gelu_tanh, :gelu_erf, :swish, :hardswish, :selu,
     :celu, :softplus, :softsign, :logσ, :logcosh,
     :mish, :tanhshrink, :softshrink, :trelu, :lisht,
     :tanh_fast, :sigmoid_fast,
@@ -301,14 +301,14 @@ elu(x, α=1) = ifelse(x ≥ 0, float(x), @fastmath oftf(x, α) * (exp(x) - 1))
 deriv_elu(Ω, α=1) = ifelse(Ω ≥ 0, one(Ω), Ω + oftype(Ω, α))
 
 """
-    gelu(x) = 0.5x * (1 + tanh(√(2/π) * (x + 0.044715x^3)))
+    gelu_tanh(x) = 0.5x * (1 + tanh(√(2/π) * (x + 0.044715x^3)))
 
-Activation function from ["Gaussian Error Linear Units"](https://arxiv.org/abs/1606.08415).
+Activation function from ["Gaussian Error Linear Units"](https://arxiv.org/abs/1606.08415) using tanh approximation.
 
 ```julia-repl
-julia> lineplot(gelu, -2, 2, height=7)
+julia> lineplot(gelu_tanh, -2, 2, height=7)
            ┌────────────────────────────────────────┐        
-         2 │⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⡇⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⡠⠔⠊│ gelu(x)
+         2 │⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⡇⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⡠⠔⠊│ gelu_tanh(x)
            │⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⡇⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣀⠔⠊⠁⠀⠀⠀│        
            │⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⡇⠀⠀⠀⠀⠀⠀⠀⠀⣀⠤⠒⠉⠀⠀⠀⠀⠀⠀⠀│        
    f(x)    │⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⡇⠀⠀⠀⣀⡠⠤⠒⠉⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀│        
@@ -319,11 +319,11 @@ julia> lineplot(gelu, -2, 2, height=7)
            ⠀-2⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀2⠀        
            ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀x⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀        
 
-julia> lineplot(gelu, -5, 0, height=7);
+julia> lineplot(gelu_tanh, -5, 0, height=7);
 
 julia> lineplot!(ans, swish)
              ┌────────────────────────────────────────┐         
-           0 │⠉⠉⠉⠉⠉⠉⠉⠉⠉⠉⠉⠉⠉⠉⠉⠉⠉⠉⠒⠒⠤⣄⡀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢸│ gelu(x) 
+           0 │⠉⠉⠉⠉⠉⠉⠉⠉⠉⠉⠉⠉⠉⠉⠉⠉⠉⠉⠒⠒⠤⣄⡀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢸│ gelu_tanh(x) 
              │⠑⠒⠢⠤⣄⡀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠉⠓⢄⡀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⡇│ swish(x)
              │⠀⠀⠀⠀⠀⠈⠉⠒⠤⣀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠑⢆⡀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣸⠁│         
    f(x)      │⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠉⠒⢄⡀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠑⢄⠀⠀⠀⠀⠀⠀⠀⠀⢠⡇⠀│         
@@ -335,7 +335,7 @@ julia> lineplot!(ans, swish)
              ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀x⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀         
 ```
 """
-function gelu(x)
+function gelu_tanh(x)
     α = oftf(x, 0.044715)
     # λ = oftf(x, gelu_λ)
     # x/2 * (1 + tanh(λ * (x + α * x^3)))  # Standard implementation, for reference
@@ -346,7 +346,7 @@ end
 const gelu_λ = √(2 / π)
 const gelu_2λ = √(8 / π)
 
-function deriv_gelu(x)
+function deriv_gelu_tanh(x)
     α = oftf(x, 0.044715)
     α2 = oftf(x, 0.08943)
     λλ = oftf(x, gelu_2λ)
@@ -356,6 +356,24 @@ function deriv_gelu(x)
     dσ = conj(Ω * (1 - Ω))
     muladd(dσ * λλ * muladd(x2, α2, t), x, Ω)
 end
+
+"""
+    gelu_erf(x) = xΦ(x) = 0.5x * (1 + erf(x/√2))
+
+Activation function from ["Gaussian Error Linear Units"](https://arxiv.org/abs/1606.08415) without approximation.
+The SpecialFunctions.jl package needs to be loaded to use this function.
+"""
+function gelu_erf end
+function deriv_gelu_erf end
+
+"""
+    gelu(x) = gelu_tanh(x)
+
+Activation function from ["Gaussian Error Linear Units"](https://arxiv.org/abs/1606.08415). 
+See [`gelu_tanh`](@ref).
+"""
+const gelu = gelu_tanh
+const deriv_gelu = deriv_gelu_tanh
 
 """
     swish(x) = x * σ(x)
@@ -874,7 +892,8 @@ UNARY_ACTS = [ # f, dfdx
     (:relu6,        :((Ω>0) & (Ω<6))),
     # rrelu is random, can't write a rule.
     (:elu,          :(deriv_elu(Ω))),
-    (:gelu,         :(deriv_gelu(x))),
+    (:gelu_tanh,    :(deriv_gelu_tanh(x))),
+    (:gelu_erf,     :(deriv_gelu_erf(x))),
     (:swish,        :(Ω + sigmoid_fast(x) * (1 - Ω))),
     (:hardswish,    :(deriv_hardswish(x))),
     # lisht

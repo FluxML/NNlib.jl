@@ -16,6 +16,7 @@ using KernelAbstractions
 using FFTW
 import ReverseDiff as RD        # used in `pooling.jl`
 import Pkg
+using SpecialFunctions
 
 const Test_Enzyme = VERSION <= v"1.10-"
 
