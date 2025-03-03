@@ -373,6 +373,9 @@ Activation function from ["Gaussian Error Linear Units"](https://arxiv.org/abs/1
 See [`gelu_tanh`](@ref).
 """
 const gelu = gelu_tanh
+# Need to alias the type as well to ensure serialization libraries still work
+# See https://github.com/FluxML/NNlib.jl/issues/631
+const var"#gelu" = typeof(gelu_tanh)
 const deriv_gelu = deriv_gelu_tanh
 
 """
