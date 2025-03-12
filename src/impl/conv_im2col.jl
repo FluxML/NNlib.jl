@@ -47,19 +47,25 @@ function conv_im2col!(
 
     parts = Iterators.partition(axes(x, 5), ceil(Int, size(x, 5) / ntasks))
 
-    @sync for (task_n, part) in enumerate(parts)
-        Threads.@spawn begin
-            col_slice = col_slice = view(col, :, :, task_n) # col_slice is a task-local workspace
-            for batch_idx in part
-                im2col!(col_slice, view(x, :, :, :, :, batch_idx), cdims)
-                GC.@preserve col_slice w y begin
-                    col_ptr = pointer(col_slice)
-                    w_ptr = pointer(w)
-                    y_ptr = pointer(y, (batch_idx - 1)*M*N + 1)
-                    gemm!(Val(false), Val(false), M, N, K, alpha, col_ptr, w_ptr, beta, y_ptr)
-                end
+    function do_work(task_n, part)
+        col_slice = col_slice = view(col, :, :, task_n) # col_slice is a task-local workspace
+        for batch_idx in part
+            im2col!(col_slice, view(x, :, :, :, :, batch_idx), cdims)
+            GC.@preserve col_slice w y begin
+                col_ptr = pointer(col_slice)
+                w_ptr = pointer(w)
+                y_ptr = pointer(y, (batch_idx - 1)*M*N + 1)
+                gemm!(Val(false), Val(false), M, N, K, alpha, col_ptr, w_ptr, beta, y_ptr)
             end
         end
+    end
+
+    if length(parts) > 1
+        @sync for (task_n, part) in enumerate(parts)
+            Threads.@spawn do_work(task_n, part)
+        end
+    else
+        do_work(1, first(parts))
     end
     return y
 end
@@ -152,19 +158,24 @@ function ∇conv_data_im2col!(
 
     parts = Iterators.partition(axes(dx, 5), ceil(Int, size(dx, 5) / ntasks))
 
-    @sync for (task_n, part) in enumerate(parts)
-        Threads.@spawn begin
-            col_slice = col_slice = view(col, :, :, task_n) # col_slice is a task-local workspace
-            for batch_idx in part
-                GC.@preserve col_slice w dy begin
-                    dy_ptr = pointer(dy, (batch_idx - 1)*M*K + 1)
-                    w_ptr = pointer(w)
-                    col_ptr = pointer(col_slice)
-                    gemm!(Val(false), Val(true), M, N, K, alpha, dy_ptr, w_ptr, T(0), col_ptr)
-                end
-                col2im!(view(dx, :, :, :, :, batch_idx), col_slice, cdims, beta)
+    function do_work(task_n, part)
+        col_slice = col_slice = view(col, :, :, task_n) # col_slice is a task-local workspace
+        for batch_idx in part
+            GC.@preserve col_slice w dy begin
+                dy_ptr = pointer(dy, (batch_idx - 1)*M*K + 1)
+                w_ptr = pointer(w)
+                col_ptr = pointer(col_slice)
+                gemm!(Val(false), Val(true), M, N, K, alpha, dy_ptr, w_ptr, T(0), col_ptr)
             end
+            col2im!(view(dx, :, :, :, :, batch_idx), col_slice, cdims, beta)
         end
+    end
+    if length(parts) > 1
+        @sync for (task_n, part) in enumerate(parts)
+            Threads.@spawn do_work(task_n, part)
+        end
+    else
+        do_work(1, first(parts))
     end
     return dx
 end
