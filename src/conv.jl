@@ -307,11 +307,11 @@ for (front_name, backend, signature) in (
             function do_work(wc, xc, yc)
                 x = @view in1[ntuple(i -> i == 4 ? xc : Colon(), 5)...]
                 dy = @view in2[ntuple(i -> i == 4 ? yc : Colon(), 5)...]
-                length(yc) == length(yc) || error("Inconsistent dimensions") # TODO: remove this check
                 dw = @view out[ntuple(i -> i == 5 ? wc : Colon(), 5)...]
                 $(Symbol("$(front_name)_$(backend)!"))(dw, x, dy, cdims2; kwargs...)
             end
 
+            length(dy_cs) >= length(dw_cs) || error("Inconsistent dimensions") # TODO: remove this check
             if length(dw_cs) > 1
                 Threads.@sync for (wc, xc, yc) in zip(dw_cs, x_cs, dy_cs)
                     Threads.@spawn do_work(wc, xc, yc)
