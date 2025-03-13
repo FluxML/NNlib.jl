@@ -98,6 +98,22 @@ NNlib.unfold
 NNlib.fold
 ```
 
+## Normalization
+
+These roughly correspond to Flux's `*Norm` layers.
+<!-- `Flux`'s `*Norm` layers use `NNlib.*norm` and helper functionality such as `NNlib.RunningStats` internally. -->
+
+```@docs
+NNlib.layernorm
+NNlib.batchnorm
+NNlib.instancenorm
+NNlib.groupnorm
+NNlib.norm_stats
+NNlib.norm_helper
+NNlib.RunningStats
+NNlib.update_running_stats!
+```
+
 ## Upsampling
 
 `Flux`'s `Upsample` layer uses `NNlib.upsample_nearest`, `NNlib.upsample_bilinear`, and `NNlib.upsample_trilinear` as its backend. Additionally, `Flux`'s `PixelShuffle` layer uses `NNlib.pixel_shuffle` as its backend.
