@@ -13,3 +13,12 @@ for CUDA support, or
 using NNlib, AMDGPU
 ```
 for AMDGPU support.
+
+## Threading
+
+Various `NNlib` functions utilize available julia threads on divisible workloads. To disable this use
+the `ScopedValue`-backed switch `NNlib.@disallow_spawns`
+i.e.
+```julia
+NNlib.@disallow_spawns function_that_uses_nnlib()
+```

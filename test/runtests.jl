@@ -81,6 +81,15 @@ end
 
             nnlib_testsuite(CPU)
 
+            if Threads.nthreads(:default) > 1
+                @test NNlib.should_use_spawn()
+                NNlib.@disallow_spawns begin
+                    @test NNlib.should_use_spawn() == false
+                end
+            else
+                @test NNlib.should_use_spawn() == false
+            end
+
             @testset "Activation Functions" begin
                 include("activations.jl")
                 include("bias_act.jl")

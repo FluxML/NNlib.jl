@@ -305,7 +305,7 @@ ddims(x) = dropdims(x, dims=(ndims(x)-1, ndims(x)))
                 end
             end
 
-            # Test all in-place implementations/interfaces 
+            # Test all in-place implementations/interfaces
             convs = [NNlib.conv!, NNlib.conv_im2col!, NNlib.conv_direct!,]
             for conv! in convs
                 α, β = 2e0, -1e0
@@ -393,12 +393,12 @@ ddims(x) = dropdims(x, dims=(ndims(x)-1, ndims(x)))
             for beta in (-2.0, -1.0, 0.0, 0.5, 1.0, 2.0)
                 cache_dx, cache_dy, cache_w = ([0.17;;; 0.19;;; 0.23], [0.11;;; 0.13;;; 0.15], [1.0;;;])
                 dx_old = copy(cache_dx)
-                cdims = DenseConvDims(cache_dx, cache_w)            
+                cdims = DenseConvDims(cache_dx, cache_w)
                 NNlib.∇conv_data_im2col!(cache_dx, cache_dy, cache_w, cdims; alpha=1.0, beta)
                 @test isapprox(cache_dx, dx_old * beta + cache_dy, rtol = 1.0e-7)
             end
 
-            # Test all in-place implementations/interfaces 
+            # Test all in-place implementations/interfaces
             for (∇conv_filter!, ∇conv_data!) in (
                     (NNlib.∇conv_filter!,        NNlib.∇conv_data!),
                     (NNlib.∇conv_filter_im2col!, NNlib.∇conv_data_im2col!),
@@ -411,14 +411,14 @@ ddims(x) = dropdims(x, dims=(ndims(x)-1, ndims(x)))
                     # First, your basic convolution with no parameters
                     cdims = DenseConvDims(x, w)
                     dy = NNlib.conv(x, w, cdims)
-                    @test isapprox(ddims(∇conv_filter!(copy(w), x, dy, cdims; alpha=α, beta=β)), α*dw + β*w, rtol = 1.0e-7) 
+                    @test isapprox(ddims(∇conv_filter!(copy(w), x, dy, cdims; alpha=α, beta=β)), α*dw + β*w, rtol = 1.0e-7)
                     @test isapprox(ddims(∇conv_data!(copy(x), dy, w,   cdims; alpha=α, beta=β)), α*dx + β*x, rtol = 1.0e-7)
 
                     # Next, test convolution on views and alternate datatypes:
-                    @test isapprox(ddims(∇conv_filter!(copy(w), x, view(dy, repeat([:], ndims(dy))...), cdims; alpha=α, beta=β)), α*dw + β*w, rtol = 1.0e-7) 
+                    @test isapprox(ddims(∇conv_filter!(copy(w), x, view(dy, repeat([:], ndims(dy))...), cdims; alpha=α, beta=β)), α*dw + β*w, rtol = 1.0e-7)
                     @test isapprox(ddims(∇conv_data!(copy(x), view(dy, repeat([:], ndims(dy))...), w,   cdims; alpha=α, beta=β)), α*dx + β*x, rtol = 1.0e-7)
 
-                    @test isapprox(ddims(∇conv_filter!(Float32.(copy(w)), Float32.(x), Float32.(dy), cdims; alpha=Float32(α), beta=Float32(β))), α*dw + β*w, rtol = 1.0e-7) 
+                    @test isapprox(ddims(∇conv_filter!(Float32.(copy(w)), Float32.(x), Float32.(dy), cdims; alpha=Float32(α), beta=Float32(β))), α*dw + β*w, rtol = 1.0e-7)
                     @test isapprox(ddims(∇conv_data!(Float32.(copy(x)), Float32.(dy),  Float32.(w),  cdims; alpha=Float32(α), beta=Float32(β))), α*dx + β*x, rtol = 1.0e-7)
 
                     # Next, introduce stride:
@@ -432,19 +432,19 @@ ddims(x) = dropdims(x, dims=(ndims(x)-1, ndims(x)))
                     cdims = DenseConvDims(x, w; dilation=2)
                     dy = NNlib.conv(x, w, cdims)
                     flag_ = ∇conv_data! == NNlib.∇conv_data_direct! && rank == 3
-                    @test isapprox(ddims(∇conv_filter!(copy(w), x, dy, cdims; alpha=α, beta=β)), α*dw_dil + β*w, rtol = 1.0e-7) 
+                    @test isapprox(ddims(∇conv_filter!(copy(w), x, dy, cdims; alpha=α, beta=β)), α*dw_dil + β*w, rtol = 1.0e-7)
                     @test isapprox(ddims(∇conv_data!(copy(x), dy, w,   cdims; alpha=α, beta=β)), α*dx_dil + β*x, rtol = 1.0e-7) broken=flag_
 
                     # Next, introduce padding:
                     cdims = DenseConvDims(x, w; padding=1)
                     dy = NNlib.conv(x, w, cdims)
-                    @test isapprox(ddims(∇conv_filter!(copy(w), x, dy, cdims; alpha=α, beta=β)), α*dw_pad + β*w, rtol = 1.0e-7) 
+                    @test isapprox(ddims(∇conv_filter!(copy(w), x, dy, cdims; alpha=α, beta=β)), α*dw_pad + β*w, rtol = 1.0e-7)
                     @test isapprox(ddims(∇conv_data!(copy(x), dy, w,   cdims; alpha=α, beta=β)), α*dx_pad + β*x, rtol = 1.0e-7)
 
                     # Next, test crosscor/conv with a flipped kernel
                     cdims = DenseConvDims(x, w; flipkernel=true)
                     dy = NNlib.conv(x, w, cdims)
-                    @test isapprox(ddims(∇conv_filter!(copy(w), x, dy, cdims; alpha=α, beta=β)), α*dw_flip + β*w, rtol = 1.0e-7) 
+                    @test isapprox(ddims(∇conv_filter!(copy(w), x, dy, cdims; alpha=α, beta=β)), α*dw_flip + β*w, rtol = 1.0e-7)
                     @test isapprox(ddims(∇conv_data!(copy(x), dy, w,   cdims; alpha=α, beta=β)), α*dx_flip + β*x, rtol = 1.0e-7)
                 end
             end
@@ -856,22 +856,22 @@ end
     struct MyFloat <: Real
         set::Set{Float32}
     end
-    
+
     # Test that direct indexing fails when undefined.
     v = Array{MyFloat}(undef, 3)
     @test_throws UndefRefError v[1]
-    
+
     # Define minimal set of functions required for conv_direct!
     MyFloat(x::MyFloat) = x
     MyFloat(x::Real) = MyFloat(Set(Float32(x)))
-    
+
     Base.:+(x::MyFloat, y::MyFloat) = MyFloat(only(x.set) + only(y.set))
     Base.:*(x::MyFloat, y::MyFloat) = MyFloat(only(x.set) * only(y.set))
     Base.promote_rule(::Type{MyFloat}, ::Type{Float32})   = MyFloat
     Base.rand(::AbstractRNG, ::SamplerType{MyFloat}) = MyFloat(rand(Float32))
     Base.zero(::MyFloat) = MyFloat(zero(Float32))
     Base.zero(::Type{MyFloat}) = MyFloat(zero(Float32))
-    
+
     # Test conv_direct!
     x_size = (6, 7, 8, 5, 3)
     y_size = (5, 6, 7, 4, 3)
@@ -913,7 +913,7 @@ end
 @testset "EnzymeRules: conv! spatial_rank=$spatial_rank" for spatial_rank in (1, 2, 3)
   x = rand(rng, repeat([5], spatial_rank)..., 3, 2)
   w = rand(rng, repeat([3], spatial_rank)..., 3, 3)
-  
+
   cdims = DenseConvDims(x, w)
 
   curconv = conv
@@ -935,7 +935,7 @@ end
   x = rand(rng, repeat([5], spatial_rank)..., 3, 2)
   w = rand(rng, repeat([3], spatial_rank)..., 3, 3)
   y = conv(x, w, cdims)
-  
+
   cdims = DenseConvDims(x, w)
 
   curconv = ∇conv_data
@@ -957,7 +957,7 @@ end
   x = rand(rng, repeat([5], spatial_rank)..., 3, 2)
   w = rand(rng, repeat([3], spatial_rank)..., 3, 3)
   y = conv(x, w, cdims)
-  
+
   cdims = DenseConvDims(x, w)
 
   curconv = ∇conv_filter
@@ -978,7 +978,7 @@ end
 @testset "EnzymeRules: depthwiseconv! spatial_rank=$spatial_rank" for spatial_rank in (1, 2, 3)
   x = rand(rng, repeat([5], spatial_rank)..., 3, 2)
   w = rand(rng, repeat([3], spatial_rank)..., 3, 3)
-  
+
   cdims = DepthwiseConvDims(x, w)
 
   curconv = depthwiseconv

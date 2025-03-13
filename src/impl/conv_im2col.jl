@@ -60,7 +60,7 @@ function conv_im2col!(
         end
     end
 
-    if ALLOW_THREADING[] && length(parts) > 1
+    if should_use_spawn() && length(parts) > 1
         @sync for (task_n, part) in enumerate(parts)
             Threads.@spawn do_work(task_n, part)
         end
@@ -172,7 +172,7 @@ function ∇conv_data_im2col!(
             col2im!(view(dx, :, :, :, :, batch_idx), col_slice, cdims, beta)
         end
     end
-    if ALLOW_THREADING[] && length(parts) > 1
+    if should_use_spawn() && length(parts) > 1
         @sync for (task_n, part) in enumerate(parts)
             Threads.@spawn do_work(task_n, part)
         end

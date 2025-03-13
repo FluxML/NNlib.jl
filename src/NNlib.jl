@@ -13,12 +13,26 @@ using LinearAlgebra
 using LinearAlgebra.BLAS: @blasfunc, BlasInt
 using LinearAlgebra: AdjOrTransAbsMat, Adjoint, BlasFloat, Transpose
 using Random
+using ScopedValues
 using Statistics
 using Statistics: mean
 
 const Numeric = Union{AbstractArray{<:T}, T} where {T<:Number}
 
-const ALLOW_THREADING = Ref{Bool}(true)
+const ALLOW_SPAWNS = ScopedValue(true)
+should_use_spawn() = Threads.nthreads(:default) > 1 && ALLOW_SPAWNS[]
+"""
+    @disallow_spawns ex
+
+Disallow NNlib to use `@spawn` on divisible workloads. i.e. within `conv` etc.
+"""
+macro disallow_spawns(ex)
+    quote
+        with(ALLOW_SPAWNS => false) do
+            $(esc(ex))
+        end
+    end
+end
 
 # Include APIs
 include("dim_helpers.jl")
