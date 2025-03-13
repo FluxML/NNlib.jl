@@ -125,12 +125,14 @@ for (gemm, elt) in gemm_datatype_mappings
                             max(1,Base.stride(C,2)))
                     end
                 end
-                if length(parts) > 1
+                if ALLOW_THREADING[] && length(parts) > 1
                     Threads.@sync for ks in parts
                         Threads.@spawn do_work(ks)
                     end
                 else
-                    do_work(first(parts))
+                    for ks in parts
+                        do_work(ks)
+                    end
                 end
                 set_num_threads(old_threads)
 

@@ -47,12 +47,14 @@ function depthwiseconv_im2col!(
             end
         end
     end
-    if length(parts) > 1
+    if ALLOW_THREADING[] && length(parts) > 1
         @sync for (task_n, part) in enumerate(parts)
             Threads.@spawn do_work(task_n, part)
         end
     else
-        do_work(1, first(parts))
+        for (task_n, part) in enumerate(parts)
+            do_work(task_n, part)
+        end
     end
     return y
 end
@@ -138,12 +140,14 @@ function ∇depthwiseconv_data_im2col!(
             col2im!(view(dx, :, :, :, :, batch_idx), col_slice, cdims, beta)
         end
     end
-    if length(parts) > 1
+    if ALLOW_THREADING[] && length(parts) > 1
         @sync for (task_n, part) in enumerate(parts)
             Threads.@spawn do_work(task_n, part)
         end
     else
-        do_work(1, first(parts))
+        for (task_n, part) in enumerate(parts)
+            do_work(task_n, part)
+        end
     end
     return dx
 end

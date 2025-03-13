@@ -209,12 +209,14 @@ for (front_name, backend, signature) in (
                 $(Symbol("$(front_name)_$(backend)!"))(y, x, w, cdims2; kwargs...)
             end
 
-            if length(x_cs) > 1
+            if ALLOW_THREADING[] && length(x_cs) > 1
                 Threads.@sync for (xc, wc) in zip(x_cs, w_cs)
                     Threads.@spawn do_work(xc, wc)
                 end
             else
-                do_work(first(x_cs), first(w_cs))
+                for (xc, wc) in zip(x_cs, w_cs)
+                    do_work(xc, wc)
+                end
             end
 
             return out
@@ -261,12 +263,14 @@ for (front_name, backend, signature) in (
                 $(Symbol("$(front_name)_$(backend)!"))(dxv, dyv, wv, cdims2; kwargs...)
             end
 
-            if length(dx_cs) > 1
+            if ALLOW_THREADING[] && length(dx_cs) > 1
                 Threads.@sync for (xc, yc, wc) in zip(dx_cs, dy_cs, w_cs)
                     Threads.@spawn do_work(xc, yc, wc)
                 end
             else
-                do_work(first(dx_cs), first(dy_cs), first(w_cs))
+                for (xc, yc, wc) in zip(dx_cs, dy_cs, w_cs)
+                    do_work(xc, yc, wc)
+                end
             end
 
             return out
@@ -311,12 +315,14 @@ for (front_name, backend, signature) in (
                 $(Symbol("$(front_name)_$(backend)!"))(dw, x, dy, cdims2; kwargs...)
             end
 
-            if length(dw_cs) > 1
+            if ALLOW_THREADING[] && length(dw_cs) > 1
                 Threads.@sync for (wc, xc, yc) in zip(dw_cs, x_cs, dy_cs)
                     Threads.@spawn do_work(wc, xc, yc)
                 end
             else
-                do_work(first(dw_cs), first(x_cs), first(dy_cs))
+                for (wc, xc, yc) in zip(dw_cs, x_cs, dy_cs)
+                    do_work(wc, xc, yc)
+                end
             end
 
             return out
