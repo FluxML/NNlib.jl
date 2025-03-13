@@ -997,3 +997,10 @@ end
 end
 
 end
+
+@testset "free_scratchspace_memo" begin
+    NNlib._col_memo[1] = 2
+    @test !isempty(NNlib._col_memo)
+    NNlib.free_scratchspace_memo!()
+    @test isempty(NNlib._col_memo)
+end
