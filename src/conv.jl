@@ -311,7 +311,6 @@ for (front_name, backend, signature) in (
                 $(Symbol("$(front_name)_$(backend)!"))(dw, x, dy, cdims2; kwargs...)
             end
 
-            length(dy_cs) >= length(dw_cs) || error("Inconsistent dimensions") # TODO: remove this check
             if length(dw_cs) > 1
                 Threads.@sync for (wc, xc, yc) in zip(dw_cs, x_cs, dy_cs)
                     Threads.@spawn do_work(wc, xc, yc)
