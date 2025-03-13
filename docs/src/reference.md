@@ -166,3 +166,10 @@ NNlib.glu
 NNlib.within_gradient
 bias_act!
 ```
+
+Finally, this switch changes warnings on various fallback paths into errors.
+It's a bit like `CUDA.allowscalar(false)`.
+
+```@docs
+allowslow
+```
