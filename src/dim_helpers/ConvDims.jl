@@ -73,7 +73,7 @@ function im2col_dims(c::ConvDims)
         # Size of single dotproduct within convolution
         prod(kernel_size(c))*channels_in(c),
         # One workspace per thread
-        VERSION > v"1.9.0-0" ? Threads.maxthreadid() : Threads.nthreads(),
+        VERSION > v"1.9.0-0" ? Threads.nthreads(:default) : Threads.nthreads(),
     )
 end
 
