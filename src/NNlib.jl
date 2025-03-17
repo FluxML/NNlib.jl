@@ -28,9 +28,7 @@ Disallow NNlib to use `@spawn` on divisible workloads. i.e. within `conv` etc.
 """
 macro disallow_spawns(ex)
     quote
-        with(ALLOW_SPAWNS => false) do
-            $(esc(ex))
-        end
+        @with ALLOW_SPAWNS => false $(esc(ex))
     end
 end
 
