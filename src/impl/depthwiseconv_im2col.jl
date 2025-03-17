@@ -30,7 +30,7 @@ function depthwiseconv_im2col!(
 
     dcdims = DenseConvDims(cdims)
 
-    function do_work(task_n, part)
+    function depthwiseconv_part(task_n, part)
         col_slice = col_slice = view(col, :, :, task_n) # col_slice is a task-local workspace
         for batch_idx in part
             im2col!(col_slice, view(x, :, :, :, :, batch_idx), dcdims)
@@ -49,11 +49,11 @@ function depthwiseconv_im2col!(
     end
     if should_use_spawn() && length(parts) > 1
         @sync for (task_n, part) in enumerate(parts)
-            Threads.@spawn do_work(task_n, part)
+            Threads.@spawn depthwiseconv_part(task_n, part)
         end
     else
         for (task_n, part) in enumerate(parts)
-            do_work(task_n, part)
+            depthwiseconv_part(task_n, part)
         end
     end
     return y
@@ -124,7 +124,7 @@ function ∇depthwiseconv_data_im2col!(
 
     parts = Iterators.partition(axes(dx)[end], ceil(Int, size(dx, 5) / ntasks))
 
-    function do_work(task_n, part)
+    function ∇depthwiseconv_data_part(task_n, part)
         col_slice = col_slice = view(col, :, :, task_n) # col_slice is a task-local workspace
         for batch_idx in part
             # We do a separate convolution for each channel in x, as we must
@@ -142,11 +142,11 @@ function ∇depthwiseconv_data_im2col!(
     end
     if should_use_spawn() && length(parts) > 1
         @sync for (task_n, part) in enumerate(parts)
-            Threads.@spawn do_work(task_n, part)
+            Threads.@spawn ∇depthwiseconv_data_part(task_n, part)
         end
     else
         for (task_n, part) in enumerate(parts)
-            do_work(task_n, part)
+            ∇depthwiseconv_data_part(task_n, part)
         end
     end
     return dx

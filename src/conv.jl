@@ -202,7 +202,7 @@ for (front_name, backend, signature) in (
                                 C_in = channels_in(cdims) ÷ groupcount(cdims),
                                 C_out = channels_out(cdims) ÷ groupcount(cdims))
 
-            function do_work(xc, wc)
+            function conv_group(xc, wc)
                 x = @view in1[ntuple(i -> i == 4 ? xc : Colon(), 5)...]
                 w = @view in2[ntuple(i -> i == 5 ? wc : Colon(), 5)...]
                 y = @view out[ntuple(i -> i == 4 ? wc : Colon(), 5)...]
@@ -211,11 +211,11 @@ for (front_name, backend, signature) in (
 
             if should_use_spawn() && length(x_cs) > 1
                 Threads.@sync for (xc, wc) in zip(x_cs, w_cs)
-                    Threads.@spawn do_work(xc, wc)
+                    Threads.@spawn conv_group(xc, wc)
                 end
             else
                 for (xc, wc) in zip(x_cs, w_cs)
-                    do_work(xc, wc)
+                    conv_group(xc, wc)
                 end
             end
 
@@ -256,7 +256,7 @@ for (front_name, backend, signature) in (
                                 C_in = channels_in(cdims) ÷ groupcount(cdims),
                                 C_out = channels_out(cdims) ÷ groupcount(cdims))
 
-            function do_work(xc, yc, wc)
+            function ∇conv_data_group(xc, yc, wc)
                 dxv = @view out[ntuple(i -> i == 4 ? xc : Colon(), 5)...]
                 dyv = @view in1[ntuple(i -> i == 4 ? yc : Colon(), 5)...]
                 wv = @view in2[ntuple(i -> i == 5  ? wc : Colon(), 5)...]
@@ -265,11 +265,11 @@ for (front_name, backend, signature) in (
 
             if should_use_spawn() && length(dx_cs) > 1
                 Threads.@sync for (xc, yc, wc) in zip(dx_cs, dy_cs, w_cs)
-                    Threads.@spawn do_work(xc, yc, wc)
+                    Threads.@spawn ∇conv_data_group(xc, yc, wc)
                 end
             else
                 for (xc, yc, wc) in zip(dx_cs, dy_cs, w_cs)
-                    do_work(xc, yc, wc)
+                    ∇conv_data_group(xc, yc, wc)
                 end
             end
 
@@ -308,7 +308,7 @@ for (front_name, backend, signature) in (
                                 C_in = channels_in(cdims) ÷ groupcount(cdims),
                                 C_out = channels_out(cdims) ÷ groupcount(cdims))
 
-            function do_work(wc, xc, yc)
+            function ∇conv_filter_group(wc, xc, yc)
                 x = @view in1[ntuple(i -> i == 4 ? xc : Colon(), 5)...]
                 dy = @view in2[ntuple(i -> i == 4 ? yc : Colon(), 5)...]
                 dw = @view out[ntuple(i -> i == 5 ? wc : Colon(), 5)...]
@@ -317,11 +317,11 @@ for (front_name, backend, signature) in (
 
             if should_use_spawn() && length(dw_cs) > 1
                 Threads.@sync for (wc, xc, yc) in zip(dw_cs, x_cs, dy_cs)
-                    Threads.@spawn do_work(wc, xc, yc)
+                    Threads.@spawn ∇conv_filter_group(wc, xc, yc)
                 end
             else
                 for (wc, xc, yc) in zip(dw_cs, x_cs, dy_cs)
-                    do_work(wc, xc, yc)
+                    ∇conv_filter_group(wc, xc, yc)
                 end
             end
 

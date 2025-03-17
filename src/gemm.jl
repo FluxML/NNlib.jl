@@ -107,7 +107,7 @@ for (gemm, elt) in gemm_datatype_mappings
 
                 parts = Iterators.partition(1:size(C, 3), cld(size(C, 3), n_threads))
 
-                function do_work(ks)
+                function gemm!_part(ks)
                     for k in ks
 
                         ptrAk = ptrA + (k-1) * strA * sizeof($elt)
@@ -127,11 +127,11 @@ for (gemm, elt) in gemm_datatype_mappings
                 end
                 if should_use_spawn() && length(parts) > 1
                     Threads.@sync for ks in parts
-                        Threads.@spawn do_work(ks)
+                        Threads.@spawn gemm!_part(ks)
                     end
                 else
                     for ks in parts
-                        do_work(ks)
+                        gemm!_part(ks)
                     end
                 end
                 set_num_threads(old_threads)

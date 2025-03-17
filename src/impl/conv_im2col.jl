@@ -47,7 +47,7 @@ function conv_im2col!(
 
     parts = Iterators.partition(axes(x, 5), ceil(Int, size(x, 5) / ntasks))
 
-    function do_work(task_n, part)
+    function conv_part(task_n, part)
         col_slice = col_slice = view(col, :, :, task_n) # col_slice is a task-local workspace
         for batch_idx in part
             im2col!(col_slice, view(x, :, :, :, :, batch_idx), cdims)
@@ -62,11 +62,11 @@ function conv_im2col!(
 
     if should_use_spawn() && length(parts) > 1
         @sync for (task_n, part) in enumerate(parts)
-            Threads.@spawn do_work(task_n, part)
+            Threads.@spawn conv_part(task_n, part)
         end
     else
         for (task_n, part) in enumerate(parts)
-            do_work(task_n, part)
+            conv_part(task_n, part)
         end
     end
     return y
@@ -160,7 +160,7 @@ function ∇conv_data_im2col!(
 
     parts = Iterators.partition(axes(dx, 5), ceil(Int, size(dx, 5) / ntasks))
 
-    function do_work(task_n, part)
+    function ∇conv_data_part(task_n, part)
         col_slice = col_slice = view(col, :, :, task_n) # col_slice is a task-local workspace
         for batch_idx in part
             GC.@preserve col_slice w dy begin
@@ -174,11 +174,11 @@ function ∇conv_data_im2col!(
     end
     if should_use_spawn() && length(parts) > 1
         @sync for (task_n, part) in enumerate(parts)
-            Threads.@spawn do_work(task_n, part)
+            Threads.@spawn ∇conv_data_part(task_n, part)
         end
     else
         for (task_n, part) in enumerate(parts)
-            do_work(task_n, part)
+            ∇conv_data_part(task_n, part)
         end
     end
     return dx
