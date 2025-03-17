@@ -19,6 +19,7 @@ using Statistics: mean
 
 const Numeric = Union{AbstractArray{<:T}, T} where {T<:Number}
 
+# internal. TODO: change to an approach where amount of threading is controlled, not just on/off
 const ALLOW_SPAWNS = ScopedValue(true)
 should_use_spawn() = Threads.nthreads(:default) > 1 && ALLOW_SPAWNS[]
 """
