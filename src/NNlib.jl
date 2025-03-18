@@ -13,10 +13,25 @@ using LinearAlgebra
 using LinearAlgebra.BLAS: @blasfunc, BlasInt
 using LinearAlgebra: AdjOrTransAbsMat, Adjoint, BlasFloat, Transpose
 using Random
+using ScopedValues
 using Statistics
 using Statistics: mean
 
 const Numeric = Union{AbstractArray{<:T}, T} where {T<:Number}
+
+# internal. TODO: change to an approach where amount of threading is controlled, not just on/off
+const ALLOW_SPAWNS = ScopedValue(true)
+should_use_spawn() = Threads.nthreads(:default) > 1 && ALLOW_SPAWNS[]
+"""
+    @disallow_spawns ex
+
+Disallow NNlib to use `@spawn` on divisible workloads. i.e. within `conv` etc.
+"""
+macro disallow_spawns(ex)
+    quote
+        @with ALLOW_SPAWNS => false $(esc(ex))
+    end
+end
 
 # Include APIs
 include("dim_helpers.jl")
@@ -35,7 +50,7 @@ include("dropout.jl")
 export dropout, dropout!
 
 include("softmax.jl")
-export softmax, softmax!, ∇softmax, ∇softmax!, logsoftmax, 
+export softmax, softmax!, ∇softmax, ∇softmax!, logsoftmax,
     logsoftmax!, ∇logsoftmax, ∇logsoftmax!, logsumexp
 
 include("batched/batchedadjtrans.jl")
@@ -47,9 +62,9 @@ include("gemm.jl")
 export grid_sample, ∇grid_sample
 
 include("conv.jl")
-export conv, conv!, ∇conv_data, ∇conv_data!, ∇conv_filter, 
-    ∇conv_filter!, depthwiseconv, depthwiseconv!, 
-    ∇depthwiseconv_data, ∇depthwiseconv_data!, 
+export conv, conv!, ∇conv_data, ∇conv_data!, ∇conv_filter,
+    ∇conv_filter!, depthwiseconv, depthwiseconv!,
+    ∇depthwiseconv_data, ∇depthwiseconv_data!,
     ∇depthwiseconv_filter, ∇depthwiseconv_filter!
 
 include("conv_bias_act.jl")

@@ -104,22 +104,34 @@ for (gemm, elt) in gemm_datatype_mappings
 
                 old_threads = get_num_threads()
                 set_num_threads(1)
-                Threads.@sync for ks in Iterators.partition(1:size(C, 3), cld(size(C, 3), n_threads))
-                    Threads.@spawn for k in ks
+
+                parts = Iterators.partition(1:size(C, 3), cld(size(C, 3), n_threads))
+
+                function gemm!_part(ks)
+                    for k in ks
 
                         ptrAk = ptrA + (k-1) * strA * sizeof($elt)
                         ptrBk = ptrB + (k-1) * strB * sizeof($elt)
                         ptrCk = ptrC + (k-1) * strC * sizeof($elt)
 
                         ccall((@blasfunc($(gemm)), libblas), Nothing,
-                              (Ref{UInt8}, Ref{UInt8}, Ref{BlasInt}, Ref{BlasInt},
-                               Ref{BlasInt}, Ref{$elt}, Ptr{$elt}, Ref{BlasInt},
-                               Ptr{$elt}, Ref{BlasInt}, Ref{$elt}, Ptr{$elt},
-                               Ref{BlasInt}),
-                              transA, transB, m, n,
-                              ka, alpha, ptrAk, max(1,Base.stride(A,2)),
-                              ptrBk, max(1,Base.stride(B,2)), beta, ptrCk,
-                              max(1,Base.stride(C,2)))
+                            (Ref{UInt8}, Ref{UInt8}, Ref{BlasInt}, Ref{BlasInt},
+                            Ref{BlasInt}, Ref{$elt}, Ptr{$elt}, Ref{BlasInt},
+                            Ptr{$elt}, Ref{BlasInt}, Ref{$elt}, Ptr{$elt},
+                            Ref{BlasInt}),
+                            transA, transB, m, n,
+                            ka, alpha, ptrAk, max(1,Base.stride(A,2)),
+                            ptrBk, max(1,Base.stride(B,2)), beta, ptrCk,
+                            max(1,Base.stride(C,2)))
+                    end
+                end
+                if should_use_spawn() && length(parts) > 1
+                    Threads.@sync for ks in parts
+                        Threads.@spawn gemm!_part(ks)
+                    end
+                else
+                    for ks in parts
+                        gemm!_part(ks)
                     end
                 end
                 set_num_threads(old_threads)

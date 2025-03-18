@@ -181,7 +181,7 @@ for (front_name, backend, signature) in (
 )
     # We only define 3d conv primitives, we reshape lower down to get 1d and 2d convolution
     @eval begin
-        
+
         function $(Symbol("$(front_name)!"))(
                         out::AbstractArray{$(signature[1][1]), $(signature[1][2])},
                         in1::AbstractArray{$(signature[2][1]), $(signature[1][2])},
@@ -202,11 +202,21 @@ for (front_name, backend, signature) in (
                                 C_in = channels_in(cdims) ÷ groupcount(cdims),
                                 C_out = channels_out(cdims) ÷ groupcount(cdims))
 
-            Threads.@sync for (xc, wc) in zip(x_cs, w_cs)
+            function conv_group(xc, wc)
                 x = @view in1[ntuple(i -> i == 4 ? xc : Colon(), 5)...]
                 w = @view in2[ntuple(i -> i == 5 ? wc : Colon(), 5)...]
                 y = @view out[ntuple(i -> i == 4 ? wc : Colon(), 5)...]
-                Threads.@spawn $(Symbol("$(front_name)_$(backend)!"))(y, x, w, cdims2; kwargs...)
+                $(Symbol("$(front_name)_$(backend)!"))(y, x, w, cdims2; kwargs...)
+            end
+
+            if should_use_spawn() && length(x_cs) > 1
+                Threads.@sync for (xc, wc) in zip(x_cs, w_cs)
+                    Threads.@spawn conv_group(xc, wc)
+                end
+            else
+                for (xc, wc) in zip(x_cs, w_cs)
+                    conv_group(xc, wc)
+                end
             end
 
             return out
@@ -246,11 +256,21 @@ for (front_name, backend, signature) in (
                                 C_in = channels_in(cdims) ÷ groupcount(cdims),
                                 C_out = channels_out(cdims) ÷ groupcount(cdims))
 
-            Threads.@sync for (xc, yc, wc) in zip(dx_cs, dy_cs, w_cs)
+            function ∇conv_data_group(xc, yc, wc)
                 dxv = @view out[ntuple(i -> i == 4 ? xc : Colon(), 5)...]
                 dyv = @view in1[ntuple(i -> i == 4 ? yc : Colon(), 5)...]
                 wv = @view in2[ntuple(i -> i == 5  ? wc : Colon(), 5)...]
-                Threads.@spawn $(Symbol("$(front_name)_$(backend)!"))(dxv, dyv, wv, cdims2; kwargs...)
+                $(Symbol("$(front_name)_$(backend)!"))(dxv, dyv, wv, cdims2; kwargs...)
+            end
+
+            if should_use_spawn() && length(dx_cs) > 1
+                Threads.@sync for (xc, yc, wc) in zip(dx_cs, dy_cs, w_cs)
+                    Threads.@spawn ∇conv_data_group(xc, yc, wc)
+                end
+            else
+                for (xc, yc, wc) in zip(dx_cs, dy_cs, w_cs)
+                    ∇conv_data_group(xc, yc, wc)
+                end
             end
 
             return out
@@ -288,11 +308,21 @@ for (front_name, backend, signature) in (
                                 C_in = channels_in(cdims) ÷ groupcount(cdims),
                                 C_out = channels_out(cdims) ÷ groupcount(cdims))
 
-            Threads.@sync for (wc, xc, yc) in zip(dw_cs, x_cs, dy_cs)
+            function ∇conv_filter_group(wc, xc, yc)
                 x = @view in1[ntuple(i -> i == 4 ? xc : Colon(), 5)...]
                 dy = @view in2[ntuple(i -> i == 4 ? yc : Colon(), 5)...]
-                dw = @view out[ntuple(i -> i == 5 ? yc : Colon(), 5)...]
-                Threads.@spawn $(Symbol("$(front_name)_$(backend)!"))(dw, x, dy, cdims2; kwargs...)
+                dw = @view out[ntuple(i -> i == 5 ? wc : Colon(), 5)...]
+                $(Symbol("$(front_name)_$(backend)!"))(dw, x, dy, cdims2; kwargs...)
+            end
+
+            if should_use_spawn() && length(dw_cs) > 1
+                Threads.@sync for (wc, xc, yc) in zip(dw_cs, x_cs, dy_cs)
+                    Threads.@spawn ∇conv_filter_group(wc, xc, yc)
+                end
+            else
+                for (wc, xc, yc) in zip(dw_cs, x_cs, dy_cs)
+                    ∇conv_filter_group(wc, xc, yc)
+                end
             end
 
             return out
@@ -306,10 +336,10 @@ for (front_name, backend, signature) in (
     # (frontend, backend, (out Array signature, in1 Array signature, in2 Array signature, (parametric Types)))
     (:depthwiseconv, :im2col, ((:T, 5), (:T, 5), (:T, 5), :C, (:(T <: G), :(C <: ConvDims)))),
     (:depthwiseconv, :direct, ((:yT, :N), (:T1, :N), (:T2, :N), :C, (:yT, :T1, :T2, :N, :(C <: ConvDims)))),
-    
+
     (:∇depthwiseconv_data, :im2col, ((:T, 5), (:T, 5), (:T, 5), :C, (:(T <: G), :(C <: ConvDims)))),
     (:∇depthwiseconv_data, :direct, ((:yT, :N), (:T1, :N), (:T2, :N), :C, (:yT, :T1, :T2, :N, :(C <: ConvDims)))),
-    
+
     (:∇depthwiseconv_filter, :im2col, ((:T, 5), (:T, 5), (:T, 5), :C, (:(T <: G), :(C <: ConvDims)))),
     (:∇depthwiseconv_filter, :direct, ((:yT, :N), (:T1, :N), (:T2, :N), :C, (:yT, :T1, :T2, :N, :(C <: ConvDims)))),
 )
