@@ -184,4 +184,8 @@ end
     else
         @info "Skipping AMDGPU tests, set NNLIB_TEST_AMDGPU=true to run them."
     end
+
+    @testset "Normalization" begin
+        include("normalization.jl")
+    end
 end
