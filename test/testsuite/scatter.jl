@@ -208,7 +208,7 @@ function scatter_testsuite(Backend)
         end
 
 
-        @static if Test_Enzyme
+        if NNLIB_TEST_ENZYME
 
         @testset "EnzymeRules" begin
             idx = device([2, 2, 3, 4, 4])
