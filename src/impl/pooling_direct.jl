@@ -96,7 +96,7 @@ for name in (:max, :mean, :lpnorm)
                     m += x[input_kw, input_kh, input_kd, c, batch_idx]
                 elseif $(name == :lpnorm)
                     # y = (∑ᵢ xᵢ^p)^(1 / p), here to calculate ∑ᵢ xᵢ^p
-                    m += x[input_kw, input_kh, input_kd, c, batch_idx]^p
+                    m += abs(x[input_kw, input_kh, input_kd, c, batch_idx])^p
                 else
                     error("Unimplemented codegen path")
                 end
@@ -151,7 +151,7 @@ for name in (:max, :mean, :lpnorm)
                             elseif $(name == :mean)
                                 m += x[input_kw, input_kh, input_kd, c, batch_idx]
                             elseif $(name == :lpnorm)
-                                m += x[input_kw, input_kh, input_kd, c, batch_idx]^p
+                                m += abs(x[input_kw, input_kh, input_kd, c, batch_idx])^p
                             else
                                 error("Unimplemented codegen path")
                             end
@@ -264,7 +264,8 @@ for name in (:max, :mean, :lpnorm)
                     dx[input_kw, input_kh, input_kd, c, batch_idx] += dy_idx * _alpha
                 elseif $(name == :lpnorm)
                     # y = (∑ᵢ xᵢ^p)^(1 / p), ∂y/∂xᵢ = xᵢ^(p-1) × y^(1-p)
-                    grad = x[input_kw, input_kh, input_kd, c, batch_idx]^(p-1) * y_idx^(1-p)
+                    xv = x[input_kw, input_kh, input_kd, c, batch_idx]
+                    grad = abs(xv)^(p-1) * y_idx^(1-p) * sign(xv)
                     dx[input_kw, input_kh, input_kd, c, batch_idx] += dy_idx * grad
                 else
                     error("Unimplemented codegen path")
@@ -327,7 +328,8 @@ for name in (:max, :mean, :lpnorm)
                             elseif $(name == :mean)
                                 dx[input_kw, input_kh, input_kd, c, batch_idx] += dy_idx * _alpha #+ _beta * dx[x_idxs...]
                             elseif $(name == :lpnorm)
-                                grad = x[input_kw, input_kh, input_kd, c, batch_idx]^(p-1) * y_idx^(1-p)
+                                xv = x[input_kw, input_kh, input_kd, c, batch_idx]
+                                grad = abs(xv)^(p-1) * y_idx^(1-p) * sign(xv)
                                 dx[input_kw, input_kh, input_kd, c, batch_idx] += dy_idx * grad
                             else
                                 error("Unimplemented codegen path")
