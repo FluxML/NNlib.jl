@@ -1,6 +1,6 @@
 name = "NNlib"
 uuid = "872c559c-99b0-510c-b3b7-b6c96a88d5cd"
-version = "0.9.30"
+version = "0.9.31"
 
 [deps]
 Adapt = "79e6a3ab-5dfb-504d-930d-738a2a938a0e"
@@ -32,7 +32,7 @@ NNlibForwardDiffExt = "ForwardDiff"
 NNlibSpecialFunctionsExt = "SpecialFunctions"
 
 [compat]
-AMDGPU = "1"
+AMDGPU = "1, 2"
 Adapt = "3.2, 4"
 Atomix = "0.1, 1"
 CUDA = "4, 5"
