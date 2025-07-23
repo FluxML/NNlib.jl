@@ -32,7 +32,7 @@ NNlibForwardDiffExt = "ForwardDiff"
 NNlibSpecialFunctionsExt = "SpecialFunctions"
 
 [compat]
-AMDGPU = "1"
+AMDGPU = "1, 2"
 Adapt = "3.2, 4"
 Atomix = "0.1, 1"
 CUDA = "4, 5"
