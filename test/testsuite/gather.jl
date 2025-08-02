@@ -154,7 +154,7 @@ function gather_testsuite(Backend)
             gradtest_fn((s, i) -> gather(s, i), src, idx)
     end
 
-    @static if Test_Enzyme
+    if NNLIB_TEST_ENZYME
 
     @testset "EnzymeRules: gather! gradient for scalar index" begin
         src = device(Float64[3, 4, 5, 6, 7])
