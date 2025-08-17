@@ -24,7 +24,8 @@ DocMeta.setdocmeta!(NNlib, :DocTestSetup, :(using NNlib, UnicodePlots); recursiv
 
 # ENV["NNLIB_TEST_CUDA"] = "true" # uncomment to run CUDA tests
 # ENV["NNLIB_TEST_AMDGPU"] = "true" # uncomment to run AMDGPU tests
-# ENV["NNLIB_TEST_CPU"] = "false" # uncomment to skip CPU tests
+ENV["NNLIB_TEST_ONEAPI"] = "true" # uncomment to run oneAPI tests
+ENV["NNLIB_TEST_CPU"] = "false" # uncomment to skip CPU tests
 
 const rng = StableRNG(123)
 include("test_utils.jl")
@@ -183,5 +184,22 @@ end
         end
     else
         @info "Skipping AMDGPU tests, set NNLIB_TEST_AMDGPU=true to run them."
+    end
+
+    if get(ENV, "NNLIB_TEST_ONEAPI", "false") == "true"
+        Pkg.add("oneAPI")
+
+        using oneAPI
+        if oneAPI.functional()
+            @testset "oneAPI" begin
+                # nnlib_testsuite(oneAPIBackend)
+
+                include("ext_oneapi/runtests.jl")
+            end
+        else
+            @info "oneAPI.jl package is not functional. Skipping oneAPI tests."
+        end
+    else
+        @info "Skipping oneAPI tests, set NNLIB_TEST_ONEAPI=true to run them."
     end
 end
