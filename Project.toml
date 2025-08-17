@@ -21,6 +21,7 @@ FFTW = "7a1cc6ca-52ef-59f5-83cd-3a7055c09341"
 ForwardDiff = "f6369f11-7733-5829-9624-2563aa707210"
 SpecialFunctions = "276daf66-3868-5448-9aa4-cd146d93841b"
 cuDNN = "02a925ec-e4fe-4b08-9a7e-0d78e3d38ccd"
+oneAPI = "8f75cd03-7ff8-4ecb-9b8f-daf728133b1b"
 
 [extensions]
 NNlibAMDGPUExt = "AMDGPU"
@@ -30,6 +31,7 @@ NNlibEnzymeCoreExt = "EnzymeCore"
 NNlibFFTWExt = "FFTW"
 NNlibForwardDiffExt = "ForwardDiff"
 NNlibSpecialFunctionsExt = "SpecialFunctions"
+NNliboneAPIExt = "oneAPI"
 
 [compat]
 AMDGPU = "1, 2"

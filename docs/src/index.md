@@ -8,11 +8,15 @@ GPU support is provided as package extensions. In order to load the extensions, 
 ```julia
 using NNlib, CUDA, cuDNN
 ```
-for CUDA support, or
+for CUDA support,
 ```julia
 using NNlib, AMDGPU
 ```
-for AMDGPU support.
+for AMDGPU support, or
+```julia
+using NNlib, oneAPI
+```
+for partial oneAPI support (particularly batched multiplication primitives).
 
 ## Threading
 
