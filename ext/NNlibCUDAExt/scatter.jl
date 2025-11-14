@@ -46,8 +46,8 @@ end
 
 
 function NNlib.scatter!(op::OP, dst::Union{AnyCuArray,AbstractCuSparseArray},
-    src::Union{SpAnyCuArray,AbstractCuSparseArray},
-    idx::Union{SpAnyCuArray,AbstractCuSparseArray}) where OP
+    src::Union{AnyCuArray,AbstractCuSparseArray},
+    idx::Union{AnyCuArray,AbstractCuSparseArray}) where OP
     dims = NNlib.scatter_dims(dst, src, idx)
     args = if dims == 0
         max_idx = length(idx)
@@ -68,7 +68,8 @@ function NNlib.scatter!(op::OP, dst::Union{AnyCuArray,AbstractCuSparseArray},
 end
 
 function NNlib.scatter!(op::typeof(mean), dst::Union{AnyCuArray,AbstractCuSparseArray},
-    src::Union{AnyCuArray,AbstractCuArray}, idx::Union{AnyCuArray,AbstractCuArray})
+        src::Union{AnyCuArray,AbstractCuSparseArray},
+        idx::Union{AnyCuArray,AbstractCuSparseArray})
     Ns = NNlib.scatter!(+, zero(dst), one.(src), idx)
     dst_ = NNlib.scatter!(+, zero(dst), src, idx)
     dst .+= NNlib.safe_div.(dst_, Ns)
