@@ -1,5 +1,5 @@
 # supported op: +, -, *, /, max, min, &, |, mean
-import CUDA: CUDA.CUSPARSE.AbstractcuSparseArray
+import CUDA.CUSPARSE: AbstractCuSparseArray
 
 function scatter_kernel!(op::OP, dst, src, idx) where OP
     index = threadIdx().x + (blockIdx().x - 1) * blockDim().x
