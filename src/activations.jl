@@ -5,7 +5,7 @@
 
 ACTIVATIONS = [
     :σ, :hardσ, :hardtanh, :relu,
-    :leakyrelu, :relu6, :rrelu, :elu, :gelu_tanh, :gelu_erf, :swish, :hardswish, :selu,
+    :leakyrelu, :relu6, :rrelu, :elu, :gelu_tanh, :gelu_sigmoid, :gelu_erf, :swish, :hardswish, :selu,
     :celu, :softplus, :softsign, :logσ, :logcosh,
     :mish, :tanhshrink, :softshrink, :trelu, :lisht,
     :tanh_fast, :sigmoid_fast,
@@ -305,6 +305,10 @@ deriv_elu(Ω, α=1) = ifelse(Ω ≥ 0, one(Ω), Ω + oftype(Ω, α))
 
 Activation function from ["Gaussian Error Linear Units"](https://arxiv.org/abs/1606.08415) using tanh approximation.
 
+This implementation uses `tanh` which allows for better pattern matching and fusion in optimizing 
+compilers compared to the sigmoid-based implementation. For a potentially faster implementation 
+that uses `sigmoid_fast`, see [`gelu_sigmoid`](@ref).
+
 ```julia-repl
 julia> lineplot(gelu_tanh, -2, 2, height=7)
            ┌────────────────────────────────────────┐        
@@ -337,16 +341,43 @@ julia> lineplot!(ans, swish)
 """
 function gelu_tanh(x)
     α = oftf(x, 0.044715)
-    # λ = oftf(x, gelu_λ)
-    # x/2 * (1 + tanh(λ * (x + α * x^3)))  # Standard implementation, for reference
-    λλ = oftf(x, gelu_2λ)
-    x * sigmoid_fast(λλ * x * muladd(x^2, α, one(x)))  # This is faster & more accurate
+    λ = oftf(x, gelu_λ)
+    x/2 * (1 + tanh_fast(λ * (x + α * x^3)))
 end
 
 const gelu_λ = √(2 / π)
 const gelu_2λ = √(8 / π)
 
 function deriv_gelu_tanh(x)
+    α = oftf(x, 0.044715)
+    α2 = oftf(x, 0.08943)
+    λ = oftf(x, gelu_λ)
+    x2 = x * x
+    t = muladd(x2, α, one(x))
+    z = λ * x * t
+    Ω = tanh_fast(z)
+    sech2 = 1 - Ω^2
+    (1 + Ω)/2 + x * λ * muladd(x2, α2, t) * sech2 / 2
+end
+
+"""
+    gelu_sigmoid(x) = x * σ(√(8/π) * (x + 0.044715x^3))
+
+Alternative implementation of the GELU activation function using `sigmoid` instead of `tanh`.
+This is mathematically equivalent to [`gelu_tanh`](@ref) but may be faster in some cases.
+
+The sigmoid-based implementation may prevent pattern matching and fusion in some optimizing 
+compilers. Use [`gelu_tanh`](@ref) if you need better compiler optimization support.
+
+See ["Gaussian Error Linear Units"](https://arxiv.org/abs/1606.08415).
+"""
+function gelu_sigmoid(x)
+    α = oftf(x, 0.044715)
+    λλ = oftf(x, gelu_2λ)
+    x * sigmoid_fast(λλ * x * muladd(x^2, α, one(x)))
+end
+
+function deriv_gelu_sigmoid(x)
     α = oftf(x, 0.044715)
     α2 = oftf(x, 0.08943)
     λλ = oftf(x, gelu_2λ)
@@ -896,6 +927,7 @@ UNARY_ACTS = [ # f, dfdx
     # rrelu is random, can't write a rule.
     (:elu,          :(deriv_elu(Ω))),
     (:gelu_tanh,    :(deriv_gelu_tanh(x))),
+    (:gelu_sigmoid, :(deriv_gelu_sigmoid(x))),
     (:gelu_erf,     :(deriv_gelu_erf(x))),
     (:swish,        :(Ω + sigmoid_fast(x) * (1 - Ω))),
     (:hardswish,    :(deriv_hardswish(x))),
