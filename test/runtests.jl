@@ -18,7 +18,7 @@ import ReverseDiff as RD        # used in `pooling.jl`
 import Pkg
 using SpecialFunctions
 
-const Test_Enzyme = VERSION <= v"1.10-"
+const Test_Enzyme = VERSION <= v"1.12-"
 
 DocMeta.setdocmeta!(NNlib, :DocTestSetup, :(using NNlib, UnicodePlots); recursive=true)
 
