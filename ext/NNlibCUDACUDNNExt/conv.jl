@@ -3,10 +3,11 @@ using NNlib: DenseConvDims
 import NNlib: conv!, ∇conv_filter!, ∇conv_data!, conv_bias_act!
 
 using cuDNN: scalingParameter, CUDNN_CONVOLUTION, convdims,
-             cudnnConvolutionDescriptor, cudnnConvolutionBwdDataAlgoPerf,
+             cudnnConvolutionBwdDataAlgoPerf,
              cudnnConvolutionForward!, cudnnConvolutionBwdFilterAlgoPerf,
              cudnnConvolutionBackwardData, cudnnConvolutionBackwardFilter,
              cudnnConvolutionBackwardBias
+import cuDNN: cudnnConvolutionDescriptor
 
 const CUDNNFloat = Union{Float16,Float32,Float64}
 const CUDNNComplexFloat = Union{ComplexF16,ComplexF32,ComplexF64}
