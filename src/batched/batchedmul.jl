@@ -162,8 +162,8 @@ _semi_batched_mul(A::Transpose{<:Number,<:AbstractMatrix}, B::AbstractArray{<:An
     batched_mul(batched_transpose(reshape(parent(A), size(parent(A))..., 1)), B)
 
 """
-    batched_vec(A::Array{T,3}, B::Matrix)
-    batched_vec(A::Array{T,3}, b::Vector)
+    batched_vec(A::AbstractArray{T,3}, B::AbstractMatrix)
+    batched_vec(A::AbstractArray{T,3}, b::AbstractVector)
     batched_vec(A::AbstractArray, B::AbstractArray)
 
 Batched matrix-vector multiplication. For the 3D case:
