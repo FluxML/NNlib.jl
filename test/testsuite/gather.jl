@@ -200,5 +200,21 @@ function gather_testsuite(Backend)
             2 5
             3 6]
     end
+
+    @testset "gather!(dst, src, IJK...)" begin
+        x = device(reshape([1:15;], 3, 5))
+        i, j = device([1,2]), device([2,4])
+        dst = device(zeros(Int, 2))
+        gather!(dst, x, i, j)
+        @test cpu(dst) == [4, 11]
+        
+        # Test with the issue example
+        s = device([1, 2, 3])
+        t = device([2, 3, 1])
+        A = device([0.0 1.0 0.0; 0.0 0.0 1.0; 1.0 0.0 0.0])
+        w = device([0.0, 0.0, 0.0])
+        gather!(w, A, s, t)
+        @test cpu(w) == [1.0, 1.0, 1.0]
+    end
 end
 
