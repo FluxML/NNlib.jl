@@ -42,6 +42,7 @@ function gather(
 ) where {Tsrc, Nsrc, Nidx, Tidx}
     M = typelength(Tidx)
     dstsize = (size(src)[1:Nsrc-M]..., size(idx)...)
+    # Always create a dense array output, even for sparse sources
     dst = similar(Array{Tsrc}, dstsize)
     return gather!(dst, src, idx)
 end
