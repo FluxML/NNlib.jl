@@ -200,5 +200,28 @@ function gather_testsuite(Backend)
             2 5
             3 6]
     end
+
+    @testset "gather with sparse source" begin
+        # Only test on CPU since sparse arrays are CPU-only
+        if Backend == CPU
+            using SparseArrays
+            # Test sparse matrix source
+            s = [1, 2, 3]
+            t = [2, 3, 1]
+            A = sparse(s, t, [1.0, 1.0, 1.0], 3, 3)
+            
+            # gather should return a dense array, not sparse
+            w = gather(A, s, t)
+            @test w isa Array{Float64}
+            @test !issparse(w)
+            @test w == [1.0, 1.0, 1.0]
+            
+            # Test with different indices
+            w2 = gather(A, [1, 2], [2, 3])
+            @test w2 isa Array{Float64}
+            @test !issparse(w2)
+            @test w2 == [1.0, 1.0]
+        end
+    end
 end
 

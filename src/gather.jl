@@ -42,7 +42,7 @@ function gather(
 ) where {Tsrc, Nsrc, Nidx, Tidx}
     M = typelength(Tidx)
     dstsize = (size(src)[1:Nsrc-M]..., size(idx)...)
-    dst = similar(src, Tsrc, dstsize)
+    dst = similar(Array{Tsrc}, dstsize)
     return gather!(dst, src, idx)
 end
 
