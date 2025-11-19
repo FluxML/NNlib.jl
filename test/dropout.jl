@@ -16,10 +16,8 @@ using Zygote, StableRNGs, ChainRulesCore, Enzyme
     @test size(@inferred dropout(rng, x1, 0.1; dims=2)) == (3, 4)
 
     x2 = Diagonal(randn(Float32, 10))  # Just to check it runs on weird matrices.
-    if VERSION > v"1.8-"  # on 1.6 this makes a sparse array.
-        @test dropout(x2, 0.3) isa Matrix{Float32}  # does not infer, but that's OK?
-    end
-
+    @test dropout(x2, 0.3) isa Matrix{Float32}  # does not infer, but that's OK?
+    
     # Values
     @test dropout(x1, 0) == x1
     @test dropout(x1.+0im, 0) == x1

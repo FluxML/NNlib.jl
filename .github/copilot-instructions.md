@@ -33,8 +33,8 @@ NNlib.jl/
 
 ## Julia Version
 
-- Minimum Julia version: 1.9
-- CI tests on: LTS, latest stable (1.x), and pre-release versions
+- Minimum Julia version: 1.10
+- CI tests on: minimum julia version, latest stable (1.x), and pre-release versions
 
 ## Coding Standards
 
