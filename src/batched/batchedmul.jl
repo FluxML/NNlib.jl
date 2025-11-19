@@ -164,10 +164,15 @@ _semi_batched_mul(A::Transpose{<:Number,<:AbstractMatrix}, B::AbstractArray{<:An
 """
     batched_vec(A::Array{T,3}, B::Matrix)
     batched_vec(A::Array{T,3}, b::Vector)
+    batched_vec(A::AbstractArray, B::AbstractArray)
 
-Batched matrix-vector multiplication:
+Batched matrix-vector multiplication. For the 3D case:
 the result has `C[:,:,k] == A[:,:,k] * B[:,k]` for all `k`,
 or else `C[:,:,k] == A[:,:,k] * b` for `b::Vector`.
+
+For the general N-D case where `ndims(A) == ndims(B) + 1`:
+the result has `C[:,k...] == A[:,:,k...] * B[:,k...]` for all batch indices `k...`.
+The batch dimensions must match: `size(A)[3:end] == size(B)[2:end]`.
 
 With the same argument types, `batched_mul(A, B)` would regard `B` as
 a fixed matrix, not a batch of vectors. Both reshape and then
@@ -181,8 +186,27 @@ julia> batched_vec(A,B) |> size
 
 julia> batched_vec(A,b) |> size
 (16, 32)
+
+julia> A4d, B3d = randn(16,8,10,32), randn(8,10,32);  # 4D and 3D arrays
+
+julia> batched_vec(A4d, B3d) |> size
+(16, 10, 32)
 ```
 """
+function batched_vec(A::AbstractArray, B::AbstractArray)
+    ndims(A) == ndims(B) + 1 || throw(DimensionMismatch(
+        "batched_vec requires ndims(A) == ndims(B) + 1, got ndims(A)=$(ndims(A)) and ndims(B)=$(ndims(B))"))
+    size(A)[3:end] == size(B)[2:end] || throw(DimensionMismatch(
+        "batch dimensions must match: size(A)[3:end]=$(size(A)[3:end]) != size(B)[2:end]=$(size(B)[2:end])"))
+    
+    # Reshape B to add a singleton dimension for matrix multiplication
+    B_reshaped = reshape(B, size(B, 1), 1, size(B)[2:end]...)
+    # Perform batched multiplication
+    C = batched_mul(A, B_reshaped)
+    # Remove the singleton dimension
+    return dropdims(C, dims=2)
+end
+
 batched_vec(A::AbstractArray{T,3} where T, B::AbstractMatrix) =
     reshape(batched_mul(A, reshape(B, size(B,1), 1, size(B,2))), size(A,1), size(A,3))
 
