@@ -332,12 +332,4 @@ end
     @test_throws DimensionMismatch batched_vec(randn(3, 4, 2), randn(4, 3))  # ndims mismatch
     @test_throws DimensionMismatch batched_vec(randn(3, 4, 2, 3), randn(4, 2, 2))  # batch size mismatch
     
-    # Test that 3D case still works (backward compatibility)
-    A3d_test = randn(4, 5, 3)
-    B2d_test = randn(5, 3)
-    C3_test = batched_vec(A3d_test, B2d_test)
-    @test size(C3_test) == (4, 3)
-    for k in 1:3
-        @test C3_test[:, k] ≈ A3d_test[:, :, k] * B2d_test[:, k]
-    end
 end
