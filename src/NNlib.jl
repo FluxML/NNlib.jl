@@ -1,7 +1,7 @@
 module NNlib
 
 import Atomix
-import ChainRulesCore: rrule
+import ChainRulesCore: rrule, @ignore_derivatives
 
 using Base.Broadcast: broadcasted
 using Base.Threads
@@ -15,7 +15,6 @@ using LinearAlgebra: AdjOrTransAbsMat, Adjoint, BlasFloat, Transpose
 using Random
 using ScopedValues
 using Statistics
-using Statistics: mean
 
 const Numeric = Union{AbstractArray{<:T}, T} where {T<:Number}
 
