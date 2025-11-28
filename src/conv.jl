@@ -188,7 +188,7 @@ for (front_name, backend, signature) in (
                         in2::AbstractArray{$(signature[3][1]), $(signature[1][2])},
                         cdims::$(signature[4]);
                         kwargs...) where {$(signature[5]...)}
-            if $(string(backend)) == "direct" && yT == Float64  # warn for Float32 + accidental Float64, but don't print warning for ForwardDiff.Dual
+            if $(string(backend)) == "direct" && yT <: AbstractFloat   # warn for accidental mixture of floats, but don't print warning for ForwardDiff.Dual
                 @warn string("Slow fallback implementation invoked for ", $(string(front_name)), "!  ",
                         "You probably don't want this; check your datatypes.") yT T1 T2 maxlog=1
             end
@@ -239,7 +239,7 @@ for (front_name, backend, signature) in (
                         in2::AbstractArray{$(signature[3][1]), $(signature[1][2])},
                         cdims::$(signature[4]);
                         kwargs...) where {$(signature[5]...)}
-            if $(string(backend)) == "direct" && yT == Float64  # warn for Float32 + accidental Float64, but don't print warning for ForwardDiff.Dual
+            if $(string(backend)) == "direct" && yT <: AbstractFloat   # warn for accidental mixture of floats, but don't print warning for ForwardDiff.Dual
                 @warn string("Slow fallback implementation invoked for ", $(string(front_name)), "!  ",
                         "You probably don't want this; check your datatypes.") yT T1 T2 maxlog=1
             end
@@ -292,7 +292,7 @@ for (front_name, backend, signature) in (
                         in2::AbstractArray{$(signature[3][1]), $(signature[1][2])},
                         cdims::$(signature[4]);
                         kwargs...) where {$(signature[5]...)}
-            if $(string(backend)) == "direct" && yT == Float64  # warn for Float32 + accidental Float64, but don't print warning for ForwardDiff.Dual
+            if $(string(backend)) == "direct" && yT <: AbstractFloat   # warn for accidental mixture of floats, but don't print warning for ForwardDiff.Dual
                 @warn string("Slow fallback implementation invoked for ", $(string(front_name)), "!  ",
                         "You probably don't want this; check your datatypes.") yT T1 T2 maxlog=1
             end
@@ -353,7 +353,7 @@ for (front_name, backend, signature) in (
                         in2::AbstractArray{$(signature[3][1]), $(signature[1][2])},
                         cdims::$(signature[4]);
                         kwargs...) where {$(signature[5]...)}
-            if $(string(backend)) == "direct" && yT == Float64  # warn for Float32 + accidental Float64, but don't print warning for ForwardDiff.Dual
+            if $(string(backend)) == "direct" && yT <: AbstractFloat   # warn for accidental mixture of floats, but don't print warning for ForwardDiff.Dual
                 @warn string("Slow fallback implementation invoked for ", $(string(front_name)), "!  ",
                         "You probably don't want this; check your datatypes.") yT T1 T2 maxlog=1
             end
