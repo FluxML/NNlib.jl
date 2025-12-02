@@ -1,5 +1,5 @@
 steps:
-  - label: ":julia: CUDA GPU"
+  - label: ":julia: Julia {{matrix.julia}} - CUDA GPU"
     command:
       - echo 'CUDA = "052768ef-5323-5732-b1bb-66c8b64840ba"' >> test/Project.toml
       - echo 'cuDNN = "02a925ec-e4fe-4b08-9a7e-0d78e3d38ccd"' >> test/Project.toml
@@ -34,7 +34,7 @@ steps:
             julia: "nightly"
           soft_fail: true
 
-  - label: ":julia: AMD GPU"
+  - label: ":julia: Julia {{matrix.julia}} - AMD GPU"
     command:
       - echo 'AMDGPU = "21141c5a-9bdb-4563-92ae-f87d6854732e"' >> test/Project.toml
     plugins:
@@ -59,6 +59,17 @@ steps:
       NNLIB_TEST_AMDGPU: "true"
       NNLIB_TEST_CPU: "false"
       JULIA_NUM_THREADS: 4
+    matrix:
+      setup:
+        julia:
+          # - "1.10"  
+          - "1"
+          # - "nightly"
+      adjustments:
+        - with:
+            julia: "nightly"
+          soft_fail: true
+
 
   - label: "Benchmarks"
     plugins:
