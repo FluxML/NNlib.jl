@@ -1,7 +1,8 @@
 steps:
-  - label: ":julia: Julia {{matrix.julia}} + CUDA GPU"
+  - label: ":julia: CUDA GPU"
     command:
       - echo 'CUDA = "052768ef-5323-5732-b1bb-66c8b64840ba"' >> test/Project.toml
+      - echo 'cuDNN = "b5f81e59-8f1f-5cdf-9c11-5677f7941f2e"' >> test/Project.toml
     plugins:
       - JuliaCI/julia#v1:
           version: "{{matrix.julia}}"
@@ -26,16 +27,17 @@ steps:
       setup:
         julia:
           - "1.10"
+          - "1"
           - "nightly"
       adjustments:
         - with:
             julia: "nightly"
           soft_fail: true
 
-  - label: ":julia: Julia 1 + AMD GPU"
+  - label: ":julia: AMD GPU"
     plugins:
       - JuliaCI/julia#v1:
-          version: "1.10"
+          version: "1"
       - JuliaCI/julia-test#v1:
           test_args: "--quickfail"
       - JuliaCI/julia-coverage#v1:
