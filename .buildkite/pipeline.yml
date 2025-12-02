@@ -2,7 +2,7 @@ steps:
   - label: ":julia: CUDA GPU"
     command:
       - echo 'CUDA = "052768ef-5323-5732-b1bb-66c8b64840ba"' >> test/Project.toml
-      - echo 'cuDNN = "b5f81e59-8f1f-5cdf-9c11-5677f7941f2e"' >> test/Project.toml
+      - echo 'cuDNN = "02a925ec-e4fe-4b08-9a7e-0d78e3d38ccd"' >> test/Project.toml
     plugins:
       - JuliaCI/julia#v1:
           version: "{{matrix.julia}}"
@@ -35,6 +35,8 @@ steps:
           soft_fail: true
 
   - label: ":julia: AMD GPU"
+    command:
+      - echo 'AMDGPU = "21141c5a-9bdb-4563-92ae-f87d6854732e"' >> test/Project.toml
     plugins:
       - JuliaCI/julia#v1:
           version: "1"
