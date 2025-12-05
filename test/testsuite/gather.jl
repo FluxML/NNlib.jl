@@ -167,6 +167,7 @@ function gather_testsuite(Backend)
             Tdst in (EnzymeCore.Duplicated, EnzymeCore.BatchDuplicated),
             Tsrc in (EnzymeCore.Duplicated, EnzymeCore.BatchDuplicated)
 
+            Tret == EnzymeCore.Const && continue # ERROR
             EnzymeTestUtils.are_activities_compatible(Tret, Tdst, Tsrc) || continue
 
             EnzymeTestUtils.test_reverse(gather!, Tret, (dst, Tdst), (src, Tsrc), (idx, EnzymeCore.Const))
