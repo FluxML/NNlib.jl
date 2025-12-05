@@ -935,9 +935,9 @@ end
 @testset "EnzymeRules: ∇conv_data! spatial_rank=$spatial_rank" for spatial_rank in (1, 2, 3)
   x = rand(rng, repeat([5], spatial_rank)..., 3, 2)
   w = rand(rng, repeat([3], spatial_rank)..., 3, 3)
+  cdims = DenseConvDims(x, w)
   y = conv(x, w, cdims)
 
-  cdims = DenseConvDims(x, w)
 
   curconv = ∇conv_data
   curconv! = ∇conv_data!
@@ -958,9 +958,9 @@ end
 @testset "EnzymeRules: ∇conv_filter! spatial_rank=$spatial_rank" for spatial_rank in (1, 2, 3)
   x = rand(rng, repeat([5], spatial_rank)..., 3, 2)
   w = rand(rng, repeat([3], spatial_rank)..., 3, 3)
+  cdims = DenseConvDims(x, w)
   y = conv(x, w, cdims)
 
-  cdims = DenseConvDims(x, w)
 
   curconv = ∇conv_filter
   curconv! = ∇conv_filter!
