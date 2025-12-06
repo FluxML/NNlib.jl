@@ -970,7 +970,7 @@ end
     Tret == EnzymeCore.Const && continue # ERROR
     EnzymeTestUtils.are_activities_compatible(Tret, Tdst, Tx, Ty) || continue
 
-    EnzymeTestUtils.test_reverse(curconv!, Tret, (dw, Tdst), (x, Tx), (dy, Ty), (cdims, EnzymeCore.Const), atol=1e-6, rtol=1e-6)
+    EnzymeTestUtils.test_reverse(∇conv_filter!, Tret, (dw, Tdst), (x, Tx), (dy, Ty), (cdims, EnzymeCore.Const), atol=1e-6, rtol=1e-6)
   end
 end
 
