@@ -303,3 +303,33 @@ FiniteDifferences.to_vec(x::BatchedTranspose) = FiniteDifferences.to_vec(collect
 
     gradtest(batched_vec, randn(rng, M, P, B), randn(rng, P))
 end
+
+@testset "batched_vec: N-D batches" begin
+    # Test 4D case: A is 4D, B is 3D
+    A4d = randn(4, 5, 3, 2)  # (matrix_rows, matrix_cols, batch_dim1, batch_dim2)
+    B3d = randn(5, 3, 2)     # (vector_length, batch_dim1, batch_dim2)
+    
+    C = batched_vec(A4d, B3d)
+    @test size(C) == (4, 3, 2)
+    
+    # Manual verification
+    for i in 1:3, j in 1:2
+        @test C[:, i, j] ≈ A4d[:, :, i, j] * B3d[:, i, j]
+    end
+    
+    # Test 5D case: A is 5D, B is 4D
+    A5d = randn(3, 4, 2, 3, 2)  # (matrix_rows, matrix_cols, batch1, batch2, batch3)
+    B4d = randn(4, 2, 3, 2)     # (vector_length, batch1, batch2, batch3)
+    
+    C5 = batched_vec(A5d, B4d)
+    @test size(C5) == (3, 2, 3, 2)
+    
+    # Manual verification for a few cases
+    @test C5[:, 1, 1, 1] ≈ A5d[:, :, 1, 1, 1] * B4d[:, 1, 1, 1]
+    @test C5[:, 2, 3, 2] ≈ A5d[:, :, 2, 3, 2] * B4d[:, 2, 3, 2]
+    
+    # Test dimension mismatch errors
+    @test_throws DimensionMismatch batched_vec(randn(3, 4, 2), randn(4, 3))  # ndims mismatch
+    @test_throws DimensionMismatch batched_vec(randn(3, 4, 2, 3), randn(4, 2, 2))  # batch size mismatch
+    
+end
