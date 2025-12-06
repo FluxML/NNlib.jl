@@ -19,8 +19,7 @@ steps:
     env:
       JULIA_NUM_THREADS: 4
       NNLIB_TEST_CUDA: "true"
-      NNLIB_TEST_CPU: "true" # Could be useful to uncover multithreading related issues
-                             # Buildkite workers have more threads.
+      NNLIB_TEST_CPU: "false"
     if: build.message !~ /\[skip tests\]/
     timeout_in_minutes: 180
     matrix:
