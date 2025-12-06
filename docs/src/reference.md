@@ -11,6 +11,7 @@ celu
 elu
 gelu
 gelu_tanh
+gelu_sigmoid
 gelu_erf
 hardsigmoid
 sigmoid_fast
