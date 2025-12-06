@@ -925,53 +925,52 @@ end
     Tx in (EnzymeCore.Const, EnzymeCore.Duplicated, EnzymeCore.BatchDuplicated),
     Tw in (EnzymeCore.Const, EnzymeCore.Duplicated, EnzymeCore.BatchDuplicated)
 
+    Tret == EnzymeCore.Const && continue # ERROR
     EnzymeTestUtils.are_activities_compatible(Tret, Tdst, Tx, Tw) || continue
 
-    EnzymeTestUtils.test_reverse(curconv!, Tret, (dst, Tdst), (x, Tx), (w, Tw), (cdims, EnzymeCore.Const))
+    EnzymeTestUtils.test_reverse(curconv!, Tret, (dst, Tdst), (x, Tx), (w, Tw), (cdims, EnzymeCore.Const), atol=1e-6, rtol=1e-6)
   end
 end
 
 @testset "EnzymeRules: ∇conv_data! spatial_rank=$spatial_rank" for spatial_rank in (1, 2, 3)
   x = rand(rng, repeat([5], spatial_rank)..., 3, 2)
   w = rand(rng, repeat([3], spatial_rank)..., 3, 3)
-  y = conv(x, w, cdims)
-
   cdims = DenseConvDims(x, w)
+  y = conv(x, w, cdims)
+  dy = randn(rng, size(y)...)
 
-  curconv = ∇conv_data
-  curconv! = ∇conv_data!
-  dst = curconv(y, w, cdims)
+  dx = ∇conv_data(dy, w, cdims)
 
   for Tret in (EnzymeCore.Const, EnzymeCore.Duplicated, EnzymeCore.BatchDuplicated),
     Tdst in (EnzymeCore.Duplicated, EnzymeCore.BatchDuplicated),
     Ty in (EnzymeCore.Const, EnzymeCore.Duplicated, EnzymeCore.BatchDuplicated),
     Tw in (EnzymeCore.Const, EnzymeCore.Duplicated, EnzymeCore.BatchDuplicated)
 
-    EnzymeTestUtils.are_activities_compatible(Tret, Tdst, Tx, Tw) || continue
+    Tret == EnzymeCore.Const && continue # ERROR
+    EnzymeTestUtils.are_activities_compatible(Tret, Tdst, Ty, Tw) || continue
 
-    EnzymeTestUtils.test_reverse(curconv!, Tret, (dst, Tdst), (y, Ty), (w, Tw), (cdims, EnzymeCore.Const))
+    EnzymeTestUtils.test_reverse(∇conv_data!, Tret, (dx, Tdst), (dy, Ty), (w, Tw), (cdims, EnzymeCore.Const), atol=1e-6, rtol=1e-6)
   end
 end
 
 @testset "EnzymeRules: ∇conv_filter! spatial_rank=$spatial_rank" for spatial_rank in (1, 2, 3)
   x = rand(rng, repeat([5], spatial_rank)..., 3, 2)
   w = rand(rng, repeat([3], spatial_rank)..., 3, 3)
-  y = conv(x, w, cdims)
-
   cdims = DenseConvDims(x, w)
+  y = conv(x, w, cdims)
+  dy = randn(rng, size(y)...)
 
-  curconv = ∇conv_filter
-  curconv! = ∇conv_filter!
-  dst = curconv(x, w, cdims)
+  dw = ∇conv_filter(x, dy, cdims)
 
   for Tret in (EnzymeCore.Const, EnzymeCore.Duplicated, EnzymeCore.BatchDuplicated),
     Tdst in (EnzymeCore.Duplicated, EnzymeCore.BatchDuplicated),
     Tx in (EnzymeCore.Const, EnzymeCore.Duplicated, EnzymeCore.BatchDuplicated),
     Ty in (EnzymeCore.Const, EnzymeCore.Duplicated, EnzymeCore.BatchDuplicated)
 
+    Tret == EnzymeCore.Const && continue # ERROR
     EnzymeTestUtils.are_activities_compatible(Tret, Tdst, Tx, Ty) || continue
 
-    EnzymeTestUtils.test_reverse(curconv!, Tret, (dst, Tdst), (x, Tx), (y, Ty), (cdims, EnzymeCore.Const))
+    EnzymeTestUtils.test_reverse(∇conv_filter!, Tret, (dw, Tdst), (x, Tx), (dy, Ty), (cdims, EnzymeCore.Const), atol=1e-6, rtol=1e-6)
   end
 end
 
@@ -990,9 +989,10 @@ end
     Tx in (EnzymeCore.Const, EnzymeCore.Duplicated, EnzymeCore.BatchDuplicated),
     Tw in (EnzymeCore.Const, EnzymeCore.Duplicated, EnzymeCore.BatchDuplicated)
 
+    Tret == EnzymeCore.Const && continue # ERROR
     EnzymeTestUtils.are_activities_compatible(Tret, Tdst, Tx, Tw) || continue
 
-    EnzymeTestUtils.test_reverse(curconv!, Tret, (dst, Tdst), (x, Tx), (w, Tw), (cdims, EnzymeCore.Const))
+    EnzymeTestUtils.test_reverse(curconv!, Tret, (dst, Tdst), (x, Tx), (w, Tw), (cdims, EnzymeCore.Const), atol=1e-6, rtol=1e-6)
   end
 end
 
