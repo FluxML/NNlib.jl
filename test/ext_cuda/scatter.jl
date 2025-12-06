@@ -21,7 +21,7 @@ idxs = [
         (3,) (5,) (5,) (3,)])),  # CartesianIndex index
 ]
 
-types = [CuArray{Int32}, CuArray{Int64}, CuArray{Float32}, CuArray{Float64}]
+types = [CuArray{Int32}, CuArray{Int64}, CuArray{Float32}, CuArray{Float64}, CuSparseMatrixCSC{Float32}, CuSparseMatrixCSR{Float32}, CuSparseMatrixCOO{Float32}]
 
 
 @testset "scatter" begin
@@ -70,7 +70,7 @@ types = [CuArray{Int32}, CuArray{Int64}, CuArray{Float32}, CuArray{Float64}]
     end
 
 
-    for T = [CuArray{Float32}, CuArray{Float64}]
+    for T = [CuArray{Float32}, CuArray{Float64}, Sparse, CuSparseMatrixCSC{Float32}, CuSparseMatrixCSR{Float32}, CuSparseMatrixCOO{Float32}]
         @testset "$(T)" begin
             @testset "*" begin
                 for idx = idxs, dims = [0, 1]
