@@ -65,10 +65,10 @@ steps:
           # - "1.10"  
           - "1"
           # - "nightly"
-      adjustments:
-        - with:
-            julia: "nightly"
-          soft_fail: true
+      # adjustments:
+      #   - with:
+      #       julia: "nightly"
+      #     soft_fail: true
 
 
   - label: ":julia: Julia {{matrix.julia}} - Metal GPU"
@@ -98,10 +98,10 @@ steps:
           # - "1.10"
           - "1"
           # - "nightly  "
-      adjustments:
-        - with:
-            julia: "nightly"
-          soft_fail: true
+      # adjustments:
+      #   - with:
+      #       julia: "nightly"
+      #     soft_fail: true
 
 
   - label: "Benchmarks"
