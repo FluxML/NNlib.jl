@@ -24,6 +24,7 @@ DocMeta.setdocmeta!(NNlib, :DocTestSetup, :(using NNlib, UnicodePlots); recursiv
 
 # ENV["NNLIB_TEST_CUDA"] = "true" # uncomment to run CUDA tests
 # ENV["NNLIB_TEST_AMDGPU"] = "true" # uncomment to run AMDGPU tests
+# ENV["NNLIB_TEST_METAL"] = "true" # uncomment to run Metal tests
 # ENV["NNLIB_TEST_CPU"] = "false" # uncomment to skip CPU tests
 
 const rng = StableRNG(123)
@@ -183,5 +184,21 @@ end
         end
     else
         @info "Skipping AMDGPU tests, set NNLIB_TEST_AMDGPU=true to run them."
+    end
+
+    if get(ENV, "NNLIB_TEST_METAL", "false") == "true"
+        Pkg.add("Metal")
+
+        using Metal
+        if Metal.functional()
+            @testset "Metal" begin
+                # nnlib_testsuite(MetalBackend)
+                include("ext_metal/runtests.jl")
+            end
+        else
+            @info "Insufficient version or Metal not found; Skipping Metal tests"
+        end
+    else
+        @info "Skipping Metal tests, set NNLIB_TEST_METAL=true to run them"
     end
 end
