@@ -19,8 +19,7 @@ steps:
     env:
       JULIA_NUM_THREADS: 4
       NNLIB_TEST_CUDA: "true"
-      NNLIB_TEST_CPU: "true" # Could be useful to uncover multithreading related issues
-                             # Buildkite workers have more threads.
+      NNLIB_TEST_CPU: "false"
     if: build.message !~ /\[skip tests\]/
     timeout_in_minutes: 180
     matrix:
@@ -33,6 +32,7 @@ steps:
         - with:
             julia: "nightly"
           soft_fail: true
+
 
   - label: ":julia: Julia {{matrix.julia}} - AMD GPU"
     command:
@@ -65,10 +65,43 @@ steps:
           # - "1.10"  
           - "1"
           # - "nightly"
-      adjustments:
-        - with:
-            julia: "nightly"
-          soft_fail: true
+      # adjustments:
+      #   - with:
+      #       julia: "nightly"
+      #     soft_fail: true
+
+
+  - label: ":julia: Julia {{matrix.julia}} - Metal GPU"
+    command:
+      - echo 'Metal = "dde4c033-4e86-420c-a63e-0dd931031962"' >> test/Project.toml
+    plugins:
+      - JuliaCI/julia#v1:
+          version: "{{matrix.julia}}"
+      - JuliaCI/julia-test#v1:
+          test_args: "--quickfail"
+      - JuliaCI/julia-coverage#v1:
+          codecov: true
+          dirs:
+            - src
+            - ext
+    agents:
+      os: "macos"
+      arch: "aarch64"
+    timeout_in_minutes: 180
+    env:
+      NNLIB_TEST_METAL: "true"
+      NNLIB_TEST_CPU: "false"
+      JULIA_NUM_THREADS: 4
+    matrix:
+      setup:
+        julia:
+          # - "1.10"
+          - "1"
+          # - "nightly  "
+      # adjustments:
+      #   - with:
+      #       julia: "nightly"
+      #     soft_fail: true
 
 
   - label: "Benchmarks"
