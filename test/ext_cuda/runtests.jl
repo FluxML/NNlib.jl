@@ -4,6 +4,7 @@ using Zygote
 using ForwardDiff: Dual
 using Statistics: mean
 using CUDA, cuDNN
+import CUDA.CUSPARSE: CuSparseMatrixCSC, CuSparseMatrixCSR, CuSparseMatrixCOO
 using NNlib: batchnorm, ∇batchnorm
 CUDA.allowscalar(false)
 
