@@ -85,6 +85,7 @@ steps:
             - src
             - ext
     agents:
+      queue: "juliaecosystem"
       os: "macos"
       arch: "aarch64"
     timeout_in_minutes: 180
