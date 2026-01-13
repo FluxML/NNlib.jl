@@ -58,6 +58,7 @@ end
 function NNlib.scatter!(op::OP, dst::AnyCuArray,
         src::AnyCuArray,
         idx::AnyCuArray) where OP
+    isempty(idx) && return dst
     dims = NNlib.scatter_dims(dst, src, idx)
     args = if dims == 0
         max_idx = length(idx)

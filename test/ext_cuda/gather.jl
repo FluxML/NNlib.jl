@@ -103,4 +103,10 @@
         outv2 = NNlib.gather(v2, i)
         @test collect(outv2) == NNlib.gather(collect(v2), collect(i))        
     end
+
+    # Zero-sized
+    x = CT([1,2,3])
+    i = CT(Int[])
+    y = NNlib.gather(x, i)
+    @test isempty(y)
 end

@@ -110,6 +110,7 @@ function gather!(dst::AbstractArray, src::AbstractArray, idx::AbstractArray)
 end
 
 function gather!(dst::AnyGPUArray, src::AnyGPUArray, idx::AnyGPUArray)
+    isempty(dst) && return dst
     n_dims = scatter_dims(src, dst, idx)
     dims = size(src)[1:n_dims]
     max_dims_idx = prod(dims)
