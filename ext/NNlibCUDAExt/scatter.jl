@@ -1,6 +1,17 @@
 # supported op: +, -, *, /, max, min, &, |, mean
 import CUDA.CUSPARSE: AbstractCuSparseArray
 
+## TODO support sparse dst/src/idx
+## See issue https://github.com/FluxML/NNlib.jl/issues/647
+# import CUDA.CUSPARSE: AbstractCuSparseMatrix, CuSparseMatrixCSC, CuSparseMatrixCSR, CuSparseMatrixCOO, AnyCuSparseVector
+# const AnyCuSparseMatrix{Tv,Ti} = Union{
+#     AbstractCuSparseMatrix{Tv,Ti},
+#     CUDA.CuSparseMatrixCSC{Tv,Ti}, # these types do not inherit from AbstractCuSparseMatrix
+#     CUDA.CuSparseMatrixCSR{Tv,Ti}, # but from GPUArrays.AbstractGPUSparseMatrixXXX
+#     CUDA.CuSparseMatrixCOO{Tv,Ti},
+#     }
+# const AnyCuSparseArray{Tv,Ti} = Union{AnyCuSparseVector{Tv,Ti},AnyCuSparseMatrix{Tv,Ti}}
+
 function scatter_kernel!(op::OP, dst, src, idx) where OP
     index = threadIdx().x + (blockIdx().x - 1) * blockDim().x
 
@@ -44,10 +55,10 @@ function scatter_kernel!(op::OP, dst, src, idx::CUDA.CuDeviceArray{<:CartesianIn
     return nothing
 end
 
-
 function NNlib.scatter!(op::OP, dst::Union{AnyCuArray,AbstractCuSparseArray},
     src::Union{AnyCuArray,AbstractCuSparseArray},
     idx::Union{AnyCuArray,AbstractCuSparseArray}) where OP
+    isempty(idx) && return dst
     dims = NNlib.scatter_dims(dst, src, idx)
     args = if dims == 0
         max_idx = length(idx)
@@ -168,19 +179,19 @@ end
 function NNlib.∇scatter_src(op::Union{typeof(*),typeof(/)}, Δ, dst,
     src::Union{AnyCuArray{Tsrc,Nsrc},AbstractCuSparseArray},
     idx::Union{AnyCuArray{Tidx,Nidx},AbstractCuSparseArray}) where {Tsrc,Tidx,Nsrc,Nidx}
-    dims = Nsrc - Nidx
+    dims = ndims(src) - ndims(idx)
     Δsrc = NNlib.modify_src(op, NNlib.gather(Δ, idx), src)
     rev_idx = NNlib.reverse_indices(idx)
     rev_idx = CuArray(map(CUDA.cudaconvert, rev_idx))
 
     if dims == 0
         max_idx = length(idx)
-        args = op, Δsrc, src, idx, rev_idx, max_idx, Tsrc
+        args = op, Δsrc, src, idx, rev_idx, max_idx, eltype(src)
     else
         pre_cart_idx = CartesianIndices(axes(src)[1:dims])
         max_dims_idx = length(pre_cart_idx)
         max_idx = max_dims_idx * length(idx)
-        args = op, Δsrc, src, idx, rev_idx, pre_cart_idx, max_dims_idx, max_idx, Tsrc
+        args = op, Δsrc, src, idx, rev_idx, pre_cart_idx, max_dims_idx, max_idx, eltype(src)
     end
 
     kernel = @cuda launch=false ∇scatter_src_kernel!(args...)
