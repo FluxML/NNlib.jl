@@ -1,4 +1,5 @@
 # supported op: +, -, *, /, max, min, &, |, mean
+import CUDA.CUSPARSE: AbstractCuSparseArray
 
 ## TODO support sparse dst/src/idx
 ## See issue https://github.com/FluxML/NNlib.jl/issues/647
@@ -54,10 +55,9 @@ function scatter_kernel!(op::OP, dst, src, idx::CUDA.CuDeviceArray{<:CartesianIn
     return nothing
 end
 
-
-function NNlib.scatter!(op::OP, dst::AnyCuArray,
-        src::AnyCuArray,
-        idx::AnyCuArray) where OP
+function NNlib.scatter!(op::OP, dst::Union{AnyCuArray,AbstractCuSparseArray},
+    src::Union{AnyCuArray,AbstractCuSparseArray},
+    idx::Union{AnyCuArray,AbstractCuSparseArray}) where OP
     isempty(idx) && return dst
     dims = NNlib.scatter_dims(dst, src, idx)
     args = if dims == 0
@@ -78,9 +78,9 @@ function NNlib.scatter!(op::OP, dst::AnyCuArray,
     return dst
 end
 
-function NNlib.scatter!(op::typeof(mean), dst::AnyCuArray,
-        src::AnyCuArray,
-        idx::AnyCuArray)
+function NNlib.scatter!(op::typeof(mean), dst::Union{AnyCuArray,AbstractCuSparseArray},
+        src::Union{AnyCuArray,AbstractCuSparseArray},
+        idx::Union{AnyCuArray,AbstractCuSparseArray})
     Ns = NNlib.scatter!(+, zero(dst), one.(src), idx)
     dst_ = NNlib.scatter!(+, zero(dst), src, idx)
     dst .+= NNlib.safe_div.(dst_, Ns)
@@ -177,8 +177,8 @@ function ∇scatter_src_kernel!(op::OP, Δsrc, src, idx::CUDA.CuDeviceArray{<:Ca
 end
 
 function NNlib.∇scatter_src(op::Union{typeof(*),typeof(/)}, Δ, dst,
-    src::AnyCuArray,
-    idx::AnyCuArray)
+    src::Union{AnyCuArray{Tsrc,Nsrc},AbstractCuSparseArray},
+    idx::Union{AnyCuArray{Tidx,Nidx},AbstractCuSparseArray}) where {Tsrc,Tidx,Nsrc,Nidx}
     dims = ndims(src) - ndims(idx)
     Δsrc = NNlib.modify_src(op, NNlib.gather(Δ, idx), src)
     rev_idx = NNlib.reverse_indices(idx)
