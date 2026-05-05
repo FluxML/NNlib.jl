@@ -7,6 +7,8 @@ using Base.Broadcast: broadcasted
 using Base.Threads
 using ChainRulesCore
 using GPUArraysCore
+using GPUArrays
+using GPUArrays: AbstractGPUSparseArray
 using KernelAbstractions
 using KernelAbstractions: @atomic
 using LinearAlgebra

@@ -109,7 +109,7 @@ function gather!(dst::AbstractArray, src::AbstractArray, idx::AbstractArray)
     return dst
 end
 
-function gather!(dst::AnyGPUArray, src::AnyGPUArray, idx::AnyGPUArray)
+function gather!(dst::AnyGPUArray, src::Union{AnyGPUArray, AbstractGPUSparseArray}, idx::AnyGPUArray)
     isempty(dst) && return dst
     n_dims = scatter_dims(src, dst, idx)
     dims = size(src)[1:n_dims]
