@@ -155,7 +155,7 @@ end
         using CUDA
         if CUDA.functional()
             @testset "CUDA" begin
-                nnlib_testsuite(CUDABackend; skip_tests=Set(("Scatter", "Gather")))
+                nnlib_testsuite(CUDABackend; skip_tests=Set(("Gather")))
 
                 include("ext_cuda/runtests.jl")
             end

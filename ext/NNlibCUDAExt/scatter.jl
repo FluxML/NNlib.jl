@@ -1,16 +1,5 @@
 # supported op: +, -, *, /, max, min, &, |, mean
 
-## TODO support sparse dst/src/idx
-## See issue https://github.com/FluxML/NNlib.jl/issues/647
-# import CUDA.CUSPARSE: AbstractCuSparseMatrix, CuSparseMatrixCSC, CuSparseMatrixCSR, CuSparseMatrixCOO, AnyCuSparseVector
-# const AnyCuSparseMatrix{Tv,Ti} = Union{
-#     AbstractCuSparseMatrix{Tv,Ti},
-#     CUDA.CuSparseMatrixCSC{Tv,Ti}, # these types do not inherit from AbstractCuSparseMatrix
-#     CUDA.CuSparseMatrixCSR{Tv,Ti}, # but from GPUArrays.AbstractGPUSparseMatrixXXX
-#     CUDA.CuSparseMatrixCOO{Tv,Ti},
-#     }
-# const AnyCuSparseArray{Tv,Ti} = Union{AnyCuSparseVector{Tv,Ti},AnyCuSparseMatrix{Tv,Ti}}
-
 function scatter_kernel!(op::OP, dst, src, idx) where OP
     index = threadIdx().x + (blockIdx().x - 1) * blockDim().x
 
@@ -56,9 +45,8 @@ end
 
 
 function NNlib.scatter!(op::OP, dst::AnyCuArray,
-        src::AnyCuArray,
-        idx::AnyCuArray) where OP
-    isempty(idx) && return dst
+    src::Union{AnyCuArray,AbstractCuSparseArray},
+    idx::Union{AnyCuArray,AbstractCuSparseArray}) where OP
     dims = NNlib.scatter_dims(dst, src, idx)
     args = if dims == 0
         max_idx = length(idx)
@@ -79,8 +67,8 @@ function NNlib.scatter!(op::OP, dst::AnyCuArray,
 end
 
 function NNlib.scatter!(op::typeof(mean), dst::AnyCuArray,
-        src::AnyCuArray,
-        idx::AnyCuArray)
+    src::Union{AnyCuArray,AbstractCuSparseArray},
+    idx::Union{AnyCuArray,AbstractCuSparseArray})
     Ns = NNlib.scatter!(+, zero(dst), one.(src), idx)
     dst_ = NNlib.scatter!(+, zero(dst), src, idx)
     dst .+= NNlib.safe_div.(dst_, Ns)
@@ -177,10 +165,11 @@ function ∇scatter_src_kernel!(op::OP, Δsrc, src, idx::CUDA.CuDeviceArray{<:Ca
 end
 
 function NNlib.∇scatter_src(op::Union{typeof(*),typeof(/)}, Δ, dst,
-    src::AnyCuArray,
-    idx::AnyCuArray)
+    src::Union{AnyCuArray,AbstractCuSparseArray},
+    idx::Union{AnyCuArray,AbstractCuSparseArray})
     dims = ndims(src) - ndims(idx)
-    Δsrc = NNlib.modify_src(op, NNlib.gather(Δ, idx), src)
+    gathered_src = CuArray(src) # Convert to dense to avoid type-unstable broadcast if sparse
+    Δsrc = NNlib.modify_src(op, NNlib.gather(Δ, idx), gathered_src)
     rev_idx = NNlib.reverse_indices(idx)
     rev_idx = CuArray(map(CUDA.cudaconvert, rev_idx))
 

@@ -177,7 +177,7 @@ function scatter(
 ) where {Tsrc,Tidx,Nsrc,Nidx,OP}
     dims = Nsrc - Nidx
     dstsz = isnothing(dstsize) ? (size(src)[1:dims]..., maximum_dims(idx)...) : dstsize
-    dst = similar(src, Tsrc, dstsz)
+    dst = similar(idx, Tsrc, dstsz) # Avoids setindex! when `src` is sparse
     xinit = isnothing(init) ? scatter_empty(op, Tsrc) : init
     fill!(dst, xinit)
     scatter!(op, dst, src, idx)

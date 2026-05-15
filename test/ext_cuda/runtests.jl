@@ -4,9 +4,23 @@ using Zygote
 using ForwardDiff: Dual
 using Statistics: mean
 using CUDA, cuDNN
-import CUDA.CUSPARSE: CuSparseMatrixCSC, CuSparseMatrixCSR, CuSparseMatrixCOO
+using SparseArrays
+import CUDA.CUSPARSE:
+    AbstractCuSparseVector,
+    CuSparseMatrixCSC,
+    CuSparseMatrixCSR,
+    CuSparseMatrixBSR,
+    CuSparseMatrixCOO
 using NNlib: batchnorm, ∇batchnorm
 CUDA.allowscalar(false)
+
+const AbstractCuSparseArray{Tv,Ti} = Union{
+    AbstractCuSparseVector{Tv,Ti},
+    CuSparseMatrixCSC{Tv,Ti},
+    CuSparseMatrixCSR{Tv,Ti},
+    CuSparseMatrixBSR{Tv,Ti},
+    CuSparseMatrixCOO{Tv,Ti},
+}
 
 include("test_utils.jl")
 include("activations.jl")
