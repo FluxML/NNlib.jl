@@ -23,7 +23,15 @@ end
     @test f(cs) ≈ collect(f(CuArray(cs)))
 end
 
-@testset "softplus" begin 
+@testset "NaN propagation" begin
+    # cuDNN's activation path used to swallow NaNs (returning e.g. 0 for relu),
+    # diverging from the CPU. Make sure the native broadcast propagates them (#509).
+    for f in (relu, sigmoid, tanh, elu)
+        @test all(isnan, f.(CuArray([NaN32, NaN32])))
+    end
+end
+
+@testset "softplus" begin
   # softplus does not give `Inf` for large arguments
    x = CuArray([1000.])
    @test all(softplus.(x) .== x)
