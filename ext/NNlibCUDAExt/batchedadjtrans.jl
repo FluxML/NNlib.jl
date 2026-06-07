@@ -1,7 +1,3 @@
-using NNlib: BatchedAdjoint, BatchedTranspose, BatchedAdjOrTrans
-using Adapt
-using Adapt: WrappedArray
-
 const CuBatchedAdjoint{T} = BatchedAdjoint{T, <: CuArray{T}}
 const CuBatchedTranspose{T} = BatchedTranspose{T, <: CuArray{T}}
 const CuBatchedAdjOrTrans{T} = Union{CuBatchedAdjoint{T}, CuBatchedTranspose{T}}
