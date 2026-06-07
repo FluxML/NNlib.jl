@@ -241,6 +241,18 @@ function batched_mul!(C::AbstractArray{T,3}, A::AbstractArray{<:Any,3}, B::Abstr
     C
 end
 
+function batched_mul!(C::AbstractArray{T,N}, A::AbstractArray{<:Any,N}, B::AbstractArray{<:Any,N},
+        α::Number=one(T), β::Number=zero(T)) where {T,N}
+    batch_size = size(C)[3:end]
+    size(A)[3:end] == batch_size || throw(DimensionMismatch("batch size of A must match C"))
+    size(B)[3:end] == batch_size || throw(DimensionMismatch("batch size of B must match C"))
+    C2 = reshape(C, size(C, 1), size(C, 2), :)
+    A2 = reshape(A, size(A, 1), size(A, 2), :)
+    B2 = reshape(B, size(B, 1), size(B, 2), :)
+    batched_mul!(C2, A2, B2, α, β)
+    return C
+end
+
 _batched_mul!(::Type, C, A, B, α::Number, β::Number) = batched_mul_generic!(C, A, B, α, β)
 
 _batched_mul!(::Type{DT}, C, A, B, α::Number, β::Number) where {DT<:DenseArray{T}} where {T<:BlasFloat} =
