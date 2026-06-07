@@ -21,6 +21,10 @@ BINARY_ACTIVATIONS = filter(f -> hasmethod(f, Tuple{Float64, Float64}), ACTIVATI
 @test softplus(0.0) ≈ log(2.0)
 @test softplus(1e8) ≈ 1e8
 @test softplus(-1e8) ≈ 0.0
+# https://github.com/FluxML/NNlib.jl/issues/671: softplus must be smooth at the
+# origin so that derivatives (computed e.g. by ForwardDiff for Hessians) are correct there.
+@test ForwardDiff.derivative(softplus, 0.0) ≈ 0.5
+@test ForwardDiff.derivative(x -> ForwardDiff.derivative(softplus, x), 0.0) ≈ 0.25
 @test softsign(0.0) == 0.0
 @test selu(0.0) == 0.0
 @test celu(0.0) == 0.0
