@@ -109,6 +109,37 @@ function gather!(dst::AbstractArray, src::AbstractArray, idx::AbstractArray)
     return dst
 end
 
+"""
+    gather!(dst, src, IJK...)
+
+Convert the tuple of integer vectors `IJK` to a tuple of `CartesianIndex` and
+call `gather!` on it: `gather!(dst, src, CartesianIndex.(IJK...))`.
+
+# Examples
+
+```jldoctest
+julia> src = reshape([1:15;], 3, 5)
+3×5 Matrix{Int64}:
+ 1  4  7  10  13
+ 2  5  8  11  14
+ 3  6  9  12  15
+
+julia> dst = zeros(Int, 2);
+
+julia> NNlib.gather!(dst, src, [1, 2], [2, 4])
+2-element Vector{Int64}:
+  4
+ 11
+```
+"""
+function gather!(
+    dst::AbstractArray, src::AbstractArray,
+    I::AbstractVector{<:Integer}, J::AbstractVector{<:Integer},
+    Ks::AbstractVector{<:Integer}...,
+)
+    return gather!(dst, src, to_cartesian_index(I, J, Ks...))
+end
+
 function gather!(dst::AnyGPUArray, src::AnyGPUArray, idx::AnyGPUArray)
     isempty(dst) && return dst
     n_dims = scatter_dims(src, dst, idx)
