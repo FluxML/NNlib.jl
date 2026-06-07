@@ -331,5 +331,30 @@ end
     # Test dimension mismatch errors
     @test_throws DimensionMismatch batched_vec(randn(3, 4, 2), randn(4, 3))  # ndims mismatch
     @test_throws DimensionMismatch batched_vec(randn(3, 4, 2, 3), randn(4, 2, 2))  # batch size mismatch
-    
+
+end
+
+@testset "batched_mul!: N-D batches" begin
+    # 4D case, issue #529
+    A = randn(3, 4, 5, 6)
+    B = randn(4, 2, 5, 6)
+    C = similar(A, 3, 2, 5, 6)
+    @test batched_mul!(C, A, B) === C
+    @test C ≈ batched_mul(A, B)
+
+    # 5-arg form with α, β
+    α, β = 2.0, 3.0
+    D = randn(3, 2, 5, 6)
+    C .= D
+    @test batched_mul!(C, A, B, α, β) ≈ α .* batched_mul(A, B) .+ β .* D
+
+    # 5D case
+    A5 = randn(3, 4, 2, 3, 2)
+    B5 = randn(4, 2, 2, 3, 2)
+    C5 = similar(A5, 3, 2, 2, 3, 2)
+    @test batched_mul!(C5, A5, B5) ≈ batched_mul(A5, B5)
+
+    # batch size mismatch errors
+    @test_throws DimensionMismatch batched_mul!(similar(A, 3, 2, 5, 7), A, B)
+    @test_throws DimensionMismatch batched_mul!(C, A, randn(4, 2, 5, 7))
 end
