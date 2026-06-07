@@ -45,7 +45,37 @@
     conv(x, w; stride = 1, pad = 0, dilation = 1, flipped = false, groups = 1)
 
 Apply convolution filter `w` to input `x`. `x` and `w` are 3d/4d/5d tensors
-in 1d/2d/3d convolutions respectively. `x` and `w` may have real or complex element types.
+in 1d/2d/3d convolutions respectively. They may have real or complex element types.
+
+The dimensions are arranged as follows, with the spatial dimensions first:
+- `x`: `(spatial..., channels_in, batch)`
+- `w`: `(spatial..., channels_in ÷ groups, channels_out)`
+- output: `(spatial_out..., channels_out, batch)`
+
+The output spatial size for each dimension is
+`(spatial + 2*pad - (dilation*(spatial_w - 1) + 1)) ÷ stride + 1`.
+
+# Keyword arguments
+- `stride`: stride of the filter (`Int` or tuple of one `Int` per spatial dimension).
+- `pad`: zero padding. An `Int` or tuple applies symmetric padding; a tuple of
+  `2*ndims` entries gives `(left, right)` padding per spatial dimension.
+- `dilation`: spacing between filter elements (atrous convolution).
+- `flipped`: if `false` (default), perform cross-correlation (the usual deep-learning
+  convention); if `true`, perform a true mathematical convolution by flipping `w`.
+- `groups`: number of groups for grouped convolution.
+
+# Examples
+```jldoctest
+julia> x = rand(Float32, 28, 28, 3, 16);  # (width, height, channels_in, batch)
+
+julia> w = rand(Float32, 5, 5, 3, 8);     # (width, height, channels_in, channels_out)
+
+julia> size(conv(x, w))                    # 28 - 5 + 1 = 24
+(24, 24, 8, 16)
+
+julia> size(conv(x, w; stride=2, pad=1))
+(13, 13, 8, 16)
+```
 """
 function conv(x, w::AbstractArray{T, N}; stride = 1, pad = 0, dilation = 1, flipped = false, groups = 1) where {T, N}
     stride = expand(Val(N - 2), stride)
