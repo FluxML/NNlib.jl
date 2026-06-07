@@ -15,8 +15,6 @@ function gradtest(
     check_rrule = false, fdm = :central, check_broadcast = false,
     skip = false, broken = false,
 )
-    # TODO: revamp when https://github.com/JuliaDiff/ChainRulesTestUtils.jl/pull/166
-    # is merged
     if check_rrule
         test_rrule(f, xs...; fkwargs = fkwargs)
     end
