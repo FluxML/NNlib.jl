@@ -96,9 +96,9 @@ Stacktrace:
 ```
 """
 pad_constant(x::AbstractArray{T,N}, pad::Int, val = 0; dims = :) where {T,N} =
-  pad_constant(x, gen_pad(pad, dims isa Colon ? dims : (dims...,), N), val)
+  pad_constant(x, gen_pad(pad, dims isa Colon ? dims : (dims...,), Val(N)), val)
 pad_constant(x::AbstractArray{T,N}, pad::Tuple, val = 0; dims = :) where {T,N} =
-  pad_constant(x, gen_pad(pad, dims isa Colon ? dims : (dims...,), N), val)
+  pad_constant(x, gen_pad(pad, dims isa Colon ? dims : (dims...,), Val(N)), val)
 
 function pad_idx(pad, dims, N)
   is = zip( (2 .* dims) .- 1, (2 .* dims))
@@ -108,13 +108,13 @@ end
 @inline tuplejoin(x, y) = (x..., y...)
 @inline tuplejoin(x, y, z...) = tuplejoin(tuplejoin(x, y), z...)
 
-gen_pad(pad::Int, dims, N) = gen_pad(ntuple(_ -> pad, length(dims)), dims, N)
-gen_pad(pad::Int, dims::Colon, N) = ntuple(_ -> (pad, pad), N)
-gen_pad(pad, dims::Colon, N) = gen_pad(pad, ntuple(identity, N), N)
-gen_pad(pad, dims::Int, N) = gen_pad(pad, (dims,), N)
-gen_pad(pad::Int, dims::Int, N) = gen_pad((pad,pad), (dims,), N)
-function gen_pad(pad::NTuple{L,Int}, dims::NTuple{D,Int}, N) where {L,D}
-  ntuple(N) do d
+gen_pad(pad::Int, dims, ::Val{N}) where {N} = gen_pad(ntuple(_ -> pad, length(dims)), dims, Val(N))
+gen_pad(pad::Int, dims::Colon, ::Val{N}) where {N} = ntuple(_ -> (pad, pad), Val(N))
+gen_pad(pad, dims::Colon, ::Val{N}) where {N} = gen_pad(pad, ntuple(identity, Val(N)), Val(N))
+gen_pad(pad, dims::Int, ::Val{N}) where {N} = gen_pad(pad, (dims,), Val(N))
+gen_pad(pad::Int, dims::Int, ::Val{N}) where {N} = gen_pad((pad,pad), (dims,), Val(N))
+function gen_pad(pad::NTuple{L,Int}, dims::NTuple{D,Int}, ::Val{N}) where {L,D,N}
+  ntuple(Val(N)) do d
    if d in dims
      if L == D
        ix = findfirst(==(d), dims)
@@ -151,7 +151,7 @@ function rrule(::typeof(pad_constant), x::AbstractArray{T,N},
                pad, val; dims = :) where {T,N}
   y = pad_constant(x, pad, val; dims = dims)
   function pad_constant_pullback(Δ)
-    p = gen_pad(pad, dims, N)
+    p = gen_pad(pad, dims, Val(N))
     outsize, center = size_and_center(x, p)
     (NoTangent(), @thunk(unthunk(Δ)[center...]), NoTangent(), NoTangent(),)
   end
