@@ -3,21 +3,21 @@ using NNlib: pad_constant, pad_repeat, pad_zeros, pad_reflect, pad_symmetric, pa
 @testset "padding constant" begin
     x = rand(2, 2, 2)
 
-    p = NNlib.gen_pad((1,2,3,4,5,6), (1,2,3), 4)
+    p = NNlib.gen_pad((1,2,3,4,5,6), (1,2,3), Val(4))
     @test p == ((1, 2), (3, 4), (5, 6), (0, 0))
 
-    @test_throws ArgumentError NNlib.gen_pad((1,2,3,4,5,), (1,2,3), 4)
+    @test_throws ArgumentError NNlib.gen_pad((1,2,3,4,5,), (1,2,3), Val(4))
 
-    p = NNlib.gen_pad((1,3), (1,3), 4)
+    p = NNlib.gen_pad((1,3), (1,3), Val(4))
     @test p == ((1, 1), (0, 0), (3, 3), (0, 0))
 
-    p = NNlib.gen_pad(1, (1,2,3), 4)
+    p = NNlib.gen_pad(1, (1,2,3), Val(4))
     @test p == ((1, 1), (1, 1), (1, 1), (0, 0))
 
-    p = NNlib.gen_pad(3, :, 2)
+    p = NNlib.gen_pad(3, :, Val(2))
     @test p == ((3, 3), (3, 3))
 
-    p = NNlib.gen_pad((1,0), 1, 2)
+    p = NNlib.gen_pad((1,0), 1, Val(2))
     @test p == ((1,0), (0,0))
 
     y = pad_constant(x, (3, 2, 4))
