@@ -73,6 +73,19 @@ maximum_dims(dims::AbstractArray{<:Integer}) = (maximum(dims), )
 maximum_dims(dims::AbstractArray{NTuple{N, T}}) where {N,T} = ntuple(i -> maximum(x->x[i], dims), N)
 maximum_dims(dims::AbstractArray{CartesianIndex{N}}) where {N} = ntuple(i -> maximum(x->x[i], dims), N)
 
+"""
+    dense_like(x, [T=eltype(x)], size)
+
+Return an uninitialized dense array of element type `T` and the given `size`,
+on the same device/backend as `x`. For an ordinary dense array this is just
+`similar`; for a sparse array it returns the corresponding *dense* type on the
+same device (e.g. an `Array` for a `SparseMatrixCSC`, a `CuArray` for a
+`CuSparseMatrix`), rather than another sparse array as `similar` would.
+"""
+dense_like(x::AbstractArray, ::Type{T}, sz) where {T} = similar(x, T, sz)
+dense_like(x::AbstractArray, sz) = dense_like(x, eltype(x), sz)
+dense_like(x::AbstractArray) = dense_like(x, size(x))
+
 function reverse_indices!(rev::AbstractArray, idx::AbstractArray{<:Tuple})
     for (ind, val) in pairs(Array(idx))
         push!(rev[val...], ind)
