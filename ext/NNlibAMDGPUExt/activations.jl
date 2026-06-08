@@ -1,16 +1,6 @@
-for (f, op) in [
-        NNlib.relu => MIOpen.relu,
-        NNlib.relu6 => x -> MIOpen.clippedrelu(x, 6),
-        NNlib.softplus => MIOpen.softrelu,
-        NNlib.σ => MIOpen.sigmoid,
-        Base.tanh => MIOpen.tanh,
-        # TODO define for leakyrelu, elu, etc.?
-    ], N in 1:5
-    @eval function Base.materialize(
-        bc::Broadcast.Broadcasted{<:Any,<:Any,typeof($f),<:Tuple{ROCArray{<:MIOPENFloat,$N}}}
-    )
-        return $op(bc.args[1])
-    end
-end
+# We deliberately do NOT route activation broadcasts (relu, σ, tanh, ...) through
+# MIOpen. Those overloads used to pirate `Base.materialize` (hurting latency via
+# invalidations, #504) and, like cuDNN, MIOpen does not propagate NaNs (#509).
+# AMDGPU's native broadcast is correct and, for these elementwise ops, just as fast.
 
 Base.broadcasted(::typeof(identity), x::ROCArray{T}) where {T<:MIOPENFloat} = x

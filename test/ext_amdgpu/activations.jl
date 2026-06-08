@@ -9,3 +9,11 @@
         end
     end
 end
+
+@testset "NaN propagation" begin
+    # MIOpen's activation path used to swallow NaNs (returning e.g. 0 for relu),
+    # diverging from the CPU. Make sure the native broadcast propagates them (#509).
+    for f in (NNlib.relu, NNlib.relu6, NNlib.softplus, tanh, NNlib.σ)
+        @test all(isnan, f.(ROCArray([NaN32, NaN32])))
+    end
+end
