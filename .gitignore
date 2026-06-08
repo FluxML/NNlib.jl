@@ -11,7 +11,7 @@ deps/usr
 deps.jl
 *.log
 .vscode/
-/Manifest.toml
+Manifest.toml
 test/Manifest.toml
 benchmark/Manifest.toml
 benchmark/*.json
