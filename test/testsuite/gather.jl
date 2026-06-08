@@ -1,4 +1,5 @@
 using NNlib: gather, gather!
+using SparseArrays: sparse
 import EnzymeTestUtils
 using EnzymeCore
 
@@ -209,6 +210,33 @@ function gather_testsuite(Backend)
         y = gather!(dst, x, i, j)
         @test y === dst
         @test cpu(y) == [4, 11]
+    end
+
+    if Backend == CPU
+        @testset "test_rrule gather! (#429)" begin
+            src = randn(rng, Float64, 3, 4)
+            idx = [2, 1, 4, 3, 2]
+            dst = zeros(Float64, 3, length(idx))
+            test_rrule(gather!, dst, src, idx ⊢ NoTangent())
+
+            # tuple index into a 3d source
+            src3 = randn(rng, Float64, 2, 3, 4)
+            idxt = [(1, 2), (3, 4), (2, 1)]
+            dst3 = zeros(Float64, 2, length(idxt))
+            test_rrule(gather!, dst3, src3, idxt ⊢ NoTangent())
+        end
+
+        @testset "gather on sparse source returns dense (#625)" begin
+            A = sparse([1, 2, 3], [2, 3, 1], [1.0, 1.0, 1.0], 3, 3)
+            # scalar index: gather columns
+            y = gather(A, [1, 3, 1])
+            @test y isa Array{Float64, 2}
+            @test y == Matrix(A)[:, [1, 3, 1]]
+            # cartesian index form
+            w = gather(A, [1, 2, 3], [2, 3, 1])
+            @test w isa Array{Float64, 1}
+            @test w == [A[1, 2], A[2, 3], A[3, 1]]
+        end
     end
 end
 

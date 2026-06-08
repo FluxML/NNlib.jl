@@ -143,6 +143,7 @@ end
 function gather!(dst::AnyGPUArray, src::AnyGPUArray, idx::AnyGPUArray)
     isempty(dst) && return dst
     n_dims = scatter_dims(src, dst, idx)
+    checkbounds_gather(src, idx, n_dims)
     dims = size(src)[1:n_dims]
     max_dims_idx = prod(dims)
     ndrange = max_dims_idx * length(idx)
@@ -158,6 +159,20 @@ end
     i = @index(Global)
     j, k = divrem(i - 1, max_dims_idx)
     @inbounds dst[i] = src[dim_ids[k + 1], Tuple(idx[j + 1])...]
+end
+
+@inline _idx_in_bounds(i::Integer, sz::Tuple) = (1 ≤ i) & (i ≤ sz[1])
+@inline _idx_in_bounds(i::Union{Tuple, CartesianIndex}, sz::Tuple) =
+    all(map((j, s) -> (1 ≤ j) & (j ≤ s), Tuple(i), sz))
+
+# The GPU kernel reads `src` with `@inbounds`, so out-of-range indices would
+# silently return garbage. Validate the indices up front to mirror the
+# `BoundsError` thrown by the CPU `view`-based `gather!`. See issue #416.
+function checkbounds_gather(src::AbstractArray, idx::AbstractArray, n_dims::Int)
+    idx_size = size(src)[n_dims + 1:end]
+    inbounds = mapreduce(i -> _idx_in_bounds(i, idx_size), &, idx; init=true)
+    inbounds || throw(BoundsError(src))
+    return nothing
 end
 
 ∇gather_src(Δ, src_size, idx) = scatter!(+, fill!(similar(Δ, eltype(Δ), src_size), 0), Δ, idx)

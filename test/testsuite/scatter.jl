@@ -232,4 +232,16 @@ function scatter_testsuite(Backend)
 
         end
     end
+
+    if Backend == CPU
+        @testset "test_rrule scatter!/scatter (#429)" begin
+            src = randn(rng, Float64, 3, 5)
+            idx = [2, 2, 3, 4, 4]
+            for op in (+, -)
+                dst = zeros(Float64, 3, 4)
+                test_rrule(scatter!, op ⊢ NoTangent(), dst, src, idx ⊢ NoTangent())
+                test_rrule(scatter, op ⊢ NoTangent(), src, idx ⊢ NoTangent())
+            end
+        end
+    end
 end
