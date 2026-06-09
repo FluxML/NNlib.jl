@@ -436,3 +436,54 @@ end
         @test H ≈ Zygote.hessian_reverse(x -> sum(abs2, f.(x .+ 0.1, 0.3)), x)
     end
 end
+
+@testset "complex" begin
+    ## https://github.com/FluxML/NNlib.jl/issues/132
+    ## Holomorphic activations are well-defined on ℂ. Each is checked against a naive
+    ## elementary formula for (a) the forward value and (b) the gradient. Gradients of
+    ## both `f` and the naive version are taken with Zygote, so whatever complex-gradient
+    ## convention Zygote uses cancels, and the test isolates the correctness of NNlib's
+    ## hand-written rules (in particular the `conj` needed for the ChainRules convention).
+    holo = [
+        (σ,          z -> 1 / (1 + exp(-z))),
+        (swish,      z -> z / (1 + exp(-z))),
+        (softplus,   z -> log(1 + exp(z))),
+        (logσ,       z -> -log(1 + exp(-z))),
+        (mish,       z -> z * tanh(log(1 + exp(z)))),
+        (logcosh,    z -> log(cosh(z))),
+        (tanh_fast,  z -> tanh(z)),
+        (lisht,      z -> z * tanh(z)),
+        (tanhshrink, z -> z - tanh(z)),
+    ]
+    zs = ComplexF64[0.4 + 0.6im, -0.7 + 0.2im, 1.2 - 0.9im, -0.3 - 1.1im]
+
+    @testset "$f" for (f, naive) in holo
+        for z in zs
+            @test f(z) ≈ naive(z)                                   # forward
+            @test gradient(z -> abs2(f(z)), z)[1] ≈
+                  gradient(z -> abs2(naive(z)), z)[1]               # scalar gradient
+        end
+        @test gradient(z -> sum(abs2, f.(z)), zs)[1] ≈
+              gradient(z -> sum(abs2, naive.(z)), zs)[1]            # broadcasted gradient
+    end
+
+    @testset "numerical stability" begin
+        ## must stay finite where the naive formula overflows / loses the phase
+        for z in (600 + 2im, -600 + 2im, 80 - 50im, -80 + 50im)
+            @test isfinite(σ(z))
+            @test isfinite(softplus(z))
+            @test isfinite(swish(z))
+        end
+        @test σ(-800 + 0im) ≈ 0 atol = 1e-12
+        @test real(softplus(800 + 1im)) ≈ 800
+    end
+
+    @testset "piecewise activations reject complex" begin
+        ## Order-defined activations have no canonical complex extension; they should
+        ## throw rather than silently pick one (e.g. CReLU/modReLU/zReLU).
+        for f in (relu, leakyrelu, relu6, elu, selu, celu,
+                  hardσ, hardtanh, hardswish, trelu, softshrink)
+            @test_throws MethodError f(1.0 + 1.0im)
+        end
+    end
+end
