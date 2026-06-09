@@ -64,6 +64,10 @@ using Random: AbstractRNG, SamplerType
             @test_throws DimensionMismatch T(x, w; dilation=(1, 1, 1))
             # Dilation will cause us to reach beyond the end of input + padding here:
             @test_throws DimensionMismatch T(x, w; dilation=(1, 5))
+            # Negative padding is not supported (https://github.com/FluxML/NNlib.jl/issues/123):
+            @test_throws ArgumentError T(x, w; padding=-1)
+            @test_throws ArgumentError T(x, w; padding=(-1, -1))
+            @test_throws ArgumentError T(x, w; padding=(0, -1, 0, 0))
             # Channel mismatch:
             if T == DenseConvDims
                 @test_throws DimensionMismatch T(x, w[:,:,1:1,:])

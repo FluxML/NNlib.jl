@@ -134,8 +134,11 @@ function check_spdf(x_size::NTuple{N}, w_size::NTuple{N}, stride, padding, dilat
     return pstride, ppadding_expanded, pdilation
 end
 
-# Assert that kernel size * dilation is <= padded input size
+# Assert that padding is non-negative and kernel size * dilation is <= padded input size
 function _validate_padding(x_size::NTuple{N}, w_size::NTuple{N}, padding, dilation) where N
+    if any(<(0), padding)
+        throw(ArgumentError("Negative padding $(padding) is not supported."))
+    end
     for idx in 1:(N - 2)
         Is = x_size[idx]
         Ks = w_size[idx]
