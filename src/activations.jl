@@ -941,11 +941,11 @@ UNARY_ACTS = [ # f, dfdx
     ## `conj`, and the scalar `@scalar_rule` conjugates internally, so both paths yield the
     ## ChainRules-convention `conj(f')` needed for correct complex (holomorphic) gradients.
     (:σ,            :(Ω * (1 - Ω))),
-    (:hardσ,        :(ifelse((Ω>0)&(Ω<1), oftf(Ω, 1/6), oftf(Ω, 1)))),
+    (:hardσ,        :(ifelse((Ω>0)&(Ω<1), oftf(Ω, 1)/oftf(Ω, 6), oftf(Ω, 0)))),
     (:logσ,         :(sigmoid_fast(-x))),
     (:hardtanh,     :((Ω>-1) & (Ω<1))),
     (:relu,         :(Ω > 0)),
-    (:leakyrelu,    :(ifelse(Ω > 0, oftf(Ω, 1), oftf(Ω, leakyrelu_a)))),
+    (:leakyrelu,    :(ifelse(Ω > 0, oftf(Ω, 1), oftf(Ω, 1)/oftf(Ω, 100)))),  # 1/100 == leakyrelu_a; built from Ints to stay Float64-free for GPU (Metal) kernels
     (:relu6,        :((Ω>0) & (Ω<6))),
     # rrelu is random, can't write a rule.
     (:elu,          :(deriv_elu(Ω))),

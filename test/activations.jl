@@ -406,6 +406,17 @@ end
         gradtest(x -> selu.(x), 10, atol=1e-4)
     end
 
+    @testset "saturated gradients: $f" for f in (hardσ, hardtanh, relu6, hardswish)
+        # The `gradtest`s above only probe near the origin (±2±rand), which sits inside
+        # the linear region of the clamping activations and never exercises the saturated
+        # branch of their derivative. Check that branch directly against ForwardDiff.
+        for x in (-50.0, 50.0, -7.0, 7.0)
+            ad = Zygote.gradient(z -> sum(f.(z)), [x])[1][1]
+            fd = ForwardDiff.derivative(f, x)
+            @test ad ≈ fd  atol=1e-6
+        end
+    end
+
 end
 
 @testset "Second derivatives" begin
