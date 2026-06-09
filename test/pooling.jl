@@ -990,18 +990,22 @@ end
 end
 
 @testset "AutoDiff: spatial_rank=$spatial_rank" for spatial_rank in (1, 2)
-  x = rand(rng, repeat([10], spatial_rank)..., 3, 2)
+  # Use an input with distinct, well-separated values so that every pooling window has
+  # a unique maximum. `maxpool` is non-differentiable at ties, where finite differences
+  # and AD disagree; with random input this makes the `maxpool` gradtests flaky (this is
+  # what the now-closed #188 was about). Distinct integers (gaps >= 1 >> the FD step)
+  # keep the argmax stable, so the comparison is well-posed for all spatial ranks.
+  x = Float64.(reshape(randperm(rng, 10^spatial_rank * 3 * 2), repeat([10], spatial_rank)..., 3, 2))
   pdims = PoolDims(x, 2)
-  gradtest(x -> maxpool(x, pdims), x; skip = spatial_rank==2)
+  gradtest(x -> maxpool(x, pdims), x)
   gradtest(x -> meanpool(x, pdims), x)
-  gradtest(x -> sum(maxpool(x, pdims)), x, skip = spatial_rank==2)
+  gradtest(x -> sum(maxpool(x, pdims)), x)
   gradtest(x -> sum(meanpool(x, pdims)), x)
 
-  #https://github.com/FluxML/NNlib.jl/issues/188
   k = ntuple(_ -> 2, spatial_rank)  # Kernel size of pool in ntuple format
-  gradtest(x -> maxpool(x, k), x; skip = spatial_rank==2)
+  gradtest(x -> maxpool(x, k), x)
   gradtest(x -> meanpool(x, k), x)
-  gradtest(x -> sum(maxpool(x, k)), x, skip = spatial_rank==2)
+  gradtest(x -> sum(maxpool(x, k)), x)
   gradtest(x -> sum(meanpool(x, k)), x)
 
   # count_include_pad=false (issue #218), with padding so the modes differ

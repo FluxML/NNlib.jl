@@ -786,8 +786,13 @@ end
       @test gs_w_reg ≈ gs_w[:,:,:,o]
    end
 
-   # Currently hangs due to a FiniteDifferences issue
-   @test_skip gradtest((x, w) -> sum(conv(x, w, cdims)), x′, w′)
+   # Finite-differencing the gradient of the full-size `x′`/`w′` above is intractable
+   # (it perturbs every one of the ~157k input elements), so check the grouped-conv
+   # gradient against finite differences on a small input instead.
+   xs = rand(rng, Float64, 6, 6, 4, 2)
+   ws = rand(rng, Float64, 3, 3, 2, 4)
+   csdims = DenseConvDims(xs, ws; groups=2)
+   gradtest((x, w) -> sum(conv(x, w, csdims)), xs, ws)
 end
 
 @testset "conv_wrapper" begin
@@ -891,7 +896,6 @@ end
   dcdims = DepthwiseConvDims(x, w)
   gradtest((x, w) -> depthwiseconv(x, w, dcdims), x, w)
 
-  # FIXME fails
   y = depthwiseconv(x, w, dcdims)
   gradtest((y, w) -> ∇depthwiseconv_data(y, w, dcdims), y, w)
   gradtest((y, w) -> sum(∇depthwiseconv_data(y, w, dcdims)), y, w)
