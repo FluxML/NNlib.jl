@@ -693,10 +693,12 @@ julia> softplus(16f0)
 16.0f0
 ```
 """
-softplus(x) = real(x) < zero(real(x)) ? log1p(exp(x)) : x + log1p(exp(-x))
-# Branching on `real(x)` keeps `exp` from overflowing and also makes this work for
-# complex inputs: softplus(z) = log(1 + exp(z)) on the principal branch (the two
-# rearrangements agree for `abs(imag(z)) ≤ π`, which covers typical use).
+function softplus(x)
+    # Branching on `real(x)` keeps `exp` from overflowing and also makes this work for
+    # complex inputs: softplus(z) = log(1 + exp(z)) on the principal branch (the two
+    # rearrangements agree for `abs(imag(z)) ≤ π`, which covers typical use).
+    real(x) < zero(real(x)) ? log1p(exp(x)) : x + log1p(exp(-x))
+end
 
 """
     logcosh(x)
