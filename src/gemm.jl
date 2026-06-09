@@ -62,6 +62,30 @@ for (gemm, elt) in gemm_datatype_mappings
     end
 end
 
+# Variant with explicit leading dimensions. This lets a caller multiply a
+# sub-block of `A`/`C` in place (e.g. a contiguous slice of the output spatial
+# dimension) without copying, by passing the full leading dimension while
+# giving a reduced row count `M` and pre-offset pointers.
+for (gemm, elt) in gemm_datatype_mappings
+    @eval begin
+        @inline function gemm!(transA::Val, transB::Val,
+                               M::Int, N::Int, K::Int,
+                               alpha::$(elt), A::Ptr{$elt}, lda::Int,
+                               B::Ptr{$elt}, ldb::Int,
+                               beta::$(elt), C::Ptr{$elt}, ldc::Int)
+            convtrans(V::Val{false}) = 'N'
+            convtrans(V::Val{true})  = 'C'
+            ccall((@blasfunc($(gemm)), libblas), Nothing,
+                  (Ref{UInt8}, Ref{UInt8}, Ref{BlasInt}, Ref{BlasInt},
+                   Ref{BlasInt}, Ref{$elt}, Ptr{$elt}, Ref{BlasInt},
+                   Ptr{$elt}, Ref{BlasInt}, Ref{$elt}, Ptr{$elt},
+                   Ref{BlasInt}),
+                  convtrans(transA), convtrans(transB), M, N, K,
+                  alpha, A, lda, B, ldb, beta, C, ldc)
+        end
+    end
+end
+
 for (gemm, elt) in gemm_datatype_mappings
     @eval begin
         @inline function batched_gemm!(transA::AbstractChar,

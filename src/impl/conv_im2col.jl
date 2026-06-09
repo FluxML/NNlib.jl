@@ -45,29 +45,95 @@ function conv_im2col!(
     N = channels_out(cdims)
     K = prod(kernel_size(cdims))*channels_in(cdims)
 
-    parts = Iterators.partition(axes(x, 5), ceil(Int, size(x, 5) / ntasks))
+    nbatch = size(x, 5)
+    ntasks = min(ntasks, size(col, 3))
 
-    function conv_part(task_n, part)
-        col_slice = col_slice = view(col, :, :, task_n) # col_slice is a task-local workspace
-        for batch_idx in part
-            im2col!(col_slice, view(x, :, :, :, :, batch_idx), cdims)
-            GC.@preserve col_slice w y begin
-                col_ptr = pointer(col_slice)
-                w_ptr = pointer(w)
-                y_ptr = pointer(y, (batch_idx - 1)*M*N + 1)
-                gemm!(Val(false), Val(false), M, N, K, alpha, col_ptr, w_ptr, beta, y_ptr)
-            end
+    # Multiply a contiguous block of `m_len` output-spatial rows, starting at
+    # 0-based row `m_off`, for image `n`, reading from workspace slice `cs`.
+    # `cs` is the full `(M, K)` workspace; only rows `m_off .+ (1:m_len)` are
+    # read, so several tasks can share `y`/`w` while writing disjoint rows.
+    function gemm_block!(cs, n, m_off, m_len)
+        GC.@preserve cs w y begin
+            col_ptr = pointer(cs, m_off + 1)
+            w_ptr   = pointer(w)
+            y_ptr   = pointer(y, (n - 1)*M*N + m_off + 1)
+            gemm!(Val(false), Val(false), m_len, N, K, alpha,
+                  col_ptr, M, w_ptr, K, beta, y_ptr, M)
         end
     end
 
-    if should_use_spawn() && length(parts) > 1
-        @sync for (task_n, part) in enumerate(parts)
-            Threads.@spawn conv_part(task_n, part)
+    # One task fully responsible for a chunk of whole images.
+    function batch_task(task_n, part)
+        cs = view(col, :, :, task_n)
+        for n in part
+            im2col!(cs, view(x, :, :, :, :, n), cdims)
+            gemm_block!(cs, n, 0, M)
         end
+    end
+
+    # Serial path (single thread or spawning disabled), or enough images to keep
+    # every task busy: process whole images, splitting the batch across tasks.
+    # This is the original behavior and leaves the per-image GEMM to BLAS.
+    if !should_use_spawn() || ntasks <= 1 || nbatch >= ntasks
+        parts = Iterators.partition(1:nbatch, cld(nbatch, max(ntasks, 1)))
+        if should_use_spawn() && ntasks > 1 && length(parts) > 1
+            @sync for (task_n, part) in enumerate(parts)
+                Threads.@spawn batch_task(task_n, part)
+            end
+        else
+            for (task_n, part) in enumerate(parts)
+                batch_task(task_n, part)
+            end
+        end
+        return y
+    end
+
+    # Fewer images than tasks: split each image's output-spatial dimension so no
+    # thread sits idle at small batch (issue #234). We drive this parallelism
+    # ourselves and partition the GEMM by output rows, so pin BLAS to a single
+    # thread to avoid oversubscription (as `batched_gemm!` does). We split the
+    # outermost spatial axis with extent > 1, which keeps each task's output
+    # rows contiguous in `y`.
+    out_w, out_h, out_d = output_size(cdims)
+    if out_d > 1
+        naxis, stride_ax, axis = out_d, out_w*out_h, :d
+    elseif out_h > 1
+        naxis, stride_ax, axis = out_h, out_w, :h
     else
-        for (task_n, part) in enumerate(parts)
-            conv_part(task_n, part)
+        naxis, stride_ax, axis = out_w, 1, :w
+    end
+
+    # Distribute ntasks spatial blocks across the nbatch images.
+    base, extra = divrem(ntasks, nbatch)
+    units = Tuple{Int,UnitRange{Int}}[]
+    for n in 1:nbatch
+        nblk = clamp(base + (n <= extra ? 1 : 0), 1, naxis)
+        for cr in Iterators.partition(1:naxis, cld(naxis, nblk))
+            push!(units, (n, cr))
         end
+    end
+
+    function tile_task(task_n, n, cr)
+        cs = view(col, :, :, task_n)
+        xn = view(x, :, :, :, :, n)
+        if axis === :d
+            im2col!(cs, xn, cdims; d_range=cr)
+        elseif axis === :h
+            im2col!(cs, xn, cdims; h_range=cr)
+        else
+            im2col!(cs, xn, cdims; w_range=cr)
+        end
+        gemm_block!(cs, n, (first(cr) - 1)*stride_ax, length(cr)*stride_ax)
+    end
+
+    old_blas = get_num_threads()
+    set_num_threads(1)
+    try
+        @sync for (task_n, (n, cr)) in enumerate(units)
+            Threads.@spawn tile_task(task_n, n, cr)
+        end
+    finally
+        set_num_threads(old_blas)
     end
     return y
 end
@@ -197,7 +263,8 @@ out along the rows of `col`, one for each output pixel.  This routine is used by
 im2col-based convolutions, just with extra singleton dimensions added in the case of `2d`
 or `1d` images.
 """
-function im2col!(col::AbstractArray{T,2}, x::AbstractArray{T,4}, cdims::ConvDims) where {T}
+function im2col!(col::AbstractArray{T,2}, x::AbstractArray{T,4}, cdims::ConvDims;
+                 w_range=nothing, h_range=nothing, d_range=nothing) where {T}
     if spatial_dims(cdims) != 3
         throw(DimensionMismatch("im2col!() only accepts 3d convoluitional inputs"))
     end
@@ -210,6 +277,15 @@ function im2col!(col::AbstractArray{T,2}, x::AbstractArray{T,4}, cdims::ConvDims
     dil_w, dil_h, dil_d = dilation(cdims)
     stride_w, stride_h, stride_d = stride(cdims)
     out_width, out_height, out_depth = output_size(cdims)
+
+    # Optionally restrict the work to a sub-range of output positions, so that
+    # several tasks can fill disjoint output-spatial slabs of `col` in parallel
+    # (used to thread a single image; see `conv_im2col!`). Defaults span the
+    # whole output, reproducing the unrestricted behavior.
+    w_range = w_range === nothing ? (1:out_width)  : w_range
+    h_range = h_range === nothing ? (1:out_height) : h_range
+    d_range = d_range === nothing ? (1:out_depth)  : d_range
+    @inline _isect(a, b) = max(first(a), first(b)):min(last(a), last(b))
 
     # Reshape col for easy access.
     col_reshaped = reshape(col, (
@@ -241,9 +317,9 @@ function im2col!(col::AbstractArray{T,2}, x::AbstractArray{T,4}, cdims::ConvDims
         for kd in 1:kernel_d,
             kh in 1:kernel_h,
             kw in 1:kernel_w,
-            d in d_region,
-            h in h_region,
-            w in w_region
+            d in _isect(d_region, d_range),
+            h in _isect(h_region, h_range),
+            w in _isect(w_region, w_range)
 
             input_kd = project(d, stride_d, pad_d_lo) + (kd - 1)*dil_d
             input_kh = project(h, stride_h, pad_h_lo) + (kh - 1)*dil_h
@@ -259,9 +335,9 @@ function im2col!(col::AbstractArray{T,2}, x::AbstractArray{T,4}, cdims::ConvDims
     # For each "padded region", we run the fully general version
     @inbounds for (w_region, h_region, d_region) in padded_regions
         for c in 1:C_in,
-            d in d_region,
-            h in h_region,
-            w in w_region,
+            d in _isect(d_region, d_range),
+            h in _isect(h_region, h_range),
+            w in _isect(w_region, w_range),
             kd in 1:kernel_d,
             kh in 1:kernel_h,
             kw in 1:kernel_w
