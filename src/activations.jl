@@ -56,6 +56,14 @@ function σ(x)
     ifelse(x ≥ 0, inv(1 + t), t / (1 + t))
 end
 
+# Complex inputs (e.g. complex-valued networks): σ is holomorphic, so we compute the
+# same function via the overflow-safe rearrangement. `1/(1+exp(-z))` and
+# `exp(z)/(1+exp(z))` are equal everywhere; we branch on `real(z)` to pick the one
+# whose `exp` cannot overflow (overflow depends only on the real part).
+function σ(z::Complex)
+    real(z) ≥ 0 ? inv(1 + exp(-z)) : (t = exp(z); t / (1 + t))
+end
+
 const sigmoid = σ
 
 """
@@ -685,7 +693,12 @@ julia> softplus(16f0)
 16.0f0
 ```
 """
-softplus(x) = x < zero(x) ? log1p(exp(x)) : x + log1p(exp(-x))
+function softplus(x)
+    # Branching on `real(x)` keeps `exp` from overflowing and also makes this work for
+    # complex inputs: softplus(z) = log(1 + exp(z)) on the principal branch (the two
+    # rearrangements agree for `abs(imag(z)) ≤ π`, which covers typical use).
+    real(x) < zero(real(x)) ? log1p(exp(x)) : x + log1p(exp(-x))
+end
 
 """
     logcosh(x)
@@ -888,6 +901,13 @@ end
 
 sigmoid_fast(x::Float16) = sigmoid(x)  # sigmoid_fast is extremely badly behaved at large x
 
+# Complex inputs: the `_fast` clamped approximation is real-only, so fall back to the
+# holomorphic `σ` (which has its own overflow-safe complex method). This keeps `swish`,
+# `logσ`, and the `softplus`/`logσ` gradients holomorphic and GPU-compilable; using a
+# plain method (rather than the deprecation path below) avoids the `depwarn` string
+# interpolation that cannot compile in a GPU kernel.
+sigmoid_fast(x::Complex) = σ(x)
+
 function sigmoid_fast(x::Number)
     Base.depwarn("sigmoid only makes sense on real numbers, got $(typeof(x))", :sigmoid_fast)
     sigmoid(x)
@@ -917,7 +937,10 @@ this replacement for some array or element types.
 
 UNARY_ACTS = [ # f, dfdx
     ## In the same order as above!
-    (:σ,            :(conj(Ω * (1 - Ω)))),
+    ## Derivatives are the plain (un-conjugated) f'; the broadcasted rrule below applies
+    ## `conj`, and the scalar `@scalar_rule` conjugates internally, so both paths yield the
+    ## ChainRules-convention `conj(f')` needed for correct complex (holomorphic) gradients.
+    (:σ,            :(Ω * (1 - Ω))),
     (:hardσ,        :(ifelse((Ω>0)&(Ω<1), oftf(Ω, 1/6), oftf(Ω, 1)))),
     (:logσ,         :(sigmoid_fast(-x))),
     (:hardtanh,     :((Ω>-1) & (Ω<1))),
@@ -943,8 +966,8 @@ UNARY_ACTS = [ # f, dfdx
     (:tanhshrink,    :((x - Ω)^2)),
     (:softshrink,    :(Ω != 0)),
     ## Fast variants are the same!
-    (:tanh_fast,    :(conj(1 - Ω^2))),
-    (:sigmoid_fast, :(conj(Ω * (1 - Ω)))),
+    (:tanh_fast,    :(1 - Ω^2)),
+    (:sigmoid_fast, :(Ω * (1 - Ω))),
 ]
 
 for (f, dfdx) in UNARY_ACTS
@@ -956,8 +979,8 @@ for (f, dfdx) in UNARY_ACTS
         Ω = $f.(x)
         function $pullback(dΩ)
             x_thunk = InplaceableThunk(
-                dx -> @.(dx += dΩ * $dfdx),
-                @thunk @.(dΩ * $dfdx)
+                dx -> @.(dx += dΩ * conj($dfdx)),
+                @thunk @.(dΩ * conj($dfdx))
             )
             NoTangent(), NoTangent(), x_thunk
         end
@@ -986,7 +1009,7 @@ for (f, dfdx1, dfdx2) in BINARY_ACTS
                          x1::Union{Numeric, Broadcast.Broadcasted}, x2::Number)
         Ω = $f.(x1, x2)
         ## Allowing x2::Array would allow size(Ω) != size(x1), which is not handled here:
-        $pullback(dΩ) = (NoTangent(), NoTangent(), @.(dΩ * $dfdx1), NO_ACT_GRAD)
+        $pullback(dΩ) = (NoTangent(), NoTangent(), @.(dΩ * conj($dfdx1)), NO_ACT_GRAD)
         return Ω, $pullback
     end
 end

@@ -44,6 +44,7 @@ end
 
 cpu(x) = adapt(CPU(), x)
 
+include("testsuite/activations.jl")
 include("testsuite/gather.jl")
 include("testsuite/scatter.jl")
 include("testsuite/upsample.jl")
@@ -52,6 +53,9 @@ include("testsuite/spectral.jl")
 include("testsuite/fold.jl")
 
 function nnlib_testsuite(Backend; skip_tests = Set{String}())
+    @conditional_testset "Activations" skip_tests begin
+        activations_testsuite(Backend)
+    end
     @conditional_testset "Upsample" skip_tests begin
         upsample_testsuite(Backend)
     end
