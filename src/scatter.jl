@@ -109,9 +109,7 @@ end
 @kernel function _scatter!(op::OP, dst, src, idxs) where OP
     i = @index(Global)
     @inbounds idx = Tuple(_convert_i64(idxs[i]))
-    @inbounds Atomix.modify!(Atomix.IndexableRef(dst, idx), op, src[i])
-    # FIXME `@atomic` macro silently fails to perform atomic op below
-    # @atomic dst[idx...] = op(dst[idx...], src[i])
+    @inbounds _atomic_scatter!(dst, idx, op, src[i])
 end
 
 @kernel function _scatter!(
@@ -120,12 +118,16 @@ end
     i = @index(Global)
     j, k = divrem(i - 1, max_dims_idx)
     @inbounds idx = (Tuple(dim_ids[k + 1])..., Tuple(_convert_i64(idxs[j + 1]))...)
-    @inbounds Atomix.modify!(Atomix.IndexableRef(dst, idx), op, src[i])
-    # FIXME `@atomic` macro silently fails to perform atomic op below
-    # dim_i = Tuple(dim_ids[k + 1])
-    # idx = idxs[j + 1]
-    # @atomic dst[dim_i..., idx...] = op(dst[dim_i..., idx...], src[i])
+    @inbounds _atomic_scatter!(dst, idx, op, src[i])
 end
+
+# Atomically perform `dst[idx...] = op(dst[idx...], val)` inside a scatter kernel.
+# The default routes through Atomix, which covers the full op set on CUDA and
+# AMDGPU. Metal is special-cased in NNlibMetalExt because Atomix's Metal atomics
+# only support a subset of ops (e.g. they error on float `max`/`min` and silently
+# no-op on `*`/`/`); see https://github.com/FluxML/NNlib.jl/issues/534.
+@inline _atomic_scatter!(dst, idx, op::OP, val) where OP =
+    Atomix.modify!(Atomix.IndexableRef(dst, idx), op, val)
 
 # Allow non-Int64 indices by converting them to Int64 when index eltype <: Integer.
 # All other index types (tuples, cartesian indices) must be in Int64 already.
@@ -288,8 +290,10 @@ function ∇scatter_src(
 ) where {Tsrc,Tidx,Nsrc,Nidx}
     M = typelength(Tidx)
     num = gather(Δ, idx)
-    counts = fill!(similar(Δ, Int, size(Δ)[end-M+1:end]), 0)
-    scatter!(+, counts, fill!(similar(idx, Int), 1), idx)
+    # `Int32` (rather than `Int`) keeps the count buffer compatible with backends
+    # that lack 64-bit atomics, e.g. Metal. Counts are small, so this never overflows.
+    counts = fill!(similar(Δ, Int32, size(Δ)[end-M+1:end]), 0)
+    scatter!(+, counts, fill!(similar(idx, Int32), 1), idx)
     den = gather(counts, idx)
     # make num and den broadcast compatible
     for i in 1:ndims(num)-ndims(den)

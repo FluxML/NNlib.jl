@@ -33,3 +33,4 @@ end
 DEVICE = gpu_device(force=true)
 
 include("activations.jl")
+include("scatter.jl")
