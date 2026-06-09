@@ -143,6 +143,7 @@ end
 function gather!(dst::AnyGPUArray, src::AnyGPUArray, idx::AnyGPUArray)
     isempty(dst) && return dst
     n_dims = scatter_dims(src, dst, idx)
+    checkbounds_idx(idx, size(src)[n_dims+1:end])
     dims = size(src)[1:n_dims]
     max_dims_idx = prod(dims)
     ndrange = max_dims_idx * length(idx)
@@ -150,6 +151,11 @@ function gather!(dst::AnyGPUArray, src::AnyGPUArray, idx::AnyGPUArray)
         dst, src, idx, CartesianIndices(dims), max_dims_idx; ndrange)
     return dst
 end
+
+# Source on the GPU, index on the CPU: move the index to the GPU and dispatch to the
+# kernel above, rather than falling back to slow scalar indexing (issue #415).
+gather!(dst::AnyGPUArray, src::AnyGPUArray, idx::AbstractArray) =
+    gather!(dst, src, _to_backend(src, idx))
 
 @kernel function _gather!(
     dst, @Const(src), @Const(idx),

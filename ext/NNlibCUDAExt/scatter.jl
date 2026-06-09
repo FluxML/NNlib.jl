@@ -60,6 +60,7 @@ function NNlib.scatter!(op::OP, dst::AnyCuArray,
         idx::AnyCuArray) where OP
     isempty(idx) && return dst
     dims = NNlib.scatter_dims(dst, src, idx)
+    NNlib.checkbounds_idx(idx, size(dst)[dims+1:end])  # the kernels below are @inbounds (#416)
     args = if dims == 0
         max_idx = length(idx)
         op, dst, src, idx
