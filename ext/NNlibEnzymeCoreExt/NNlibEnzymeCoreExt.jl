@@ -383,4 +383,127 @@ function EnzymeRules.reverse(config, func::EnzymeCore.Const{typeof(NNlib._dropou
 end
 
 
+# batched_mul
+#
+# Without a custom rule, Enzyme differentiates through NNlib's threaded
+# `batched_gemm!`, whose `Threads.@spawn`/`Threads.@sync` is not supported and
+# (on Julia 1.12) hits an internal `cmpxchg` error in `wait(::Task)`.
+# See https://github.com/FluxML/NNlib.jl/issues/707 and
+# https://github.com/EnzymeAD/Enzyme.jl/issues/3150.
+#
+# The derivatives mirror the ChainRules `rrule` in src/batched/batchedmul.jl:
+#   dA = Δ ⊠ Bᴴ   (summed over the batch dim if `size(A,3) == 1`)
+#   dB = Aᴴ ⊠ Δ   (summed over the batch dim if `size(B,3) == 1`)
+
+@inline _batched_mul_const(x) = x isa EnzymeCore.Const
+
+function EnzymeRules.forward(config::EnzymeRules.FwdConfig,
+        func::EnzymeCore.Const{typeof(NNlib.batched_mul)}, ::Type{RT},
+        A::EnzymeCore.Annotation{<:AbstractArray{<:Any,3}},
+        B::EnzymeCore.Annotation{<:AbstractArray{<:Any,3}}) where {RT}
+
+    bothconst = _batched_mul_const(A) && _batched_mul_const(B)
+
+    # The primal is needed if requested, or to size the zero tangent when both
+    # arguments are Const but a shadow is still required (e.g. runtime activity).
+    primal = (EnzymeRules.needs_primal(config) ||
+              (EnzymeRules.needs_shadow(config) && bothconst)) ?
+             func.val(A.val, B.val) : nothing
+
+    EnzymeRules.needs_shadow(config) || return primal
+
+    # dC = dA ⊠ B + A ⊠ dB (a missing term means that argument is Const)
+    dC(dA, dB) =
+        if bothconst
+            zero(primal)
+        elseif _batched_mul_const(A)
+            NNlib.batched_mul(A.val, dB)
+        elseif _batched_mul_const(B)
+            NNlib.batched_mul(dA, B.val)
+        else
+            NNlib.batched_mul(dA, B.val) .+ NNlib.batched_mul(A.val, dB)
+        end
+
+    shadow = if EnzymeRules.width(config) == 1
+        dC(_batched_mul_const(A) ? nothing : A.dval,
+           _batched_mul_const(B) ? nothing : B.dval)
+    else
+        ntuple(i -> dC(_batched_mul_const(A) ? nothing : A.dval[i],
+                       _batched_mul_const(B) ? nothing : B.dval[i]),
+               Val(EnzymeRules.width(config)))
+    end
+
+    EnzymeRules.needs_primal(config) || return shadow
+    return EnzymeRules.width(config) == 1 ?
+        EnzymeCore.Duplicated(primal, shadow) :
+        EnzymeCore.BatchDuplicated(primal, shadow)
+end
+
+function EnzymeRules.augmented_primal(config::EnzymeRules.RevConfig,
+        func::EnzymeCore.Const{typeof(NNlib.batched_mul)}, ::Type{RT},
+        A::EnzymeCore.Annotation{<:AbstractArray{<:Any,3}},
+        B::EnzymeCore.Annotation{<:AbstractArray{<:Any,3}}) where {RT}
+
+    C = func.val(A.val, B.val)
+
+    primal = EnzymeRules.needs_primal(config) ? C : nothing
+    shadow = if EnzymeRules.needs_shadow(config)
+        EnzymeRules.width(config) == 1 ? zero(C) :
+            ntuple(_ -> zero(C), Val(EnzymeRules.width(config)))
+    else
+        nothing
+    end
+
+    # Cache A if it's overwritten and needed for dB (i.e. B is active),
+    # cache B if it's overwritten and needed for dA (i.e. A is active).
+    cache_A = ( EnzymeRules.overwritten(config)[2]
+                && !_batched_mul_const(B) ) ? copy(A.val) : nothing
+    cache_B = ( EnzymeRules.overwritten(config)[3]
+                && !_batched_mul_const(A) ) ? copy(B.val) : nothing
+
+    return EnzymeRules.AugmentedReturn(primal, shadow, (shadow, cache_A, cache_B))
+end
+
+function EnzymeRules.reverse(config::EnzymeRules.RevConfig,
+        func::EnzymeCore.Const{typeof(NNlib.batched_mul)}, ::Type{RT}, tape,
+        A::EnzymeCore.Annotation{<:AbstractArray{<:Any,3}},
+        B::EnzymeCore.Annotation{<:AbstractArray{<:Any,3}}) where {RT}
+
+    dCs, cache_A, cache_B = tape
+
+    # Nothing to propagate if the return wasn't differentiated.
+    dCs === nothing && return (nothing, nothing)
+
+    # Recover values not cached because they were not overwritten.
+    if !_batched_mul_const(B) && cache_A === nothing
+        cache_A = A.val
+    end
+    if !_batched_mul_const(A) && cache_B === nothing
+        cache_B = B.val
+    end
+
+    dAs = _batched_mul_const(A) ? dCs : A.dval
+    dBs = _batched_mul_const(B) ? dCs : B.dval
+
+    if EnzymeRules.width(config) == 1
+        dCs = (dCs,)
+        dAs = (dAs,)
+        dBs = (dBs,)
+    end
+
+    for (dC, dA, dB) in zip(dCs, dAs, dBs)
+        if !_batched_mul_const(A)
+            tmp = NNlib.batched_mul(dC, NNlib.batched_adjoint(cache_B))
+            dA .+= size(A.val, 3) == 1 ? sum(tmp; dims=3) : tmp
+        end
+        if !_batched_mul_const(B)
+            tmp = NNlib.batched_mul(NNlib.batched_adjoint(cache_A), dC)
+            dB .+= size(B.val, 3) == 1 ? sum(tmp; dims=3) : tmp
+        end
+    end
+
+    return (nothing, nothing)
+end
+
+
 end

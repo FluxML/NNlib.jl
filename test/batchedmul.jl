@@ -304,6 +304,36 @@ FiniteDifferences.to_vec(x::BatchedTranspose) = FiniteDifferences.to_vec(collect
     gradtest(batched_vec, randn(rng, M, P, B), randn(rng, P))
 end
 
+@static if Test_Enzyme
+
+# Regression test for https://github.com/FluxML/NNlib.jl/issues/707:
+# the custom EnzymeRules avoid differentiating through the threaded `batched_gemm!`.
+@testset "EnzymeRules: batched_mul" begin
+    A = randn(rng, Float32, 4, 5, 3)
+    B = randn(rng, Float32, 5, 6, 3)
+    # broadcasting over the batch dimension (size(·,3) == 1)
+    A1 = randn(rng, Float32, 4, 5, 1)
+    B1 = randn(rng, Float32, 5, 6, 1)
+
+    for Tret in (EnzymeCore.Const, EnzymeCore.Duplicated, EnzymeCore.BatchDuplicated),
+        TA in (EnzymeCore.Const, EnzymeCore.Duplicated, EnzymeCore.BatchDuplicated),
+        TB in (EnzymeCore.Const, EnzymeCore.Duplicated, EnzymeCore.BatchDuplicated)
+
+        EnzymeTestUtils.are_activities_compatible(Tret, TA, TB) || continue
+
+        EnzymeTestUtils.test_forward(batched_mul, Tret, (A, TA), (B, TB); atol=1e-4, rtol=1e-4)
+        EnzymeTestUtils.test_reverse(batched_mul, Tret, (A, TA), (B, TB); atol=1e-4, rtol=1e-4)
+
+        # broadcasting batch dim of A, then of B
+        EnzymeTestUtils.test_forward(batched_mul, Tret, (A1, TA), (B, TB); atol=1e-4, rtol=1e-4)
+        EnzymeTestUtils.test_reverse(batched_mul, Tret, (A1, TA), (B, TB); atol=1e-4, rtol=1e-4)
+        EnzymeTestUtils.test_forward(batched_mul, Tret, (A, TA), (B1, TB); atol=1e-4, rtol=1e-4)
+        EnzymeTestUtils.test_reverse(batched_mul, Tret, (A, TA), (B1, TB); atol=1e-4, rtol=1e-4)
+    end
+end
+
+end # Test_Enzyme
+
 @testset "batched_vec: N-D batches" begin
     # Test 4D case: A is 4D, B is 3D
     A4d = randn(4, 5, 3, 2)  # (matrix_rows, matrix_cols, batch_dim1, batch_dim2)
