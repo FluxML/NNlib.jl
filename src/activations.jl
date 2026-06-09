@@ -693,13 +693,10 @@ julia> softplus(16f0)
 16.0f0
 ```
 """
-softplus(x) = x < zero(x) ? log1p(exp(x)) : x + log1p(exp(-x))
-
-# Complex inputs: softplus(z) = log(1 + exp(z)) on the principal branch. As in the real
-# method we branch on `real(z)` to avoid overflow of `exp`. Note the two rearrangements
-# agree only for `abs(imag(z)) ≤ π` (the principal log's branch cut), which covers
-# typical complex-valued-network use.
-softplus(z::Complex) = real(z) < 0 ? log1p(exp(z)) : z + log1p(exp(-z))
+# Branching on `real(x)` keeps `exp` from overflowing and also makes this work for
+# complex inputs: softplus(z) = log(1 + exp(z)) on the principal branch (the two
+# rearrangements agree for `abs(imag(z)) ≤ π`, which covers typical use).
+softplus(x) = real(x) < zero(real(x)) ? log1p(exp(x)) : x + log1p(exp(-x))
 
 """
     logcosh(x)
