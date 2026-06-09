@@ -20,16 +20,15 @@ CASES = [
 ]
 
 
-def bench(fn, n=50, warmup=5):
+def bench(fn, n=80, warmup=10):
     for _ in range(warmup):
         fn()
-    ts = []
+    best = float("inf")
     for _ in range(n):
         t0 = time.perf_counter()
         fn()
-        ts.append(time.perf_counter() - t0)
-    ts.sort()
-    return ts[len(ts) // 2]  # median, in seconds
+        best = min(best, time.perf_counter() - t0)
+    return best  # min ≈ uncontended time on a shared box, in seconds
 
 
 def main():

@@ -11,7 +11,10 @@ using LinearAlgebra
 using Random
 
 Random.seed!(1234)
-BLAS.set_num_threads(4)
+# NNlib's conv parallelism is Julia-task based, so a fair "4 threads" run is
+# `julia --threads=4` with BLAS pinned to 1 (otherwise julia × BLAS threads
+# oversubscribe). This matches PyTorch's `torch.set_num_threads(4)`.
+BLAS.set_num_threads(1)
 
 # (name, in_ch, out_ch, kernel, stride, pad, H, W, batch)
 const CASES = [
@@ -24,16 +27,16 @@ const CASES = [
 function main()
     println("Julia threads: ", Threads.nthreads())
     println("BLAS threads:  ", BLAS.get_num_threads())
-    println(rpad("case", 22), lpad("fwd (ms)", 12), lpad("mem (MiB)", 12))
+    println(rpad("case", 22), lpad("min fwd (ms)", 14), lpad("mem (MiB)", 12))
     for (name, ci, co, k, s, p, H, W, b) in CASES
         # NNlib uses WHCN layout (vs PyTorch NCHW)
         x = randn(Float32, W, H, ci, b)
         w = randn(Float32, k, k, ci, co)
         cdims = DenseConvDims(x, w; stride=(s, s), padding=(p, p, p, p))
-        t = @benchmark conv($x, $w, $cdims) samples=50 evals=1
-        med_ms = median(t).time / 1e6
+        t = @benchmark conv($x, $w, $cdims) samples=80 evals=1
+        min_ms = minimum(t).time / 1e6   # min ≈ uncontended time on a shared box
         mem_mib = t.memory / 2^20
-        println(rpad(name, 22), lpad(round(med_ms; digits=4), 12),
+        println(rpad(name, 22), lpad(round(min_ms; digits=4), 14),
                 lpad(round(mem_mib; digits=3), 12))
     end
 end
