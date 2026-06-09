@@ -17,7 +17,7 @@ for name in (:max, :mean, :lpnorm)
         pdims::PoolDims,
         # kernel size, channels out, padding, dilation, stride
         ::Val{K}, ::Val{C}, ::Val{P}, ::Val{D}, ::Val{S};
-        alpha=1, beta=0, kwargs...
+        alpha=1, beta=0, count_include_pad::Bool=true, kwargs...
     ) where {T, K, C, P, D, S}
         @assert iszero(beta) "beta not supported yet"
         check_dims(size(x), size(y), pdims)
@@ -121,25 +121,25 @@ for name in (:max, :mean, :lpnorm)
                 for w in w_region
                 pw = project(w, stride_w, pad_w_lo)
                 m = m_init
+                # For mean pooling with `count_include_pad=false` we divide by the number
+                # of in-bounds (non-padding) elements actually visited in this window.
+                kernel_count = 0
 
                 for kd in 1:kernel_d
                     input_kd = pd + (kd - 1) * dil_d
                     if input_kd <= 0 || input_kd > depth
-                        # add here condition for handling options for paded value handling
                         continue
                     end
 
                     for kh in 1:kernel_h
                         input_kh = ph + (kh - 1) * dil_h
                         if input_kh <= 0 || input_kh > height
-                            # add here condition for handling options for paded value handling
                             continue
                         end
 
                         for kw in 1:kernel_w
                             input_kw = pw + (kw - 1) * dil_w
                             if input_kw <= 0 || input_kw > width
-                                # add here condition for handling options for paded value handling
                                 continue
                             end
 
@@ -150,6 +150,7 @@ for name in (:max, :mean, :lpnorm)
                                 end
                             elseif $(name == :mean)
                                 m += x[input_kw, input_kh, input_kd, c, batch_idx]
+                                kernel_count += 1
                             elseif $(name == :lpnorm)
                                 m += x[input_kw, input_kh, input_kd, c, batch_idx]^p
                             else
@@ -158,8 +159,14 @@ for name in (:max, :mean, :lpnorm)
                         end
                     end
                 end
-                $(name == :lpnorm) && (m = m^(T(1) / p))
-                y[w, h, d, c, batch_idx] = _alpha * m # + _beta * y[w, h, d, c, batch_idx]
+                if $(name == :mean) && !count_include_pad
+                    # Divide by the number of non-padding elements in the window.
+                    win_alpha = kernel_count == 0 ? T(0) : T(alpha) / T(kernel_count)
+                    y[w, h, d, c, batch_idx] = win_alpha * m
+                else
+                    $(name == :lpnorm) && (m = m^(T(1) / p))
+                    y[w, h, d, c, batch_idx] = _alpha * m # + _beta * y[w, h, d, c, batch_idx]
+                end
                 end
                 end
                 end
@@ -184,7 +191,7 @@ for name in (:max, :mean, :lpnorm)
                     dx::AbstractArray{T,5}, dy::AbstractArray{<:Any,5},
                     y::AbstractArray{<:Any,5}, x::AbstractArray{<:Any,5},
                     pdims::PoolDims, ::Val{K}; # == kernel_size(pdims)
-                    alpha=1, beta=0, kwargs...) where {T, K}
+                    alpha=1, beta=0, count_include_pad::Bool=true, kwargs...) where {T, K}
         check_dims(size(x), size(dy), pdims)
 
         width, height, depth = input_size(pdims)
@@ -290,6 +297,28 @@ for name in (:max, :mean, :lpnorm)
                 dy_idx = dy[w, h, d, c, batch_idx]
                 maxpool_already_chose = false
 
+                # For mean pooling with `count_include_pad=false` the divisor is the
+                # number of non-padding elements in this window, so we count them up front
+                # to get the per-window scaling factor.
+                win_alpha = _alpha
+                if $(name == :mean) && !count_include_pad
+                    kernel_count = 0
+                    for kd in 1:kernel_d
+                        ikd = pd + (kd - 1) * dil_d
+                        (ikd <= 0 || ikd > depth) && continue
+                        for kh in 1:kernel_h
+                            ikh = ph + (kh - 1) * dil_h
+                            (ikh <= 0 || ikh > height) && continue
+                            for kw in 1:kernel_w
+                                ikw = pw + (kw - 1) * dil_w
+                                (ikw <= 0 || ikw > width) && continue
+                                kernel_count += 1
+                            end
+                        end
+                    end
+                    win_alpha = kernel_count == 0 ? T(0) : T(alpha) / T(kernel_count)
+                end
+
                 # In these loops, we have to check that we're not reaching off the edge,
                 # we do so by putting in a bunch of conditionals.  :/
                 for kd in 1:kernel_d
@@ -325,7 +354,7 @@ for name in (:max, :mean, :lpnorm)
                                 #    dx[x_idxs...] = T(0) + beta*dx[x_idxs...]
                                 end
                             elseif $(name == :mean)
-                                dx[input_kw, input_kh, input_kd, c, batch_idx] += dy_idx * _alpha #+ _beta * dx[x_idxs...]
+                                dx[input_kw, input_kh, input_kd, c, batch_idx] += dy_idx * win_alpha #+ _beta * dx[x_idxs...]
                             elseif $(name == :lpnorm)
                                 grad = x[input_kw, input_kh, input_kd, c, batch_idx]^(p-1) * y_idx^(1-p)
                                 dx[input_kw, input_kh, input_kd, c, batch_idx] += dy_idx * grad

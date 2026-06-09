@@ -15,5 +15,16 @@
         gputest((dy, y, x) -> ∇maxpool(dy, y, x, pdims), dy, y, x, checkgrad=false)
         gputest(x -> maxpool(x, pdims), x)
         gputest((dy, y, x) -> ∇maxpool(dy, y, x, pdims), dy, y, x, checkgrad=false)
+
+        # meanpool count_include_pad (issue #218): with padding the two modes differ,
+        # check both agree with cuDNN (forward and backward).
+        pdims_pad = PoolDims(x, 2; padding=1, stride=2)
+        for cip in (true, false)
+            ym = meanpool(x, pdims_pad; count_include_pad=cip)
+            dym = ones(size(ym))
+            gputest(x -> meanpool(x, pdims_pad; count_include_pad=cip), x)
+            gputest((dy, y, x) -> ∇meanpool(dy, y, x, pdims_pad; count_include_pad=cip),
+                    dym, ym, x, checkgrad=false)
+        end
     end
 end

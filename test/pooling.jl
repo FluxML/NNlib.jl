@@ -932,6 +932,63 @@ maxpool_answer_nature = Dict(
     @test all(==(0.25), RD.gradient(_x -> only(meanpool(_x,(2,2))), x))
 end
 
+@testset "meanpool count_include_pad (issue #218)" begin
+    # Brute-force reference: average over the window, optionally excluding padding.
+    function ref_meanpool(x, k; pad, stride, count_include_pad)
+        N = ndims(x) - 2
+        pdims = PoolDims(x, k; padding=NNlib.expand(Val(N), pad), stride=NNlib.expand(Val(N), stride))
+        out = NNlib.meanpool(x, pdims)  # used only for output sizing/type
+        osz = size(out)
+        kk = NNlib.kernel_size(pdims)
+        P = NNlib.padding(pdims)        # (w_lo, w_hi, h_lo, h_hi, d_lo, d_hi)
+        S = NNlib.stride(pdims)
+        isz = size(x)[1:N]
+        for batch in 1:size(x, ndims(x)), c in 1:size(x, ndims(x)-1)
+            for oidx in CartesianIndices(osz[1:N])
+                acc = zero(eltype(x)); cnt = 0
+                for kidx in CartesianIndices(kk)
+                    iin = ntuple(N) do d
+                        (Tuple(oidx)[d] - 1) * S[d] - P[2d-1] + Tuple(kidx)[d]
+                    end
+                    valid = all(d -> 1 <= iin[d] <= isz[d], 1:N)
+                    if valid
+                        acc += x[iin..., c, batch]; cnt += 1
+                    end
+                end
+                denom = count_include_pad ? prod(kk) : cnt
+                out[Tuple(oidx)..., c, batch] = denom == 0 ? zero(eltype(x)) : acc / denom
+            end
+        end
+        return out
+    end
+
+    # Known small example (2x2, pad=1, stride=2), verified by hand
+    x = reshape(Float64.(1:16), 4, 4, 1, 1)
+    ye = meanpool(x, (2,2); pad=1, stride=2, count_include_pad=false)
+    @test ye[:,:,1,1] ≈ [1.0 7.0 13.0; 2.5 8.5 14.5; 4.0 10.0 16.0]
+
+    # Default is unchanged (include padding) — non-breaking
+    @test meanpool(x, (2,2); pad=1, stride=2) ==
+          meanpool(x, (2,2); pad=1, stride=2, count_include_pad=true)
+
+    # With no padding the two modes coincide
+    xn = rand(8, 8, 2, 2)
+    @test meanpool(xn, (2,2)) == meanpool(xn, (2,2); count_include_pad=false)
+
+    # Match the brute-force reference across spatial ranks and configs
+    for T in (Float32, Float64), nsd in (1, 2, 3)
+        x = rand(T, fill(7, nsd)..., 2, 2)
+        for (k, pad, stride) in ((2, 1, 2), (3, 1, 1), (3, 2, 2))
+            kt = ntuple(_ -> k, nsd)
+            for cip in (true, false)
+                y = meanpool(x, kt; pad=pad, stride=stride, count_include_pad=cip)
+                yref = ref_meanpool(x, kt; pad=pad, stride=stride, count_include_pad=cip)
+                @test y ≈ yref
+            end
+        end
+    end
+end
+
 @testset "AutoDiff: spatial_rank=$spatial_rank" for spatial_rank in (1, 2)
   x = rand(rng, repeat([10], spatial_rank)..., 3, 2)
   pdims = PoolDims(x, 2)
@@ -946,6 +1003,13 @@ end
   gradtest(x -> meanpool(x, k), x)
   gradtest(x -> sum(maxpool(x, k)), x, skip = spatial_rank==2)
   gradtest(x -> sum(meanpool(x, k)), x)
+
+  # count_include_pad=false (issue #218), with padding so the modes differ
+  k1 = ntuple(_ -> 2, spatial_rank)
+  xp = rand(rng, repeat([7], spatial_rank)..., 3, 2)
+  pdims_p = PoolDims(xp, 2; padding=1, stride=2)
+  gradtest(z -> meanpool(z, pdims_p; count_include_pad=false), xp)
+  gradtest(z -> sum(meanpool(z, k1; pad=1, stride=2, count_include_pad=false)), xp)
 end
 
 @static if Test_Enzyme
