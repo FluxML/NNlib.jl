@@ -37,6 +37,35 @@ end
 _view(X, colons, k) = view(X, colons..., k...)
 _view(X, colons, k::Union{Integer, CartesianIndex}) = view(X, colons..., k)
 
+# Move `idx` onto the same backend as the GPU array `ref`, so that `gather`/`scatter`
+# work when the source/destination is on the GPU but the index was left on the CPU.
+# Returns `idx` unchanged when it already lives on a GPU (issue #415).
+_to_backend(ref::AnyGPUArray, idx::AnyGPUArray) = idx
+function _to_backend(ref::AnyGPUArray, idx::AbstractArray)
+    idx_dev = similar(ref, eltype(idx), size(idx))
+    return copyto!(idx_dev, idx)
+end
+
+# Check that every entry of `idx` is within the `sz` trailing dimensions it indexes
+# into. The CPU `gather!`/`scatter!` get this for free from `view`, but the GPU
+# kernels use `@inbounds`, so an out-of-range index would otherwise silently corrupt
+# memory instead of erroring (issue #416). Runs on the CPU or the GPU (one reduction).
+function checkbounds_idx(idx::AbstractArray, sz::Dims)
+    isempty(idx) || all(k -> _idx_inbounds(k, sz), idx) || throw(ArgumentError(
+        "out-of-bounds index in `idx`: every index must address the trailing size $sz"))
+    return nothing
+end
+
+@inline _idx_inbounds(k::Integer, sz::Dims{1}) = 1 ≤ k ≤ sz[1]
+@inline _idx_inbounds(k::CartesianIndex, sz::Dims) = _idx_inbounds(Tuple(k), sz)
+@inline function _idx_inbounds(k::NTuple{M,<:Integer}, sz::Dims{M}) where M
+    inbounds = true
+    for d in 1:M
+        inbounds &= 1 ≤ k[d] ≤ sz[d]
+    end
+    return inbounds
+end
+
 """
     NNlib.scatter!(op, dst, src, idx)
 
@@ -92,6 +121,7 @@ end
 
 function scatter!(op::OP, dst::AnyGPUArray, src::AnyGPUArray, idx::AnyGPUArray) where OP
     n_dims = scatter_dims(dst, src, idx)
+    checkbounds_idx(idx, size(dst)[n_dims+1:end])
     args = if n_dims == 0
         ndrange = length(idx)
         ()
@@ -105,6 +135,14 @@ function scatter!(op::OP, dst::AnyGPUArray, src::AnyGPUArray, idx::AnyGPUArray) 
         op, dst, src, idx, args...; ndrange)
     dst
 end
+
+# Destination on the GPU, index on the CPU: move the index to the GPU and dispatch to
+# the kernel above, rather than falling back to slow scalar indexing (issue #415). The
+# `mean` method resolves dispatch ambiguity with the `op::typeof(mean)` methods above.
+scatter!(op::OP, dst::AnyGPUArray, src::AnyGPUArray, idx::AbstractArray) where OP =
+    scatter!(op, dst, src, _to_backend(dst, idx))
+scatter!(op::typeof(mean), dst::AnyGPUArray, src::AnyGPUArray, idx::AbstractArray) =
+    scatter!(op, dst, src, _to_backend(dst, idx))
 
 @kernel function _scatter!(op::OP, dst, src, idxs) where OP
     i = @index(Global)

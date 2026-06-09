@@ -109,4 +109,23 @@
     i = CT(Int[])
     y = NNlib.gather(x, i)
     @test isempty(y)
+
+    @testset "index on CPU, source on GPU (#415)" begin
+        # A CPU index with a GPU source must run on the GPU (not fall back to slow
+        # scalar indexing) and match an all-GPU call.
+        src = CT([3, 4, 5, 6, 7])
+        idx = [1, 3, 5, 2, 1]
+        y = NNlib.gather(src, idx)
+        @test y isa CuArray{Float32}
+        @test Array(y) == Array(NNlib.gather(src, cu(idx)))
+    end
+
+    @testset "out-of-bounds index (#416)" begin
+        # Out-of-range indices must error cleanly instead of silently corrupting
+        # memory in the @inbounds kernel, for indices on either the GPU or the CPU.
+        src = CT([3, 4, 5, 6, 7])
+        @test_throws ArgumentError NNlib.gather(src, cu([1, 6]))
+        @test_throws ArgumentError NNlib.gather(src, [1, 6])
+        @test_throws ArgumentError NNlib.gather(CT(rand(2, 3)), cu([1, 4]))
+    end
 end
