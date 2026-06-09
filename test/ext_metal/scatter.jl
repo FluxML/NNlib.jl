@@ -26,11 +26,8 @@
         end
     end
 
-    # Gradients wrt `src` match the CPU reference. (`*`/`/` gradients are excluded:
-    # the GPU `∇scatter_src` for these ops needs the ragged reverse-index buffer
-    # uploaded to the device, which the CUDA extension special-cases but Metal does
-    # not yet support.)
-    @testset "gradient op=$op" for op in (+, -, max, min, mean)
+    # Gradients wrt `src` match the CPU reference for every supported op.
+    @testset "gradient op=$op" for op in (+, -, *, /, max, min, mean)
         for dims in (0, 1)
             gputest(DEVICE, (s, i) -> NNlib.scatter(op, s, i), srcs[dims], idx; checkgrad=true)
         end

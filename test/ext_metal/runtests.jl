@@ -4,6 +4,7 @@ using Metal
 using Zygote: gradient
 using MLDataDevices: gpu_device
 using ForwardDiff: Dual
+using Statistics: mean
 
 Metal.allowscalar(false)
 

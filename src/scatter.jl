@@ -230,60 +230,19 @@ function ∇scatter_src(
     Δsrc
 end
 
+# The product-rule gradient needs, for each source position, the product of its
+# "siblings" (the other source values scattering to the same destination). That
+# equals the product over the whole group divided by the element itself, and the
+# group product is just a forward `*`-scatter. Expressing it with
+# `gather`/`scatter`/broadcast keeps everything on the device and avoids the
+# ragged reverse-index buffer, which cannot be compiled on backends such as Metal.
 function ∇scatter_src(
     op::Union{typeof(*), typeof(/)}, Δ, dst,
     src::AnyGPUArray{Tsrc, Nsrc}, idx::AnyGPUArray{Tidx, Nidx},
 ) where {Tsrc, Nsrc, Tidx, Nidx}
-    n_dims = Nsrc - Nidx
     Δsrc = NNlib.modify_src(op, NNlib.gather(Δ, idx), src)
-    rev_idx = NNlib.reverse_indices(idx)
-
-    args = if n_dims == 0
-        ndrange = length(idx)
-        ()
-    else
-        dims = size(dst)[1:n_dims]
-        max_dims_idx = prod(dims)
-        ndrange = max_dims_idx * length(idx)
-        (CartesianIndices(dims), max_dims_idx)
-    end
-    _∇scatter_src(KernelAbstractions.get_backend(src))(
-        op, Δsrc, src, idx, rev_idx, args...; ndrange)
-    KernelAbstractions.unsafe_free!(rev_idx)
-    return Δsrc
-end
-
-@kernel function _∇scatter_src(op, Δsrc, src::AbstractArray{T}, idx, rev_idx) where T
-    i = @index(Global)
-    cart_j = CartesianIndices(idx)[i]
-    @inbounds begin
-        inds = rev_idx[Tuple(idx[cart_j])...]
-        x = one(T)
-        for k in inds
-            x *= src[k]
-        end
-        x /= src[cart_j]
-        Δsrc[cart_j] = op(Δsrc[cart_j], x)
-    end
-end
-
-@kernel function _∇scatter_src(
-    op, Δsrc, src::AbstractArray{T}, idx, rev_idx,
-    dim_ids::CartesianIndices, max_dims_idx::Int,
-) where T
-    i = @index(Global)
-    j, k = fldmod1(i, max_dims_idx)
-    @inbounds begin
-        cart_j = CartesianIndices(idx)[j]
-        cart_k = dim_ids[k]
-        inds = rev_idx[Tuple(cart_j)...]
-        x = one(T)
-        for s in inds
-            x *= src[Tuple(cart_k)..., Tuple(s)...]
-        end
-        x /= src[i]
-        Δsrc[i] = op(Δsrc[i], x)
-    end
+    prod_siblings = NNlib.gather(NNlib.scatter(*, src, idx), idx) ./ src
+    return op.(Δsrc, prod_siblings)
 end
 
 function ∇scatter_src(
