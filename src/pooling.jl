@@ -156,7 +156,7 @@ end
 
 
 """
-    meanpool(x, k::NTuple{N, Integer}; pad=0, stride=k)
+    meanpool(x, k::NTuple{N, Integer}; pad=0, stride=k, count_include_pad=true)
 
 Perform mean pool operation with window size `k` on input tensor `x`.
 
@@ -165,12 +165,17 @@ Arguments:
 * `x` and `k`: Expects `ndim(x) ∈ 3:5`, and always `length(k) == ndim(x) - 2`
 * `pad`: See [`pad_zeros`](@ref) for details.
 * `stride`: Either a tuple with the same length as `k`, or one integer for all directions. Default is `k`.
+* `count_include_pad`: When `true` (the default), padding (zero) elements are included in the
+  averaging denominator, so each output element divides by the full window size `prod(k)`.
+  When `false`, only the in-bounds (non-padding) elements are counted, matching cuDNN's
+  `CUDNN_POOLING_AVERAGE_COUNT_EXCLUDE_PADDING` and PyTorch's `count_include_pad=false`.
+  Has no effect when `pad == 0`.
 """
-function meanpool(x, k::NTuple{N, Integer}; pad=0, stride=k) where N
+function meanpool(x, k::NTuple{N, Integer}; pad=0, stride=k, count_include_pad=true) where N
     pad = expand(Val(N), pad)
     stride = expand(Val(N), stride)
     pdims = PoolDims(x, k; padding=pad, stride=stride)
-    return meanpool(x, pdims)
+    return meanpool(x, pdims; count_include_pad)
 end
 
 
