@@ -598,7 +598,7 @@ end
             x = reshape(Float64[1:prod(size(dx));], size(dx)..., 1, 1)
             w = reshape(Float64[1:prod(size(dw));], size(dw)..., 1, 1)
 
-            for conv in (NNlib.depthwiseconv, NNlib.depthwiseconv_im2col, NNlib.depthwiseconv_direct)
+            for conv in (NNlib.depthwiseconv,)
                 @testset "$(conv)" begin
                     # First, your basic convolution with no parameters
                     cdims = DepthwiseConvDims(x, w)
@@ -628,9 +628,7 @@ end
 
             # Test all implementations/interfaces
             for (∇conv_filter, ∇conv_data) in (
-                    (NNlib.∇depthwiseconv_filter,        NNlib.∇depthwiseconv_data),
-                    (NNlib.∇depthwiseconv_filter_im2col, NNlib.∇depthwiseconv_data_im2col),
-                    (NNlib.∇depthwiseconv_filter_direct, NNlib.∇depthwiseconv_data_direct),
+                    (NNlib.∇depthwiseconv_filter, NNlib.∇depthwiseconv_data),
                 )
                 @testset "$(∇conv_filter)/$(∇conv_data)" begin
                     # First, your basic convolution with no parameters
@@ -678,7 +676,7 @@ end
     x = Float64.(reshape(1:2, (1,2,1)))
     w = Float64.(reshape(1:6, (3,1,2)))
     cdims = DepthwiseConvDims(x, w; padding=1)
-    for conv in (NNlib.depthwiseconv, NNlib.depthwiseconv_im2col, NNlib.depthwiseconv_direct)
+    for conv in (NNlib.depthwiseconv,)
         @test conv(x, w, cdims)[:] ≈ [2, 10]  rtol=1e-7
     end
 end
@@ -687,7 +685,11 @@ end
 if get(ENV,"NNLIB_TEST_FUZZING","false") == "true"
     @testset "fuzzing" begin
         @info("Starting Depthwise Convolutional fuzzing tests; this can take a few minutes...")
-        # Now that we're fairly certain things are working, let's fuzz things a little bit:
+        # `depthwiseconv` is implemented as a grouped convolution with `groups == C_in`,
+        # reshaping the depthwise weight `(spatial..., C_mult, C_in)` to the grouped layout
+        # `(spatial..., 1, C_mult*C_in)`. Here we fuzz a wide range of shapes and check that
+        # the result matches a grouped convolution whose weight is reordered with an
+        # *explicit* loop, i.e. without relying on the (column-major) reshape used internally.
         for x_size in (
                 # 1d tests
                 (1,), (3,), (7,),
@@ -701,8 +703,6 @@ if get(ENV,"NNLIB_TEST_FUZZING","false") == "true"
 
             # Allocate x in this outer loop to save on allocations and speed things up
             x = rand(x_size..., C_in, batch)
-            dx_direct = similar(x)
-            dx_im2col = similar(x)
 
             for w_size in (
                     (1,), (3,), (7,),
@@ -715,8 +715,13 @@ if get(ENV,"NNLIB_TEST_FUZZING","false") == "true"
 
                 # Allocate w in this outer loop to save on allocations and speed things up
                 w = rand(w_size..., C_mult, C_in)
-                dw_direct = similar(w)
-                dw_im2col = similar(w)
+
+                # Independently reordered grouped weight (spatial..., 1, C_mult*C_in).
+                colons = ntuple(_ -> Colon(), length(w_size))
+                wg = similar(w, w_size..., 1, C_mult * C_in)
+                for i in 1:C_in, m in 1:C_mult
+                    wg[colons..., 1, (i - 1) * C_mult + m] = w[colons..., m, i]
+                end
 
                 for S_size in (1, 2, 4, (1,2), (4,1), (2,1,4)),
                     P_size in (0, 1, 2, (0,3,0,3), (4,1,4,2), (1,2,3,4,5,6)),
@@ -734,36 +739,20 @@ if get(ENV,"NNLIB_TEST_FUZZING","false") == "true"
                         rethrow(e)
                     end
 
-                    # Do the actual convolution, comparing convolution implementations
                     cdims = DepthwiseConvDims(x, w; stride=S_size, padding=P_size, dilation=D_size)
+                    gdims = DenseConvDims(x, wg; stride=S_size, padding=P_size, dilation=D_size, groups=C_in)
 
-                    # We use mutating calls with explicitly different initial values, so as
-                    # to be sure to catch when we're leaving pieces of the output untouched.
-                    y_direct = ones(output_size(cdims)..., channels_out(cdims), batch) .* 666.666
-                    y_im2col = ones(output_size(cdims)..., channels_out(cdims), batch) .* 777.777
+                    # Forward: depthwise must match the explicitly-built grouped convolution.
+                    y = depthwiseconv(x, w, cdims)
+                    @test y ≈ conv(x, wg, gdims)
+                    dy = y
 
-                    # Do the convolutions
-                    NNlib.depthwiseconv_direct!(y_direct, x, w, cdims)
-                    NNlib.depthwiseconv_im2col!(y_im2col, x, w, cdims)
+                    # Filter backprop (reshaped back to depthwise weight layout).
+                    dw = NNlib.∇depthwiseconv_filter(x, dy, cdims)
+                    @test dw ≈ reshape(NNlib.∇conv_filter(x, dy, gdims), w_size..., C_mult, C_in)
 
-                    # Compare!
-                    @test y_direct ≈ y_im2col
-                    dy = y_im2col
-
-                    # Now push backwards; first for the filter.  Again, we initialize our
-                    # memory so that segments that never get touched are immediately noticable
-                    fill!(dw_direct, 666.666)
-                    fill!(dw_im2col, 777.777)
-                    NNlib.∇depthwiseconv_filter_direct!(dw_direct, x, dy, cdims)
-                    NNlib.∇depthwiseconv_filter_im2col!(dw_im2col, x, dy, cdims)
-                    @test dw_direct ≈ dw_im2col
-
-                    # And then for the input
-                    fill!(dx_direct, 666.666)
-                    fill!(dx_im2col, 777.777)
-                    NNlib.∇depthwiseconv_data_direct!(dx_direct, dy, w, cdims)
-                    NNlib.∇depthwiseconv_data_im2col!(dx_im2col, dy, w, cdims)
-                    @test dx_direct ≈ dx_im2col
+                    # Data backprop.
+                    @test NNlib.∇depthwiseconv_data(dy, w, cdims) ≈ NNlib.∇conv_data(dy, wg, gdims)
                 end
             end
         end

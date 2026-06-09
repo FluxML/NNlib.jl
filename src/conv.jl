@@ -90,7 +90,11 @@ end
     depthwiseconv(x, w; stride=1, pad=0, dilation=1, flipped=false)
 
 Depthwise convolution operation with filter `w` on input `x`. `x` and `w`
-are 3d/4d/5d tensors in 1d/2d/3d convolutions respectively.
+are 3d/4d/5d tensors in 1d/2d/3d convolutions respectively. The filter `w`
+has shape `(spatial..., channel_multiplier, channels_in)`.
+
+This is equivalent to a grouped [`conv`](@ref) with `groups = channels_in`, and is
+implemented in terms of it.
 """
 function depthwiseconv(x, w::AbstractArray{T, N}; stride=1, pad=0, dilation=1, flipped=false) where {T, N}
     stride = expand(Val(N-2), stride)
@@ -108,31 +112,25 @@ end
 # allocation.  :P
 for backend in (Symbol(), :_direct, :_im2col)
     # First make auto-allocating versions of the conv()-like calls:
-    for name in (:conv, :depthwiseconv)
-        @eval begin
-            function $(Symbol("$(name)$(backend)"))(
-                            x::AbstractArray{xT,N}, w::AbstractArray{wT,N},
-                            cdims::ConvDims; kwargs...) where {xT, wT, N}
-                y = similar(x, promote_type(xT, wT), output_size(cdims)...,
-                               channels_out(cdims), size(x,N))
-                return $(Symbol("$(name)$(backend)!"))(y, x, w, cdims; kwargs...)
-            end
+    @eval begin
+        function $(Symbol("conv$(backend)"))(
+                        x::AbstractArray{xT,N}, w::AbstractArray{wT,N},
+                        cdims::ConvDims; kwargs...) where {xT, wT, N}
+            y = similar(x, promote_type(xT, wT), output_size(cdims)...,
+                           channels_out(cdims), size(x,N))
+            return $(Symbol("conv$(backend)!"))(y, x, w, cdims; kwargs...)
         end
     end
 
-    for name in (:∇conv_data, :∇depthwiseconv_data)
-        @eval begin
-            function $(Symbol("$(name)$(backend)"))(
-                            dy::AbstractArray{yT,N}, w::AbstractArray{wT,N},
-                            cdims::C; kwargs...) where {yT, wT, N, C <: ConvDims}
-                dx = similar(dy, input_size(cdims)..., channels_in(cdims), size(dy, N))
-                return $(Symbol("$(name)$(backend)!"))(dx, dy, w, cdims; kwargs...)
-            end
+    @eval begin
+        function $(Symbol("∇conv_data$(backend)"))(
+                        dy::AbstractArray{yT,N}, w::AbstractArray{wT,N},
+                        cdims::C; kwargs...) where {yT, wT, N, C <: ConvDims}
+            dx = similar(dy, input_size(cdims)..., channels_in(cdims), size(dy, N))
+            return $(Symbol("∇conv_data$(backend)!"))(dx, dy, w, cdims; kwargs...)
         end
     end
 
-    # We do the conv/depthwiseconv filter backprops separately, as the shape calculation
-    # for `w` is slightly different for depthwise than for normal dense convolution.
     @eval begin
         function $(Symbol("∇conv_filter$(backend)"))(
                         x::AbstractArray{xT,N}, dy::AbstractArray{yT,N},
@@ -140,17 +138,6 @@ for backend in (Symbol(), :_direct, :_im2col)
             dw = similar(dy, kernel_size(cdims)..., channels_in(cdims) ÷ groupcount(cdims),
                                                     channels_out(cdims))
             return $(Symbol("∇conv_filter$(backend)!"))(dw, x, dy, cdims; kwargs...)
-        end
-    end
-
-    @eval begin
-        function $(Symbol("∇depthwiseconv_filter$(backend)"))(
-                        x::AbstractArray{xT,N}, dy::AbstractArray{yT,N},
-                        cdims::ConvDims; kwargs...) where {xT, yT, N}
-            dw = similar(dy, kernel_size(cdims)..., channel_multiplier(cdims),
-                                                    channels_in(cdims))
-            return $(Symbol("∇depthwiseconv_filter$(backend)!"))(dw, x, dy, cdims;
-                                                                 kwargs...)
         end
     end
 end
@@ -162,8 +149,7 @@ end
 # Our strategy for 1d and 2d convolution is to reshape to 3d convolutions, which
 # makes things MUCH EASIER for us on the backend side, and is in general pretty fast,
 # since we can specialize on sizes.
-for front_name in (:conv, :∇conv_data, :∇conv_filter,
-                   :depthwiseconv, :∇depthwiseconv_data, :∇depthwiseconv_filter)
+for front_name in (:conv, :∇conv_data, :∇conv_filter)
     for backend in (Symbol(), :_direct, :_im2col)
         for N in (3, 4)
             @eval begin
@@ -361,35 +347,60 @@ for (front_name, backend, signature) in (
 end
 
 
-for (front_name, backend, signature) in (
-    # This maps from public, front-facing name, to internal backend name, given the function signature and the where clause
-    # (frontend, backend, (out Array signature, in1 Array signature, in2 Array signature, (parametric Types)))
-    (:depthwiseconv, :im2col, ((:T, 5), (:T, 5), (:T, 5), :C, (:(T <: G), :(C <: ConvDims)))),
-    (:depthwiseconv, :direct, ((:yT, :N), (:T1, :N), (:T2, :N), :C, (:yT, :T1, :T2, :N, :(C <: ConvDims)))),
+###########  DEPTHWISE CONVOLUTION  ###########
+#
+# A depthwise convolution is exactly a grouped convolution with `groups == channels_in`.
+# Rather than maintaining a separate set of specialized kernels (which benchmarked slower
+# than the generic grouped-convolution path, see FluxML/NNlib.jl#402), we route every
+# depthwise entry point through the dense grouped-convolution implementation.
+#
+# The only bookkeeping is the weight layout. A depthwise weight has shape
+# `(spatial..., channel_multiplier, channels_in)`; the equivalent grouped weight has shape
+# `(spatial..., 1, channel_multiplier * channels_in)`. Because Julia arrays are
+# column-major, the depthwise `(m, i)` channel pair flattens to grouped output channel
+# `(i - 1) * channel_multiplier + m`, which is exactly the channel order a grouped
+# convolution expects -- so the conversion is a zero-copy `reshape`.
 
-    (:∇depthwiseconv_data, :im2col, ((:T, 5), (:T, 5), (:T, 5), :C, (:(T <: G), :(C <: ConvDims)))),
-    (:∇depthwiseconv_data, :direct, ((:yT, :N), (:T1, :N), (:T2, :N), :C, (:yT, :T1, :T2, :N, :(C <: ConvDims)))),
+# Equivalent grouped `DenseConvDims` for a `DepthwiseConvDims`.
+function DenseConvDims(cdims::DepthwiseConvDims)
+    return DenseConvDims(
+        input_size(cdims), kernel_size(cdims),
+        channels_in(cdims), channels_out(cdims), channels_in(cdims),
+        stride(cdims), padding(cdims), dilation(cdims), flipkernel(cdims))
+end
 
-    (:∇depthwiseconv_filter, :im2col, ((:T, 5), (:T, 5), (:T, 5), :C, (:(T <: G), :(C <: ConvDims)))),
-    (:∇depthwiseconv_filter, :direct, ((:yT, :N), (:T1, :N), (:T2, :N), :C, (:yT, :T1, :T2, :N, :(C <: ConvDims)))),
-)
+# Reshape a depthwise weight `(spatial..., C_mult, C_in)` to the grouped layout
+# `(spatial..., 1, C_mult * C_in)`. Zero-copy.
+@inline _grouped_weight(w::AbstractArray{T,N}) where {T,N} =
+    reshape(w, ntuple(i -> size(w, i), N - 2)..., 1, size(w, N - 1) * size(w, N))
 
-    # We only define 3d conv primitives, we reshape lower down to get 1d and 2d convolution
-    @eval begin
-        # im2col-accelerated function forwarding definition
-        function $(Symbol("$(front_name)!"))(
-                        out::AbstractArray{$(signature[1][1]), $(signature[1][2])},
-                        in1::AbstractArray{$(signature[2][1]), $(signature[1][2])},
-                        in2::AbstractArray{$(signature[3][1]), $(signature[1][2])},
-                        cdims::$(signature[4]);
-                        kwargs...) where {$(signature[5]...)}
-            if $(string(backend)) == "direct" && yT == Float64  # warn for Float32 + accidental Float64, but don't print warning for ForwardDiff.Dual
-                @warn string("Slow fallback implementation invoked for ", $(string(front_name)), "!  ",
-                        "You probably don't want this; check your datatypes.") yT T1 T2 maxlog=1
-            end
-            $(Symbol("$(front_name)_$(backend)!"))(out, in1, in2, cdims; kwargs...)
-        end
-    end
+function depthwiseconv(x, w, cdims::DepthwiseConvDims; kwargs...)
+    return conv(x, _grouped_weight(w), DenseConvDims(cdims); kwargs...)
+end
+
+function depthwiseconv!(y, x, w, cdims::DepthwiseConvDims; kwargs...)
+    conv!(y, x, _grouped_weight(w), DenseConvDims(cdims); kwargs...)
+    return y
+end
+
+function ∇depthwiseconv_data(dy, w, cdims::DepthwiseConvDims; kwargs...)
+    return ∇conv_data(dy, _grouped_weight(w), DenseConvDims(cdims); kwargs...)
+end
+
+function ∇depthwiseconv_data!(dx, dy, w, cdims::DepthwiseConvDims; kwargs...)
+    ∇conv_data!(dx, dy, _grouped_weight(w), DenseConvDims(cdims); kwargs...)
+    return dx
+end
+
+function ∇depthwiseconv_filter(x, dy, cdims::DepthwiseConvDims; kwargs...)
+    dw = ∇conv_filter(x, dy, DenseConvDims(cdims); kwargs...)
+    return reshape(dw, kernel_size(cdims)..., channel_multiplier(cdims), channels_in(cdims))
+end
+
+function ∇depthwiseconv_filter!(dw, x, dy, cdims::DepthwiseConvDims; kwargs...)
+    dwg = reshape(dw, kernel_size(cdims)..., 1, channels_out(cdims))
+    ∇conv_filter!(dwg, x, dy, DenseConvDims(cdims); kwargs...)
+    return dw
 end
 
 for Dims in [:DenseConvDims, :DepthwiseConvDims, :PoolDims]
