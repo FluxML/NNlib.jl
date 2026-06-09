@@ -189,12 +189,105 @@ end
 # These are the GEMM types we will accelerate with `im2col`
 const G = Union{[x[2] for x in gemm_datatype_mappings]...}
 
+# Run a grouped im2col-backed convolution (forward or gradient) without the
+# per-group workspace allocation that made grouped/depthwise convs allocate
+# `O(groups)` buffers (FluxML/NNlib.jl#520). `worker(gi, col, ntasks)` computes
+# group `gi` (1 ≤ gi ≤ ngroups), writing its own disjoint output channels, using
+# the `(M, K, ·)` workspace `col` and `ntasks` inner tasks. `refarr` provides the
+# element type/device for the workspace.
+#
+# Because groups are independent we pick a single level of threading rather than
+# nesting group-parallelism inside the per-image threading of #697:
+#
+#   * `inner_threaded` ops (forward and ∇data) can thread *within* one image. With
+#     at least as many groups as threads we parallelize over groups -- each gets a
+#     thin workspace slice and runs single-tasked. With fewer groups we run them
+#     serially and let the inner threading fill the cores, reusing one workspace.
+#   * the ∇filter op has no inner threading, so we parallelize over groups whenever
+#     there is more than one.
+#
+# Either way the workspace is allocated once and concurrent groups touch disjoint
+# slices, so the result is identical to the serial path.
+function run_grouped_im2col!(worker, ngroups::Int, refarr, M::Int, K::Int,
+                             inner_threaded::Bool)
+    nt = Threads.nthreads(:default)
+    group_parallel = should_use_spawn() && ngroups > 1 &&
+                     (inner_threaded ? ngroups >= nt : true)
+    if group_parallel
+        # Spawn one task per thread (not per group) and let each task sweep a
+        # contiguous block of groups, reusing its own workspace slice. This keeps
+        # the workspace at `(M, K, nchunks)` and the task count at `nchunks`,
+        # rather than `O(groups)` of either.
+        nchunks = min(nt, ngroups)
+        col = similar(refarr, M, K, nchunks)
+        Threads.@sync for (ci, chunk) in
+                enumerate(Iterators.partition(1:ngroups, cld(ngroups, nchunks)))
+            Threads.@spawn begin
+                cs = view(col, :, :, ci:ci)
+                for gi in chunk
+                    worker(gi, cs, 1)
+                end
+            end
+        end
+    else
+        ntasks = inner_threaded ? nt : 1
+        col = similar(refarr, M, K, ntasks)
+        for gi in 1:ngroups
+            worker(gi, col, ntasks)
+        end
+    end
+    return nothing
+end
+
 for (front_name, backend, signature) in (
     # This maps from public, front-facing name, to internal backend name, given the function signature and the where clause
     # (frontend, backend, (out Array signature, in1 Array signature, in2 Array signature, (parametric Types)))
     (:conv, :im2col, ((:T, 5), (:T, 5), (:T, 5), :C, (:(T <: G), :(C <: ConvDims)))),
     (:conv, :direct, ((:yT, :N), (:T1, :N), (:T2, :N), :C, (:yT, :T1, :T2, :N, :(C <: ConvDims)))),
 )
+    # The im2col backend shares one col workspace across groups (see
+    # `run_grouped_im2col!`); the direct backend has no workspace to share, so it
+    # keeps the original per-group loop.
+    group_exec = if backend === :im2col
+        quote
+            x_cs = collect(Iterators.partition(1:size(in1, 4),
+                                    channels_in(cdims) ÷ groupcount(cdims)))
+            w_cs = collect(Iterators.partition(1:size(in2, 5),
+                                    channels_out(cdims) ÷ groupcount(cdims)))
+            wsd = im2col_dims(cdims2)
+            function conv_group(gi, col, ntasks)
+                xc = x_cs[gi]; wc = w_cs[gi]
+                x = @view in1[ntuple(i -> i == 4 ? xc : Colon(), 5)...]
+                w = @view in2[ntuple(i -> i == 5 ? wc : Colon(), 5)...]
+                y = @view out[ntuple(i -> i == 4 ? wc : Colon(), 5)...]
+                $(Symbol("$(front_name)_$(backend)!"))(y, x, w, cdims2;
+                                                       col=col, ntasks=ntasks, kwargs...)
+            end
+            run_grouped_im2col!(conv_group, length(x_cs), in1, wsd[1], wsd[2], true)
+        end
+    else
+        quote
+            x_cs = Iterators.partition(1:size(in1, 4),
+                                    channels_in(cdims) ÷ groupcount(cdims))
+            w_cs = Iterators.partition(1:size(in2, 5),
+                                    channels_out(cdims) ÷ groupcount(cdims))
+            function conv_group(xc, wc)
+                x = @view in1[ntuple(i -> i == 4 ? xc : Colon(), 5)...]
+                w = @view in2[ntuple(i -> i == 5 ? wc : Colon(), 5)...]
+                y = @view out[ntuple(i -> i == 4 ? wc : Colon(), 5)...]
+                $(Symbol("$(front_name)_$(backend)!"))(y, x, w, cdims2; kwargs...)
+            end
+            if should_use_spawn() && length(x_cs) > 1
+                Threads.@sync for (xc, wc) in zip(x_cs, w_cs)
+                    Threads.@spawn conv_group(xc, wc)
+                end
+            else
+                for (xc, wc) in zip(x_cs, w_cs)
+                    conv_group(xc, wc)
+                end
+            end
+        end
+    end
     # We only define 3d conv primitives, we reshape lower down to get 1d and 2d convolution
     @eval begin
 
@@ -209,32 +302,11 @@ for (front_name, backend, signature) in (
                         "You probably don't want this; check your datatypes.") yT T1 T2 maxlog=1
             end
 
-            x_cs = Iterators.partition(1:size(in1, 4),
-                                    channels_in(cdims) ÷ groupcount(cdims))
-            w_cs = Iterators.partition(1:size(in2, 5),
-                                    channels_out(cdims) ÷ groupcount(cdims))
             cdims2 = basetype(C)(cdims,
                                 G = 1,
                                 C_in = channels_in(cdims) ÷ groupcount(cdims),
                                 C_out = channels_out(cdims) ÷ groupcount(cdims))
-
-            function conv_group(xc, wc)
-                x = @view in1[ntuple(i -> i == 4 ? xc : Colon(), 5)...]
-                w = @view in2[ntuple(i -> i == 5 ? wc : Colon(), 5)...]
-                y = @view out[ntuple(i -> i == 4 ? wc : Colon(), 5)...]
-                $(Symbol("$(front_name)_$(backend)!"))(y, x, w, cdims2; kwargs...)
-            end
-
-            if should_use_spawn() && length(x_cs) > 1
-                Threads.@sync for (xc, wc) in zip(x_cs, w_cs)
-                    Threads.@spawn conv_group(xc, wc)
-                end
-            else
-                for (xc, wc) in zip(x_cs, w_cs)
-                    conv_group(xc, wc)
-                end
-            end
-
+            $(group_exec)
             return out
         end
     end
@@ -247,6 +319,52 @@ for (front_name, backend, signature) in (
     (:∇conv_data, :im2col, ((:T, 5), (:T, 5), (:T, 5), :C, (:(T <: G), :(C <: ConvDims)))),
     (:∇conv_data, :direct, ((:yT, :N), (:T1, :N), (:T2, :N), :C, (:yT, :T1, :T2, :N, :(C <: ConvDims)))),
 )
+    # The im2col backend shares one col workspace across groups (see
+    # `run_grouped_im2col!`); the direct backend keeps the original per-group loop.
+    group_exec = if backend === :im2col
+        quote
+            dx_cs = collect(Iterators.partition(1:size(out, 4),
+                                        channels_in(cdims) ÷ groupcount(cdims)))
+            w_cs = collect(Iterators.partition(1:size(in2, 5),
+                                    channels_out(cdims) ÷ groupcount(cdims)))
+            dy_cs = collect(Iterators.partition(1:size(in1, 4),
+                                        channels_out(cdims) ÷ groupcount(cdims)))
+            wsd = im2col_dims(cdims2)
+            function ∇conv_data_group(gi, col, ntasks)
+                xc = dx_cs[gi]; yc = dy_cs[gi]; wc = w_cs[gi]
+                dxv = @view out[ntuple(i -> i == 4 ? xc : Colon(), 5)...]
+                dyv = @view in1[ntuple(i -> i == 4 ? yc : Colon(), 5)...]
+                wv = @view in2[ntuple(i -> i == 5  ? wc : Colon(), 5)...]
+                $(Symbol("$(front_name)_$(backend)!"))(dxv, dyv, wv, cdims2;
+                                                       col=col, ntasks=ntasks, kwargs...)
+            end
+            run_grouped_im2col!(∇conv_data_group, length(dx_cs), out, wsd[1], wsd[2], true)
+        end
+    else
+        quote
+            dx_cs = Iterators.partition(1:size(out, 4),
+                                        channels_in(cdims) ÷ groupcount(cdims))
+            w_cs = Iterators.partition(1:size(in2, 5),
+                                    channels_out(cdims) ÷ groupcount(cdims))
+            dy_cs = Iterators.partition(1:size(in1, 4),
+                                        channels_out(cdims) ÷ groupcount(cdims))
+            function ∇conv_data_group(xc, yc, wc)
+                dxv = @view out[ntuple(i -> i == 4 ? xc : Colon(), 5)...]
+                dyv = @view in1[ntuple(i -> i == 4 ? yc : Colon(), 5)...]
+                wv = @view in2[ntuple(i -> i == 5  ? wc : Colon(), 5)...]
+                $(Symbol("$(front_name)_$(backend)!"))(dxv, dyv, wv, cdims2; kwargs...)
+            end
+            if should_use_spawn() && length(dx_cs) > 1
+                Threads.@sync for (xc, yc, wc) in zip(dx_cs, dy_cs, w_cs)
+                    Threads.@spawn ∇conv_data_group(xc, yc, wc)
+                end
+            else
+                for (xc, yc, wc) in zip(dx_cs, dy_cs, w_cs)
+                    ∇conv_data_group(xc, yc, wc)
+                end
+            end
+        end
+    end
     # We only define 3d conv primitives, we reshape lower down to get 1d and 2d convolution
     @eval begin
         function $(Symbol("$(front_name)!"))(
@@ -260,35 +378,11 @@ for (front_name, backend, signature) in (
                         "You probably don't want this; check your datatypes.") yT T1 T2 maxlog=1
             end
 
-
-            dx_cs = Iterators.partition(1:size(out, 4),
-                                        channels_in(cdims) ÷ groupcount(cdims))
-            w_cs = Iterators.partition(1:size(in2, 5),
-                                    channels_out(cdims) ÷ groupcount(cdims))
-            dy_cs = Iterators.partition(1:size(in1, 4),
-                                        channels_out(cdims) ÷ groupcount(cdims))
             cdims2 = basetype(C)(cdims,
                                 G = 1,
                                 C_in = channels_in(cdims) ÷ groupcount(cdims),
                                 C_out = channels_out(cdims) ÷ groupcount(cdims))
-
-            function ∇conv_data_group(xc, yc, wc)
-                dxv = @view out[ntuple(i -> i == 4 ? xc : Colon(), 5)...]
-                dyv = @view in1[ntuple(i -> i == 4 ? yc : Colon(), 5)...]
-                wv = @view in2[ntuple(i -> i == 5  ? wc : Colon(), 5)...]
-                $(Symbol("$(front_name)_$(backend)!"))(dxv, dyv, wv, cdims2; kwargs...)
-            end
-
-            if should_use_spawn() && length(dx_cs) > 1
-                Threads.@sync for (xc, yc, wc) in zip(dx_cs, dy_cs, w_cs)
-                    Threads.@spawn ∇conv_data_group(xc, yc, wc)
-                end
-            else
-                for (xc, yc, wc) in zip(dx_cs, dy_cs, w_cs)
-                    ∇conv_data_group(xc, yc, wc)
-                end
-            end
-
+            $(group_exec)
             return out
         end
     end
@@ -300,6 +394,53 @@ for (front_name, backend, signature) in (
     (:∇conv_filter, :im2col, ((:T, 5), (:T, 5), (:T, 5), :C, (:(T <: G), :(C <: ConvDims)))),
     (:∇conv_filter, :direct, ((:yT, :N), (:T1, :N), (:T2, :N), :C, (:yT, :T1, :T2, :N, :(C <: ConvDims)))),
 )
+    # The im2col backend shares one col workspace across groups (see
+    # `run_grouped_im2col!`). ∇conv_filter has no per-image threading, so groups are
+    # the only parallelism (`inner_threaded=false`). The direct backend keeps the
+    # original per-group loop.
+    group_exec = if backend === :im2col
+        quote
+            dw_cs = collect(Iterators.partition(1:size(out, 5),
+                                        channels_out(cdims) ÷ groupcount(cdims)))
+            dy_cs = collect(Iterators.partition(1:size(in2, 4),
+                                        channels_out(cdims) ÷ groupcount(cdims)))
+            x_cs = collect(Iterators.partition(1:size(in1, 4),
+                                    channels_in(cdims) ÷ groupcount(cdims)))
+            wsd = ∇filter_im2col_dims(cdims2)
+            function ∇conv_filter_group(gi, col, ntasks)
+                wc = dw_cs[gi]; xc = x_cs[gi]; yc = dy_cs[gi]
+                x = @view in1[ntuple(i -> i == 4 ? xc : Colon(), 5)...]
+                dy = @view in2[ntuple(i -> i == 4 ? yc : Colon(), 5)...]
+                dw = @view out[ntuple(i -> i == 5 ? wc : Colon(), 5)...]
+                $(Symbol("$(front_name)_$(backend)!"))(dw, x, dy, cdims2; col=col, kwargs...)
+            end
+            run_grouped_im2col!(∇conv_filter_group, length(dw_cs), out, wsd[1], wsd[2], false)
+        end
+    else
+        quote
+            dw_cs = Iterators.partition(1:size(out, 5),
+                                        channels_out(cdims) ÷ groupcount(cdims))
+            dy_cs = Iterators.partition(1:size(in2, 4),
+                                        channels_out(cdims) ÷ groupcount(cdims))
+            x_cs = Iterators.partition(1:size(in1, 4),
+                                    channels_in(cdims) ÷ groupcount(cdims))
+            function ∇conv_filter_group(wc, xc, yc)
+                x = @view in1[ntuple(i -> i == 4 ? xc : Colon(), 5)...]
+                dy = @view in2[ntuple(i -> i == 4 ? yc : Colon(), 5)...]
+                dw = @view out[ntuple(i -> i == 5 ? wc : Colon(), 5)...]
+                $(Symbol("$(front_name)_$(backend)!"))(dw, x, dy, cdims2; kwargs...)
+            end
+            if should_use_spawn() && length(dw_cs) > 1
+                Threads.@sync for (wc, xc, yc) in zip(dw_cs, x_cs, dy_cs)
+                    Threads.@spawn ∇conv_filter_group(wc, xc, yc)
+                end
+            else
+                for (wc, xc, yc) in zip(dw_cs, x_cs, dy_cs)
+                    ∇conv_filter_group(wc, xc, yc)
+                end
+            end
+        end
+    end
     # We only define 3d conv primitives, we reshape lower down to get 1d and 2d convolution
     @eval begin
         function $(Symbol("$(front_name)!"))(
@@ -313,34 +454,11 @@ for (front_name, backend, signature) in (
                         "You probably don't want this; check your datatypes.") yT T1 T2 maxlog=1
             end
 
-            dw_cs = Iterators.partition(1:size(out, 5),
-                                        channels_out(cdims) ÷ groupcount(cdims))
-            dy_cs = Iterators.partition(1:size(in2, 4),
-                                        channels_out(cdims) ÷ groupcount(cdims))
-            x_cs = Iterators.partition(1:size(in1, 4),
-                                    channels_in(cdims) ÷ groupcount(cdims))
             cdims2 = basetype(C)(cdims,
                                 G = 1,
                                 C_in = channels_in(cdims) ÷ groupcount(cdims),
                                 C_out = channels_out(cdims) ÷ groupcount(cdims))
-
-            function ∇conv_filter_group(wc, xc, yc)
-                x = @view in1[ntuple(i -> i == 4 ? xc : Colon(), 5)...]
-                dy = @view in2[ntuple(i -> i == 4 ? yc : Colon(), 5)...]
-                dw = @view out[ntuple(i -> i == 5 ? wc : Colon(), 5)...]
-                $(Symbol("$(front_name)_$(backend)!"))(dw, x, dy, cdims2; kwargs...)
-            end
-
-            if should_use_spawn() && length(dw_cs) > 1
-                Threads.@sync for (wc, xc, yc) in zip(dw_cs, x_cs, dy_cs)
-                    Threads.@spawn ∇conv_filter_group(wc, xc, yc)
-                end
-            else
-                for (wc, xc, yc) in zip(dw_cs, x_cs, dy_cs)
-                    ∇conv_filter_group(wc, xc, yc)
-                end
-            end
-
+            $(group_exec)
             return out
         end
     end
