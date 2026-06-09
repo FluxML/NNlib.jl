@@ -899,6 +899,13 @@ end
 
 sigmoid_fast(x::Float16) = sigmoid(x)  # sigmoid_fast is extremely badly behaved at large x
 
+# Complex inputs: the `_fast` clamped approximation is real-only, so fall back to the
+# holomorphic `σ` (which has its own overflow-safe complex method). This keeps `swish`,
+# `logσ`, and the `softplus`/`logσ` gradients holomorphic and GPU-compilable; using a
+# plain method (rather than the deprecation path below) avoids the `depwarn` string
+# interpolation that cannot compile in a GPU kernel.
+sigmoid_fast(x::Complex) = σ(x)
+
 function sigmoid_fast(x::Number)
     Base.depwarn("sigmoid only makes sense on real numbers, got $(typeof(x))", :sigmoid_fast)
     sigmoid(x)
