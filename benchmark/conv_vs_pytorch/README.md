@@ -51,3 +51,48 @@ were stable across 3 consecutive runs.
 
 Layout note: NNlib uses WHCN; PyTorch uses NCHW. The cases are defined with
 matching channel/spatial/batch sizes so the FLOP counts are identical.
+
+## Why is NNlib slower?
+
+The gap is **not** in the im2col+GEMM math — it's about **threading granularity**
+and the backend PyTorch dispatches to.
+
+### Root cause: NNlib threads only over the batch dimension
+
+In [`src/impl/conv_im2col.jl`](../../src/impl/conv_im2col.jl) the work is split by
+partitioning the batch axis and spawning one task per batch chunk; each task runs a
+single-threaded `im2col!` + `gemm!`. When `batch < nthreads`, the extra threads sit
+idle. PyTorch parallelizes *inside* a single image, so it saturates all cores at any
+batch size. Per-image time (ms/img) for the 7x7 case makes this clear:
+
+|                    | batch=1 | batch=2 | batch=4 | batch=8 |
+|--------------------|--------:|--------:|--------:|--------:|
+| NNlib, 4 threads   | 6.46    | 4.76    | 2.76    | **2.39**|
+| PyTorch, 4 threads | 2.58    | 2.46    | 2.51    | **2.41**|
+
+NNlib only improves as the batch grows; PyTorch is flat. **Once `batch ≥ nthreads`
+the two match exactly** (2.39 vs 2.41) — NNlib's throughput is fine when cores are
+saturated. The issue's 2x gap is because it uses batch=2 with ≥4 threads.
+
+### What PyTorch dispatches to: oneDNN
+
+PyTorch CPU conv ([`aten/.../Convolution.cpp`](https://github.com/pytorch/pytorch/blob/main/aten/src/ATen/native/Convolution.cpp),
+`select_conv_backend`) sends float32 contiguous convs (batch>1 or threads>1) to
+**oneDNN** (`aten::mkldnn_convolution`, confirmed via the profiler). The reference
+`Slow2d`/`thnn` kernel (im2col+GEMM, closest to NNlib) is only reached if oneDNN is
+disabled or the dtype/shape disqualifies it (e.g. f64, or bf16 without AVX512-BF16).
+
+### How oneDNN's direct conv works
+
+oneDNN uses a **JIT-generated direct convolution** (no full im2col buffer): activations
+are reordered into a channel-blocked layout (`nChw16c` on AVX512, **`nChw8c` on this
+AVX2 box**), weights into `OIhw8i8o`, and the inner loop keeps an output tile in vector
+registers, accumulating with broadcast+FMA. It parallelizes over
+batch × output-channel-blocks × spatial rows — hence full-core utilization on a single
+image. (Winograd is x86-unsupported in current oneDNN; an implicit-GEMM path is the
+fallback.)
+
+### Fix direction for NNlib
+
+Parallelize **within** an image — partition `im2col!` + `gemm!` over output spatial
+blocks or output channels across threads, instead of only over the batch axis.
