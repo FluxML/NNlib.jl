@@ -222,7 +222,9 @@ function ∇scatter_src(
     for k in CartesianIndices(idx)
         inds = filter(x -> x != k, rev_idx[idx[k]])
         for i in ax
-            Δsrc[i, k] = op(Δsrc[i, k], prod(j -> src[i, j], inds))
+            # `init` handles values mapped by a single source position, where
+            # `inds` is empty and the product of siblings is the identity.
+            Δsrc[i, k] = op(Δsrc[i, k], prod(j -> src[i, j], inds; init=one(Tsrc)))
         end
     end
     Δsrc
