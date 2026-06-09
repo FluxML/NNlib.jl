@@ -94,11 +94,15 @@ end
 
     reverse(Const(dropout), Const(rng), Duplicated(x1, dx1), Const(p), tape)
 
-    @test dx1[.!tape[1]] ≈ zero(x1)[.!tape[1]]
+    # The dropout mask isn't exposed through Enzyme's (internal) tape layout, but the
+    # dropped entries are exactly the zeros of the primal output (`x1` has no zeros).
+    kept = primal .!= 0
+
+    @test dx1[.!kept] ≈ zero(x1)[.!kept]
 
     val = convert(Float32, 1/(1-p))
 
-    @test dx1[tape[1]] ≈ (val * dout)[tape[1]]
+    @test dx1[kept] ≈ (val * dout)[kept]
 end
 
 end
