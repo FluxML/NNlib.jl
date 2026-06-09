@@ -45,13 +45,24 @@ function cudnnConvolutionDescriptorAndPaddedInput(cdims::DenseConvDims, x::Dense
     return cudnnConvolutionDescriptor(cdims, x_padded, pad_cudnn), x_padded, _x -> _x[xIs_pad]
 end
 
+# Compute (accumulation) type for the convolution descriptor. cuDNN's
+# TRUE_HALF_CONFIG (compute in Float16) is only supported for a narrow set of 2D
+# shapes; in particular it is unsupported for 3D convolutions and for many
+# backward-filter shapes, surfacing as CUDNN_STATUS_NOT_SUPPORTED/BAD_PARAM.
+# PSEUDO_HALF_CONFIG (Float16 data, Float32 compute) is broadly supported and is
+# the standard choice (matching e.g. PyTorch). So we always compute Float16
+# convolutions in Float32.
+# Fixes https://github.com/FluxML/NNlib.jl/issues/505 and #515.
+conv_compute_type(::Type{Float16}) = Float32
+conv_compute_type(::Type{T}) where T = T
+
 function cudnnConvolutionDescriptor(cdims::DenseConvDims, x::DenseCuArray{T}, pad = nnlibPadding(cdims)) where T
     mode=(NNlib.flipkernel(cdims) ? CUDNN_CROSS_CORRELATION : CUDNN_CONVOLUTION)
     cudnnConvolutionDescriptor(convdims(pad, size(x),0),
                                convdims(NNlib.stride(cdims),size(x),1),
                                convdims(NNlib.dilation(cdims),size(x),1),
                                mode,
-                               cudnnDataType(real(T)),
+                               cudnnDataType(conv_compute_type(real(T))),
                                math_mode(),
                                CUDNN_DEFAULT_REORDER,
                                Cint(NNlib.groupcount(cdims)))

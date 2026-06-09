@@ -115,3 +115,43 @@ using NNlib: DenseConvDims
     end
 end
 end
+
+@testset "Float16" begin
+    # cuDNN's TRUE_HALF_CONFIG (compute in Float16) is unsupported for 3D convs and
+    # for many backward-filter shapes, so NNlib computes Float16 convolutions in
+    # Float32 (PSEUDO_HALF_CONFIG). A GPU Float16 result should therefore stay
+    # Float16 and match a Float32 CPU reference up to Float16 rounding.
+    # Regression tests for https://github.com/FluxML/NNlib.jl/issues/505 and #515.
+    function f16_matches_f32(f, xs...; rtol=1e-2, atol=1e-2)
+        ref = f(map(x -> Float32.(x), xs)...)
+        out = f(map(CuArray, xs)...)
+        @test eltype(out) == Float16
+        @test Float32.(collect(out)) ≈ Float32.(ref) rtol=rtol atol=atol
+    end
+
+    @testset "groups=$groups, num_spatial_dims=$num_spatial_dims" for groups in (1, 2), num_spatial_dims in (1, 2, 3)
+        C_in  = groups == 1 ? 3 : 4
+        C_out = 4
+        x = rand(Float16, fill(8, num_spatial_dims)..., C_in, 2)
+        w = rand(Float16, fill(2, num_spatial_dims)..., C_in ÷ groups, C_out)
+        cdims = DenseConvDims(x, w; groups)
+        dy = rand(Float16, size(NNlib.conv(x, w, cdims))...)
+
+        f16_matches_f32((x, w)  -> NNlib.conv(x, w, cdims), x, w)
+        f16_matches_f32((dy, w) -> NNlib.∇conv_data(dy, w, cdims), dy, w)
+        f16_matches_f32((x, dy) -> NNlib.∇conv_filter(x, dy, cdims), x, dy)
+    end
+
+    # Exact shapes from the issues, as explicit regression guards.
+    @testset "issue #505: 5D (3D conv) forward" begin
+        x, w = CUDA.rand(Float16, 8, 8, 8, 1, 1), CUDA.rand(Float16, 3, 3, 3, 1, 1)
+        @test size(NNlib.conv(x, w)) == (6, 6, 6, 1, 1)
+    end
+    @testset "issue #515: ∇conv_filter 3=>64, 1x1 output" begin
+        x, w = CUDA.rand(Float16, 3, 3, 3, 1), CUDA.rand(Float16, 3, 3, 3, 64)
+        cdims = DenseConvDims(x, w)
+        dy = CUDA.rand(Float16, size(NNlib.conv(x, w, cdims))...)
+        @test size(NNlib.∇conv_data(dy, w, cdims)) == size(x)
+        @test size(NNlib.∇conv_filter(x, dy, cdims)) == size(w)
+    end
+end
