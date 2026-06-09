@@ -4,6 +4,7 @@ using Metal
 using Zygote: gradient
 using MLDataDevices: gpu_device
 using ForwardDiff: Dual
+using Statistics: mean
 
 Metal.allowscalar(false)
 
@@ -33,3 +34,4 @@ end
 DEVICE = gpu_device(force=true)
 
 include("activations.jl")
+include("scatter.jl")

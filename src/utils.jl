@@ -73,9 +73,13 @@ maximum_dims(dims::AbstractArray{<:Integer}) = (maximum(dims), )
 maximum_dims(dims::AbstractArray{NTuple{N, T}}) where {N,T} = ntuple(i -> maximum(x->x[i], dims), N)
 maximum_dims(dims::AbstractArray{CartesianIndex{N}}) where {N} = ntuple(i -> maximum(x->x[i], dims), N)
 
+# Iterate with `CartesianIndices` rather than `pairs`: for a 1-D `idx`, `pairs`
+# yields linear `Int` keys, which can't be pushed into the `CartesianIndex{N}`
+# buffer allocated by `reverse_indices` (see #703).
 function reverse_indices!(rev::AbstractArray, idx::AbstractArray{<:Tuple})
-    for (ind, val) in pairs(Array(idx))
-        push!(rev[val...], ind)
+    cpuidx = Array(idx)
+    for ind in CartesianIndices(cpuidx)
+        push!(rev[cpuidx[ind]...], ind)
     end
     # if CUDA supports `unique`, a more efficient version:
     # cidx in CartesianIndices(idx)
@@ -86,8 +90,9 @@ function reverse_indices!(rev::AbstractArray, idx::AbstractArray{<:Tuple})
 end
 
 function reverse_indices!(rev::AbstractArray, idx::AbstractArray)
-    for (ind, val) in pairs(Array(idx))
-        push!(rev[val], ind)
+    cpuidx = Array(idx)
+    for ind in CartesianIndices(cpuidx)
+        push!(rev[cpuidx[ind]], ind)
     end
     rev
 end

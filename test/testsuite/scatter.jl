@@ -207,6 +207,18 @@ function scatter_testsuite(Backend)
             end
         end
 
+        # Regression test for #703: `*`/`/` gradients used to error for a 1-D
+        # (vector) index array, because `reverse_indices` mishandled linear keys.
+        if Backend == CPU || Symbol(Backend) == :CUDABackend
+            @testset "∂src vector index (#703) - $op" for op in (*, /)
+                idx = device([3, 1, 2, 2])      # 1-D index, with a uniquely-mapped value
+                src = device(T[10, 100, 1000, 1])
+                Backend == CPU ?
+                    gradtest_fn(xs -> scatter(op, xs, idx), src; fdm=fdm(op)) :
+                    gradtest_fn((xs, i) -> scatter(op, xs, i), src, idx)
+            end
+        end
+
 
         @static if Test_Enzyme
 
