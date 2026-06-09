@@ -1,14 +1,18 @@
 module NNlibSparseArraysExt
 
-using SparseArrays: AbstractSparseArray, nonzeros
+using SparseArrays: AbstractSparseArray
 using NNlib: NNlib
 
-# A sparse array stores its nonzero values in a dense buffer that already lives
-# on the right device (a `Vector` for `SparseMatrixCSC`, a `CuVector` for a
-# `CuSparseMatrix`, ...). `similar` of that buffer therefore gives a dense array
-# of the correct type and backend. This makes `NNlib.gather` on a sparse source
-# return a dense array instead of a sparse one. See issue #625.
-NNlib.dense_like(x::AbstractSparseArray, ::Type{T}, sz) where {T} =
-    similar(nonzeros(x), T, sz)
+# `gather` does not support sparse sources (matching PyTorch and PyTorch
+# Geometric, where the gather source is always dense). Without this method a
+# sparse `src` would silently return a sparse result via `similar`. Throw a
+# clear error instead and let the user densify explicitly. See issue #625.
+NNlib.gather(::AbstractSparseArray, ::AbstractArray) = _gather_sparse_error()
+NNlib.gather(::AbstractSparseArray, ::AbstractVector{<:Integer},
+    ::AbstractVector{<:Integer}...) = _gather_sparse_error()
+
+_gather_sparse_error() = throw(ArgumentError(
+    "`gather` does not support sparse sources; convert `src` to a dense array \
+    first, e.g. `gather(collect(src), idx)`."))
 
 end # module

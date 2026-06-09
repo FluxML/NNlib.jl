@@ -226,16 +226,10 @@ function gather_testsuite(Backend)
             test_rrule(gather!, dst3, src3, idxt ⊢ NoTangent())
         end
 
-        @testset "gather on sparse source returns dense (#625)" begin
+        @testset "gather rejects sparse source (#625)" begin
             A = sparse([1, 2, 3], [2, 3, 1], [1.0, 1.0, 1.0], 3, 3)
-            # scalar index: gather columns
-            y = gather(A, [1, 3, 1])
-            @test y isa Array{Float64, 2}
-            @test y == Matrix(A)[:, [1, 3, 1]]
-            # cartesian index form
-            w = gather(A, [1, 2, 3], [2, 3, 1])
-            @test w isa Array{Float64, 1}
-            @test w == [A[1, 2], A[2, 3], A[3, 1]]
+            @test_throws ArgumentError gather(A, [1, 3, 1])
+            @test_throws ArgumentError gather(A, [1, 2, 3], [2, 3, 1])
         end
     end
 end
