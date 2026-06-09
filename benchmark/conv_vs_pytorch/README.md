@@ -1,8 +1,10 @@
 # NNlib vs PyTorch conv on CPU (issue #234)
 
 Compares forward `conv` performance between NNlib and PyTorch on CPU,
-reproducing [FluxML/NNlib.jl#234](https://github.com/FluxML/NNlib.jl/issues/234).
-Both run with **4 threads** and `Float32`.
+reproducing [FluxML/NNlib.jl#234](https://github.com/FluxML/NNlib.jl/issues/234)
+and measuring the effect of the within-image threading added in
+[#697](https://github.com/FluxML/NNlib.jl/pull/697). Both run with **4 threads**
+and `Float32`.
 
 ## Setup
 
@@ -25,108 +27,121 @@ uv run --project . python bench_torch.py
 julia --threads=4 --project=. bench_nnlib.jl
 ```
 
+## Methodology
+
+NNlib's CPU conv parallelism is Julia-task based, so a fair "4 threads" run is
+`julia --threads=4` with **BLAS pinned to 1 thread** (`BLAS.set_num_threads(1)`);
+otherwise `julia_threads × blas_threads` oversubscribes. PyTorch uses
+`torch.set_num_threads(4)`.
+
+The box is a 64-core Threadripper 2990WX (AVX2, no AVX512), often shared. Because
+contention only *adds* time, all numbers below are the **minimum over 6 process
+runs of 80 samples each** — the best estimate of uncontended time. Times are
+**per image** (ms/img) so batch sizes are comparable.
+
 ## Results
 
-Median forward time, 4 threads, `Float32`. Measured on a 64-core box; because
-the machine was shared, the **minimum** across repeated runs is reported as the
-best estimate of uncontended time (contention only adds time). Numbers below
-were stable across 3 consecutive runs.
+Per-image forward time (ms/img), 4 threads, `Float32`. `master` is the previous
+batch-only threading; **#697** adds within-image threading.
 
-| case               | shape (in→out, k, s, p, HxW, batch) | PyTorch (ms) | NNlib (ms) | NNlib / PyTorch |
-|--------------------|-------------------------------------|-------------:|-----------:|----------------:|
-| issue234 7x7 s2 p3 | 3→64, 7, s2, p3, 224x224, b2        | ~5.0         | ~10.5      | **2.1x**        |
-| 3x3 s1 p1 c64      | 64→64, 3, s1, p1, 56x56, b2         | ~2.5         | ~8.4       | **3.4x**        |
-| 3x3 s1 p1 c128     | 128→128, 3, s1, p1, 28x28, b2       | ~2.5         | ~6.9       | **2.8x**        |
-| 1x1 s1 p0 c256     | 256→256, 1, s1, p0, 14x14, b2       | ~0.48        | ~0.61      | **1.3x**        |
+**issue #234 shape — 7×7, stride 2, pad 3, 3→64, 224×224**
+
+| batch | master | **#697** | PyTorch | #697 vs master | #697 vs PyTorch |
+|------:|-------:|---------:|--------:|---------------:|----------------:|
+| 1 | 6.73 | **3.45** | 1.23 | **1.95× faster** | 2.8× slower |
+| 2 | 4.98 | **3.28** | 1.58 | 1.52× faster | 2.1× slower |
+| 4 | 2.57 | **2.17** | 1.29 | 1.19× faster | 1.7× slower |
+| 8 | 1.91 | 1.97 | 1.27 | ~neutral | 1.6× slower |
+
+**3×3, stride 1, pad 1, 64→64, 56×56**
+
+| batch | master | **#697** | PyTorch | #697 vs master | #697 vs PyTorch |
+|------:|-------:|---------:|--------:|---------------:|----------------:|
+| 1 | 7.13 | **3.67** | 1.11 | **1.95× faster** | 3.3× slower |
+| 2 | 3.84 | **3.46** | 1.02 | 1.11× faster | 3.4× slower |
+| 4 | 2.77 | **2.16** | 0.97 | 1.28× faster | 2.2× slower |
+| 8 | 2.01 | 2.12 | 0.96 | ~neutral | 2.2× slower |
+
+**3×3, stride 1, pad 1, 128→128, 28×28**
+
+| batch | master | **#697** | PyTorch | #697 vs master | #697 vs PyTorch |
+|------:|-------:|---------:|--------:|---------------:|----------------:|
+| 1 | 5.53 | **2.61** | 1.09 | **2.12× faster** | 2.4× slower |
+| 2 | 3.05 | **2.36** | 1.04 | 1.29× faster | 2.3× slower |
+| 4 | 1.70 | **1.64** | 0.98 | ~neutral | 1.7× slower |
+| 8 | 1.53 | 1.58 | 0.96 | ~neutral | 1.6× slower |
+
+**1×1, stride 1, pad 0, 256→256, 14×14**
+
+| batch | master | **#697** | PyTorch | #697 vs master | #697 vs PyTorch |
+|------:|-------:|---------:|--------:|---------------:|----------------:|
+| 1 | 0.49 | **0.33** | 0.28 | 1.48× faster | 1.2× slower |
+| 2 | 0.27 | 0.27 | 0.19 | ~neutral | 1.5× slower |
+| 4 | 0.20 | 0.20 | 0.14 | ~neutral | 1.4× slower |
+| 8 | 0.14 | 0.14 | 0.13 | ~neutral | 1.1× slower |
 
 ### Takeaways
 
-- The original issue's 7x7/stride-2 case reproduces: NNlib is **~2x slower**.
-- The gap is **larger (~3x) for 3x3 convs**, the most common conv shape.
-- The gap shrinks for 1x1 convs, which reduce to a single GEMM (BLAS-bound) —
-  consistent with the bottleneck being NNlib's im2col + scattered work around
-  the matmul rather than the matmul itself.
-- NNlib also allocates a lot (e.g. ~34 MiB for the 7x7 case) due to im2col
-  buffers, whereas PyTorch's CPU conv keeps overhead low.
+- **#697 gives a consistent ~2× speedup at batch=1** (and ~1.1–1.5× at batch=2)
+  across all shapes — exactly the small-batch regime of issue #234.
+- The gain tapers to **neutral by batch≥4–8**, where the unchanged batch-split
+  path already saturates the 4 threads. (A consistent ≤5% at batch=8 is within
+  measurement noise of the unchanged path.)
+- **PyTorch (oneDNN) is still faster everywhere** — ~1.5–3.4× — even after #697.
+  The gap is largest for 3×3 convs. So #697 closes the *threading* part of the
+  gap, not the *algorithmic* one (see below).
 
 Layout note: NNlib uses WHCN; PyTorch uses NCHW. The cases are defined with
 matching channel/spatial/batch sizes so the FLOP counts are identical.
 
 ## Why is NNlib slower?
 
-Mostly it's **threading granularity** (NNlib threads only over the batch) plus the
-optimized **oneDNN** backend PyTorch dispatches to. At full core utilization the
-im2col+GEMM math is competitive — NNlib even beats oneDNN on the 7x7 case — with a
-residual gap remaining only for small (3x3) kernels.
+Two separate factors: **threading** (now improved by #697) and the **backend**
+PyTorch dispatches to (oneDNN, an algorithmic advantage that remains).
 
-### Root cause: NNlib threads only over the batch dimension
+### Threading (the part #697 fixes)
 
-In [`src/impl/conv_im2col.jl`](../../src/impl/conv_im2col.jl) the work is split by
-partitioning the batch axis and spawning one task per batch chunk; each task runs a
-single-threaded `im2col!` + `gemm!`. When `batch < nthreads`, the extra threads sit
-idle. PyTorch parallelizes *inside* a single image, so it saturates all cores at any
-batch size. Per-image time (ms/img) for the 7x7 case makes this clear:
+The GEMM that dominates conv (~80% of per-image time) is *already* multithreaded
+by BLAS. The problems were:
 
-|                    | batch=1 | batch=2 | batch=4 | batch=8 |
-|--------------------|--------:|--------:|--------:|--------:|
-| NNlib, 4 threads   | 6.46    | 4.76    | 2.76    | **2.39**|
-| PyTorch, 4 threads | 2.58    | 2.46    | 2.51    | **2.41**|
+1. **im2col is serial** — the ~20% the GEMM threading can't touch.
+2. **`conv_im2col!` only parallelized over the batch axis** — with
+   `batch < nthreads` the surplus threads sat idle.
+3. **Oversubscription** — the old default (`julia × BLAS` threads) ran up to 16
+   threads, masking the problem on this 64-core box but hurting where cores ≈
+   threads.
 
-NNlib only improves as the batch grows; PyTorch is flat. **Once `batch ≥ nthreads`
-the two match exactly** (2.39 vs 2.41) — NNlib's throughput is fine when cores are
-saturated. The issue's 2x gap is because it uses batch=2 with ≥4 threads.
+[#697](https://github.com/FluxML/NNlib.jl/pull/697) addresses (1) and (2): when
+`batch < nthreads`, it splits each image's output-spatial dimension across tasks,
+so every task runs `im2col!` + GEMM on a contiguous slab of output rows —
+parallelizing both the copy and the matmul. BLAS is pinned to one thread inside
+that region to avoid (3). The batch=1 numbers above show the ~2× result.
 
-### What PyTorch dispatches to: oneDNN
+### Backend: PyTorch dispatches to oneDNN (the part that remains)
 
-PyTorch CPU conv ([`aten/.../Convolution.cpp`](https://github.com/pytorch/pytorch/blob/main/aten/src/ATen/native/Convolution.cpp),
-`select_conv_backend`) sends float32 contiguous convs (batch>1 or threads>1) to
-**oneDNN** (`aten::mkldnn_convolution`, confirmed via the profiler). The reference
-`Slow2d`/`thnn` kernel (im2col+GEMM, closest to NNlib) is only reached if oneDNN is
-disabled or the dtype/shape disqualifies it (e.g. f64, or bf16 without AVX512-BF16).
+PyTorch CPU conv ([`Convolution.cpp`](https://github.com/pytorch/pytorch/blob/main/aten/src/ATen/native/Convolution.cpp),
+`select_conv_backend`) sends float32 contiguous convs to **oneDNN**
+(`aten::mkldnn_convolution`, confirmed via the profiler). oneDNN uses a
+**JIT-generated direct convolution** — no full im2col buffer. Activations are
+reordered into a channel-blocked layout (`nChw8c` on this AVX2 box), and the
+inner loop keeps an output tile in vector registers, accumulating with
+broadcast+FMA. It parallelizes over batch × output-channel-blocks × spatial rows.
+On the 7×7 case it runs near the CPU's FLOP peak.
 
-### How oneDNN's direct conv works
+NNlib's im2col+GEMM can't match this for two reasons that threading can't fix:
 
-oneDNN uses a **JIT-generated direct convolution** (no full im2col buffer): activations
-are reordered into a channel-blocked layout (`nChw16c` on AVX512, **`nChw8c` on this
-AVX2 box**), weights into `OIhw8i8o`, and the inner loop keeps an output tile in vector
-registers, accumulating with broadcast+FMA. It parallelizes over
-batch × output-channel-blocks × spatial rows — hence full-core utilization on a single
-image. (Winograd is x86-unsupported in current oneDNN; an implicit-GEMM path is the
-fallback.)
+- **im2col's memory blow-up.** A 3×3 conv expands the input **9×** (`k²`) into the
+  col buffer; that materialization is pure memory traffic oneDNN never pays. This
+  is why the 3×3 gap (~2–3.4×) is larger than the 7×7 gap.
+- **GEMM efficiency.** The im2col GEMM is "skinny" (small N/K), so even
+  BLAS-threaded it doesn't reach oneDNN's near-peak direct kernel.
 
-### At saturation, the remaining gap is shape-dependent
+### Conclusion
 
-Comparing min per-image time at `batch=8` (all 4 cores busy) isolates the
-*algorithmic* gap from the threading one:
-
-| case (batch=8)   | NNlib (ms/img) | PyTorch/oneDNN (ms/img) | NNlib / PyTorch |
-|------------------|---------------:|------------------------:|----------------:|
-| 7x7 s2 (3→64)    | 1.85           | 2.30                    | **0.80x (NNlib faster)** |
-| 3x3 c64          | 2.30           | 1.45                    | 1.59x           |
-| 3x3 c128         | 1.87           | 1.14                    | 1.64x           |
-
-Two regimes:
-
-- **7x7 first-layer conv: NNlib is actually *faster* than oneDNN once saturated.**
-  With only 3 input channels the im2col buffer is small relative to a fat,
-  BLAS-friendly GEMM, and oneDNN's direct kernel isn't optimized for a 3-channel
-  input. So the issue's 2x is *entirely* a threading artifact here.
-- **3x3 convs keep a ~1.6x gap even fully saturated.** A 3x3 conv expands the input
-  **9x** (`k²`) into the col buffer; that materialization is pure memory traffic
-  oneDNN's direct conv never pays (it streams the blocked layout straight into FMA
-  accumulators). Threading can't remove those extra bytes — this part is algorithmic.
-
-### Conclusion: improve im2col, don't rewrite as direct conv
-
-- **The headline #234 gap is threading, fully fixable in the im2col path.** The
-  highest-ROI change is to parallelize *within* an image: partition the output
-  spatial dimension (the GEMM's `M`) across threads in
-  [`conv_im2col.jl`](../../src/impl/conv_im2col.jl), not just the batch axis. This
-  closes the small-batch / batch=1 inference gap and beats oneDNN on the 7x7 case.
-- **Tiling/fusing im2col+GEMM** (materialize only a per-thread tile of the col
-  buffer instead of one ~34 MiB allocation) cuts memory traffic and improves cache
-  reuse, *narrowing* the residual 3x3 gap.
-- **A from-scratch direct convolution** (blocked layout + SIMD/FMA/JIT kernels) is
-  the only thing that fully erases the 3x3 gap, but it means reimplementing a large
-  part of oneDNN in pure Julia — not worth it for a ~1.6x edge on one shape class
-  when the two changes above recover the dominant losses.
+- **#697 is the high-ROI fix** and is implemented: ~2× at small batch, by
+  parallelizing within an image instead of only over the batch.
+- **Closing the residual ~1.5–3× to oneDNN** would require attacking the
+  algorithm, not threading: tiling/fusing im2col+GEMM to cut the `k²` memory
+  traffic, or a from-scratch direct convolution (blocked layout + SIMD/JIT
+  kernels). The latter means reimplementing a large part of oneDNN in pure Julia
+  — likely not worth it for the remaining gap.
