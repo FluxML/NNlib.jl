@@ -10,10 +10,32 @@ routines against NNlib's **custom** generic kernels (the ones used on the CPU):
 for both `softmax` and `logsoftmax`, and for `dims=1` and `dims=2`. Reproduces
 and extends [FluxML/NNlib.jl#513](https://github.com/FluxML/NNlib.jl/issues/513).
 
+cuDNN is measured in **both of its softmax modes**:
+
+- **CHANNEL** — reduces over the C axis. What NNlib used unconditionally before
+  this PR. Pathologically slow on the **backward** pass when the softmax axis is
+  long (the #513 bug).
+- **INSTANCE** — reduces over C·H·W per sample. Equivalent to CHANNEL *only* when
+  the softmax axis is the leading contiguous dimension (`stride == 1`, i.e.
+  `dims=1` or a `Colon`); otherwise marked "—". Much faster than CHANNEL on the
+  backward pass — and the basis for the fix.
+
 A third contender, [**LogExpFunctions**](https://github.com/JuliaStats/LogExpFunctions.jl)
 `softmax` (forward `softmax!` + its ChainRules gradient), is included for
 `softmax` only — it has no `logsoftmax`. Its math is identical to NNlib's custom
 kernels, so it serves as a cross-check / second data point on the same approach.
+
+## The fix
+
+Based on these results, the cuDNN extension now:
+
+- uses cuDNN **INSTANCE** mode (not CHANNEL) when the softmax dims are a leading
+  contiguous block (`dims=1`, leading ranges, or `Colon`) — fast forward *and*
+  backward;
+- uses the **custom broadcast kernels** for every other `dims` (a non-leading
+  axis, e.g. `dims≥2`, or non-contiguous dims), where cuDNN's only option is the
+  slow CHANNEL mode. (Permuting the array to make the axis leading and reusing
+  INSTANCE was tried and is slower than the broadcast — see [below](#why-not-permute-for-dims2).)
 
 ## Setup
 
@@ -40,133 +62,117 @@ CUDA_VISIBLE_DEVICES=GPU-<uuid> julia --project=. bench_softmax.jl
   length is `size[1]`, for `dims=2` it is `size[2]`, and the remaining axes are
   batch.
 - The **cuDNN routines are called directly** (`cudnn_softmax!`/`cudnn_∇softmax!`
-  in the script), not via NNlib's `∇softmax!`. NNlib's `softmaxdims` heuristic
-  ([`ext/NNlibCUDACUDNNExt/softmax.jl`](../../ext/NNlibCUDACUDNNExt/softmax.jl))
-  diverts some shapes to the custom kernel, which would otherwise hide the
-  comparison — here every shape really goes through cuDNN.
+  in the script, with an explicit `mode`), not via NNlib's `∇softmax!`, so each
+  cuDNN mode is measured on every shape regardless of what the
+  ([`softmaxdims`](../../ext/NNlibCUDACUDNNExt/softmax.jl)) dispatch would pick.
 - Each call is timed with `@belapsed CUDA.@sync ...` (minimum, GPU synchronized).
-  Both paths are verified numerically equal before timing (max |Δ| ≲ 1e-6).
+  All paths are verified numerically equal before timing (max |Δ| ≲ 1e-6).
 - cuDNN softmax always uses the *accurate* algorithm (per the
   [#506 fix](https://github.com/FluxML/NNlib.jl/issues/506)).
 
-Numbers below: **TITAN RTX**, CUDA driver 12.5, cuDNN 9.2, NNlib `master`.
-Times in **µs** (lower is better). `cuDNN/NNlib > 1` means the custom kernel is
-faster. `LEF` = LogExpFunctions; it tracks `NNlib` closely because the math is the
-same (softmax only).
+Numbers below: **TITAN RTX**, CUDA driver 12.5, cuDNN 9.2. Times in **µs** (lower
+is better). Columns: **cuDNN-CH** (CHANNEL), **cuDNN-IN** (INSTANCE; "—" where
+`stride>1`, not correctness-preserving), **NNlib** (custom), **LEF**
+(LogExpFunctions, softmax only). `CH/IN` is the CHANNEL/INSTANCE ratio (>1 ⇒
+INSTANCE faster). LEF tracks NNlib closely (same math).
 
-## Results — `dims=1`
-
-**FORWARD softmax**
-
-| size | cuDNN | NNlib | LEF | cuDNN/NNlib |
-|---|---:|---:|---:|---:|
-| (256, 10, 32) | 9.5 | 40.4 | 40.7 | 0.23× |
-| (256, 1000) | 10.3 | 41.8 | 41.7 | 0.25× |
-| (1000, 1000) | 26.2 | 125.1 | 125.0 | 0.21× |
-| (100, 10000) | 19.1 | 130.1 | 130.4 | 0.15× |
-| (10000, 100) | 36.6 | 85.5 | 85.3 | 0.43× |
-| (32000, 64) | 100.8 | 159.7 | 160.5 | 0.63× |
-| (1000, 128) | 10.4 | 36.4 | 36.3 | 0.29× |
-
-**BACKWARD softmax**
-
-| size | cuDNN | NNlib | LEF | cuDNN/NNlib |
-|---|---:|---:|---:|---:|
-| (256, 10, 32) | 9.9 | 37.5 | 37.6 | 0.26× |
-| (256, 1000) | 10.8 | 38.3 | 38.3 | 0.28× |
-| (1000, 1000) | 1699.1 | 100.7 | 100.2 | **16.87×** |
-| (100, 10000) | 28.2 | 101.6 | 100.6 | 0.28× |
-| (10000, 100) | 1000.1 | 80.8 | 79.6 | **12.39×** |
-| (32000, 64) | 1652.7 | 137.5 | 137.0 | **12.02×** |
-| (1000, 128) | 174.8 | 39.5 | 39.3 | 4.42× |
-
-**logsoftmax** (cuDNN vs NNlib custom; LEF has none)
-
-| size | fwd cuDNN | fwd NNlib | fwd ratio | bwd cuDNN | bwd NNlib | bwd ratio |
-|---|---:|---:|---:|---:|---:|---:|
-| (256, 10, 32) | 9.5 | 51.3 | 0.19× | 10.5 | 25.4 | 0.41× |
-| (256, 1000) | 10.3 | 53.2 | 0.19× | 11.3 | 26.6 | 0.42× |
-| (1000, 1000) | 28.2 | 147.1 | 0.19× | 3109.4 | 71.8 | **43.32×** |
-| (100, 10000) | 19.0 | 152.5 | 0.12× | 28.4 | 72.9 | 0.39× |
-| (10000, 100) | 30.7 | 107.5 | 0.29× | 1548.6 | 51.9 | **29.82×** |
-| (32000, 64) | 85.7 | 195.9 | 0.44× | 2684.5 | 90.7 | **29.58×** |
-| (1000, 128) | 9.8 | 47.9 | 0.21× | 273.1 | 23.2 | 11.79× |
-
-## Results — `dims=2`
+## Results — `dims=1` (softmax axis = `size[1]`, contiguous → INSTANCE applies)
 
 **FORWARD softmax**
 
-| size | cuDNN | NNlib | LEF | cuDNN/NNlib |
-|---|---:|---:|---:|---:|
-| (256, 10, 32) | 9.9 | 51.2 | 50.8 | 0.19× |
-| (256, 1000) | 38.1 | 50.7 | 50.6 | 0.75× |
-| (1000, 1000) | 496.8 | 139.4 | 139.5 | **3.56×** |
-| (100, 10000) | 121.3 | 97.7 | 97.3 | 1.24× |
-| (10000, 100) | 73.5 | 130.6 | 130.5 | 0.56× |
-| (32000, 64) | 85.1 | 239.4 | 239.9 | 0.36× |
-| (1000, 128) | 48.7 | 40.9 | 39.2 | 1.19× |
+| size | cuDNN-CH | cuDNN-IN | NNlib | LEF | CH/IN |
+|---|---:|---:|---:|---:|---:|
+| (256, 10, 32) | 9.6 | 9.6 | 43.0 | 42.7 | 1.00× |
+| (256, 1000) | 10.5 | 10.5 | 44.5 | 44.3 | 1.00× |
+| (1000, 1000) | 26.2 | 21.0 | 126.7 | 126.8 | 1.25× |
+| (100, 10000) | 19.0 | 18.9 | 131.7 | 132.1 | 1.01× |
+| (10000, 100) | 36.3 | 19.7 | 86.5 | 86.2 | 1.84× |
+| (32000, 64) | 100.9 | 39.1 | 161.0 | 160.8 | 2.58× |
+| (1000, 128) | 10.1 | 9.5 | 36.6 | 38.6 | 1.06× |
+
+**BACKWARD softmax** — the #513 pathology, and the headline INSTANCE win:
+
+| size | cuDNN-CH | cuDNN-IN | NNlib | LEF | CH/IN |
+|---|---:|---:|---:|---:|---:|
+| (256, 10, 32) | 10.1 | 10.2 | 39.3 | 40.0 | 1.00× |
+| (256, 1000) | 11.0 | 11.1 | 39.9 | 39.7 | 0.99× |
+| (1000, 1000) | 1706.3 | 31.8 | 101.3 | 100.2 | **53.6×** |
+| (100, 10000) | 28.4 | 28.2 | 101.6 | 100.6 | 1.01× |
+| (10000, 100) | 999.4 | 46.9 | 81.7 | 79.7 | **21.3×** |
+| (32000, 64) | 1650.0 | 89.3 | 136.4 | 136.3 | **18.5×** |
+| (1000, 128) | 174.5 | 10.3 | 33.4 | 31.9 | **16.9×** |
+
+**BACKWARD logsoftmax** (CH/IN, worst case): `(1000,1000)` 3108→34 µs (**92×**),
+`(10000,100)` 1549→40 (**39×**), `(32000,64)` 2676→78 (**34×**). Forward
+logsoftmax mirrors softmax (INSTANCE up to 2.2× faster than CHANNEL).
+
+→ INSTANCE matches CHANNEL where CHANNEL was already fine and is **17–92× faster**
+where it was pathological. It also beats the custom (NNlib/LEF) kernel on the
+backward pass, so for `dims=1` cuDNN-INSTANCE is the best of all three.
+
+## Results — `dims=2` (softmax axis = `size[2]`, strided → INSTANCE not applicable)
+
+INSTANCE is not correctness-preserving here (`stride>1`), so the choice is
+cuDNN-CHANNEL vs the custom kernel.
 
 **BACKWARD softmax**
 
-| size | cuDNN | NNlib | LEF | cuDNN/NNlib |
+| size | cuDNN-CH | NNlib | LEF | CH/NNlib |
 |---|---:|---:|---:|---:|
-| (256, 10, 32) | 10.6 | 41.7 | 41.8 | 0.25× |
-| (256, 1000) | 185.3 | 41.9 | 41.7 | 4.42× |
-| (1000, 1000) | 351.6 | 106.6 | 105.7 | 3.30× |
-| (100, 10000) | 3102.5 | 86.9 | 86.1 | **35.69×** |
-| (10000, 100) | 60.8 | 102.3 | 101.1 | 0.59× |
-| (32000, 64) | 76.4 | 176.6 | 176.2 | 0.43× |
-| (1000, 128) | 32.4 | 35.2 | 34.9 | 0.92× |
+| (256, 10, 32) | 10.3 | 41.3 | 42.8 | 0.25× |
+| (256, 1000) | 185.1 | 41.5 | 41.3 | 4.46× |
+| (1000, 1000) | 351.6 | 107.3 | 106.1 | 3.28× |
+| (100, 10000) | 3088.7 | 87.8 | 87.7 | **35.2×** |
+| (10000, 100) | 61.0 | 103.5 | 101.9 | 0.59× |
+| (32000, 64) | 77.5 | 177.4 | 179.8 | 0.44× |
+| (1000, 128) | 32.4 | 33.4 | 32.9 | 0.97× |
 
-**logsoftmax** (cuDNN vs NNlib custom; LEF has none)
-
-| size | fwd cuDNN | fwd NNlib | fwd ratio | bwd cuDNN | bwd NNlib | bwd ratio |
-|---|---:|---:|---:|---:|---:|---:|
-| (256, 10, 32) | 9.8 | 57.5 | 0.17× | 10.9 | 30.5 | 0.36× |
-| (256, 1000) | 30.8 | 57.3 | 0.54× | 185.5 | 31.4 | 5.90× |
-| (1000, 1000) | 478.5 | 162.6 | **2.94×** | 343.5 | 78.7 | 4.37× |
-| (100, 10000) | 84.9 | 122.2 | 0.69× | 3121.5 | 58.8 | **53.12×** |
-| (10000, 100) | 72.3 | 152.0 | 0.48× | 53.5 | 73.2 | 0.73× |
-| (32000, 64) | 83.9 | 272.7 | 0.31× | 63.5 | 126.1 | 0.50× |
-| (1000, 128) | 45.7 | 50.4 | 0.91× | 31.9 | 25.0 | 1.28× |
+**BACKWARD logsoftmax** peaks at `(100,10000)` 3377→59 µs (**58×**) for custom;
+**FORWARD** is mixed — CHANNEL wins for a short softmax axis (`(32000,64)`,
+`(10000,100)`), the custom kernel wins for a long one (`(1000,1000)`,
+`(100,10000)`).
 
 ## Takeaways
 
-- **Forward: cuDNN is the right default.** For `dims=1` it wins everywhere
-  (2–7×). For `dims=2` it still wins when the softmax axis is short, and only
-  loses (up to ~3.5×) when the softmax axis is *both long and strided*
-  (e.g. `(1000,1000)`, `(100,10000)` softmax).
+- **The crossover is the length of the softmax axis** (`dimsize`), independent of
+  `dims` or batch size: short axis → cuDNN, long axis → custom, and the gap on the
+  backward pass is large (up to ~50× for softmax, ~90× for logsoftmax).
 
-- **Backward: cuDNN collapses when the softmax axis is long.** The backward pass
-  is the real problem from #513. cuDNN's CHANNEL-mode backward scales badly with
-  the length of the softmax axis, while the custom broadcast rule stays roughly
-  flat:
-  - `dims=1`, long first axis: **12–17× slower (softmax)**, **30–43× slower
-    (logsoftmax)** — e.g. `(1000,1000)`, `(10000,100)`, `(32000,64)`.
-  - `dims=2`, long second axis: same pathology, peaking at **36× (softmax)** and
-    **53× (logsoftmax)** for `(100,10000)`.
-  - `logsoftmax` backward is consistently the worst case.
+- **For `dims=1` / `Colon` (contiguous, `stride==1`): cuDNN INSTANCE mode wins
+  outright.** It is identical to CHANNEL numerically, never slower, and **17–92×
+  faster** on the previously-pathological backward shapes — beating even the
+  custom kernel. This is the main fix.
 
-- **Rule of thumb:** the cuDNN-vs-custom crossover is governed by the **length of
-  the softmax axis** (`dimsize`), independent of `dims` or batch size. Short axis
-  → cuDNN; long axis → custom, and the gap on the backward pass is large.
+- **For `dims≥2` (strided, `stride>1`): the custom kernel is the right backward
+  choice.** It is 3–58× faster than CHANNEL when the softmax axis is long. The
+  tradeoff is a *short* non-leading axis (`(10000,100)`, `(32000,64)`), where
+  CHANNEL was already efficient and the custom kernel is ~1.5–2× slower — an
+  acceptable price to remove the catastrophic cases.
 
-- **LogExpFunctions ≈ NNlib custom.** LEF's `softmax` forward and gradient track
-  NNlib's custom kernels to within measurement noise (same `exp/sum` forward and
-  the same `y .* (dy .- sum(dy.*y))` ∇ rule), so it has the same large advantage
-  over cuDNN on the long-axis backward pass. It offers no `logsoftmax` and no
-  separate GPU path — it is the *same approach*, not a faster one.
+- **LogExpFunctions ≈ NNlib custom** (same `exp/sum` forward and
+  `y .* (dy .- sum(dy.*y))` ∇ rule), to within measurement noise — the *same
+  approach*, not a faster one, and softmax only (no `logsoftmax`).
 
-## Implication for the dispatch heuristic
+## Why not permute for `dims≥2`?
 
-`softmaxdims` currently falls back to the custom kernel only when
+A tempting alternative for `dims≥2`: `permutedims` to bring the softmax axis to the
+front (making it contiguous), reuse the fast INSTANCE path, then permute back.
+Measured (permute cost included), it is **correct but slower than the custom
+kernel** — the backward needs 3 input transposes + 1 output transpose, whose
+memory traffic outweighs the gain:
 
-```julia
-batchsize == 1 && 64 <= stride <= 4096 && 64 <= dimsize <= 4096
-```
+| `dims=2` backward softmax, µs | CHANNEL | PERMUTE+INSTANCE | custom |
+|---|---:|---:|---:|
+| (1000, 1000) | 348 | 195 | **108** |
+| (100, 10000) | 3091 | 209 | **90** |
+| (10000, 100) | **61** | 193 | 102 |
 
-None of the slow backward cases above qualify — they have `batchsize > 1` (e.g.
-`(1000,1000)`/`dims=1` → `dimsize=1000, batchsize=1000`), so NNlib sends them to
-the slow cuDNN backward. The fix is to route the **backward** pass to the custom
-broadcast rule whenever the softmax axis (`dimsize`) is long, regardless of
-`batchsize`, while keeping cuDNN for the **forward** pass.
+PERMUTE beats the slow CHANNEL but never beats the custom kernel, so the extension
+uses the custom kernel for `dims≥2`.
+
+## The dispatch (after this PR)
+
+[`softmaxdims`](../../ext/NNlibCUDACUDNNExt/softmax.jl) now returns a cuDNN reshape
+**only when the softmax dims are a leading contiguous block** (`dims=1`, a leading
+range, or `Colon`), and that path runs in INSTANCE mode. Every other `dims`
+returns `nothing` and uses the custom kernels.

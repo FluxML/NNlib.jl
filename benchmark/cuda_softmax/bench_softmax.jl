@@ -7,6 +7,15 @@
 # for both `softmax` and `logsoftmax`, and for `dims=1` and `dims=2`.
 # Reproduces / extends FluxML/NNlib.jl#513.
 #
+# cuDNN softmax is timed in BOTH of its modes:
+#   * CHANNEL  — reduces over the C axis; what NNlib used unconditionally. Very
+#                slow on the backward pass when the softmax axis is long.
+#   * INSTANCE — reduces over C·H·W per sample. Equivalent to CHANNEL only when the
+#                softmax axis is the leading contiguous dimension (stride == 1, i.e.
+#                dims=1 / Colon); otherwise it would reduce the wrong elements, so it
+#                is marked "—". Much faster than CHANNEL (and the custom kernel) on
+#                the backward pass — this is the fix for #513.
+#
 # Also includes LogExpFunctions.softmax (forward + its ChainRules gradient) as a
 # third contender for `softmax` (it has no `logsoftmax`). Its math matches NNlib's
 # custom kernels, so it is a cross-check / second data point on the same approach.
@@ -23,29 +32,31 @@
 
 using CUDA, cuDNN, NNlib, LogExpFunctions, BenchmarkTools, Printf
 using cuDNN: CUDNN_SOFTMAX_ACCURATE, CUDNN_SOFTMAX_LOG, CUDNN_SOFTMAX_MODE_CHANNEL,
-             cudnnSoftmaxForward!, cudnnSoftmaxBackward, cudnnTensorDescriptor,
-             scalingParameter, handle
+             CUDNN_SOFTMAX_MODE_INSTANCE, cudnnSoftmaxForward!, cudnnSoftmaxBackward,
+             cudnnTensorDescriptor, scalingParameter, handle
 
-# ---- cuDNN path (called directly, always) -------------------------------------
+# ---- cuDNN path (called directly, with an explicit mode) ----------------------
 # cuDNN softmax over an integer axis `dims` reshapes the array to
-# (1, stride, dimsize, batchsize) and runs CHANNEL-mode softmax over `dimsize`.
+# (1, stride, dimsize, batchsize). CHANNEL reduces over dimsize (= C); INSTANCE
+# reduces over C·H·W and is only correct here when stride == 1.
 function cudnn_shape(x, dims::Int)
     stride    = prod(size(x)[1:dims-1]; init = 1)
     dimsize   = size(x, dims)
     batchsize = length(x) ÷ (stride * dimsize)
     (1, stride, dimsize, batchsize)
 end
+instance_valid(x, dims::Int) = prod(size(x)[1:dims-1]; init = 1) == 1
 
-function cudnn_softmax!(out, x; dims, algo)
+function cudnn_softmax!(out, x; dims, algo, mode)
     s = cudnn_shape(x, dims)
-    cudnnSoftmaxForward!(reshape(out, s), reshape(x, s); mode = CUDNN_SOFTMAX_MODE_CHANNEL, algo)
+    cudnnSoftmaxForward!(reshape(out, s), reshape(x, s); mode, algo)
     out
 end
-function cudnn_∇softmax!(dx, dy, x, y; dims, algo)
+function cudnn_∇softmax!(dx, dy, x, y; dims, algo, mode)
     s = cudnn_shape(x, dims)
     xDesc = cudnnTensorDescriptor(reshape(x, s))
     R = eltype(x); alpha, beta = scalingParameter(R, 1), scalingParameter(R, 0)
-    cudnnSoftmaxBackward(handle(), algo, CUDNN_SOFTMAX_MODE_CHANNEL,
+    cudnnSoftmaxBackward(handle(), algo, mode,
         alpha, xDesc, reshape(y, s), xDesc, reshape(dy, s), beta, xDesc, reshape(dx, s))
     dx
 end
@@ -82,22 +93,36 @@ const SIZES = [(256,10,32), (256,1000), (1000,1000), (100,10000),
                (10000,100), (32000,64), (1000,128)]
 
 const A, L = CUDNN_SOFTMAX_ACCURATE, CUDNN_SOFTMAX_LOG
+const CHAN, INST = CUDNN_SOFTMAX_MODE_CHANNEL, CUDNN_SOFTMAX_MODE_INSTANCE
+const NA = NaN  # marks an INSTANCE entry that is not correctness-preserving (stride>1)
+
+# time a thunk, in µs
+us(f) = (@belapsed CUDA.@sync $f()) * 1e6
 
 function bench_all(sizes, dims)
     map(sizes) do s
         x = CUDA.randn(Float32, s...); dy = CUDA.randn(Float32, s...); o = similar(x)
         ys = custom_softmax!(similar(x), x; dims); yl = custom_logsoftmax!(similar(x), x; dims)
+        inst = instance_valid(x, dims)
         (; size = s,
-          fsm_c = (@belapsed CUDA.@sync cudnn_softmax!($o,$x;dims=$dims,algo=$A))*1e6,
-          fsm_g = (@belapsed CUDA.@sync custom_softmax!($o,$x;dims=$dims))*1e6,
-          fsm_l = (@belapsed CUDA.@sync lef_softmax!($o,$x;dims=$dims))*1e6,
-          fls_c = (@belapsed CUDA.@sync cudnn_softmax!($o,$x;dims=$dims,algo=$L))*1e6,
-          fls_g = (@belapsed CUDA.@sync custom_logsoftmax!($o,$x;dims=$dims))*1e6,
-          bsm_c = (@belapsed CUDA.@sync cudnn_∇softmax!($o,$dy,$x,$ys;dims=$dims,algo=$A))*1e6,
-          bsm_g = (@belapsed CUDA.@sync custom_∇softmax!($o,$dy,$x,$ys;dims=$dims))*1e6,
-          bsm_l = (@belapsed CUDA.@sync lef_∇softmax!($o,$dy,$ys;dims=$dims))*1e6,
-          bls_c = (@belapsed CUDA.@sync cudnn_∇softmax!($o,$dy,$x,$yl;dims=$dims,algo=$L))*1e6,
-          bls_g = (@belapsed CUDA.@sync custom_∇logsoftmax!($o,$dy,$x,$yl;dims=$dims))*1e6)
+          # forward softmax: cuDNN CHANNEL / cuDNN INSTANCE / NNlib custom / LEF
+          fsm_c = us(() -> cudnn_softmax!(o, x; dims, algo=A, mode=CHAN)),
+          fsm_i = inst ? us(() -> cudnn_softmax!(o, x; dims, algo=A, mode=INST)) : NA,
+          fsm_g = us(() -> custom_softmax!(o, x; dims)),
+          fsm_l = us(() -> lef_softmax!(o, x; dims)),
+          # forward logsoftmax: cuDNN CHANNEL / cuDNN INSTANCE / NNlib custom
+          fls_c = us(() -> cudnn_softmax!(o, x; dims, algo=L, mode=CHAN)),
+          fls_i = inst ? us(() -> cudnn_softmax!(o, x; dims, algo=L, mode=INST)) : NA,
+          fls_g = us(() -> custom_logsoftmax!(o, x; dims)),
+          # backward softmax
+          bsm_c = us(() -> cudnn_∇softmax!(o, dy, x, ys; dims, algo=A, mode=CHAN)),
+          bsm_i = inst ? us(() -> cudnn_∇softmax!(o, dy, x, ys; dims, algo=A, mode=INST)) : NA,
+          bsm_g = us(() -> custom_∇softmax!(o, dy, x, ys; dims)),
+          bsm_l = us(() -> lef_∇softmax!(o, dy, ys; dims)),
+          # backward logsoftmax
+          bls_c = us(() -> cudnn_∇softmax!(o, dy, x, yl; dims, algo=L, mode=CHAN)),
+          bls_i = inst ? us(() -> cudnn_∇softmax!(o, dy, x, yl; dims, algo=L, mode=INST)) : NA,
+          bls_g = us(() -> custom_∇logsoftmax!(o, dy, x, yl; dims)))
     end
 end
 
@@ -106,36 +131,50 @@ function check_correctness()
         x = CUDA.randn(Float32, 512, 700); dy = CUDA.randn(Float32, 512, 700)
         ys = custom_softmax!(similar(x), x; dims); yl = custom_logsoftmax!(similar(x), x; dims)
         f(a, b) = maximum(abs.(Array(a) .- Array(b)))
-        e1 = f(cudnn_softmax!(similar(x), x; dims, algo=A), ys)
-        e2 = f(cudnn_softmax!(similar(x), x; dims, algo=L), yl)
-        e3 = f(cudnn_∇softmax!(similar(x), dy, x, ys; dims, algo=A), custom_∇softmax!(similar(x), dy, x, ys; dims))
-        e4 = f(cudnn_∇softmax!(similar(x), dy, x, yl; dims, algo=L), custom_∇logsoftmax!(similar(x), dy, x, yl; dims))
+        # cuDNN CHANNEL vs custom
+        e1 = f(cudnn_softmax!(similar(x), x; dims, algo=A, mode=CHAN), ys)
+        e2 = f(cudnn_∇softmax!(similar(x), dy, x, ys; dims, algo=A, mode=CHAN), custom_∇softmax!(similar(x), dy, x, ys; dims))
+        # cuDNN INSTANCE vs custom (only meaningful when stride==1; here dims=1)
+        einst = if instance_valid(x, dims)
+            max(f(cudnn_softmax!(similar(x), x; dims, algo=A, mode=INST), ys),
+                f(cudnn_∇softmax!(similar(x), dy, x, ys; dims, algo=A, mode=INST), custom_∇softmax!(similar(x), dy, x, ys; dims)))
+        else
+            NA
+        end
+        # LEF vs custom
         e5 = f(lef_softmax!(similar(x), x; dims), ys)
         e6 = f(lef_∇softmax!(similar(x), dy, ys; dims), custom_∇softmax!(similar(x), dy, x, ys; dims))
-        @printf("correctness dims=%d  fwd sm=%.0e ls=%.0e  bwd sm=%.0e ls=%.0e  LEF fwd=%.0e grad=%.0e\n",
-                dims, e1, e2, e3, e4, e5, e6)
+        @printf("correctness dims=%d  CHANNEL fwd=%.0e bwd=%.0e  INSTANCE=%s  LEF fwd=%.0e grad=%.0e\n",
+                dims, e1, e2, isnan(einst) ? "n/a" : @sprintf("%.0e", einst), e5, e6)
     end
 end
 
-# 2-way table (cuDNN vs NNlib custom) — used for logsoftmax
-show_table(title, res, c, g) = begin
+# Flexible printer. `cols` is a list of (header, field) pairs; NaN prints as "—".
+# `ratio`, if given, is (header, num_field, den_field) and prints num/den.
+function show_cols(title, res, cols; ratio = nothing)
     println("\n", title)
-    @printf("%-15s %10s %10s %12s\n", "size", "cuDNN", "custom", "cuDNN/custom")
+    @printf("%-14s", "size")
+    for (h, _) in cols; @printf(" %9s", h); end
+    ratio === nothing || @printf(" %11s", ratio[1])
+    println()
     for r in res
-        @printf("%-15s %8.1f %8.1f %10.2fx\n", string(r.size),
-                getfield(r, c), getfield(r, g), getfield(r, c) / getfield(r, g))
+        @printf("%-14s", string(r.size))
+        for (_, sym) in cols
+            v = getfield(r, sym)
+            isnan(v) ? @printf(" %9s", "—") : @printf(" %9.1f", v)
+        end
+        if ratio !== nothing
+            a, b = getfield(r, ratio[2]), getfield(r, ratio[3])
+            (isnan(a) || isnan(b)) ? @printf(" %10s", "—") : @printf(" %10.2fx", a / b)
+        end
+        println()
     end
 end
 
-# 3-way table (cuDNN vs NNlib custom vs LogExpFunctions) — used for softmax
-show_table3(title, res, c, g, l) = begin
-    println("\n", title)
-    @printf("%-15s %9s %9s %9s %12s\n", "size", "cuDNN", "NNlib", "LEF", "cuDNN/NNlib")
-    for r in res
-        @printf("%-15s %8.1f %8.1f %8.1f %10.2fx\n", string(r.size),
-                getfield(r, c), getfield(r, g), getfield(r, l), getfield(r, c) / getfield(r, g))
-    end
-end
+const SM_COLS(fwd) = [("cuDNN-CH", Symbol(fwd, "_c")), ("cuDNN-IN", Symbol(fwd, "_i")),
+                      ("NNlib", Symbol(fwd, "_g")), ("LEF", Symbol(fwd, "_l"))]
+const LS_COLS(fwd) = [("cuDNN-CH", Symbol(fwd, "_c")), ("cuDNN-IN", Symbol(fwd, "_i")),
+                      ("NNlib", Symbol(fwd, "_g"))]
 
 function main()
     @assert CUDA.functional() "CUDA is not functional"
@@ -144,13 +183,14 @@ function main()
     check_correctness()
     for dims in (1, 2)
         res = bench_all(SIZES, dims)
-        println("\n", "#"^60, "\n### dims=$dims   (times in µs, Float32)\n", "#"^60)
-        show_table3("FORWARD  softmax     (NNlib/LEF = exp/sum kernels)",  res, :fsm_c, :fsm_g, :fsm_l)
-        show_table("FORWARD  logsoftmax",                                  res, :fls_c, :fls_g)
-        show_table3("BACKWARD softmax     (NNlib/LEF = broadcast ∇ rule)", res, :bsm_c, :bsm_g, :bsm_l)
-        show_table("BACKWARD logsoftmax",                                  res, :bls_c, :bls_g)
+        println("\n", "#"^64, "\n### dims=$dims   (times in µs, Float32)\n", "#"^64)
+        show_cols("FORWARD  softmax",     res, SM_COLS(:fsm); ratio = ("CH/IN", :fsm_c, :fsm_i))
+        show_cols("FORWARD  logsoftmax",  res, LS_COLS(:fls); ratio = ("CH/IN", :fls_c, :fls_i))
+        show_cols("BACKWARD softmax",     res, SM_COLS(:bsm); ratio = ("CH/IN", :bsm_c, :bsm_i))
+        show_cols("BACKWARD logsoftmax",  res, LS_COLS(:bls); ratio = ("CH/IN", :bls_c, :bls_i))
     end
-    println("\n(cuDNN/NNlib < 1 ⇒ cuDNN faster;  > 1 ⇒ custom faster.  LEF ≈ NNlib: same math.)")
+    println("\ncuDNN-CH = CHANNEL mode (old), cuDNN-IN = INSTANCE mode (fix, stride==1 only).")
+    println("CH/IN > 1 ⇒ INSTANCE faster than CHANNEL.  LEF ≈ NNlib (same math).")
 end
 
 main()
