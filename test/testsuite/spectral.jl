@@ -39,10 +39,10 @@ function spectral_testsuite(Backend)
 
         @testset "Batch $batch" begin
             x = device(ones(Float32, 16, batch...))
-            # TODO fix type stability for pad_reflect
-            # @inferred stft(x; n_fft=16)
 
             bd = ntuple(_ -> Colon(), length(batch))
+
+            @inferred stft(x; n_fft=16)
 
             y = stft(x; n_fft=16)
             @test size(y) == (9, 5, batch...)
