@@ -990,10 +990,10 @@ end
 end
 
 @testset "complex meanpool (issue #610)" begin
-    # Mean pooling is linear, so it extends to complex inputs by pooling the real
-    # and imaginary parts independently. This is the reference behaviour that the
-    # GPU/cuDNN extension mirrors. `maxpool` is not supported for complex inputs,
-    # since `max` is undefined for complex numbers.
+    # Mean pooling is linear, so complex support is implemented once in core by
+    # pooling the real and imaginary parts independently (and is shared by every
+    # backend). `maxpool` is not supported for complex inputs, since `max` is
+    # undefined for complex numbers.
     for nsd in (1, 2, 3)
         x = rand(ComplexF64, fill(7, nsd)..., 3, 2)
         for pdims in (PoolDims(x, 2), PoolDims(x, 2; padding=1, stride=2))
@@ -1004,12 +1004,23 @@ end
                 @test real(y) ≈ meanpool(real(x), pdims; count_include_pad=cip)
                 @test imag(y) ≈ meanpool(imag(x), pdims; count_include_pad=cip)
 
-                # backward also splits over real/imaginary parts
+                # `∇meanpool` also splits over real/imaginary parts
                 dy = rand(ComplexF64, size(y))
                 dx = ∇meanpool(dy, y, x, pdims; count_include_pad=cip)
                 @test eltype(dx) == ComplexF64
                 @test real(dx) ≈ ∇meanpool(real(dy), real(y), real(x), pdims; count_include_pad=cip)
                 @test imag(dx) ≈ ∇meanpool(imag(dy), imag(y), imag(x), pdims; count_include_pad=cip)
+
+                # AD goes through the same split (the `meanpool` rrule is real-only):
+                # check against a finite-difference-free reference built from the
+                # real-input rrule on each part.
+                g = gradient(z -> abs2(sum(meanpool(z, pdims; count_include_pad=cip))), x)[1]
+                gref = gradient(z -> abs2(sum(meanpool(z, pdims; count_include_pad=cip))),
+                                real(x))[1] .+
+                       im .* gradient(z -> abs2(sum(meanpool(z, pdims; count_include_pad=cip))),
+                                      imag(x))[1]
+                @test eltype(g) == ComplexF64
+                @test g ≈ gref
             end
         end
 

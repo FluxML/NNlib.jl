@@ -132,6 +132,30 @@ for backend in (Symbol(), :_direct)
     end
 end
 
+# Complex mean pooling (https://github.com/FluxML/NNlib.jl/issues/610).
+#
+# Mean pooling is linear, so it extends to complex inputs by pooling the real and
+# imaginary parts independently and recombining. Doing this once here, in terms of
+# the real-valued `meanpool`/`∇meanpool`, gives complex support to every backend
+# that pools real arrays (CPU, cuDNN, MIOpen, ...) for free — no per-backend method.
+# Differentiation flows through the same split: the `meanpool` `rrule` below is
+# restricted to real `x`, so for complex `x` the AD engine differentiates the two
+# real `meanpool` calls (each picking up its backend's own rule) and the `complex.`
+# recombination.
+#
+# `maxpool`/`lpnormpool` are not extended: `max` and the p-norm are undefined for
+# complex numbers, so they keep erroring (as they already do on the CPU path).
+function meanpool(x::AbstractArray{<:Complex,N}, pdims::PoolDims; kwargs...) where {N}
+    return complex.(meanpool(real(x), pdims; kwargs...),
+                    meanpool(imag(x), pdims; kwargs...))
+end
+
+function ∇meanpool(dy::AbstractArray{<:Complex,N}, y::AbstractArray{<:Complex,N},
+                   x::AbstractArray{<:Complex,N}, pdims::PoolDims; kwargs...) where {N}
+    return complex.(∇meanpool(real(dy), real(y), real(x), pdims; kwargs...),
+                    ∇meanpool(imag(dy), imag(y), imag(x), pdims; kwargs...))
+end
+
 expand(N, i::Tuple) = i
 expand(N, i::Integer) = ntuple(_ -> i, N)
 
@@ -204,10 +228,13 @@ function lpnormpool(x, p::Real, k::NTuple{N, Integer}; pad=0, stride=k) where {N
 end
 
 
+# Restricted to real `x`: complex `meanpool` has no direct rule and is instead
+# differentiated through its real/imaginary split (see the complex `meanpool`
+# above), while complex `maxpool`/`lpnormpool` are unsupported.
 for pool in [:maxpool, :meanpool, :lpnormpool]
     ∇pool = Symbol(:∇, pool)
     pullback = Symbol(pool, :_pullback)
-    @eval function rrule(::typeof($pool), x, pdims::PoolDims; kw...)
+    @eval function rrule(::typeof($pool), x::AbstractArray{<:Real}, pdims::PoolDims; kw...)
         Ω = $pool(x, pdims; kw...)
         $pullback(Δ) = (NoTangent(), $∇pool(unthunk(Δ), Ω, x, pdims; kw...), NoTangent())
         return Ω, $pullback

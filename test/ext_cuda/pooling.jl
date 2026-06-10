@@ -31,36 +31,36 @@ end
 
 @testset "complex meanpool (issue #610)" begin
 
-    # Mean pooling is linear, so the cuDNN extension supports complex inputs by
-    # pooling the real and imaginary parts independently. We check it agrees with
-    # the (generic) CPU path. `maxpool` is intentionally NOT supported, since
-    # `max` is undefined for complex numbers; it errors on both CPU and GPU.
-    # `gputest`'s gradient check goes through `mean`, which Zygote rejects for
-    # complex outputs, so we use `checkgrad=false` and compare `∇meanpool` directly.
+    # Complex `meanpool` is implemented once in core (NNlib pools the real and
+    # imaginary parts separately), so cuDNN needs no complex-specific method; the
+    # real parts dispatch to the real cuDNN `meanpool`. We check the result and its
+    # gradient agree with the CPU path. The gradient goes through AD (the `meanpool`
+    # rrule is real-only, so AD differentiates the split); we use a real-valued loss
+    # since Zygote rejects gradients of complex outputs. `maxpool` is unsupported
+    # (`max` is undefined for complex) and errors on both CPU and GPU.
     for num_spatial_dims in (1, 2, 3)
         C_in = 3
         batch_size = 2
         x = rand(ComplexF64, fill(8, num_spatial_dims)..., C_in, batch_size)
 
-        # no padding
-        pdims = PoolDims(x, 2)
-        y = meanpool(x, pdims)
-        dy = rand(ComplexF64, size(y))
-        @test eltype(meanpool(CuArray(x), pdims)) == ComplexF64
-        gputest(x -> meanpool(x, pdims), x, checkgrad=false)
-        gputest((dy, y, x) -> ∇meanpool(dy, y, x, pdims), dy, y, x, checkgrad=false)
+        for pdims in (PoolDims(x, 2), PoolDims(x, 2; padding=1, stride=2))
+            for cip in (true, false)
+                # forward: GPU matches CPU and stays complex
+                y_c = meanpool(x, pdims; count_include_pad=cip)
+                y_g = meanpool(CuArray(x), pdims; count_include_pad=cip)
+                @test y_g isa CuArray{ComplexF64}
+                @test collect(y_g) ≈ y_c
 
-        # with padding: count_include_pad changes the result (issue #218)
-        pdims_pad = PoolDims(x, 2; padding=1, stride=2)
-        for cip in (true, false)
-            ym = meanpool(x, pdims_pad; count_include_pad=cip)
-            dym = rand(ComplexF64, size(ym))
-            gputest(x -> meanpool(x, pdims_pad; count_include_pad=cip), x, checkgrad=false)
-            gputest((dy, y, x) -> ∇meanpool(dy, y, x, pdims_pad; count_include_pad=cip),
-                    dym, ym, x, checkgrad=false)
+                # gradient via AD: GPU matches CPU and stays complex
+                loss(z) = abs2(sum(meanpool(z, pdims; count_include_pad=cip)))
+                g_c = gradient(loss, x)[1]
+                g_g = gradient(loss, CuArray(x))[1]
+                @test g_g isa CuArray{ComplexF64}
+                @test collect(g_g) ≈ g_c
+            end
         end
 
         # maxpool has no complex extension (max is undefined for complex)
-        @test_throws Exception maxpool(CuArray(x), pdims)
+        @test_throws Exception maxpool(CuArray(x), PoolDims(x, 2))
     end
 end
