@@ -2,7 +2,7 @@ import NNlib: softmax, softmax!, ∇softmax, ∇softmax!,
               logsoftmax, logsoftmax!, ∇logsoftmax, ∇logsoftmax!
 
 using cuDNN: CUDNN_SOFTMAX_LOG, CUDNN_SOFTMAX_MODE_CHANNEL,
-             CUDNN_SOFTMAX_FAST, CUDNN_SOFTMAX_ACCURATE, cudnnSoftmaxForward!,
+             CUDNN_SOFTMAX_ACCURATE, cudnnSoftmaxForward!,
              cudnnSoftmaxBackward
 
 # Softmax
@@ -61,9 +61,12 @@ function softmaxdims(x, dims)
     return (1, stride, dimsize, batchsize)
 end
 
-# Determine softmax algo based on math_mode
+# Always use the accurate algorithm (subtracts the row max before exp). The fast
+# algorithm skips that and overflows to NaN on masked/large inputs, and is unsafe in
+# Float16. We deliberately do not honour CUDA.FAST_MATH here. See
+# https://github.com/FluxML/NNlib.jl/issues/506
 
-softmaxalgo() = (CUDA.math_mode()===CUDA.FAST_MATH ? CUDNN_SOFTMAX_FAST : CUDNN_SOFTMAX_ACCURATE)
+softmaxalgo() = CUDNN_SOFTMAX_ACCURATE
 
 # Main implementations:
 
