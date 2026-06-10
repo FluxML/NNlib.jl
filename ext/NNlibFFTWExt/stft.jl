@@ -34,15 +34,15 @@ function NNlib.stft(x;
     n_frames = 1 + (n - n_fft) ÷ hop_length
 
     # time2col.
-    # Reshape `x` to (n_fft, n_frames, B) if needed.
-    # Each row in `n_frames` is shifted by `hop_length`.
-    if n_frames > 1
-        # TODO can be more efficient if we support something like torch.as_strided
-        ids = [
-            row + hop_length * col
-            for row in 1:n_fft, col in 0:(n_frames - 1)]
-        x = @inbounds x[ids, ntuple(_ -> Colon(), ndims(x) - 1)...]
-    end
+    # Reshape `x` to (n_fft, n_frames, B). Each column in `n_frames` is
+    # shifted by `hop_length`. This is done unconditionally (even when
+    # `n_frames == 1`) so that the output rank does not depend on the runtime
+    # value of `n_frames`, keeping `stft` type-stable (see issue #702).
+    # TODO can be more efficient if we support something like torch.as_strided
+    ids = [
+        row + hop_length * col
+        for row in 1:n_fft, col in 0:(n_frames - 1)]
+    x = @inbounds x[ids, ntuple(_ -> Colon(), ndims(x) - 1)...]
 
     region = 1
     use_window && (x = x .* window;)

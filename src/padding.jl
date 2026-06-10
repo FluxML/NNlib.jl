@@ -204,20 +204,27 @@ function pad_repeat(x::AbstractArray, pad::NTuple{M,Int};
   return x
 end
 
-function pad_repeat(x::AbstractArray{F,N}, pad::NTuple{2,Int}; 
+# `dims` is forwarded as a `Val` so that `selectdim` and `cat` have a
+# compile-time-constant dimension and the method stays type-stable (see #702).
+@inline function pad_repeat(x::AbstractArray{F,N}, pad::NTuple{2,Int};
                     dims::Int = 1) where {F,N}
+  return _pad_repeat(x, pad, Val(dims))
+end
+
+function _pad_repeat(x::AbstractArray{F,N}, pad::NTuple{2,Int},
+                     ::Val{dims}) where {F,N,dims}
   lpad, rpad = pad
 
   xlborder = selectdim(x, dims, 1:1)
-  nrepl = ntuple(i -> i == dims ? lpad : 1, N)
+  nrepl = ntuple(i -> i == dims ? lpad : 1, Val(N))
   xl = repeat(xlborder, outer = nrepl)
 
   n = size(x, dims)
   xrborder = selectdim(x, dims, n:n)
-  nrepr = ntuple(i -> i == dims ? rpad : 1, N)
+  nrepr = ntuple(i -> i == dims ? rpad : 1, Val(N))
   xr = repeat(xrborder, outer = nrepr)
 
-  return cat(xl, x, xr, dims = dims)
+  return cat(xl, x, xr; dims=Val(dims))
 end
 
 """
@@ -265,18 +272,29 @@ function pad_reflect(x::AbstractArray, pad::NTuple{M,Int};
   return x
 end
 
-function pad_reflect(
+# `dims` is forwarded as a `Val` so that `selectdim` and `cat` below have a
+# compile-time-constant dimension. Otherwise the return type of `cat(...; dims)`
+# widens to `Any` (a runtime `dims` is type-unstable), which propagates up
+# through `stft` (see https://github.com/FluxML/NNlib.jl/issues/702). The
+# `@inline` lets a literal `dims` keyword constant-propagate into `Val(dims)`.
+@inline function pad_reflect(
   x::AbstractArray{F,N}, pad::NTuple{2,Int}; dims::Int = 1,
 ) where {F,N}
+  return _pad_reflect(x, pad, Val(dims))
+end
+
+function _pad_reflect(
+  x::AbstractArray{F,N}, pad::NTuple{2,Int}, ::Val{dims},
+) where {F,N,dims}
   lpad, rpad = pad
   n = size(x, dims)
   xl = lpad == 0 ?
-    similar(x, ntuple(i -> i == dims ? 0 : size(x, i), ndims(x))) :
+    similar(x, ntuple(i -> i == dims ? 0 : size(x, i), Val(N))) :
     reverse(selectdim(x, dims, 2:lpad+1); dims)
   xr = rpad == 0 ?
-    similar(x, ntuple(i -> i == dims ? 0 : size(x, i), ndims(x))) :
+    similar(x, ntuple(i -> i == dims ? 0 : size(x, i), Val(N))) :
     reverse(selectdim(x, dims, n-rpad:n-1); dims)
-  return cat(xl, x, xr; dims)
+  return cat(xl, x, xr; dims=Val(dims))
 end
 
 """
@@ -324,19 +342,27 @@ function pad_symmetric(x::AbstractArray, pad::NTuple{M,Int};
   return x
 end
 
-function pad_symmetric(
+# `dims` is forwarded as a `Val` so that `selectdim` and `cat` have a
+# compile-time-constant dimension and the method stays type-stable (see #702).
+@inline function pad_symmetric(
   x::AbstractArray{F,N}, pad::NTuple{2,Int}; dims::Int = 1,
 ) where {F,N}
+  return _pad_symmetric(x, pad, Val(dims))
+end
+
+function _pad_symmetric(
+  x::AbstractArray{F,N}, pad::NTuple{2,Int}, ::Val{dims},
+) where {F,N,dims}
   lpad, rpad = pad
   n = size(x, dims)
 
   xl = lpad == 0 ?
-    similar(x, ntuple(i -> i == dims ? 0 : size(x, i), ndims(x))) :
+    similar(x, ntuple(i -> i == dims ? 0 : size(x, i), Val(N))) :
     reverse(selectdim(x, dims, 1:lpad); dims)
   xr = rpad == 0 ?
-    similar(x, ntuple(i -> i == dims ? 0 : size(x, i), ndims(x))) :
+    similar(x, ntuple(i -> i == dims ? 0 : size(x, i), Val(N))) :
     reverse(selectdim(x, dims, n-rpad+1:n); dims)
-  return cat(xl, x, xr; dims)
+  return cat(xl, x, xr; dims=Val(dims))
 end
 
 """
@@ -388,23 +414,32 @@ function pad_circular(x::AbstractArray, pad::NTuple{M,Int};
   return x
 end
 
-function pad_circular(x::AbstractArray{F,N}, pad::NTuple{2,Int}; 
+# `dims` is forwarded as a `Val` so that `selectdim` and `cat` have a
+# compile-time-constant dimension and the method stays type-stable (see #702).
+@inline function pad_circular(x::AbstractArray{F,N}, pad::NTuple{2,Int};
                      dims::Int = 1) where {F,N}
+  return _pad_circular(x, pad, Val(dims))
+end
+
+function _pad_circular(x::AbstractArray{F,N}, pad::NTuple{2,Int},
+                       ::Val{dims}) where {F,N,dims}
   lpad, rpad = pad
   n = size(x, dims)
 
   xl = selectdim(x, dims, n-lpad+1:n)
   xr = selectdim(x, dims, 1:rpad)
-  return cat(xl, x, xr, dims = dims)
+  return cat(xl, x, xr; dims=Val(dims))
 end
 
-# convenience methods for symmetric and homogeneous padding
-pad_repeat(x::AbstractArray{F,N}, pad::Int; dims=1:N-2) where {F,N} =
+# Convenience methods for symmetric and homogeneous padding.
+# `@inline` so a literal scalar `dims` (e.g. `pad_reflect(x, n; dims=1)` from
+# `stft`) constant-propagates into the type-stable `Val`-based kernels above.
+@inline pad_repeat(x::AbstractArray{F,N}, pad::Int; dims=1:N-2) where {F,N} =
   pad_repeat(x, ntuple(_ -> pad, 2length(dims)); dims = dims)
-pad_reflect(x::AbstractArray{F,N}, pad::Int; dims=1:N-2) where {F,N} =
+@inline pad_reflect(x::AbstractArray{F,N}, pad::Int; dims=1:N-2) where {F,N} =
   pad_reflect(x, ntuple(_ -> pad, 2length(dims)); dims = dims)
-pad_symmetric(x::AbstractArray{F,N}, pad::Int; dims=1:N-2) where {F,N} =
+@inline pad_symmetric(x::AbstractArray{F,N}, pad::Int; dims=1:N-2) where {F,N} =
   pad_symmetric(x, ntuple(_ -> pad, 2length(dims)); dims = dims)
-pad_circular(x::AbstractArray{F,N}, pad::Int; dims=1:N-2) where {F,N} =
+@inline pad_circular(x::AbstractArray{F,N}, pad::Int; dims=1:N-2) where {F,N} =
   pad_circular(x, ntuple(_ -> pad, 2length(dims)); dims = dims)
 
