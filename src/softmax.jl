@@ -55,9 +55,18 @@ ERROR: `softmax(x)` called with a number, but it expects an array.
 """
 softmax(x::AbstractArray{T}; dims = 1) where {T} = softmax!(similar(x, float(T)), x; dims)
 
+"""
+    softmax!(out, x; dims = 1)
+    softmax!(x; dims = 1)
+
+In-place version of [`softmax`](@ref), writing the result into `out` (or `x` itself).
+"""
 softmax!(x::AbstractArray; dims = 1) = softmax!(x, x; dims)
 
-function softmax!(out::AbstractArray{T}, x::AbstractArray; dims = 1) where {T}
+softmax!(out::AbstractArray, x::AbstractArray; dims = 1) = _softmax!(out, x; dims)
+
+# Generic implementation, can be overidden by CUDA and other backends.
+function _softmax!(out::AbstractArray{T}, x::AbstractArray; dims = 1) where {T}
     max_ = fast_maximum(x; dims)
     if all(isfinite, max_)
         @fastmath out .= exp.(x .- max_)
@@ -69,23 +78,40 @@ function softmax!(out::AbstractArray{T}, x::AbstractArray; dims = 1) where {T}
     out ./= tmp
 end
 
-function ∇softmax_data(dy::AbstractArray{T}, y::AbstractArray{S}; dims = 1) where {T,S}
-    dx = if within_gradient(y)
-        tmp = dy .* y
-        tmp .- y .* sum(tmp; dims)
+"""
+    ∇softmax(dy, y; dims = 1)
+
+Gradient of [`softmax`](@ref) with respect to its input, given the output `y = softmax(x; dims)`
+and the upstream cotangent `dy`. Does not depend on `x`.
+"""
+function ∇softmax(dy::AbstractArray{T}, y::AbstractArray{S}; dims = 1) where {T,S}
+    if within_gradient(y)
+        dx = dy .* y
+        dx = dx .- y .* sum(dx; dims)
+        return dx
     else
         # This path is faster, only safe for 1st derivatives though.
-        # Was previously `∇softmax!(dx, dy, x, y; dims)` to allow CUDA overloads,
-        # but that was slow: https://github.com/FluxML/NNlibCUDA.jl/issues/30
-        out = similar(y, promote_type(T,S))  # sure to be mutable
-        out .= dy .* y
-        out .= out .- y .* sum(out; dims)
+        dx = similar(y, promote_type(T,S))  # sure to be mutable
+        ∇softmax!(dx, dy, y; dims)
+        return dx
     end
+end
+
+"""
+    ∇softmax!(dx, dy, y; dims = 1)
+
+In-place version of [`∇softmax`](@ref), writing the gradient into `dx`.
+"""
+∇softmax!(dx::AbstractArray, dy::AbstractArray, y::AbstractArray; dims = 1) = _∇softmax!(dx, dy, y; dims)
+
+function _∇softmax!(dx::AbstractArray, dy::AbstractArray{T}, y::AbstractArray{S}; dims = 1) where {T,S}
+    dx .= dy .* y
+    dx .= dx .- y .* sum(dx; dims)
 end
 
 function rrule(::typeof(softmax), x; dims = 1)
     y = softmax(x; dims)
-    softmax_pullback(dy) = (NoTangent(), ∇softmax_data(unthunk(dy), y; dims))
+    softmax_pullback(dy) = (NoTangent(), ∇softmax(unthunk(dy), y; dims))
     return y, softmax_pullback
 end
 
@@ -106,9 +132,17 @@ See also [`softmax`](@ref).
 """
 logsoftmax(x::AbstractArray{T}; dims = 1) where {T} = logsoftmax!(similar(x, float(T)), x; dims)
 
+"""
+    logsoftmax!(out, x; dims = 1)
+    logsoftmax!(x; dims = 1)
+
+In-place version of [`logsoftmax`](@ref), writing the result into `out` (or `x` itself).
+"""
 logsoftmax!(x::AbstractArray; dims = 1) = logsoftmax!(x, x; dims)
 
-function logsoftmax!(out::AbstractArray{T}, x::AbstractArray; dims = 1) where {T}
+logsoftmax!(out::AbstractArray, x::AbstractArray; dims = 1) = _logsoftmax!(out, x; dims)
+ 
+function _logsoftmax!(out::AbstractArray{T}, x::AbstractArray; dims = 1) where {T}
     max_ = fast_maximum(x; dims)
     if all(isfinite, max_)
         out .= x .- max_
@@ -120,14 +154,38 @@ function logsoftmax!(out::AbstractArray{T}, x::AbstractArray; dims = 1) where {T
     out .-= log_
 end
 
-function ∇logsoftmax_data(dy::AbstractArray, y::AbstractArray; dims = 1)
-    # This was previously `∇logsoftmax!(dx, dy, x, y; dims)` to allow CUDA overloads, but that was slow.
-    dx = dy .- sum(dy; dims) .* exp.(y)
+"""
+    ∇logsoftmax(dy, y; dims = 1)
+
+Gradient of [`logsoftmax`](@ref) with respect to its input, given the output `y = logsoftmax(x; dims)`
+and the upstream cotangent `dy`. Does not depend on `x`.
+"""
+function ∇logsoftmax(dy::AbstractArray{T}, y::AbstractArray{S}; dims = 1) where {T,S}
+    if within_gradient(y)
+        dx = dy .- sum(dy; dims) .* exp.(y)
+        return dx
+    else
+        # This path is faster, only safe for 1st derivatives though.
+        dx = similar(y, promote_type(T,S))  # sure to be mutable
+        ∇logsoftmax!(dx, dy, y; dims)
+        return dx
+    end
+end    
+
+"""
+    ∇logsoftmax!(dx, dy, y; dims = 1)
+
+In-place version of [`∇logsoftmax`](@ref), writing the gradient into `dx`.
+"""
+∇logsoftmax!(dx::AbstractArray, dy::AbstractArray, y::AbstractArray; dims = 1) = _∇logsoftmax!(dx, dy, y; dims)
+
+function _∇logsoftmax!(dx::AbstractArray, dy::AbstractArray, y::AbstractArray; dims = 1)
+    dx .= dy .- sum(dy; dims) .* exp.(y)
 end
-    
+
 function rrule(::typeof(logsoftmax), x; dims = 1)
     y = logsoftmax(x; dims)
-    logsoftmax_pullback(dy) = (NoTangent(), ∇logsoftmax_data(unthunk(dy), y; dims))
+    logsoftmax_pullback(dy) = (NoTangent(), ∇logsoftmax(unthunk(dy), y; dims))
     return y, logsoftmax_pullback
 end
 
@@ -141,7 +199,7 @@ See also [`logsoftmax`](@ref).
 """
 function logsumexp(x::AbstractArray; dims = :)
     max_ = fast_maximum(x; dims)
-    @fastmath max_ .+ log.(sum(exp.(x .- max_); dims))
+    return @fastmath max_ .+ log.(sum(exp.(x .- max_); dims))
 end
 
 function rrule(::typeof(logsumexp), x; dims = :)
