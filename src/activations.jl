@@ -187,7 +187,17 @@ julia> lineplot(-2, 2, relu, height=7)
           ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀x⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀        
 ```
 """
-relu(x) = ifelse(x<0, zero(x), x)  # faster than max(zero(x), x), still preserves NaN
+function relu(x)
+  if x < 0
+    zero(x)
+  else
+    y = x
+    for i in 1:10
+      y += i
+    end
+    x + zero(y)
+  end
+end
 
 """
     leakyrelu(x, a=0.01) = max(a*x, x)
