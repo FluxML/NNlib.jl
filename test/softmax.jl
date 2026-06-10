@@ -102,6 +102,13 @@ end
     end
 end
 
+@testset "deprecated ∇softmax_data/∇logsoftmax_data" begin
+    x = randn(Float32, 5, 4); dy = randn(Float32, 5, 4)
+    y = softmax(x); yl = logsoftmax(x)
+    @test (@test_deprecated NNlib.∇softmax_data(dy, y)) ≈ ∇softmax(dy, y)
+    @test (@test_deprecated NNlib.∇logsoftmax_data(dy, yl)) ≈ ∇logsoftmax(dy, yl)
+end
+
 @testset "logsumexp" begin
     flogsoft(x; dims) = mean(x .- logsoftmax(x; dims = dims), dims = dims)
 
