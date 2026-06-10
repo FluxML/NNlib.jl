@@ -46,11 +46,17 @@ make_causal_mask
 
 ## Softmax
 
-`Flux`'s `logitcrossentropy` uses `NNlib.softmax` internally.
+`Flux`'s `logitcrossentropy` uses `NNlib.logsoftmax` internally.
 
 ```@docs
 softmax
+softmax!
+∇softmax
+∇softmax!
 logsoftmax
+logsoftmax!
+∇logsoftmax
+∇logsoftmax!
 ```
 
 ## Pooling

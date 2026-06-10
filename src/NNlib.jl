@@ -50,8 +50,9 @@ include("dropout.jl")
 export dropout, dropout!
 
 include("softmax.jl")
-export softmax, softmax!, ∇softmax, ∇softmax!, logsoftmax,
-    logsoftmax!, ∇logsoftmax, ∇logsoftmax!, logsumexp
+export softmax, softmax!, ∇softmax, ∇softmax!,
+       logsoftmax, logsoftmax!, ∇logsoftmax, ∇logsoftmax!,
+       logsumexp
 
 include("batched/batchedadjtrans.jl")
 include("batched/batchedmul.jl")

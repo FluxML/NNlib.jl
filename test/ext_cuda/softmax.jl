@@ -5,17 +5,29 @@
 
         y = softmax(x, dims=dims)
         gputest(softmax, x, dims=dims)
-        gputest(NNlib.∇softmax_data, dy, y; dims=dims)
+        gputest(NNlib.∇softmax, dy, y; dims=dims)
 
         y2 = logsoftmax(x, dims=dims)
         gputest(logsoftmax, x, dims=dims)
-        gputest(NNlib.∇logsoftmax_data, dy, y2; dims=dims)
+        gputest(NNlib.∇logsoftmax, dy, y2; dims=dims)
 
-        # From NNlib 0.8.3, ∇softmax! is not used in the gradient.
-        # But NNlibCUDA still knows how to call cuDNN routines, let's test they agree:
-        @test NNlib.∇softmax_data(dy, y; dims=dims) ≈ collect(∇softmax!(similar(cu(x)), cu(dy), cu(x), cu(y); dims=dims)) atol=1e-4
-        @test NNlib.∇logsoftmax_data(dy, y2; dims=dims) ≈ collect(∇logsoftmax!(similar(cu(x)), cu(dy), cu(x), cu(y2); dims=dims)) atol=1e-4
-        # (Note that ∇softmax! does not depend on x, it's just there to disambiguate from an even older signature.)
+        @test NNlib.∇softmax(dy, y; dims=dims) ≈ collect(∇softmax!(similar(cu(x)), cu(dy), cu(y); dims=dims)) atol=1e-4
+        @test NNlib.∇logsoftmax(dy, y2; dims=dims) ≈ collect(∇logsoftmax!(similar(cu(x)), cu(dy), cu(y2); dims=dims)) atol=1e-4
+    end
+end
+
+@testset "Second derivatives" begin
+    # On the GPU the second-derivative path goes through the generic broadcast
+    # (the `within_gradient(y)` branch of ∇softmax/∇logsoftmax), not cuDNN.
+    # We use a polynomial loss rather than `sum(sin, ...)` as in the CPU test:
+    # Zygote's forward-over-reverse `Dual` broadcast for `sin` does not compile
+    # to a GPU kernel, which is a limitation unrelated to softmax.
+    for f in (softmax, logsoftmax)
+        x = randn(Float64, 4, 3)
+        loss(z) = sum(abs2, Zygote.gradient(w -> sum(abs2, f(w; dims=1)), z)[1])
+        gcpu = Zygote.gradient(loss, x)[1]
+        ggpu = Zygote.gradient(loss, CuArray(x))[1]
+        @test Array(ggpu) ≈ gcpu rtol=1e-5
     end
 end
 
