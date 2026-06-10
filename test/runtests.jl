@@ -18,14 +18,15 @@ import ReverseDiff as RD        # used in `pooling.jl`
 import Pkg
 using SpecialFunctions
 
-const Test_Enzyme = VERSION <= v"1.13-"
-
 DocMeta.setdocmeta!(NNlib, :DocTestSetup, :(using NNlib, UnicodePlots); recursive=true)
 
 # ENV["NNLIB_TEST_CUDA"] = "true" # uncomment to run CUDA tests
 # ENV["NNLIB_TEST_AMDGPU"] = "true" # uncomment to run AMDGPU tests
 # ENV["NNLIB_TEST_METAL"] = "true" # uncomment to run Metal tests
 # ENV["NNLIB_TEST_CPU"] = "false" # uncomment to skip CPU tests
+
+# some enzyme tests on AMDGPU are crashing julia
+const Test_Enzyme = VERSION <= v"1.13-" && (get(ENV, "NNLIB_TEST_AMDGPU", "false") != "true")
 
 const rng = StableRNG(123)
 include("test_utils.jl")

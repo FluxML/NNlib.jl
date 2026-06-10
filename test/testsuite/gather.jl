@@ -154,7 +154,7 @@ function gather_testsuite(Backend)
             gradtest_fn((s, i) -> gather(s, i), src, idx)
     end
 
-    if Test_Enzyme && (Symbol(Backend) != :ROCBackend)
+    if Test_Enzyme
         @testset "EnzymeRules: gather! gradient for scalar index" begin
             src = device(Float64[3, 4, 5, 6, 7])
             idx = device([
