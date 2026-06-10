@@ -18,3 +18,49 @@
         # (Note that ∇softmax! does not depend on x, it's just there to disambiguate from an even older signature.)
     end
 end
+
+@testset "softmax with masked input (fixes #506)" begin
+    # The cuDNN FAST algorithm overflows to NaN on masked/large-magnitude inputs,
+    # so softmax must always use the ACCURATE algorithm regardless of CUDA.math_mode.
+    # This reproduces the attention-mask scenario from the issue (fill with -1000).
+    orig = CUDA.math_mode()
+    try
+        for mode in (CUDA.DEFAULT_MATH, CUDA.FAST_MATH)
+            CUDA.math_mode!(mode)
+
+            # (a) large finite negative mask, as in #506. Outputs stay finite, so we
+            #     can compare against the CPU reference directly.
+            x = randn(Float32, 128, 32)
+            x[1:64, :] .= -1f3        # masked entries
+            gx = cu(x)
+
+            gy = softmax(gx; dims=1)
+            @test all(isfinite, collect(gy))
+            @test collect(gy) ≈ softmax(x; dims=1) atol=1e-4
+
+            gly = logsoftmax(gx; dims=1)
+            @test all(isfinite, collect(gly))
+            @test collect(gly) ≈ logsoftmax(x; dims=1) atol=1e-4
+
+            # (b) hard -Inf mask. softmax must give exactly-0 (finite) at masked
+            #     positions; logsoftmax gives -Inf there (never NaN). Compare only
+            #     at the unmasked positions to avoid Inf-Inf=NaN inside `isapprox`.
+            xi = randn(Float32, 128, 32)
+            mask = falses(128, 32)
+            mask[1:64, :] .= true
+            xi[mask] .= -Inf32
+            gxi = cu(xi)
+
+            gyi = softmax(gxi; dims=1)
+            @test all(isfinite, collect(gyi))
+            @test all(collect(gyi)[mask] .== 0)
+            @test collect(gyi) ≈ softmax(xi; dims=1) atol=1e-4
+
+            glyi = collect(logsoftmax(gxi; dims=1))
+            @test !any(isnan, glyi)
+            @test glyi[.!mask] ≈ logsoftmax(xi; dims=1)[.!mask] atol=1e-4
+        end
+    finally
+        CUDA.math_mode!(orig)
+    end
+end
