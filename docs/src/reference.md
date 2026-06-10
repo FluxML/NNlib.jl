@@ -57,6 +57,8 @@ logsoftmax
 
 `Flux`'s `AdaptiveMaxPool`, `AdaptiveMeanPool`, `GlobalMaxPool`, `GlobalMeanPool`, `MaxPool`, `MeanPool` and `lpnormpool` use `NNlib.PoolDims`, `NNlib.maxpool`, `NNlib.meanpool` and `NNlib.lpnormpool` as their backend.
 
+`NNlib.meanpool` supports complex datatypes on CPU and CUDA devices (the real and imaginary parts are pooled independently). `maxpool` does not, since `max` is undefined for complex numbers.
+
 ```@docs
 PoolDims
 maxpool

@@ -44,6 +44,33 @@ function ∇meanpool!(dx::DenseCuArray{T}, dy::DenseCuArray{T}, y::DenseCuArray{
     return dx
 end
 
+# Complex mean pooling (fixes https://github.com/FluxML/NNlib.jl/issues/610).
+# Mean pooling is linear, so we pool the real and imaginary parts independently
+# with cuDNN and recombine. This matches the CPU path, where complex `meanpool`
+# already works. These handle any spatial rank: the inner real `meanpool!`/
+# `∇meanpool!` calls dispatch to the 1D (rank-3) cuDNN methods below as needed.
+# (`maxpool` has no canonical complex extension — `max` is undefined for complex
+# numbers, and the CPU path errors too — so it is intentionally not supported.)
+function meanpool!(y::DenseCuArray{T}, x::DenseCuArray{T}, pdims::PoolDims;
+                   count_include_pad::Bool=true) where T<:CUDNNComplexFloat
+    xr, xi = reim(x)
+    yr = meanpool!(similar(y, real(T)), xr, pdims; count_include_pad)
+    yi = meanpool!(similar(y, real(T)), xi, pdims; count_include_pad)
+    @. y = complex(yr, yi)
+    return y
+end
+
+function ∇meanpool!(dx::DenseCuArray{T}, dy::DenseCuArray{T}, y::DenseCuArray{T}, x::DenseCuArray{T},
+                    pdims::PoolDims; count_include_pad::Bool=true) where T<:CUDNNComplexFloat
+    dyr, dyi = reim(dy)
+    yr, yi = reim(y)
+    xr, xi = reim(x)
+    dxr = ∇meanpool!(similar(dx, real(T)), dyr, yr, xr, pdims; count_include_pad)
+    dxi = ∇meanpool!(similar(dx, real(T)), dyi, yi, xi, pdims; count_include_pad)
+    @. dx = complex(dxr, dxi)
+    return dx
+end
+
 ### Since CUDA.jl does not support 1D pooling, we have to convert to 2d
 
 add1d(x) = reshape(x, 1, size(x)...)
