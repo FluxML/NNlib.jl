@@ -35,3 +35,4 @@ DEVICE = gpu_device(force=true)
 
 include("activations.jl")
 include("scatter.jl")
+include("batched_mul.jl")
