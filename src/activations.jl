@@ -276,6 +276,9 @@ function rrelu(x::T, l=oftf(x,1/8), u=oftf(x,1/3)) where T<:Number
     return leakyrelu(x, a)
 end
 
+# `Base.min` escapes `@fastmath` (`min_fast` would drop NaN propagation). Clamping the
+# `exp` argument keeps reverse-mode AD of the primal finite for x > log(floatmax(T)):
+# the not-taken branch otherwise contributes `0 * exp(x) = 0 * Inf = NaN` to the adjoint.
 """
     elu(x, α=1) = x > 0 ? x : α * (exp(x) - 1)
 
@@ -304,9 +307,6 @@ julia> elu(-10f0, 2)
 -1.9999092f0
 ```
 """
-# `Base.min` escapes `@fastmath` (`min_fast` would drop NaN propagation). Clamping the
-# `exp` argument keeps reverse-mode AD of the primal finite for x > log(floatmax(T)):
-# the not-taken branch otherwise contributes `0 * exp(x) = 0 * Inf = NaN` to the adjoint.
 elu(x, α=1) = ifelse(x ≥ 0, float(x), @fastmath oftf(x, α) * (exp(Base.min(x, zero(x))) - 1))
 
 deriv_elu(Ω, α=1) = ifelse(Ω ≥ 0, one(Ω), Ω + oftype(Ω, α))
