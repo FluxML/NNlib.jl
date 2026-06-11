@@ -1,0 +1,148 @@
+┌ Warning: unsupported path → n/s: CUDNNError: CUDNN_STATUS_NOT_SUPPORTED (code 3000)
+└ @ Main ~/.julia/dev/NNlib/benchmark/cuda_attention/bench_attention.jl:70
+┌ Warning: unsupported path → n/s: MethodError: no method matching cudnnDataType(::Type{BFloat16})
+└ @ Main ~/.julia/dev/NNlib/benchmark/cuda_attention/bench_attention.jl:70
+┌ Warning: unsupported path → n/s: MethodError: no method matching _flash_attention(::CuArray{BFloat16, 4, CUDA.DeviceMemory}, ::CuArray{BFloat16, 4, CUDA.DeviceMemory}, ::CuArray{BFloat16, 4, CUDA.DeviceMemory}, ::Nothing; causal::Bool, kpad_mask::Nothing)
+└ @ Main ~/.julia/dev/NNlib/benchmark/cuda_attention/bench_attention.jl:70
+GPU:        NVIDIA GeForce RTX 5090
+NNlib:      0.9.36
+LuxLib:     1.15.9
+NNkernels:  0.2.0
+CUDA.jl:    5.11.1
+sanity Float16    vs-nnlib=0.00e+00  vs-lux=2.20e-03  vs-flash=2.93e-03
+sanity BFloat16   vs-nnlib=n/s  vs-lux=n/s  vs-flash=n/s
+sanity Float32    vs-nnlib=0.00e+00  vs-lux=2.98e-07  vs-flash=5.96e-07
+
+########################################################################################################
+### dtype=Float16  causal=false
+########################################################################################################
+
+-- FORWARD (ms) --
+config            L     H |     nnlib       lux     flash | nnlib/fl   lux/fl
+tiny            128     4 |     0.868     0.949     0.056 |   15.64x   17.08x
+small           512     8 |     1.483     1.491     0.419 |    3.54x    3.56x
+gpt2-ish       1024    12 |     1.236     1.236     0.954 |    1.30x    1.30x
+llama3 L=2k    2048    32 |     1.465     1.466     8.209 |    0.18x    0.18x
+llama3 L=4k    4096    32 |     4.025     4.036    30.502 |    0.13x    0.13x
+llama3 L=8k    8192    32 |       n/s       n/s   116.576 |        -        -
+
+-- FULL GRADIENT, fwd+bwd (ms) --
+config            L     H |     nnlib       lux     flash | nnlib/fl   lux/fl
+tiny            128     4 |     3.051     3.455     0.292 |   10.44x   11.82x
+small           512     8 |     4.677     5.505     3.319 |    1.41x    1.66x
+gpt2-ish       1024    12 |     4.125     4.434    12.175 |    0.34x    0.36x
+llama3 L=2k    2048    32 |     4.161     4.256   169.732 |    0.02x    0.03x
+llama3 L=4k    4096    32 |    10.840    10.983   689.596 |    0.02x    0.02x
+llama3 L=8k    8192    32 |       n/s       n/s  2770.579 |        -        -
+
+########################################################################################################
+### dtype=Float16  causal=true
+########################################################################################################
+
+-- FORWARD (ms) --
+config            L     H |     nnlib       lux     flash | nnlib/fl   lux/fl
+tiny            128     4 |     0.867     0.876     0.056 |   15.54x   15.68x
+small           512     8 |     1.643     1.497     0.256 |    6.43x    5.86x
+gpt2-ish       1024    12 |     1.668     1.617     0.626 |    2.67x    2.58x
+llama3 L=2k    2048    32 |     2.368     2.386     4.318 |    0.55x    0.55x
+llama3 L=4k    4096    32 |     7.660     7.733    15.729 |    0.49x    0.49x
+llama3 L=8k    8192    32 |       n/s       n/s    59.858 |        -        -
+
+-- FULL GRADIENT, fwd+bwd (ms) --
+config            L     H |     nnlib       lux     flash | nnlib/fl   lux/fl
+tiny            128     4 |     2.880     3.588     0.257 |   11.20x   13.96x
+small           512     8 |     5.871     6.143     1.975 |    2.97x    3.11x
+gpt2-ish       1024    12 |     7.049     7.556     6.762 |    1.04x    1.12x
+llama3 L=2k    2048    32 |    10.863    11.456    87.665 |    0.12x    0.13x
+llama3 L=4k    4096    32 |    36.566    36.772   345.198 |    0.11x    0.11x
+llama3 L=8k    8192    32 |       n/s       n/s  1386.710 |        -        -
+
+########################################################################################################
+### dtype=BFloat16  causal=false
+########################################################################################################
+
+-- FORWARD (ms) --
+config            L     H |     nnlib       lux     flash | nnlib/fl   lux/fl
+tiny            128     4 |       n/s       n/s       n/s |        -        -
+small           512     8 |       n/s       n/s       n/s |        -        -
+gpt2-ish       1024    12 |       n/s       n/s       n/s |        -        -
+llama3 L=2k    2048    32 |       n/s       n/s       n/s |        -        -
+llama3 L=4k    4096    32 |       n/s       n/s       n/s |        -        -
+llama3 L=8k    8192    32 |       n/s       n/s       n/s |        -        -
+
+-- FULL GRADIENT, fwd+bwd (ms) --
+config            L     H |     nnlib       lux     flash | nnlib/fl   lux/fl
+tiny            128     4 |       n/s       n/s       n/s |        -        -
+small           512     8 |       n/s       n/s       n/s |        -        -
+gpt2-ish       1024    12 |       n/s       n/s       n/s |        -        -
+llama3 L=2k    2048    32 |       n/s       n/s       n/s |        -        -
+llama3 L=4k    4096    32 |       n/s       n/s       n/s |        -        -
+llama3 L=8k    8192    32 |       n/s       n/s       n/s |        -        -
+
+########################################################################################################
+### dtype=BFloat16  causal=true
+########################################################################################################
+
+-- FORWARD (ms) --
+config            L     H |     nnlib       lux     flash | nnlib/fl   lux/fl
+tiny            128     4 |       n/s       n/s       n/s |        -        -
+small           512     8 |       n/s       n/s       n/s |        -        -
+gpt2-ish       1024    12 |       n/s       n/s       n/s |        -        -
+llama3 L=2k    2048    32 |       n/s       n/s       n/s |        -        -
+llama3 L=4k    4096    32 |       n/s       n/s       n/s |        -        -
+llama3 L=8k    8192    32 |       n/s       n/s       n/s |        -        -
+
+-- FULL GRADIENT, fwd+bwd (ms) --
+config            L     H |     nnlib       lux     flash | nnlib/fl   lux/fl
+tiny            128     4 |       n/s       n/s       n/s |        -        -
+small           512     8 |       n/s       n/s       n/s |        -        -
+gpt2-ish       1024    12 |       n/s       n/s       n/s |        -        -
+llama3 L=2k    2048    32 |       n/s       n/s       n/s |        -        -
+llama3 L=4k    4096    32 |       n/s       n/s       n/s |        -        -
+llama3 L=8k    8192    32 |       n/s       n/s       n/s |        -        -
+
+########################################################################################################
+### dtype=Float32  causal=false
+########################################################################################################
+
+-- FORWARD (ms) --
+config            L     H |     nnlib       lux     flash | nnlib/fl   lux/fl
+tiny            128     4 |     0.050     0.050     0.062 |    0.80x    0.81x
+small           512     8 |     0.276     0.275     0.730 |    0.38x    0.38x
+gpt2-ish       1024    12 |     0.790     0.791     1.984 |    0.40x    0.40x
+llama3 L=2k    2048    32 |     2.759     2.768    16.098 |    0.17x    0.17x
+llama3 L=4k    4096    32 |    10.522    10.528    61.818 |    0.17x    0.17x
+llama3 L=8k    8192    32 |       n/s       n/s   243.137 |        -        -
+
+-- FULL GRADIENT, fwd+bwd (ms) --
+config            L     H |     nnlib       lux     flash | nnlib/fl   lux/fl
+tiny            128     4 |     0.259     0.892     0.535 |    0.48x    1.67x
+small           512     8 |     0.853     1.065     7.314 |    0.12x    0.15x
+gpt2-ish       1024    12 |     2.126     2.222    30.084 |    0.07x    0.07x
+llama3 L=2k    2048    32 |     8.351     8.418   397.375 |    0.02x    0.02x
+llama3 L=4k    4096    32 |    31.885    31.902  1611.004 |    0.02x    0.02x
+llama3 L=8k    8192    32 |       n/s       n/s  6435.178 |        -        -
+
+########################################################################################################
+### dtype=Float32  causal=true
+########################################################################################################
+
+-- FORWARD (ms) --
+config            L     H |     nnlib       lux     flash | nnlib/fl   lux/fl
+tiny            128     4 |     0.054     0.063     0.062 |    0.88x    1.03x
+small           512     8 |     0.394     0.404     0.435 |    0.91x    0.93x
+gpt2-ish       1024    12 |     1.257     1.267     1.106 |    1.14x    1.15x
+llama3 L=2k    2048    32 |     3.699     3.726     8.449 |    0.44x    0.44x
+llama3 L=4k    4096    32 |    14.328    14.394    32.048 |    0.45x    0.45x
+llama3 L=8k    8192    32 |       n/s       n/s   123.786 |        -        -
+
+-- FULL GRADIENT, fwd+bwd (ms) --
+config            L     H |     nnlib       lux     flash | nnlib/fl   lux/fl
+tiny            128     4 |     0.334     1.006     0.387 |    0.86x    2.60x
+small           512     8 |     2.247     2.682     4.049 |    0.55x    0.66x
+gpt2-ish       1024    12 |     6.204     6.399    15.672 |    0.40x    0.41x
+llama3 L=2k    2048    32 |    18.978    19.100   194.069 |    0.10x    0.10x
+llama3 L=4k    4096    32 |    75.572    74.532   799.728 |    0.09x    0.09x
+llama3 L=8k    8192    32 |       OOM       OOM  3218.478 |        -        -
+
+nnlib/fl, lux/fl = time relative to flash (>1 → flash faster).
