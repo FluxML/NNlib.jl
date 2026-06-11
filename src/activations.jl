@@ -276,6 +276,9 @@ function rrelu(x::T, l=oftf(x,1/8), u=oftf(x,1/3)) where T<:Number
     return leakyrelu(x, a)
 end
 
+# `Base.min` escapes `@fastmath` (`min_fast` would drop NaN propagation). Clamping the
+# `exp` argument keeps reverse-mode AD of the primal finite for x > log(floatmax(T)):
+# the not-taken branch otherwise contributes `0 * exp(x) = 0 * Inf = NaN` to the adjoint.
 """
     elu(x, α=1) = x > 0 ? x : α * (exp(x) - 1)
 
@@ -304,7 +307,7 @@ julia> elu(-10f0, 2)
 -1.9999092f0
 ```
 """
-elu(x, α=1) = ifelse(x ≥ 0, float(x), @fastmath oftf(x, α) * (exp(x) - 1))
+elu(x, α=1) = ifelse(x ≥ 0, float(x), @fastmath oftf(x, α) * (exp(Base.min(x, zero(x))) - 1))
 
 deriv_elu(Ω, α=1) = ifelse(Ω ≥ 0, one(Ω), Ω + oftype(Ω, α))
 
@@ -550,7 +553,7 @@ julia> selu(-10f0)
 function selu(x)
     λ = oftf(x, selu_λ)
     α = oftf(x, selu_α)
-    λ * ifelse(x > 0, x, @fastmath α * (exp(x) - 1))
+    λ * ifelse(x > 0, x, @fastmath α * (exp(Base.min(x, zero(x))) - 1))
 end
 
 const selu_λ = 1.0507009873554804934193349852946
@@ -585,7 +588,7 @@ julia> celu(-10f0)
 -0.9999546f0
 ```
 """
-celu(x, α=1) = ifelse(x ≥ 0, float(x), oftf(x,α) * (exp(x/oftf(x,α)) - 1))
+celu(x, α=1) = ifelse(x ≥ 0, float(x), oftf(x,α) * (exp(min(x, zero(x))/oftf(x,α)) - 1))
 
 deriv_celu(Ω, α=1) = ifelse(Ω > 0, oftf(Ω, 1), Ω / oftf(Ω, α) + 1)
 
