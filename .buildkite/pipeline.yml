@@ -14,8 +14,7 @@ steps:
             - src
             - ext
     agents:
-      queue: "juliagpu"
-      cuda: "*"
+      queue: "cuda"
     env:
       JULIA_NUM_THREADS: 4
       NNLIB_TEST_CUDA: "true"
@@ -48,8 +47,7 @@ steps:
             - src
             - ext
     agents:
-      queue: "juliagpu"
-      rocm: "*"
+      queue: "rocm"
       rocmgpu: "*"
     timeout_in_minutes: 180
     env:
@@ -71,40 +69,6 @@ steps:
       #     soft_fail: true
 
 
-  - label: ":julia: Julia {{matrix.julia}} - Metal GPU"
-    command:
-      - echo 'Metal = "dde4c033-4e86-420c-a63e-0dd931031962"' >> test/Project.toml
-    plugins:
-      - JuliaCI/julia#v1:
-          version: "{{matrix.julia}}"
-      - JuliaCI/julia-test#v1:
-          test_args: "--quickfail"
-      - JuliaCI/julia-coverage#v1:
-          codecov: true
-          dirs:
-            - src
-            - ext
-    agents:
-      queue: "juliaecosystem"
-      os: "macos"
-      arch: "aarch64"
-    timeout_in_minutes: 180
-    env:
-      NNLIB_TEST_METAL: "true"
-      NNLIB_TEST_CPU: "false"
-      JULIA_NUM_THREADS: 4
-    matrix:
-      setup:
-        julia:
-          # - "1.10"
-          - "1"
-          # - "nightly  "
-      # adjustments:
-      #   - with:
-      #       julia: "nightly"
-      #     soft_fail: true
-
-
   - label: "Benchmarks"
     plugins:
       - JuliaCI/julia#v1:
@@ -116,7 +80,7 @@ steps:
       - julia --project=benchmark benchmark/runbenchmarks.jl
       - printf '%b\n' "$(cat benchmark/report.md)" | buildkite-agent annotate --style 'info'
     agents:
-      queue: "juliagpu"
+      queue: "cuda"
     if: build.pull_request.labels includes "benchmark"
     timeout_in_minutes: 30
 
