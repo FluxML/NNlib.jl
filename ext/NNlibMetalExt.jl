@@ -96,4 +96,52 @@ function NNlib.∇logsoftmax!(dx::MtlFloatArray{T, N}, dy::MtlFloatArray{T, N},
     return Metal.MPSGraphs.graph_logsoftmax_grad!(dx, dy, y; dims)
 end
 
+function supports_mpsgraph_conv(cdims)
+    return cdims isa NNlib.DenseConvDims{2} && NNlib.groupcount(cdims) == 1
+end
+
+function NNlib.conv!(y::MtlFloatArray{T, 4}, x::MtlFloatArray{T, 4},
+                     w::MtlFloatArray{T, 4}, cdims::NNlib.DenseConvDims{2};
+                     kwargs...) where {T}
+    if supports_mpsgraph_conv(cdims) && isempty(kwargs)
+        return Metal.MPSGraphs.graph_conv!(y, x, w; stride=NNlib.stride(cdims),
+                                           padding=NNlib.padding(cdims),
+                                           dilation=NNlib.dilation(cdims),
+                                           groups=NNlib.groupcount(cdims),
+                                           flipkernel=NNlib.flipkernel(cdims))
+    else
+        return NNlib.conv_im2col!(y, x, w, cdims; kwargs...)
+    end
+end
+
+function supports_mpsgraph_pool(pdims)
+    return pdims isa NNlib.PoolDims{2}
+end
+
+function NNlib.maxpool!(y::MtlFloatArray{T, 4}, x::MtlFloatArray{T, 4},
+                        pdims::NNlib.PoolDims{2}; kwargs...) where {T}
+    if supports_mpsgraph_pool(pdims) && isempty(kwargs)
+        return Metal.MPSGraphs.graph_maxpool!(y, x; kernel=NNlib.kernel_size(pdims),
+                                              stride=NNlib.stride(pdims),
+                                              padding=NNlib.padding(pdims),
+                                              dilation=NNlib.dilation(pdims))
+    else
+        return NNlib.maxpool_direct!(y, x, pdims; kwargs...)
+    end
+end
+
+function NNlib.meanpool!(y::MtlFloatArray{T, 4}, x::MtlFloatArray{T, 4},
+                         pdims::NNlib.PoolDims{2}; count_include_pad = true,
+                         kwargs...) where {T}
+    if supports_mpsgraph_pool(pdims) && isempty(kwargs)
+        return Metal.MPSGraphs.graph_meanpool!(y, x; kernel=NNlib.kernel_size(pdims),
+                                               stride=NNlib.stride(pdims),
+                                               padding=NNlib.padding(pdims),
+                                               dilation=NNlib.dilation(pdims),
+                                               count_include_pad)
+    else
+        return NNlib.meanpool_direct!(y, x, pdims; count_include_pad, kwargs...)
+    end
+end
+
 end
