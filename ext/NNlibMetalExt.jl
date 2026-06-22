@@ -97,7 +97,7 @@ function NNlib.∇logsoftmax!(dx::MtlFloatArray{T, N}, dy::MtlFloatArray{T, N},
 end
 
 function supports_mpsgraph_conv(cdims)
-    return cdims isa NNlib.DenseConvDims{2} && NNlib.groupcount(cdims) == 1
+    return cdims isa NNlib.DenseConvDims{2}
 end
 
 function NNlib.conv!(y::MtlFloatArray{T, 4}, x::MtlFloatArray{T, 4},
