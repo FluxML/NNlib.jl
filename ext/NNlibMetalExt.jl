@@ -66,4 +66,34 @@ Base.Array{T, N}(b::Union{MtlBatchedAdjOrTrans, WrappedMtlBatchedAdjOrTrans}) wh
 Base.collect(b::Union{MtlBatchedAdjOrTrans, WrappedMtlBatchedAdjOrTrans}) =
     collect(adapt(Array, b))
 
+const MtlFloatArray{T, N} = MtlArray{T, N} where {T<:Union{Float16, Float32}, N}
+
+function supports_mpsgraph_softmax(x::MtlArray, dims)
+    return dims isa Integer && 1 <= dims <= ndims(x)
+end
+
+function NNlib.softmax!(y::MtlFloatArray{T, N}, x::MtlFloatArray{T, N};
+                        dims = 1) where {T, N}
+    supports_mpsgraph_softmax(x, dims) || return NNlib._softmax!(y, x; dims)
+    return Metal.MPSGraphs.graph_softmax!(y, x; dims)
+end
+
+function NNlib.logsoftmax!(y::MtlFloatArray{T, N}, x::MtlFloatArray{T, N};
+                           dims = 1) where {T, N}
+    supports_mpsgraph_softmax(x, dims) || return NNlib._logsoftmax!(y, x; dims)
+    return Metal.MPSGraphs.graph_logsoftmax!(y, x; dims)
+end
+
+function NNlib.∇softmax!(dx::MtlFloatArray{T, N}, dy::MtlFloatArray{T, N},
+                         y::MtlFloatArray{T, N}; dims = 1) where {T, N}
+    supports_mpsgraph_softmax(y, dims) || return NNlib._∇softmax!(dx, dy, y; dims)
+    return Metal.MPSGraphs.graph_softmax_grad!(dx, dy, y; dims)
+end
+
+function NNlib.∇logsoftmax!(dx::MtlFloatArray{T, N}, dy::MtlFloatArray{T, N},
+                            y::MtlFloatArray{T, N}; dims = 1) where {T, N}
+    supports_mpsgraph_softmax(y, dims) || return NNlib._∇logsoftmax!(dx, dy, y; dims)
+    return Metal.MPSGraphs.graph_logsoftmax_grad!(dx, dy, y; dims)
+end
+
 end
