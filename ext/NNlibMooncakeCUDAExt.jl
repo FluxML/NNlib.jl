@@ -25,6 +25,15 @@ import Mooncake:
 # and the g=Nothing / b=Nothing case are traced through by Mooncake and reach this rule
 # via Core.kwcall after the reshape.
 
+# Mirror NNlibCUDACUDNNExt.BNCache: it stores batch mean and ivar from the forward pass
+# so the backward can use exact cached values instead of recomputing from x via a
+# non-deterministic GPU parallel reduction.
+mutable struct _BNFwdCache
+    mean
+    ivar
+end
+_BNFwdCache() = _BNFwdCache(nothing, nothing)
+
 @is_primitive(
     MinimalCtx,
     Tuple{
@@ -58,7 +67,11 @@ function rrule!!(
     prv = primal(running_var)
     pm = primal(momentum)
 
-    y = batchnorm(pg, pb, px, prm, prv, pm; pkw...)
+    # Pass a cache to the forward so cuDNN saves the batch mean and ivar.
+    # The backward then reads these exact values instead of recomputing from x,
+    # which avoids a non-deterministic GPU parallel reduction.
+    fwd_cache = _BNFwdCache()
+    y = batchnorm(pg, pb, px, prm, prv, pm; pkw..., cache=fwd_cache)
     dy_out = zero(y)
     zero_kw = zero_rdata(pkw)
 
@@ -69,7 +82,7 @@ function rrule!!(
         # Overriding track_stats=false when running stats are nothing makes cudnnBNBackward!
         # substitute CU_NULL, which is what cuDNN expects in this case.
         kw_back = prm === nothing ? merge(pkw, (track_stats=false,)) : pkw
-        grads = ∇batchnorm(pg, pb, px, dy_out, prm, prv, pm; kw_back...)
+        grads = ∇batchnorm(pg, pb, px, dy_out, prm, prv, pm; kw_back..., cache=fwd_cache)
         grads[1] !== nothing && (dg .+= grads[1])
         grads[2] !== nothing && (db .+= grads[2])
         dx .+= grads[3]
