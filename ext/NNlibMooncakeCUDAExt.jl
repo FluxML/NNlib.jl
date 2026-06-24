@@ -63,7 +63,13 @@ function rrule!!(
     zero_kw = zero_rdata(pkw)
 
     function batchnorm_pb!!(::NoRData)
-        grads = ∇batchnorm(pg, pb, px, dy_out, prm, prv, pm; pkw...)
+        # ∇batchnorm forwards kwargs to cudnnBNBackward!, which defaults track_stats=true.
+        # With track_stats=true and running_mean=nothing, cudnnBNBackward! passes nothing
+        # directly to the cuDNN C API instead of CU_NULL, corrupting the backward pass.
+        # Overriding track_stats=false when running stats are nothing makes cudnnBNBackward!
+        # substitute CU_NULL, which is what cuDNN expects in this case.
+        kw_back = prm === nothing ? merge(pkw, (track_stats=false,)) : pkw
+        grads = ∇batchnorm(pg, pb, px, dy_out, prm, prv, pm; kw_back...)
         grads[1] !== nothing && (dg .+= grads[1])
         grads[2] !== nothing && (db .+= grads[2])
         dx .+= grads[3]
