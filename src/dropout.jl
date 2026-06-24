@@ -106,6 +106,7 @@ end
 function ChainRulesCore.rrule(::typeof(dropout), rng::AbstractRNG, A::AbstractArray, p::Real; dims = :)
     T = float(real(eltype(A)))
     val = convert(T, 1/(1-p))
+    p = convert(T, p)  # avoid Float64 leaking into the broadcast (e.g. on GPU kernels)
     keep = if dims isa Colon
         similar(A, T, size(A))
     else
