@@ -6,7 +6,7 @@ using Statistics
         N, B = 3, 4
         g  = CUDA.ones(Float32, N)
         b  = CUDA.zeros(Float32, N)
-        x4 = CUDA.randn(Float32, N, 1, 1, B)
+        x4 = CUDA.randn(Float32, 1, 1, N, B)
         # Use nothing for running stats to avoid in-place mutation across test_rule calls.
         _bn(g, b, x) = sum(batchnorm(g, b, x, nothing, nothing, 0.1f0; training=true))
         test_rule(rng, _bn, g, b, x4; is_primitive=false, mode=Mooncake.ReverseMode)
