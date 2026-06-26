@@ -1,5 +1,8 @@
 using Test
 using NNlib
+using Mooncake
+using Mooncake.TestUtils: test_rule
+using Random
 using Zygote
 using ForwardDiff: Dual
 using Statistics: mean
