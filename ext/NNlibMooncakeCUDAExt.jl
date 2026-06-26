@@ -23,6 +23,9 @@ import Mooncake:
 # and the g=Nothing / b=Nothing case are traced through by Mooncake and reach this rule
 # via Core.kwcall after the reshape.
 
+# Stores batch mean and ivar from the forward so the backward reads exact saved values
+# rather than recomputing via a non-deterministic GPU parallel reduction (needed for
+# Mooncake's Reuse test, which checks exact equality across two pullback calls).
 mutable struct _BNFwdCache
     mean
     ivar
@@ -62,8 +65,6 @@ function rrule!!(
     prv = primal(running_var)
     pm = primal(momentum)
 
-    # Cache the batch mean and ivar from the forward so the backward uses the exact
-    # saved values, avoiding a non-deterministic GPU parallel reduction.
     fwd_cache = _BNFwdCache()
     y = batchnorm(pg, pb, px, prm, prv, pm; pkw..., cache=fwd_cache)
     dy_out = zero(y)
