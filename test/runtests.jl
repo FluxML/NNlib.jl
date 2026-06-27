@@ -28,9 +28,9 @@ const THREADED_TESTS = [
     "common_testsuite/fold",
 ]
 
-# GPU backends are added to the test project beforehand (Metal via test/Project.toml
-# `[deps]`; CUDA/cuDNN/AMDGPU via the `echo >>` step in .buildkite/pipeline.yml), so
-# they are already present in the resolved environment when the active flag is set.
+# GPU backends (CUDA/cuDNN, AMDGPU, Metal) are added to the test project beforehand
+# via the `echo >>` step in .buildkite/pipeline.yml, so they are already present in
+# the resolved environment when the active flag is set.
 
 # --- Auto-discover all .jl test files (except runtests.jl) ---
 testsuite = find_tests(@__DIR__)
