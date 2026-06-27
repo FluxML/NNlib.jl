@@ -17,6 +17,18 @@ const NNLIB_TEST_AMDGPU   = get(ENV, "NNLIB_TEST_AMDGPU",   "false") == "true"
 const NNLIB_TEST_METAL    = get(ENV, "NNLIB_TEST_METAL",    "false") == "true"
 const NNLIB_TEST_THREADED = get(ENV, "NNLIB_TEST_THREADED", "false") == "true"
 
+# Tests that exercise NNlib's multithreaded code paths (`@spawn` / `@threads`).
+# The dedicated `NNLIB_TEST_THREADED` job runs *only* these, on multithreaded
+# workers. Add or remove thread-sensitive tests here (paths as shown by `--list`).
+const THREADED_TESTS = [
+    "cpu/threading",
+    "cpu/conv",
+    "cpu/conv_bias_act",
+    "cpu/batchedmul",
+    "cpu/sampling",
+    "common_testsuite/fold",
+]
+
 # --- Optional GPU package installation (main process, before workers start) ---
 NNLIB_TEST_CUDA   && Pkg.add(["CUDA", "cuDNN"])
 NNLIB_TEST_AMDGPU && Pkg.add("AMDGPU")
@@ -57,13 +69,17 @@ function wrap_ext_setup!(testsuite, gpu)
 end
 
 if NNLIB_TEST_THREADED
-    # Dedicated run for the tests that exercise NNlib's multithreaded code paths
-    # (`@spawn`/`@threads`), executed on workers with `NNLIB_TEST_NTHREADS` threads.
-    keep = Set(["cpu/threading", "cpu/conv", "cpu/conv_bias_act", "cpu/batchedmul", "cpu/sampling"])
-    filter!(((k, _),) -> k in keep, testsuite)
-    testsuite["common_testsuite/fold (CPU)"] = quote
-        include($(joinpath(@__DIR__, "common_testsuite", "fold.jl")))
-        fold_testsuite(CPU)
+    # Run `THREADED_TESTS` on workers with `NNLIB_TEST_NTHREADS` threads: keep the
+    # plain discovered test files among them, and generate CPU entries for any
+    # `common_testsuite/` suites in the list.
+    filter!(((k, _),) -> k in THREADED_TESTS, testsuite)
+    for t in THREADED_TESTS
+        startswith(t, "common_testsuite/") || continue
+        s = chopprefix(t, "common_testsuite/")
+        testsuite["$t (CPU)"] = quote
+            include($(joinpath(@__DIR__, "common_testsuite", "$s.jl")))
+            $(Symbol(s, "_testsuite"))(CPU)
+        end
     end
 
     nthreads = something(tryparse(Int, get(ENV, "NNLIB_TEST_NTHREADS", "2")), 2)
