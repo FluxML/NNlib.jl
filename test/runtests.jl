@@ -27,19 +27,19 @@ testsuite = find_tests(@__DIR__)
 
 # Library / setup files picked up by discovery that are not tests themselves.
 delete!(testsuite, "test_module")
-for gpu in ("ext_cuda", "ext_amdgpu", "ext_metal")
+for gpu in ("gpu/cuda", "gpu/amdgpu", "gpu/metal")
     delete!(testsuite, "$gpu/test_setup")
 end
 
-# The backend-parametrized suites in `testsuite/` only *define* `*_testsuite(Backend)`
-# functions; they are libraries driven explicitly below (one worker per (suite,
-# backend)), so remove the bare discovered entries.
+# The backend-parametrized suites in `common_testsuite/` only *define*
+# `*_testsuite(Backend)` functions; they are libraries driven explicitly below
+# (one worker per (suite, backend)), so remove the bare discovered entries.
 const SHARED_SUITES = ["activations", "gather", "scatter", "upsample", "rotation", "spectral", "fold"]
 for s in SHARED_SUITES
-    delete!(testsuite, "testsuite/$s")
+    delete!(testsuite, "common_testsuite/$s")
 end
 
-# Wrap each `ext_<gpu>/*` test so the worker first loads that backend's setup
+# Wrap each `gpu/<backend>/*` test so the worker first loads that backend's setup
 # (extra imports + the backend-specific `gputest`, which overrides the adapt-based
 # one from `test_module.jl`). `include` runs the setup at the worker module's top
 # level, so its `using` statements are valid there.
@@ -58,10 +58,10 @@ end
 if NNLIB_TEST_THREADED
     # Dedicated run for the tests that exercise NNlib's multithreaded code paths
     # (`@spawn`/`@threads`), executed on workers with `NNLIB_TEST_NTHREADS` threads.
-    keep = Set(["threading", "conv", "conv_bias_act", "batchedmul", "sampling"])
+    keep = Set(["cpu/threading", "cpu/conv", "cpu/conv_bias_act", "cpu/batchedmul", "cpu/sampling"])
     filter!(((k, _),) -> k in keep, testsuite)
-    testsuite["testsuite/fold (CPU)"] = quote
-        include($(joinpath(@__DIR__, "testsuite", "fold.jl")))
+    testsuite["common_testsuite/fold (CPU)"] = quote
+        include($(joinpath(@__DIR__, "common_testsuite", "fold.jl")))
         fold_testsuite(CPU)
     end
 
@@ -71,12 +71,12 @@ if NNLIB_TEST_THREADED
     test_worker = _ -> addworker(; exeflags = ["--threads=$nthreads"])
 else
     # GPU directories: keep only the active backend's files.
-    !NNLIB_TEST_CUDA   && filter!(((k, _),) -> !startswith(k, "ext_cuda"),   testsuite)
-    !NNLIB_TEST_AMDGPU && filter!(((k, _),) -> !startswith(k, "ext_amdgpu"), testsuite)
-    !NNLIB_TEST_METAL  && filter!(((k, _),) -> !startswith(k, "ext_metal"),  testsuite)
-    # When CPU is disabled, drop the pure-CPU top-level files (the shared suites are
+    !NNLIB_TEST_CUDA   && filter!(((k, _),) -> !startswith(k, "gpu/cuda"),   testsuite)
+    !NNLIB_TEST_AMDGPU && filter!(((k, _),) -> !startswith(k, "gpu/amdgpu"), testsuite)
+    !NNLIB_TEST_METAL  && filter!(((k, _),) -> !startswith(k, "gpu/metal"),  testsuite)
+    # When CPU is disabled, drop the pure-CPU files (the shared suites are
     # re-added below for the active GPU backend).
-    !NNLIB_TEST_CPU    && filter!(((k, _),) -> startswith(k, "ext_"), testsuite)
+    !NNLIB_TEST_CPU    && filter!(((k, _),) -> startswith(k, "gpu/"), testsuite)
 
     # One entry per (shared suite, active backend), honoring per-backend skips.
     # `btype` is interpolated as a symbol and resolves in the worker because the
@@ -88,17 +88,17 @@ else
     # Metal: shared suites stay disabled (matches the previous commented-out behavior).
     for s in SHARED_SUITES, b in backends
         s in b.skips && continue
-        path = joinpath(@__DIR__, "testsuite", "$s.jl")
+        path = joinpath(@__DIR__, "common_testsuite", "$s.jl")
         fn = Symbol(s, "_testsuite")
-        testsuite["testsuite/$s ($(b.label))"] = quote
+        testsuite["common_testsuite/$s ($(b.label))"] = quote
             include($path)
             $fn($(b.btype))
         end
     end
 
-    wrap_ext_setup!(testsuite, "ext_cuda")
-    wrap_ext_setup!(testsuite, "ext_amdgpu")
-    wrap_ext_setup!(testsuite, "ext_metal")
+    wrap_ext_setup!(testsuite, "gpu/cuda")
+    wrap_ext_setup!(testsuite, "gpu/amdgpu")
+    wrap_ext_setup!(testsuite, "gpu/metal")
 
     test_worker = Returns(nothing)
 end

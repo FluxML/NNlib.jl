@@ -1,16 +1,19 @@
-# Setup for the AMDGPU test files. Included once per `ext_amdgpu/*` worker by the
+# Setup for the Metal test files. Included once per `gpu/metal/*` worker by the
 # wrapper in `test/runtests.jl`.
 
-using AMDGPU
-using NNlib: batched_adjoint, batched_mul, batched_mul!, batched_transpose
-using NNlib: is_strided, storage_type
-using LinearAlgebra
+using NNlib
+using Test
+using Metal
+using Zygote: gradient
+using MLDataDevices: gpu_device
+using ForwardDiff: Dual
+using Statistics: mean
 
-AMDGPU.allowscalar(false)
+Metal.allowscalar(false)
 
-function gputest(f, xs...; checkgrad=true, atol=1e-6, kws...)
+function gputest(device, f, xs...; checkgrad=true, atol=1e-6, kws...)
     cpu_in = xs
-    gpu_in = ROCArray.(xs)
+    gpu_in = device(xs)
 
     cpu_out = f(cpu_in...; kws...)
     gpu_out = f(gpu_in...; kws...)
@@ -27,4 +30,7 @@ function gputest(f, xs...; checkgrad=true, atol=1e-6, kws...)
             end
         end
     end
+    return true
 end
+
+DEVICE = gpu_device(force=true)

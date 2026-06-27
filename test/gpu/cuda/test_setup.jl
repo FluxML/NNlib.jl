@@ -1,7 +1,7 @@
-# Setup for the CUDA test files. Included once per `ext_cuda/*` worker by the
+# Setup for the CUDA test files. Included once per `gpu/cuda/*` worker by the
 # wrapper in `test/runtests.jl` (so the CUDA-specific `gputest` below stays
-# scoped to ext_cuda workers and does not clobber the adapt-based `gputest`
-# from `test_module.jl` used by the shared `testsuite/` suites).
+# scoped to gpu/cuda workers and does not clobber the adapt-based `gputest`
+# from `test_module.jl` used by the shared `common_testsuite/` suites).
 
 using Test
 using NNlib
