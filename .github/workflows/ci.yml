@@ -9,6 +9,12 @@ on:
     tags: '*'
   pull_request:
 
+concurrency:
+  # Cancel any in-progress run when a new commit is pushed to the same PR/branch,
+  # to save CI resources on frequent pushes. Runs on `master` are never cancelled.
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/master' }}
+
 # needed to allow julia-actions/cache to delete old caches that it has created
 permissions:
   actions: write
