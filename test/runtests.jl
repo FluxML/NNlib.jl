@@ -31,10 +31,11 @@ for gpu in ("gpu/cuda", "gpu/amdgpu", "gpu/metal")
     delete!(testsuite, "$gpu/test_setup")
 end
 
-# The backend-parametrized suites in `common_testsuite/` only *define*
-# `*_testsuite(Backend)` functions; they are libraries driven explicitly below
-# (one worker per (suite, backend)), so remove the bare discovered entries.
-const SHARED_SUITES = ["activations", "gather", "scatter", "upsample", "rotation", "spectral", "fold"]
+# Every file in `common_testsuite/` only *defines* a `<name>_testsuite(Backend)`
+# function; they are libraries driven explicitly below (one worker per (suite,
+# backend)). Discover them from the directory and remove the bare entries.
+const SHARED_SUITES = sort!([String(chopprefix(k, "common_testsuite/"))
+                             for k in keys(testsuite) if startswith(k, "common_testsuite/")])
 for s in SHARED_SUITES
     delete!(testsuite, "common_testsuite/$s")
 end
