@@ -1,11 +1,12 @@
 steps:
   - label: ":julia: Julia {{matrix.julia}} - CUDA GPU"
     command:
+      # Add the GPU backend to test/Project.toml [deps], then `update` (not `resolve`)
+      # the shared [workspace] manifest: `resolve` preserves Enzyme's GPUCompiler pin
+      # (too new for Metal); `update` re-resolves to compatible versions.
       - echo 'CUDA = "052768ef-5323-5732-b1bb-66c8b64840ba"' >> test/Project.toml
       - echo 'cuDNN = "02a925ec-e4fe-4b08-9a7e-0d78e3d38ccd"' >> test/Project.toml
-      # Re-resolve the (workspace) manifest so the just-added deps are recorded
-      # before `Pkg.test` instantiates it.
-      - julia --project=. -e 'using Pkg; Pkg.resolve()'
+      - julia --project=. -e 'using Pkg; Pkg.update()'
     plugins:
       - JuliaCI/julia#v1:
           version: "{{matrix.julia}}"
@@ -38,10 +39,11 @@ steps:
 
   - label: ":julia: Julia {{matrix.julia}} - AMD GPU"
     command:
+      # Add the GPU backend to test/Project.toml [deps], then `update` (not `resolve`)
+      # the shared [workspace] manifest: `resolve` preserves Enzyme's GPUCompiler pin
+      # (too new for Metal); `update` re-resolves to compatible versions.
       - echo 'AMDGPU = "21141c5a-9bdb-4563-92ae-f87d6854732e"' >> test/Project.toml
-      # Re-resolve the (workspace) manifest so the just-added dep is recorded
-      # before `Pkg.test` instantiates it.
-      - julia --project=. -e 'using Pkg; Pkg.resolve()'
+      - julia --project=. -e 'using Pkg; Pkg.update()'
     plugins:
       - JuliaCI/julia#v1:
           version: "1"
@@ -92,10 +94,11 @@ steps:
 
   - label: ":julia: Julia {{matrix.julia}} - Metal GPU"
     command:
+      # Add the GPU backend to test/Project.toml [deps], then `update` (not `resolve`)
+      # the shared [workspace] manifest: `resolve` preserves Enzyme's GPUCompiler pin
+      # (too new for Metal); `update` re-resolves to compatible versions.
       - echo 'Metal = "dde4c033-4e86-420c-a63e-0dd931031962"' >> test/Project.toml
-      # Re-resolve the (workspace) manifest so the just-added dep is recorded
-      # before `Pkg.test` instantiates it.
-      - julia --project=. -e 'using Pkg; Pkg.resolve()'
+      - julia --project=. -e 'using Pkg; Pkg.update()'
     plugins:
       - JuliaCI/julia#v1:
           version: "{{matrix.julia}}"
