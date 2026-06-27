@@ -107,7 +107,7 @@ end
 
 function scatter_testsuite(Backend)
     device(x) = adapt(Backend(), x)
-    gradtest_fn = Backend == CPU ? gradtest : gputest
+    gradtest_fn = Backend == CPU ? gradtest : gpu_gradtest
 
     ops_skip_types = Dict(
         (+) => [],

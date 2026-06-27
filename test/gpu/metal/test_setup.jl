@@ -1,3 +1,6 @@
+# Setup for the Metal test files: backend imports + the Metal `gputest` + `DEVICE`.
+# Loaded into every Metal-run worker by `init_code` in `test/runtests.jl`.
+
 using NNlib
 using Test
 using Metal
@@ -8,7 +11,6 @@ using Statistics: mean
 
 Metal.allowscalar(false)
 
-#TODO move this to test/ test_utils.jl and use it with all backends
 function gputest(device, f, xs...; checkgrad=true, atol=1e-6, kws...)
     cpu_in = xs
     gpu_in = device(xs)
@@ -32,8 +34,3 @@ function gputest(device, f, xs...; checkgrad=true, atol=1e-6, kws...)
 end
 
 DEVICE = gpu_device(force=true)
-
-include("activations.jl")
-include("scatter.jl")
-include("batched_mul.jl")
-include("dropout.jl")

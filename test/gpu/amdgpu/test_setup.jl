@@ -1,3 +1,7 @@
+# Setup for the AMDGPU test files: backend imports + the AMDGPU `gputest`.
+# Loaded into every AMDGPU-run worker by `init_code` in `test/runtests.jl`.
+
+using AMDGPU
 using NNlib: batched_adjoint, batched_mul, batched_mul!, batched_transpose
 using NNlib: is_strided, storage_type
 using LinearAlgebra
@@ -23,40 +27,4 @@ function gputest(f, xs...; checkgrad=true, atol=1e-6, kws...)
             end
         end
     end
-end
-
-@testset "Storage types" begin
-    include("storage_type.jl")
-end
-
-@testset "Batched repr" begin
-    include("batched_repr.jl")
-end
-
-@testset "Batched multiplication" begin
-    include("batched_mul.jl")
-end
-
-@testset "Convolution" begin
-    include("conv.jl")
-end
-
-@testset "Pooling" begin
-    include("pool.jl")
-end
-
-@testset "Softmax" begin
-    include("softmax.jl")
-end
-
-@testset "Activations" begin
-    include("activations.jl")
-end
-
-@testset "Dropout" begin
-    include("dropout.jl")
-end
-
-@testset "Attention" begin
-    include("attention.jl")
 end

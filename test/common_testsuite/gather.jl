@@ -4,7 +4,7 @@ using EnzymeCore
 
 function gather_testsuite(Backend)
     device(x) = adapt(Backend(), x)
-    gradtest_fn = Backend == CPU ? gradtest : gputest
+    gradtest_fn = Backend == CPU ? gradtest : gpu_gradtest
     T = Float32
 
     @testset "gather scalar index" begin

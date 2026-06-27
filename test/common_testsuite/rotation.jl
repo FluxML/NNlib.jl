@@ -1,6 +1,6 @@
 function rotation_testsuite(Backend)
     device(x) = adapt(Backend(), x)
-    gradtest_fn = Backend == CPU ? gradtest : gputest
+    gradtest_fn = Backend == CPU ? gradtest : gpu_gradtest
     T = Float64
     atol = T == Float32 ? 1e-3 : 1e-6
     rtol = T == Float32 ? 1f-3 : 1f-6

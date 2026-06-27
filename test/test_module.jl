@@ -1,3 +1,37 @@
+# Shared setup loaded into every ParallelTestRunner worker via the `init_code`
+# block in `runtests.jl`. This holds the common imports and helpers that the
+# individual test files rely on (previously the preamble of `runtests.jl` plus
+# `test_utils.jl`, which has been folded in here).
+#
+# Backend packages (CUDA/AMDGPU/Metal) are NOT loaded here: GPU workers get them
+# either from the generated shared-suite entries or from the per-backend
+# `ext_*/test_setup.jl` files (see `runtests.jl`).
+
+using NNlib, Test, Statistics, Random
+using ChainRulesCore, ChainRulesTestUtils
+using Base.Broadcast: broadcasted
+import EnzymeTestUtils
+using EnzymeCore
+import FiniteDifferences
+import ForwardDiff
+import Zygote
+using Zygote: gradient
+using StableRNGs
+using Adapt
+using ImageTransformations
+using Interpolations: Constant
+using KernelAbstractions
+using FFTW
+import ReverseDiff as RD        # used in `pooling.jl`
+using SpecialFunctions
+
+const rng = StableRNG(123)
+
+cpu(x) = adapt(CPU(), x)
+
+# some enzyme tests on AMDGPU are crashing julia
+const Test_Enzyme = VERSION <= v"1.13-" && (get(ENV, "NNLIB_TEST_AMDGPU", "false") != "true")
+
 const IntOrTuple = Union{Int, NTuple{N,Int} where N}
 
 gradtest(f, dims::IntOrTuple...; kw...) =
@@ -55,12 +89,14 @@ function gradtest(
 end
 
 """
-    gputest(f, xs...; checkgrad=true, atol=1e-6, kws...)
+    gpu_gradtest(f, xs...; checkgrad=true, atol=1e-6, kws...)
 
-Compare gradients computed on the device vs CPU.
-`xs...` should already be on the device.
+Compare `f`'s output and gradients on the device vs CPU. `xs...` should already
+be on the device. Used by the shared `common_testsuite/` suites on GPU backends
+(the per-backend `gpu/*/test_setup.jl` files define their own `gputest`, which
+takes CPU inputs instead).
 """
-function gputest(f, xs...; checkgrad=true, atol=1e-6, kws...)
+function gpu_gradtest(f, xs...; checkgrad=true, atol=1e-6, kws...)
     cpu_xs = map(x -> adapt(CPU(), x), xs)
 
     cpu_y = f(cpu_xs...; kws...)

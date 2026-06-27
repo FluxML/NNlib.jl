@@ -1,209 +1,116 @@
-using NNlib, Test, Statistics, Random
-using ChainRulesCore, ChainRulesTestUtils
-using Base.Broadcast: broadcasted
-import EnzymeTestUtils
-using EnzymeCore
-import FiniteDifferences
-import ForwardDiff
-import Zygote
-using Zygote: gradient
-using StableRNGs
-using Documenter
-using Adapt
-using ImageTransformations
-using Interpolations: Constant
-using KernelAbstractions
-using FFTW
-import ReverseDiff as RD        # used in `pooling.jl`
-import Pkg
-using SpecialFunctions
+using NNlib
+using ParallelTestRunner
 
-DocMeta.setdocmeta!(NNlib, :DocTestSetup, :(using NNlib, UnicodePlots); recursive=true)
+# --- Env flags ---
 
-# ENV["NNLIB_TEST_CUDA"] = "true" # uncomment to run CUDA tests
-# ENV["NNLIB_TEST_AMDGPU"] = "true" # uncomment to run AMDGPU tests
-# ENV["NNLIB_TEST_METAL"] = "true" # uncomment to run Metal tests
-# ENV["NNLIB_TEST_CPU"] = "false" # uncomment to skip CPU tests
+## Uncomment below to change the default test settings
+# ENV["NNLIB_TEST_CUDA"] = "true"
+# ENV["NNLIB_TEST_AMDGPU"] = "true"
+# ENV["NNLIB_TEST_METAL"] = "true"
+# ENV["NNLIB_TEST_CPU"] = "false"
+# ENV["NNLIB_TEST_THREADED"] = "true"
 
-# some enzyme tests on AMDGPU are crashing julia
-const Test_Enzyme = VERSION <= v"1.13-" && (get(ENV, "NNLIB_TEST_AMDGPU", "false") != "true")
+const NNLIB_TEST_CPU      = get(ENV, "NNLIB_TEST_CPU",      "true")  == "true"
+const NNLIB_TEST_CUDA     = get(ENV, "NNLIB_TEST_CUDA",     "false") == "true"
+const NNLIB_TEST_AMDGPU   = get(ENV, "NNLIB_TEST_AMDGPU",   "false") == "true"
+const NNLIB_TEST_METAL    = get(ENV, "NNLIB_TEST_METAL",    "false") == "true"
+const NNLIB_TEST_THREADED = get(ENV, "NNLIB_TEST_THREADED", "false") == "true"
 
-const rng = StableRNG(123)
-include("test_utils.jl")
+# Tests that exercise NNlib's multithreaded code paths (`@spawn` / `@threads`).
+# The dedicated `NNLIB_TEST_THREADED` job runs *only* these, on multithreaded
+# workers. Add or remove thread-sensitive tests here (paths as shown by `--list`).
+const THREADED_TESTS = [
+    "cpu/threading",
+    "cpu/conv",
+    "cpu/conv_bias_act",
+    "cpu/batchedmul",
+    "cpu/sampling",
+    "common_testsuite/fold",
+]
 
-macro conditional_testset(name, skip_tests, expr)
-    esc(quote
-        @testset $name begin
-            if $name ∉ $skip_tests
-                $expr
-            else
-                @test_skip false
-            end
-        end
-    end)
+# GPU backends (CUDA/cuDNN, AMDGPU, Metal) are added to the test project beforehand
+# via the `echo >>` step in .buildkite/pipeline.yml, so they are already present in
+# the resolved environment when the active flag is set.
+
+# --- Auto-discover all .jl test files (except runtests.jl) ---
+testsuite = find_tests(@__DIR__)
+
+# Library / setup files picked up by discovery that are not tests themselves.
+delete!(testsuite, "test_module")
+for gpu in ("gpu/cuda", "gpu/amdgpu", "gpu/metal")
+    delete!(testsuite, "$gpu/test_setup")
 end
 
-cpu(x) = adapt(CPU(), x)
-
-include("testsuite/activations.jl")
-include("testsuite/gather.jl")
-include("testsuite/scatter.jl")
-include("testsuite/upsample.jl")
-include("testsuite/rotation.jl")
-include("testsuite/spectral.jl")
-include("testsuite/fold.jl")
-
-function nnlib_testsuite(Backend; skip_tests = Set{String}())
-    @conditional_testset "Activations" skip_tests begin
-        activations_testsuite(Backend)
-    end
-    @conditional_testset "Upsample" skip_tests begin
-        upsample_testsuite(Backend)
-    end
-    @conditional_testset "rotation" skip_tests begin
-        rotation_testsuite(Backend)
-    end
-    @conditional_testset "Gather" skip_tests begin
-        gather_testsuite(Backend)
-    end
-    @conditional_testset "Scatter" skip_tests begin
-        scatter_testsuite(Backend)
-    end
-    @conditional_testset "Spectral" skip_tests begin
-        spectral_testsuite(Backend)
-    end
-    @conditional_testset "Fold" skip_tests begin
-        fold_testsuite(Backend)
-    end
+# Every file in `common_testsuite/` only *defines* a `<name>_testsuite(Backend)`
+# function; they are libraries driven explicitly below (one worker per (suite,
+# backend)). Discover them from the directory and remove the bare entries.
+const SHARED_SUITES = sort!([String(chopprefix(k, "common_testsuite/"))
+                             for k in keys(testsuite) if startswith(k, "common_testsuite/")])
+for s in SHARED_SUITES
+    delete!(testsuite, "common_testsuite/$s")
 end
 
-@testset verbose=true "NNlib.jl" begin
-
-    if get(ENV, "NNLIB_TEST_CPU", "true") == "true"
-        @testset "CPU" begin
-            @testset "Doctests" begin
-                doctest(NNlib, manual=false)
-            end
-
-            nnlib_testsuite(CPU)
-
-            if Threads.nthreads(:default) > 1
-                @test NNlib.should_use_spawn()
-                NNlib.@disallow_spawns begin
-                    @test NNlib.should_use_spawn() == false
-                end
-            else
-                @test NNlib.should_use_spawn() == false
-            end
-
-            @testset "Activation Functions" begin
-                include("activations.jl")
-                include("bias_act.jl")
-            end
-
-            @testset "Attention" begin
-                include("attention.jl")
-            end
-
-            @testset "Batched Multiplication" begin
-                include("batchedmul.jl")
-            end
-
-            @testset "Convolution" begin
-                include("conv.jl")
-                include("conv_bias_act.jl")
-            end
-
-            @testset "CTC Loss" begin
-                include("ctc.jl")
-            end
-
-            @testset "Dropout" begin
-                include("dropout.jl")
-            end
-
-            @testset "Inference" begin
-                include("inference.jl")
-            end
-
-            @testset "Pooling" begin
-                include("pooling.jl")
-            end
-
-            @testset "Padding" begin
-                include("padding.jl")
-            end
-
-            @testset "Softmax" begin
-                include("softmax.jl")
-            end
-
-            @testset "Utilities" begin
-                include("utils.jl")
-            end
-
-            @testset "Grid Sampling" begin
-                include("sampling.jl")
-            end
-
-            @testset "Functions" begin
-                include("functions.jl")
-            end
+if NNLIB_TEST_THREADED
+    # Run `THREADED_TESTS` on workers with `NNLIB_TEST_NTHREADS` threads: keep the
+    # plain discovered test files among them, and generate CPU entries for any
+    # `common_testsuite/` suites in the list.
+    filter!(((k, _),) -> k in THREADED_TESTS, testsuite)
+    for t in THREADED_TESTS
+        startswith(t, "common_testsuite/") || continue
+        s = chopprefix(t, "common_testsuite/")
+        testsuite["$t (CPU)"] = quote
+            include($(joinpath(@__DIR__, "common_testsuite", "$s.jl")))
+            $(Symbol(s, "_testsuite"))(CPU)
         end
-    else
-        @info "Skipping CPU tests, set NNLIB_TEST_CPU=true to run them."
     end
 
-    if get(ENV, "NNLIB_TEST_CUDA", "false") == "true"
-        Pkg.add(["CUDA", "cuDNN"])
+    nthreads = something(tryparse(Int, get(ENV, "NNLIB_TEST_NTHREADS", "2")), 2)
+    @info "Running the multithreaded test subset on $nthreads-threaded workers."
+    # `--threads` overrides the `JULIA_NUM_THREADS=1` that ParallelTestRunner sets.
+    test_worker = _ -> addworker(; exeflags = ["--threads=$nthreads"])
+else
+    # GPU directories: keep only the active backend's files.
+    !NNLIB_TEST_CUDA   && filter!(((k, _),) -> !startswith(k, "gpu/cuda"),   testsuite)
+    !NNLIB_TEST_AMDGPU && filter!(((k, _),) -> !startswith(k, "gpu/amdgpu"), testsuite)
+    !NNLIB_TEST_METAL  && filter!(((k, _),) -> !startswith(k, "gpu/metal"),  testsuite)
+    # When CPU is disabled, drop the pure-CPU files (the shared suites are
+    # re-added below for the active GPU backend).
+    !NNLIB_TEST_CPU    && filter!(((k, _),) -> startswith(k, "gpu/"), testsuite)
 
-        using CUDA
-        if CUDA.functional()
-            @testset "CUDA" begin
-                nnlib_testsuite(CUDABackend; skip_tests=Set(("Scatter", "Gather")))
-
-                include("ext_cuda/runtests.jl")
-            end
-        else
-            @info "Insufficient version or CUDA not found; Skipping CUDA tests"
+    # One entry per (shared suite, active backend), honoring per-backend skips in the shared suites.
+    # `btype` is interpolated as a symbol and resolves in the worker because the
+    # backend package is loaded by `init_code`.
+    backends = []
+    NNLIB_TEST_CPU    && push!(backends, (label="CPU",    btype=:CPU,         skips=Set{String}()))
+    NNLIB_TEST_CUDA   && push!(backends, (label="CUDA",   btype=:CUDABackend, skips=Set(["scatter", "gather"])))
+    NNLIB_TEST_AMDGPU && push!(backends, (label="AMDGPU", btype=:ROCBackend,  skips=Set{String}()))
+    # Metal: shared suites stay disabled (matches the previous commented-out behavior).
+    
+    # Create a new entry in `testsuite` for each (suite, backend) pair.
+    for s in SHARED_SUITES, b in backends
+        s in b.skips && continue
+        path = joinpath(@__DIR__, "common_testsuite", "$s.jl")
+        fn = Symbol(s, "_testsuite")
+        testsuite["common_testsuite/$s ($(b.label))"] = quote
+            include($path)
+            $fn($(b.btype))
         end
-    else
-        @info "Skipping CUDA tests, set NNLIB_TEST_CUDA=true to run them"
     end
 
-    if get(ENV, "NNLIB_TEST_AMDGPU", "false") == "true"
-        Pkg.add("AMDGPU")
-
-        using AMDGPU
-        AMDGPU.versioninfo()
-        if AMDGPU.functional() && AMDGPU.functional(:MIOpen)
-            @testset "AMDGPU" begin
-                nnlib_testsuite(ROCBackend)
-                AMDGPU.synchronize(; blocking=false, stop_hostcalls=true)
-
-                include("ext_amdgpu/runtests.jl")
-                AMDGPU.synchronize(; blocking=false, stop_hostcalls=true)
-            end
-        else
-            @info "AMDGPU.jl package is not functional. Skipping AMDGPU tests."
-        end
-    else
-        @info "Skipping AMDGPU tests, set NNLIB_TEST_AMDGPU=true to run them."
-    end
-
-    if get(ENV, "NNLIB_TEST_METAL", "false") == "true"
-        Pkg.add("Metal")
-
-        using Metal
-        if Metal.functional()
-            @testset "Metal" begin
-                # nnlib_testsuite(MetalBackend)
-                include("ext_metal/runtests.jl")
-            end
-        else
-            @info "Insufficient version or Metal not found; Skipping Metal tests"
-        end
-    else
-        @info "Skipping Metal tests, set NNLIB_TEST_METAL=true to run them"
-    end
+    test_worker = Returns(nothing)
 end
+
+# --- init_code: evaluated at the top level of each test's sandbox module ---
+# Bring in the shared imports + helpers, then (for a GPU run) the active backend's
+# setup: its package, extra imports, and the backend-specific `gputest`. `include`
+# runs at module top level, so the `using` statements inside are valid. The shared
+# `common_testsuite/` suites use `gpu_gradtest` (from test_module.jl) instead, so
+# the two never collide.
+init_code = quote
+    include($(joinpath(@__DIR__, "test_module.jl")))
+    $(NNLIB_TEST_CUDA   ? :(include($(joinpath(@__DIR__, "gpu", "cuda",   "test_setup.jl")))) : nothing)
+    $(NNLIB_TEST_AMDGPU ? :(include($(joinpath(@__DIR__, "gpu", "amdgpu", "test_setup.jl")))) : nothing)
+    $(NNLIB_TEST_METAL  ? :(include($(joinpath(@__DIR__, "gpu", "metal",  "test_setup.jl")))) : nothing)
+end
+
+runtests(NNlib, ARGS; testsuite, init_code, test_worker)
