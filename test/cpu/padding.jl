@@ -1,5 +1,3 @@
-using NNlib: pad_constant, pad_repeat, pad_zeros, pad_reflect, pad_symmetric, pad_circular
-
 @testset "padding constant" begin
     x = rand(2, 2, 2)
 

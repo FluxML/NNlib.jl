@@ -224,8 +224,6 @@ end
 
 ## Faster variants
 
-using NNlib: tanh_fast, sigmoid_fast
-
 function countepsfrom(x::T, xtrue) where {T<:AbstractFloat}
     target = T(xtrue)
     for n in Iterators.flatten(zip(0:100, -1:-1:-100))
@@ -331,8 +329,6 @@ has_rule(a) = rrule(a, 1f0) === nothing ? "(no rule)" : ""
         end
     end
 end
-
-using Base.Broadcast: broadcasted
 
 @testset "lazy broadcasting" begin
     # ChainRules returns a Broadcasted, check these rules accept it

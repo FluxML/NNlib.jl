@@ -1,7 +1,3 @@
-using NNlib
-using NNlib: σ, swish, softplus, logσ, mish, logcosh, tanh_fast, sigmoid_fast,
-             lisht, tanhshrink
-
 # Holomorphic activations that accept complex inputs (see `test/activations.jl`).
 const COMPLEX_ACTS = [σ, swish, softplus, logσ, mish, logcosh,
                       tanh_fast, sigmoid_fast, lisht, tanhshrink]

@@ -7,27 +7,40 @@
 # either from the generated shared-suite entries or from the per-backend
 # `ext_*/test_setup.jl` files (see `runtests.jl`).
 
-using NNlib, Test, Statistics, Random
-using ChainRulesCore, ChainRulesTestUtils
+# Centralized imports for the whole test suite (loaded into every worker). Only `NNlib`
+# is brought in wholesale; everything else lists the names it provides, and symbols used
+# only occasionally are left for qualified use at the call site (e.g. `NNlib.input_size`,
+# `LinearAlgebra.Diagonal`, `Statistics.var`, `Interpolations.Constant`).
+using NNlib
+# `scatter`/`gather` are `public` but not `export`ed by NNlib, and the scatter/gather
+# suites use them pervasively, so bring them into scope explicitly (rarely-used NNlib
+# internals are instead qualified at the call site, e.g. `NNlib.glu`).
+using NNlib: scatter, scatter!, gather, gather!
+using Test: Test, @test, @testset, @test_throws, @test_broken, @test_skip, @test_logs, @inferred
+using Statistics: Statistics, mean
+using Random: Random
+using LinearAlgebra: LinearAlgebra
+using Logging: Logging
+using ChainRulesCore: rrule
+using ChainRulesTestUtils: ChainRulesTestUtils
 using Base.Broadcast: broadcasted
-import EnzymeTestUtils
-using EnzymeCore
-import FiniteDifferences
-import ForwardDiff
+using EnzymeTestUtils: EnzymeTestUtils
+using FiniteDifferences: FiniteDifferences
+using ForwardDiff: ForwardDiff
 using Zygote: Zygote, gradient
-using StableRNGs
-using Adapt
-using ImageTransformations
-using Interpolations: Constant
-using KernelAbstractions
-using FFTW
-import ReverseDiff as RD        # used in `pooling.jl`
-using SpecialFunctions
-using ADTypes
+using StableRNGs: StableRNG
+using Adapt: Adapt, adapt
+using ImageTransformations: ImageTransformations
+using Interpolations: Interpolations
+using KernelAbstractions: KernelAbstractions, CPU
+using FFTW: FFTW                # loads NNlibFFTWExt (stft/spectrogram)
+using ReverseDiff: ReverseDiff as RD   # used in `pooling.jl`
+using SpecialFunctions: SpecialFunctions  # loads NNlibSpecialFunctionsExt (gelu_erf)
+using ADTypes: AbstractADType, AutoZygote, AutoFiniteDifferences, AutoEnzyme, AutoMooncake
 using Functors: Functors
 using MLDataDevices: cpu_device, gpu_device
 using Enzyme: Enzyme, Active, ReverseWithPrimal, EnzymeCore, Duplicated, Const
-using Mooncake
+using Mooncake: Mooncake
 
 const rng = StableRNG(123)
 

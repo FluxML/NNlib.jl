@@ -27,7 +27,7 @@ function rotation_testsuite(Backend)
                             res1 = cpu(NNlib.imrotate(arr1, angle; method, rotation_center=rotation_center))
                             res2 = cpu(NNlib.imrotate(arr2, angle; method, rotation_center=rotation_center))
                             if method == :nearest
-                                res_IT = ImageTransformations.imrotate(cpu(arr1)[:, :, 1, 1], angle, axes(arr1)[1:2], method=Constant(), fillvalue=0)
+                                res_IT = ImageTransformations.imrotate(cpu(arr1)[:, :, 1, 1], angle, axes(arr1)[1:2], method=Interpolations.Constant(), fillvalue=0)
                             elseif method == :bilinear
                                 res_IT = ImageTransformations.imrotate(cpu(arr1)[:, :, 1, 1], angle, axes(arr1)[1:2], fillvalue=0)
                             end

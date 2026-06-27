@@ -1,6 +1,3 @@
-using Statistics: mean
-using NNlib: ∇softmax, ∇logsoftmax
-
 @testset "softmax integer input" begin
     @test softmax(Int[0, 0]) == [0.5, 0.5]
 end

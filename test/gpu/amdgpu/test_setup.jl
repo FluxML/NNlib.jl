@@ -1,10 +1,9 @@
 # Setup for the AMDGPU test files: backend imports + the AMDGPU `gputest`.
-# Loaded into every AMDGPU-run worker by `init_code` in `test/runtests.jl`.
+# Loaded into every AMDGPU-run worker by `init_code` in `test/runtests.jl`, AFTER
+# `test_module.jl` — so the shared imports (NNlib, Zygote, LinearAlgebra, ...) are
+# already in scope, and NNlib internals are used qualified (e.g. `NNlib.is_strided`).
 
 using AMDGPU
-using NNlib: batched_adjoint, batched_mul, batched_mul!, batched_transpose
-using NNlib: is_strided, storage_type
-using LinearAlgebra
 
 AMDGPU.allowscalar(false)
 

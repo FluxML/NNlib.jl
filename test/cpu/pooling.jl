@@ -1035,7 +1035,7 @@ end
   # and AD disagree; with random input this makes the `maxpool` gradtests flaky (this is
   # what the now-closed #188 was about). Distinct integers (gaps >= 1 >> the FD step)
   # keep the argmax stable, so the comparison is well-posed for all spatial ranks.
-  x = Float64.(reshape(randperm(rng, 10^spatial_rank * 3 * 2), repeat([10], spatial_rank)..., 3, 2))
+  x = Float64.(reshape(Random.randperm(rng, 10^spatial_rank * 3 * 2), repeat([10], spatial_rank)..., 3, 2))
   pdims = PoolDims(x, 2)
   @test test_gradients(x -> maxpool(x, pdims), x)
   @test test_gradients(x -> meanpool(x, pdims), x)

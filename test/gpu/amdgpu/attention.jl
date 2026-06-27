@@ -35,7 +35,7 @@ end
 
 @testset "Dropout" begin
     q = k = v = AMDGPU.rand(Float32, 10, 10, 10)
-    fdrop(x, p) = (rand!(similar(x)) .> p) .* x ./ (1-p)
+    fdrop(x, p) = (Random.rand!(similar(x)) .> p) .* x ./ (1-p)
     y, α = dot_product_attention(
         q, k, v; nheads=2, fdrop=x -> dropout(x, 0.5))
     @test 0.6 > mean(>(0), α) > 0.4

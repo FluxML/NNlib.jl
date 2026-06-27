@@ -1,8 +1,3 @@
-using Test
-using NNlib: ctc_loss
-using Zygote: gradient
-using LinearAlgebra
-
 @testset "ctc_loss" begin
   x = rand(10, 50)
   y = rand(1:9, 30)

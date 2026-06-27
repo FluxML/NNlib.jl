@@ -1,9 +1,3 @@
-using NNlib, Test
-using NNlib: input_size, kernel_size, channels_in, channels_out, channel_multiplier,
-             stride, padding, dilation, flipkernel, output_size,
-             groupcount
-using Random: AbstractRNG, SamplerType
-
 @testset "ConvDims" begin
     for T in (DenseConvDims, DepthwiseConvDims)
         @testset "$(T)" begin
@@ -17,42 +11,42 @@ using Random: AbstractRNG, SamplerType
 
             # First, getters:
             cdims = T(x, w)
-            @test input_size(cdims) == size(x)[1:2]
-            @test kernel_size(cdims) == size(w)[1:2]
-            @test channels_in(cdims) == size(x, 3)
-            @test stride(cdims) == (1,1)
-            @test dilation(cdims) == (1,1)
-            @test padding(cdims) == (0,0,0,0)
-            @test flipkernel(cdims) == false
-            @test output_size(cdims) == (5,3)
+            @test NNlib.input_size(cdims) == size(x)[1:2]
+            @test NNlib.kernel_size(cdims) == size(w)[1:2]
+            @test NNlib.channels_in(cdims) == size(x, 3)
+            @test NNlib.stride(cdims) == (1,1)
+            @test NNlib.dilation(cdims) == (1,1)
+            @test NNlib.padding(cdims) == (0,0,0,0)
+            @test NNlib.flipkernel(cdims) == false
+            @test NNlib.output_size(cdims) == (5,3)
 
             # Special-case channel output tests
             if T == DenseConvDims
-                @test channels_out(cdims) == size(w, 4)
+                @test NNlib.channels_out(cdims) == size(w, 4)
             elseif T == DepthwiseConvDims
-                @test channel_multiplier(cdims) == size(w, 3)
-                @test channels_out(cdims) == size(w,3)*size(w,4)
+                @test NNlib.channel_multiplier(cdims) == size(w, 3)
+                @test NNlib.channels_out(cdims) == size(w,3)*size(w,4)
             end
 
             # Next, scalar settings:
             cdims = T(x, w; stride=2, dilation=2, padding=3, flipkernel=true)
-            @test stride(cdims) == (2,2)
-            @test dilation(cdims) == (2,2)
-            @test padding(cdims) == (3,3,3,3)
-            @test flipkernel(cdims) == true
-            @test output_size(cdims) == (6,4)
+            @test NNlib.stride(cdims) == (2,2)
+            @test NNlib.dilation(cdims) == (2,2)
+            @test NNlib.padding(cdims) == (3,3,3,3)
+            @test NNlib.flipkernel(cdims) == true
+            @test NNlib.output_size(cdims) == (6,4)
 
             # Next, tuple settings
             cdims = T(x, w; stride=(1, 2), dilation=(1, 2), padding=(0,1))
-            @test stride(cdims) == (1,2)
-            @test dilation(cdims) == (1,2)
-            @test padding(cdims) == (0,0,1,1)
-            @test output_size(cdims) == (5,2)
+            @test NNlib.stride(cdims) == (1,2)
+            @test NNlib.dilation(cdims) == (1,2)
+            @test NNlib.padding(cdims) == (0,0,1,1)
+            @test NNlib.output_size(cdims) == (5,2)
 
             # Special case for 4-d padding spec:
             cdims = T(x, w; padding=(1,2,3,4))
-            @test padding(cdims) == (1,2,3,4)
-            @test output_size(cdims) == (8,10)
+            @test NNlib.padding(cdims) == (1,2,3,4)
+            @test NNlib.output_size(cdims) == (8,10)
 
             # Make sure we throw on invalid settings:
             # Invalid dimensionality of settings:
@@ -532,8 +526,8 @@ if get(ENV, "NNLIB_TEST_FUZZING", "false") == "true"
 
                     # We use mutating calls with explicitly different initial values, so as
                     # to be sure to catch when we're leaving pieces of the output untouched.
-                    y_direct = ones(output_size(cdims)..., C_out, batch) .* 666.666
-                    y_im2col = ones(output_size(cdims)..., C_out, batch) .* 777.777
+                    y_direct = ones(NNlib.output_size(cdims)..., C_out, batch) .* 666.666
+                    y_im2col = ones(NNlib.output_size(cdims)..., C_out, batch) .* 777.777
 
                     # Do the convolutions
                     NNlib.conv_direct!(y_direct, x, w, cdims)
@@ -769,7 +763,7 @@ end
    @test_throws DimensionMismatch DenseConvDims(x′, w′)
    cdims = DenseConvDims(x′, w′, groups = 5)
 
-   @test groupcount(cdims) == 5
+   @test NNlib.groupcount(cdims) == 5
 
    y = conv(x′, w′, cdims)
    _, back = Zygote.pullback((x, w) -> sum(conv(x, w, cdims)), x′, w′)
@@ -862,7 +856,7 @@ end
     Base.:+(x::MyFloat, y::MyFloat) = MyFloat(only(x.set) + only(y.set))
     Base.:*(x::MyFloat, y::MyFloat) = MyFloat(only(x.set) * only(y.set))
     Base.promote_rule(::Type{MyFloat}, ::Type{Float32})   = MyFloat
-    Base.rand(::AbstractRNG, ::SamplerType{MyFloat}) = MyFloat(rand(Float32))
+    Base.rand(::Random.AbstractRNG, ::Random.SamplerType{MyFloat}) = MyFloat(rand(Float32))
     Base.zero(::MyFloat) = MyFloat(zero(Float32))
     Base.zero(::Type{MyFloat}) = MyFloat(zero(Float32))
 

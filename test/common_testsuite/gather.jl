@@ -1,7 +1,3 @@
-using NNlib: gather, gather!
-import EnzymeTestUtils
-using EnzymeCore
-
 function gather_testsuite(Backend)
     device(x) = adapt(Backend(), x)
     T = Float32

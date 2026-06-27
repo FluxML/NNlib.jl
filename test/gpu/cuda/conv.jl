@@ -1,5 +1,3 @@
-using NNlib: DenseConvDims
-
 @testset "convolution" begin
 @testset "$T" for T in (Float64, ComplexF64)
     a, b, c = rand(T, 10, 10, 3, 1), rand(T, 2, 2, 3, 4), rand(T, 9, 9, 4, 1)

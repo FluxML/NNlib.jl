@@ -1,5 +1,3 @@
-import NNlib
-
 function fold_testsuite(Backend)
     device(x) = adapt(Backend(), x)
 
@@ -38,10 +36,10 @@ function fold_testsuite(Backend)
         cdims = DenseConvDims(x, w)
 
         @test test_gradients(x -> NNlib.unfold(x, cdims), x; test_gpu = Backend != CPU)
-        Backend == CPU && test_rrule(NNlib.unfold, x, cdims)
+        Backend == CPU && ChainRulesTestUtils.test_rrule(NNlib.unfold, x, cdims)
 
         y = NNlib.unfold(x, cdims)
         @test test_gradients(y -> NNlib.fold(y, size(x), cdims), y; test_gpu = Backend != CPU)
-        Backend == CPU && test_rrule(NNlib.fold, y, size(x), cdims)
+        Backend == CPU && ChainRulesTestUtils.test_rrule(NNlib.fold, y, size(x), cdims)
     end
 end

@@ -1,8 +1,6 @@
-using Statistics
-
 @testset "Batchnorm" begin
     @testset "Mooncake" begin
-        rng = MersenneTwister(42)
+        rng = Random.MersenneTwister(42)
         N, B = 3, 4
         g  = CUDA.ones(Float32, N)
         b  = CUDA.zeros(Float32, N)
@@ -39,7 +37,7 @@ using Statistics
     @testset "test mode" begin
         y_no_track_stats = batchnorm(v, v, m, nothing, nothing, 1.0; training=false, track_stats=false)
         running_mean = mean(m, dims=[2])
-        running_var = var(m, mean=running_mean, dims=[2], corrected=false)
+        running_var = Statistics.var(m, mean=running_mean, dims=[2], corrected=false)
         y_track_stats = batchnorm(v, v, m, running_mean, running_var, 1.0; training=false, track_stats=true)
         # batchnorm without tracked stats should equal bathnorm with tracked stats where the
         # stats are calculated only on the input.
