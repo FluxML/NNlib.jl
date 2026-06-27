@@ -1,75 +1,135 @@
 function upsample_testsuite(Backend)
     device(x) = adapt(Backend(), x)
     gradtest_fn = Backend == CPU ? gradtest : gputest
-    T = Float32 # TODO test against all supported eltypes for each backend.
-    atol = T == Float32 ? 1e-3 : 1e-6
 
-    @testset "upsample_nearest, integer scale via reshape" begin
-        x = device(reshape(T[1 2; 3 4], (2,2,1,1)))
-        @test cpu(upsample_nearest(x, (3,3)))[1,:] == [1,1,1, 2,2,2]
-
-        y = upsample_nearest(x, (2,3))
-        @test size(y) == (4,6,1,1)
-        y2 = upsample_nearest(x, size=(4,6))
-        @test cpu(y) ≈ cpu(y2)
-
-        @test cpu(∇upsample_nearest(y, (2,3)))[:, :, 1, 1] == [6 12; 18 24]
-        gradtest_fn(
-            x -> upsample_nearest(x, (2,3)),
-            device(rand(T, 2,2,1,1)); atol)
-        gradtest_fn(
-            x -> upsample_nearest(x, size=(4,6)),
-            device(rand(T, 2,2,1,1)); atol)
-
-        @test_throws ArgumentError ∇upsample_nearest(y, (2,4))
-        @test_throws ArgumentError upsample_nearest(x, (1,2,3,4,5))
-        @test_throws ArgumentError upsample_nearest(x, size=(3,4))
+    # Floating-point eltypes upsampling is expected to support on each backend.
+    float_types = if Symbol(Backend) == :MetalBackend
+        [Float16, Float32]  # Metal has no native Float64.
+    else
+        [Float16, Float32, Float64]
     end
 
-    @testset "Linear upsampling (1D)" begin
-        x = T[1,2,3,4]
-        x = hcat(x,x,x)[:,:,:]
+    @testset "eltype = $T" for T in float_types
+        atol = T == Float64 ? 1e-6 : T == Float32 ? 1e-3 : 1e-1
+        # Gradients are only checked at single/double precision: finite
+        # differences are unreliable at half precision, and the gradient
+        # kernels rely on atomics that aren't universally available for
+        # Float16 on GPU. For Float16 only the forward pass is exercised.
+        check_grad = T != Float16
+        # `gradtest` (CPU) marks the gradient comparison as skipped, while
+        # `gputest` (GPU) keeps its forward device-vs-CPU check and drops the
+        # gradient comparison.
+        grad_kw = check_grad ? (;) :
+            (Backend == CPU ? (; skip=true) : (; checkgrad=false))
 
-        y = collect(1:1//3:4)
-        y = hcat(y,y,y)[:,:,:]
+        @testset "upsample_nearest, integer scale via reshape" begin
+            x = device(reshape(T[1 2; 3 4], (2,2,1,1)))
+            @test cpu(upsample_nearest(x, (3,3)))[1,:] == [1,1,1, 2,2,2]
 
-        xd = device(x)
-        @test y ≈ cpu(upsample_linear(xd, 2.5))
-        @test y ≈ cpu(upsample_linear(xd; size=10))
-        gradtest_fn(x -> upsample_linear(x, 2.5), xd; atol)
+            y = upsample_nearest(x, (2,3))
+            @test size(y) == (4,6,1,1)
+            y2 = upsample_nearest(x, size=(4,6))
+            @test cpu(y) ≈ cpu(y2)
+
+            @test cpu(∇upsample_nearest(y, (2,3)))[:, :, 1, 1] == [6 12; 18 24]
+            gradtest_fn(
+                x -> upsample_nearest(x, (2,3)),
+                device(rand(T, 2,2,1,1)); atol, grad_kw...)
+            gradtest_fn(
+                x -> upsample_nearest(x, size=(4,6)),
+                device(rand(T, 2,2,1,1)); atol, grad_kw...)
+
+            @test_throws ArgumentError ∇upsample_nearest(y, (2,4))
+            @test_throws ArgumentError upsample_nearest(x, (1,2,3,4,5))
+            @test_throws ArgumentError upsample_nearest(x, size=(3,4))
+        end
+
+        @testset "Linear upsampling (1D)" begin
+            x = T[1,2,3,4]
+            x = hcat(x,x,x)[:,:,:]
+
+            y = collect(1:1//3:4)
+            y = hcat(y,y,y)[:,:,:]
+
+            xd = device(x)
+            @test y ≈ cpu(upsample_linear(xd, 2.5))
+            @test y ≈ cpu(upsample_linear(xd; size=10))
+            gradtest_fn(x -> upsample_linear(x, 2.5), xd; atol, grad_kw...)
+        end
+
+        @testset "Bilinear upsampling (2D)" begin
+            x = T[1 2; 3 4][:,:,:,:]
+            x = cat(x,x; dims=3)
+            x = cat(x,x; dims=4)
+
+            # this output matches the one of pytorch v1.5.0
+            # nn.UpsamplingBilinear2d(scale_factor=(3,2), align_corners=True)
+            # for above x
+            y_true = Float64[ 1//1  4//3   5//3   2//1;
+                              7//5 26//15 31//15 12//5;
+                              9//5 32//15 37//15 14//5;
+                             11//5 38//15 43//15 16//5;
+                             13//5 44//15 49//15 18//5;
+                              3//1 10//3  11//3   4//1][:,:,:,:]
+            y_true = cat(y_true, y_true; dims=3)
+            y_true = cat(y_true, y_true; dims=4)
+
+            xd = device(x)
+            y = upsample_bilinear(xd, (3, 2))
+            @test size(y) == size(y_true)
+            @test eltype(y) == T
+            @test cpu(y) ≈ y_true
+
+            gradtest_fn(x -> upsample_bilinear(x, (3, 2)), xd; atol, grad_kw...)
+
+            # additional grad check, also compliant with pytorch
+            if check_grad
+                o = device(ones(T,6,4,2,1))
+                grad_true = 6 * ones(T,2,2,2,1)
+                @test cpu(∇upsample_bilinear(o; size = (2,2))) ≈ grad_true
+            end
+        end
+
+        @testset "Trilinear upsampling (3D)" begin
+            # Layout: WHDCN, where D is depth
+            # we generate data which is constant along W & H and differs in D
+            # then we upsample along all dimensions
+            x = ones(T, 3,3,3,1,1)
+            x[:,:,1,:,:] .= 1.
+            x[:,:,2,:,:] .= 2.
+            x[:,:,3,:,:] .= 3.
+
+            y_true = ones(T, 5,5,5,1,1)
+            y_true[:,:,1,:,:] .= 1.
+            y_true[:,:,2,:,:] .= 1.5
+            y_true[:,:,3,:,:] .= 2.
+            y_true[:,:,4,:,:] .= 2.5
+            y_true[:,:,5,:,:] .= 3.
+
+            xd = device(x)
+            y = upsample_trilinear(xd; size=(5,5,5))
+
+            @test size(y) == size(y_true)
+            @test eltype(y) == T
+            @test collect(y) ≈ collect(y_true)
+
+            gradtest_fn(
+                x -> upsample_trilinear(x, (2,2,2)), xd;
+                atol=(T == Float64) ? 1e-5 : 1e-2, grad_kw...)
+
+            # This test only works when `align_corners=false`.
+            if check_grad
+                o = device(ones(T,8,8,8,1,1))
+                grad_true = 8 * ones(T,4,4,4,1,1)
+                @test cpu(∇upsample_trilinear(o; size=(4,4,4), align_corners=false)) ≈ grad_true
+            end
+        end
     end
 
-    @testset "Bilinear upsampling (2D)" begin
+    @testset "Bilinear upsampling, non-float eltypes (CPU)" begin
         x = Float32[1 2; 3 4][:,:,:,:]
         x = cat(x,x; dims=3)
         x = cat(x,x; dims=4)
-
-        # this output matches the one of pytorch v1.5.0
-        # nn.UpsamplingBilinear2d(scale_factor=(3,2), align_corners=True)
-        # for above x
-        y_true = Float32[ 1//1  4//3   5//3   2//1;
-                          7//5 26//15 31//15 12//5;
-                          9//5 32//15 37//15 14//5;
-                         11//5 38//15 43//15 16//5;
-                         13//5 44//15 49//15 18//5;
-                          3//1 10//3  11//3   4//1][:,:,:,:]
-        y_true = cat(y_true, y_true; dims=3)
-        y_true = cat(y_true, y_true; dims=4)
-
-        xd = device(x)
-        y = upsample_bilinear(xd, (3, 2))
-        @test size(y) == size(y_true)
-        @test eltype(y) == Float32
-        @test cpu(y) ≈ y_true
-
-        gradtest_fn(x -> upsample_bilinear(x, (3, 2)), xd; atol)
-
-        # additional grad check, also compliant with pytorch
-        o = ones(Float32,6,4,2,1)
-        grad_true = 6*ones(Float32,2,2,2,1)
-        @test cpu(∇upsample_bilinear(device(o); size = (2,2))) ≈ grad_true
-
-        # CPU only tests.
 
         y_true_2 = Rational{Int}[1//1  5//4  6//4  7//4 2//1;
                                  3//2  7//4  8//4  9//4 5//2;
@@ -92,39 +152,6 @@ function upsample_testsuite(Backend)
 
         @test eltype(y) == UInt8
         @test y == y_true_int
-    end
-
-    @testset "Trilinear upsampling (3D)" begin
-        # Layout: WHDCN, where D is depth
-        # we generate data which is constant along W & H and differs in D
-        # then we upsample along all dimensions
-        x = ones(T, 3,3,3,1,1)
-        x[:,:,1,:,:] .= 1.
-        x[:,:,2,:,:] .= 2.
-        x[:,:,3,:,:] .= 3.
-
-        y_true = ones(T, 5,5,5,1,1)
-        y_true[:,:,1,:,:] .= 1.
-        y_true[:,:,2,:,:] .= 1.5
-        y_true[:,:,3,:,:] .= 2.
-        y_true[:,:,4,:,:] .= 2.5
-        y_true[:,:,5,:,:] .= 3.
-
-        xd = device(x)
-        y = upsample_trilinear(xd; size=(5,5,5))
-
-        @test size(y) == size(y_true)
-        @test eltype(y) == T
-        @test collect(y) ≈ collect(y_true)
-
-        gradtest_fn(
-            x -> upsample_trilinear(x, (2,2,2)), xd;
-            atol=(T == Float32) ? 1e-2 : 1e-5)
-
-        # This test only works when `align_corners=false`.
-        o = device(ones(Float32,8,8,8,1,1))
-        grad_true = 8 * ones(Float32,4,4,4,1,1)
-        @test cpu(∇upsample_trilinear(o; size=(4,4,4), align_corners=false)) ≈ grad_true
     end
 
     @testset "pixel_shuffle" begin
