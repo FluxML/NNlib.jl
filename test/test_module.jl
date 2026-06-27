@@ -33,62 +33,6 @@ const rng = StableRNG(123)
 
 cpu(x) = cpu_device()(x)
 
-const IntOrTuple = Union{Int, NTuple{N,Int} where N}
-
-gradtest(f, dims::IntOrTuple...; kw...) =
-    gradtest(f, randn.(Ref(rng), Float64, dims)...; kw...) # julia v1.3 compat
-    # gradtest(f, randn.(rng, Float64, dims)...; kw...)
-
-"""
-Compare numerical gradient and automatic gradient
-given by Zygote. `f` has to be a scalar valued function.
-
-Applies also `ChainRulesTestUtils.test_rrule` if the rrule for `f` is explicitly defined.
-"""
-function gradtest(
-    f, xs...; atol = 1e-6, rtol = 1e-6, fkwargs = NamedTuple(),
-    check_rrule = false, fdm = :central, check_broadcast = false,
-    skip = false, broken = false,
-)
-    if check_rrule
-        test_rrule(f, xs...; fkwargs = fkwargs)
-    end
-
-    if check_broadcast
-        length(fkwargs) > 0 && @warn("CHECK_BROADCAST: dropping keywords args")
-        h = (xs...) -> sum(f.(xs...))
-    else
-        h = (xs...) -> sum(f(xs...; fkwargs...))
-    end
-
-    y_true = h(xs...)
-    if fdm == :central
-        fdm_obj = FiniteDifferences.central_fdm(5, 1)
-    elseif fdm == :forward
-        fdm_obj = FiniteDifferences.forward_fdm(5, 1)
-    elseif fdm == :backward
-        fdm_obj = FiniteDifferences.backward_fdm(5, 1)
-    end
-    # @show fdm fdm_obj
-
-    gs_fd = FiniteDifferences.grad(fdm_obj, h, xs...)
-
-    y_ad, pull = Zygote.pullback(h, xs...)
-    gs_ad = pull(one(y_ad))
-
-    @test y_true ≈ y_ad  atol = atol rtol = rtol
-    for (g_ad, g_fd) in zip(gs_ad, gs_fd)
-        if skip
-            @test_skip g_ad ≈ g_fd   atol = atol rtol = rtol
-        elseif broken
-            @test_broken g_ad ≈ g_fd   atol = atol rtol = rtol
-        else
-            @test g_ad ≈ g_fd   atol = atol rtol = rtol
-        end
-    end
-    return true
-end
-
 ### GRADIENTS
 
 function withgradient(f::F, adtype::AutoZygote, x::Vararg{Any,N}) where {F,N}
@@ -161,21 +105,26 @@ function test_gradients(
             rtol=1e-4, atol=1e-4,
             test_gpu = false,
             test_cpu = true,
+            # Optional GPU-adapted version of `f`. Use when `f` captures CPU arrays
+            # that must also be on GPU (e.g. index arrays in gather/scatter). When
+            # `nothing`, `f |> gpu_dev` is attempted (works for closures that only
+            # capture non-array scalars/config objects).
+            f_gpu = nothing,
             reference::AbstractADType = AutoFiniteDifferences(; fdm = _default_fdm()),
             compare::AbstractADType = AutoZygote(),
             loss = (f, xs...) -> mean(f(xs...)),
             )
 
-    
+
     cpu_dev = cpu_device()
-    
+
     if test_gpu
         gpu_dev = gpu_device(force=true)
         cpu_dev = cpu_device()
         xs_gpu = xs |> gpu_dev
-        f_gpu = f |> gpu_dev
+        _f_gpu = isnothing(f_gpu) ? (f |> gpu_dev) : f_gpu
     end
-    
+
     ## Let's make sure first that the forward pass works.
     l = loss(f, xs...)
     @assert l isa Number "loss should return a number, got $(typeof(l))"
@@ -192,28 +141,22 @@ function test_gradients(
     if test_cpu
         y2, gs2 = withgradient((xs...) -> loss(f, xs...), compare, xs...)
         @assert isapprox(l, y2; rtol, atol) "forward pass mismatch: $l ≉ $y2 (compare)"
-        check_equal_leaves(gs, gs2; rtol, atol)
+        check_equal(gs, gs2; rtol, atol)
     end
 
     if test_gpu
-        l_gpu = loss(f_gpu, xs_gpu...)
+        l_gpu = loss(_f_gpu, xs_gpu...)
         @assert l_gpu isa Number "gpu loss should return a number, got $(typeof(l_gpu))"
 
-        y_gpu, gs_gpu = withgradient((xs...) -> loss(f_gpu, xs...), compare, xs_gpu...)
+        y_gpu, gs_gpu = withgradient((xs...) -> loss(_f_gpu, xs...), compare, xs_gpu...)
         @assert isapprox(l_gpu, y_gpu; rtol, atol) "gpu forward pass mismatch: $l_gpu ≉ $y_gpu"
-        check_equal_leaves(gs, gs_gpu |> cpu_dev; rtol, atol)
+        check_equal(gs, gs_gpu |> cpu_dev; rtol, atol)
     end
 
     return true
 end
 
-# Compares two gradient collections leaf-by-leaf and `@assert`s they agree. Since
-# `test_gradients` only differentiates `f`'s inputs — assumed to be numbers or numerical
-# arrays — the gradients line up one-to-one and we can compare them directly without
-# traversing nested structures. Comparing with `≈` also makes wrapper types interoperate,
-# e.g. a `Transpose` reference gradient vs a dense Zygote gradient. Returns `true` so
-# callers can write `@test test_gradients(...)` (and `... broken=true` / `skip=true`).
-function check_equal_leaves(a, b; rtol=1e-4, atol=1e-4)
+function check_equal(a, b; rtol=1e-4, atol=1e-4)
     for (x, y) in zip(a, b)
         @assert isapprox(x, y; rtol, atol) "gradient mismatch: $x ≉ $y"
     end

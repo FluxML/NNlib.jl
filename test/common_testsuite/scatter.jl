@@ -155,17 +155,20 @@ function scatter_testsuite(Backend)
         T = Float64
         # `scatter`'s `min`/`max`/`*`/`/` gradients are kinked; use a one-sided
         # finite-difference reference (forward, or backward for `min`) to stay on the
-        # correct branch — matching the old `gradtest`'s `fdm` argument.
+        # correct branch.
         fdm(op) = AutoFiniteDifferences(fdm = op == min ?
             FiniteDifferences.backward_fdm(5, 1) : FiniteDifferences.forward_fdm(5, 1))
 
         @testset "dstsize" begin
-            idx = [2, 2, 3, 4, 4]
+            idx_cpu = [2, 2, 3, 4, 4]
             src = ones(T, 3, 5)
-            y = scatter(+, src, idx, dstsize = (3, 6))
+            y = scatter(+, src, idx_cpu, dstsize = (3, 6))
             @test eltype(y) == T
             @test size(y) == (3, 6)
-            @test test_gradients(x -> scatter(+, x, idx; dstsize=(3, 6)), src; test_gpu = Backend != CPU)
+            idx_d = device(idx_cpu)
+            @test test_gradients(x -> scatter(+, x, idx_cpu; dstsize=(3, 6)), src;
+                test_gpu = Backend != CPU,
+                f_gpu = x -> scatter(+, x, idx_d; dstsize=(3, 6)))
         end
 
         @testset "∂dst" begin
@@ -183,8 +186,10 @@ function scatter_testsuite(Backend)
                 src = srcs[(i, true)]
                 idx = IT.(idxs[:int])
                 dst = PT.(dsts[i])
+                src_d = device(src); idx_d = device(idx)
                 @test test_gradients(x -> scatter!(op, copy(x), src, idx), dst;
-                    test_gpu = Backend != CPU, reference = fdm(op))
+                    test_gpu = Backend != CPU, reference = fdm(op),
+                    f_gpu = x -> scatter!(op, copy(x), src_d, idx_d))
             end
         end
 
@@ -201,8 +206,10 @@ function scatter_testsuite(Backend)
                     (op == max || op == min)) ? Int64 : T
                 src = PT.(srcs[(i, false)])
                 idx = IT.(idxs[:int])
+                idx_d = device(idx)
                 @test test_gradients(xs -> scatter(op, xs, idx), src;
-                    test_gpu = Backend != CPU, reference = fdm(op))
+                    test_gpu = Backend != CPU, reference = fdm(op),
+                    f_gpu = xs -> scatter(op, xs, idx_d))
             end
         end
 
@@ -212,8 +219,10 @@ function scatter_testsuite(Backend)
             @testset "∂src vector index (#703) - $op" for op in (*, /)
                 idx = [3, 1, 2, 2]      # 1-D index, with a uniquely-mapped value
                 src = T[10, 100, 1000, 1]
+                idx_d = device(idx)
                 @test test_gradients(xs -> scatter(op, xs, idx), src;
-                    test_gpu = Backend != CPU, reference = fdm(op))
+                    test_gpu = Backend != CPU, reference = fdm(op),
+                    f_gpu = xs -> scatter(op, xs, idx_d))
             end
         end
 
