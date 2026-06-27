@@ -39,7 +39,7 @@ using SpecialFunctions: SpecialFunctions  # loads NNlibSpecialFunctionsExt (gelu
 using ADTypes: AbstractADType, AutoZygote, AutoFiniteDifferences, AutoEnzyme, AutoMooncake
 using Functors: Functors
 using MLDataDevices: cpu_device, gpu_device
-using Enzyme: Enzyme, Active, ReverseWithPrimal, EnzymeCore, Duplicated, Const
+using Enzyme: Enzyme, EnzymeCore, Active, Const, Duplicated, ReverseWithPrimal, ReverseSplitWithPrimal
 using Mooncake: Mooncake
 
 const rng = StableRNG(123)
