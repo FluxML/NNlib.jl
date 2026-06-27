@@ -2,6 +2,9 @@ name = "NNlib"
 uuid = "872c559c-99b0-510c-b3b7-b6c96a88d5cd"
 version = "0.9.37"
 
+[workspace]
+projects = ["test", "docs"]
+
 [deps]
 Adapt = "79e6a3ab-5dfb-504d-930d-738a2a938a0e"
 Atomix = "a9b6321e-bd34-4604-b9c9-b65b8de01458"

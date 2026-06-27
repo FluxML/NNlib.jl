@@ -1,17 +1,16 @@
-using NNlib
-using Test
-using Metal
-using Zygote: gradient
-using MLDataDevices: gpu_device
-using ForwardDiff: Dual
-using Statistics: mean
+# Setup for the AMDGPU test files. Included once per `ext_amdgpu/*` worker by the
+# wrapper in `test/runtests.jl`.
 
-Metal.allowscalar(false)
+using AMDGPU
+using NNlib: batched_adjoint, batched_mul, batched_mul!, batched_transpose
+using NNlib: is_strided, storage_type
+using LinearAlgebra
 
-#TODO move this to test/ test_utils.jl and use it with all backends
-function gputest(device, f, xs...; checkgrad=true, atol=1e-6, kws...)
+AMDGPU.allowscalar(false)
+
+function gputest(f, xs...; checkgrad=true, atol=1e-6, kws...)
     cpu_in = xs
-    gpu_in = device(xs)
+    gpu_in = ROCArray.(xs)
 
     cpu_out = f(cpu_in...; kws...)
     gpu_out = f(gpu_in...; kws...)
@@ -28,12 +27,4 @@ function gputest(device, f, xs...; checkgrad=true, atol=1e-6, kws...)
             end
         end
     end
-    return true
 end
-
-DEVICE = gpu_device(force=true)
-
-include("activations.jl")
-include("scatter.jl")
-include("batched_mul.jl")
-include("dropout.jl")
