@@ -275,33 +275,33 @@ FiniteDifferences.to_vec(x::BatchedTranspose) = FiniteDifferences.to_vec(collect
     M, P, Q = 13, 7, 11
     B = 3
     # Two 3-arrays
-    gradtest(batched_mul, randn(rng, M, P, B), randn(rng, P, Q, B))
-    gradtest(batched_mul, batched_adjoint(randn(rng, P, M, B)), randn(rng, P, Q, B))
-    gradtest(batched_mul, randn(rng, M, P, B), batched_transpose(randn(rng, Q, P, B)))
+    @test test_gradients(batched_mul, randn(rng, M, P, B), randn(rng, P, Q, B))
+    @test test_gradients(batched_mul, batched_adjoint(randn(rng, P, M, B)), randn(rng, P, Q, B))
+    @test test_gradients(batched_mul, randn(rng, M, P, B), batched_transpose(randn(rng, Q, P, B)))
 
     # One a matrix...
-    gradtest(batched_mul, randn(rng, M, P), randn(rng, P, Q, B))
-    gradtest(batched_mul, adjoint(randn(rng, P, M)), randn(rng, P, Q, B))
-    gradtest(batched_mul, randn(rng, M, P), batched_adjoint(randn(rng, Q, P, B)))
+    @test test_gradients(batched_mul, randn(rng, M, P), randn(rng, P, Q, B))
+    @test test_gradients(batched_mul, adjoint(randn(rng, P, M)), randn(rng, P, Q, B))
+    @test test_gradients(batched_mul, randn(rng, M, P), batched_adjoint(randn(rng, Q, P, B)))
 
-    gradtest(batched_mul, randn(rng, M, P, B), randn(rng, P, Q))
-    gradtest(batched_mul, batched_transpose(randn(rng, P, M, B)), randn(rng, P, Q))
-    gradtest(batched_mul, randn(rng, M, P, B), transpose(randn(rng, Q, P)))
+    @test test_gradients(batched_mul, randn(rng, M, P, B), randn(rng, P, Q))
+    @test test_gradients(batched_mul, batched_transpose(randn(rng, P, M, B)), randn(rng, P, Q))
+    @test test_gradients(batched_mul, randn(rng, M, P, B), transpose(randn(rng, Q, P)))
 
     # ... or equivalent to a matrix
-    gradtest(batched_mul, randn(rng, M, P, 1), randn(rng, P, Q, B))
-    gradtest(batched_mul, batched_transpose(randn(rng, P, M, 1)), randn(rng, P, Q, B))
-    gradtest(batched_mul, randn(rng, M, P, 1), batched_transpose(randn(rng, Q, P, B)))
+    @test test_gradients(batched_mul, randn(rng, M, P, 1), randn(rng, P, Q, B))
+    @test test_gradients(batched_mul, batched_transpose(randn(rng, P, M, 1)), randn(rng, P, Q, B))
+    @test test_gradients(batched_mul, randn(rng, M, P, 1), batched_transpose(randn(rng, Q, P, B)))
 
-    gradtest(batched_mul, randn(rng, M, P, B), randn(rng, P, Q, 1))
-    gradtest(batched_mul, batched_adjoint(randn(rng, P, M, B)), randn(rng, P, Q, 1))
-    gradtest(batched_mul, randn(rng, M, P, B), batched_adjoint(randn(rng, Q, P, 1)))
+    @test test_gradients(batched_mul, randn(rng, M, P, B), randn(rng, P, Q, 1))
+    @test test_gradients(batched_mul, batched_adjoint(randn(rng, P, M, B)), randn(rng, P, Q, 1))
+    @test test_gradients(batched_mul, randn(rng, M, P, B), batched_adjoint(randn(rng, Q, P, 1)))
 
     # batched_vec
-    gradtest(batched_vec, randn(rng, M, P, B), randn(rng, P, B))
-    gradtest(batched_vec, randn(rng, M, P, B), transpose(randn(rng, B, P)))
+    @test test_gradients(batched_vec, randn(rng, M, P, B), randn(rng, P, B))
+    @test test_gradients(batched_vec, randn(rng, M, P, B), transpose(randn(rng, B, P)))
 
-    gradtest(batched_vec, randn(rng, M, P, B), randn(rng, P))
+    @test test_gradients(batched_vec, randn(rng, M, P, B), randn(rng, P))
 end
 
 @static if Test_Enzyme

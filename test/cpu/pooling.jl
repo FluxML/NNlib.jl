@@ -1037,23 +1037,23 @@ end
   # keep the argmax stable, so the comparison is well-posed for all spatial ranks.
   x = Float64.(reshape(randperm(rng, 10^spatial_rank * 3 * 2), repeat([10], spatial_rank)..., 3, 2))
   pdims = PoolDims(x, 2)
-  gradtest(x -> maxpool(x, pdims), x)
-  gradtest(x -> meanpool(x, pdims), x)
-  gradtest(x -> sum(maxpool(x, pdims)), x)
-  gradtest(x -> sum(meanpool(x, pdims)), x)
+  @test test_gradients(x -> maxpool(x, pdims), x)
+  @test test_gradients(x -> meanpool(x, pdims), x)
+  @test test_gradients(x -> sum(maxpool(x, pdims)), x)
+  @test test_gradients(x -> sum(meanpool(x, pdims)), x)
 
   k = ntuple(_ -> 2, spatial_rank)  # Kernel size of pool in ntuple format
-  gradtest(x -> maxpool(x, k), x)
-  gradtest(x -> meanpool(x, k), x)
-  gradtest(x -> sum(maxpool(x, k)), x)
-  gradtest(x -> sum(meanpool(x, k)), x)
+  @test test_gradients(x -> maxpool(x, k), x)
+  @test test_gradients(x -> meanpool(x, k), x)
+  @test test_gradients(x -> sum(maxpool(x, k)), x)
+  @test test_gradients(x -> sum(meanpool(x, k)), x)
 
   # count_include_pad=false (issue #218), with padding so the modes differ
   k1 = ntuple(_ -> 2, spatial_rank)
   xp = rand(rng, repeat([7], spatial_rank)..., 3, 2)
   pdims_p = PoolDims(xp, 2; padding=1, stride=2)
-  gradtest(z -> meanpool(z, pdims_p; count_include_pad=false), xp)
-  gradtest(z -> sum(meanpool(z, k1; pad=1, stride=2, count_include_pad=false)), xp)
+  @test test_gradients(z -> meanpool(z, pdims_p; count_include_pad=false), xp)
+  @test test_gradients(z -> sum(meanpool(z, k1; pad=1, stride=2, count_include_pad=false)), xp)
 end
 
 @static if Test_Enzyme

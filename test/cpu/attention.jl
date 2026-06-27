@@ -72,5 +72,5 @@ end
     k = v = rand(4, 3, 1)
     bias = randn(3, 5)
     y, α = dot_product_attention(q, k, v, bias; nheads=2)
-    gradtest((x...) -> dot_product_attention(x...; nheads=2)[1], q, k, v, bias)
+    @test test_gradients((x...) -> dot_product_attention(x...; nheads=2)[1], q, k, v, bias)
 end

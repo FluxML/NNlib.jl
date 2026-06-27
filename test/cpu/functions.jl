@@ -9,6 +9,6 @@ end
 
 @testset "AutoDiff" begin
     local rng = StableRNG(17)
-    gradtest(glu, rand(rng, 4, 3))
+    @test test_gradients(glu, rand(rng, 4, 3))
 end
 

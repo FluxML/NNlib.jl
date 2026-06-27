@@ -1,7 +1,7 @@
 function spectral_testsuite(Backend)
     cpu(x) = adapt(CPU(), x)
     device(x) = adapt(Backend(), x)
-    gradtest_fn = Backend == CPU ? gradtest : gpu_gradtest
+    gradtest_fn = Backend == CPU ? cpu_gradtest : gpu_gradtest
 
     @testset "Window functions" begin
         for window_fn in (hann_window, hamming_window)

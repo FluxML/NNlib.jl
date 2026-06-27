@@ -45,9 +45,9 @@ using NNlib: pad_constant, pad_repeat, pad_zeros, pad_reflect, pad_symmetric, pa
 
     @test all(pad_zeros(randn(2), (1, 2))[[1, 4, 5]] .== 0)
 
-    gradtest(x -> pad_constant(x, 2), rand(2,2,2))
-    gradtest(x -> pad_constant(x, (2, 1, 1, 2)), rand(2,2))
-    gradtest(x -> pad_constant(x, (2, 1,)), rand(2))
+    @test test_gradients(x -> pad_constant(x, 2), rand(2,2,2))
+    @test test_gradients(x -> pad_constant(x, (2, 1, 1, 2)), rand(2,2))
+    @test test_gradients(x -> pad_constant(x, (2, 1,)), rand(2))
 end
 
 @testset "padding repeat" begin
@@ -79,7 +79,7 @@ end
     @test pad_repeat(x, (2, 2, 2, 2), dims=(1,3)) ≈
         pad_repeat(x, 2, dims=(1,3))
 
-    gradtest(x -> pad_repeat(x, (2,2,2,2)), rand(2,2,2))
+    @test test_gradients(x -> pad_repeat(x, (2,2,2,2)), rand(2,2,2))
 end
 
 @testset "padding reflect" begin
@@ -103,7 +103,7 @@ end
 
     # pad_reflect needs larger test input as padding must
     # be strictly less than array size in that dimension
-    gradtest(x -> pad_reflect(x, (2,2,2,2)), rand(3,3,3))
+    @test test_gradients(x -> pad_reflect(x, (2,2,2,2)), rand(3,3,3))
 
     x = reshape(1:9, 3, 3, 1, 1)
     @test NNlib.pad_reflect(x, (1, 0, 1, 0); dims=1:2) == [
@@ -137,7 +137,7 @@ end
     @test pad_symmetric(x, (2, 2, 2, 2), dims=(1,3)) ≈
         pad_symmetric(x, 2, dims=(1,3))
 
-    gradtest(x -> pad_symmetric(x, (2,2,2,2)), rand(2,2,2))
+    @test test_gradients(x -> pad_symmetric(x, (2,2,2,2)), rand(2,2,2))
 
     x = reshape(1:9, 3, 3, 1, 1)
     @test NNlib.pad_symmetric(x, (1, 0, 1, 0); dims=1:2) == [
@@ -171,5 +171,5 @@ end
     @test pad_circular(x, (2, 2, 2, 2), dims=(1,3)) ≈
         pad_circular(x, 2, dims=(1,3))
 
-    gradtest(x -> pad_circular(x, (2,2,2,2)), rand(2,2,2))
+    @test test_gradients(x -> pad_circular(x, (2,2,2,2)), rand(2,2,2))
 end

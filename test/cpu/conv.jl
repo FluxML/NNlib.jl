@@ -792,7 +792,7 @@ end
    xs = rand(rng, Float64, 6, 6, 4, 2)
    ws = rand(rng, Float64, 3, 3, 2, 4)
    csdims = DenseConvDims(xs, ws; groups=2)
-   gradtest((x, w) -> sum(conv(x, w, csdims)), xs, ws)
+   @test test_gradients((x, w) -> sum(conv(x, w, csdims)), xs, ws)
 end
 
 @testset "conv_wrapper" begin
@@ -884,21 +884,21 @@ end
   x = rand(rng, repeat([5], spatial_rank)..., 3, 2)
   w = rand(rng, repeat([3], spatial_rank)..., 3, 3)
   cdims = DenseConvDims(x, w)
-  gradtest((x, w) -> conv(x, w, cdims), x, w)
-  gradtest((x, w) -> sum(conv(x, w, cdims)), x, w)  # https://github.com/FluxML/Flux.jl/issues/1055
+  @test test_gradients((x, w) -> conv(x, w, cdims), x, w)
+  @test test_gradients((x, w) -> sum(conv(x, w, cdims)), x, w)  # https://github.com/FluxML/Flux.jl/issues/1055
 
   y = conv(x, w, cdims)
-  gradtest((y, w) -> ∇conv_data(y, w, cdims), y, w)
-  gradtest((y, w) -> sum(∇conv_data(y, w, cdims)), y, w)
-  gradtest((x, y) -> ∇conv_filter(x, y, cdims), x, y)
-  gradtest((x, y) -> sum(∇conv_filter(x, y, cdims)), x, y)
+  @test test_gradients((y, w) -> ∇conv_data(y, w, cdims), y, w)
+  @test test_gradients((y, w) -> sum(∇conv_data(y, w, cdims)), y, w)
+  @test test_gradients((x, y) -> ∇conv_filter(x, y, cdims), x, y)
+  @test test_gradients((x, y) -> sum(∇conv_filter(x, y, cdims)), x, y)
 
   dcdims = DepthwiseConvDims(x, w)
-  gradtest((x, w) -> depthwiseconv(x, w, dcdims), x, w)
+  @test test_gradients((x, w) -> depthwiseconv(x, w, dcdims), x, w)
 
   y = depthwiseconv(x, w, dcdims)
-  gradtest((y, w) -> ∇depthwiseconv_data(y, w, dcdims), y, w)
-  gradtest((y, w) -> sum(∇depthwiseconv_data(y, w, dcdims)), y, w)
+  @test test_gradients((y, w) -> ∇depthwiseconv_data(y, w, dcdims), y, w)
+  @test test_gradients((y, w) -> sum(∇depthwiseconv_data(y, w, dcdims)), y, w)
 end
 
 @static if Test_Enzyme

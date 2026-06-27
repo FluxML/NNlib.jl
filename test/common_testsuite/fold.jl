@@ -2,7 +2,7 @@ import NNlib
 
 function fold_testsuite(Backend)
     device(x) = adapt(Backend(), x)
-    gradtest_fn = Backend == CPU ? gradtest : gpu_gradtest
+    gradtest_fn = Backend == CPU ? cpu_gradtest : gpu_gradtest
 
     @testset "unfold wrapper" begin
         x = device(rand(rng, 16, 16, 3, 10))
