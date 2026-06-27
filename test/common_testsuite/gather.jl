@@ -4,7 +4,6 @@ using EnzymeCore
 
 function gather_testsuite(Backend)
     device(x) = adapt(Backend(), x)
-    gradtest_fn = Backend == CPU ? cpu_gradtest : gpu_gradtest
     T = Float32
 
     @testset "gather scalar index" begin
@@ -137,21 +136,17 @@ function gather_testsuite(Backend)
     end
 
     @testset "gather gradient for scalar index" begin
-        src = device(Float64[3, 4, 5, 6, 7])
-        idx = device([
+        src = Float64[3, 4, 5, 6, 7]
+        idx = [
             1 2 3 4;
             4 2 1 3;
-            3 5 5 3])
-        dst = device(Float64[
+            3 5 5 3]
+        dst = Float64[
             3 4 5 6;
             6 4 3 5;
-            5 7 7 5])
-        Backend == CPU ?
-            gradtest_fn(xs -> gather!(dst, xs, idx), src) :
-            gradtest_fn((d, s, i) -> gather!(d, s, i), dst, src, idx)
-        Backend == CPU ?
-            gradtest_fn(xs -> gather(xs, idx), src) :
-            gradtest_fn((s, i) -> gather(s, i), src, idx)
+            5 7 7 5]
+        @test test_gradients(xs -> gather!(dst, xs, idx), src; test_gpu = Backend != CPU)
+        @test test_gradients(xs -> gather(xs, idx), src; test_gpu = Backend != CPU)
     end
 
     if Test_Enzyme
@@ -173,17 +168,13 @@ function gather_testsuite(Backend)
     end
 
     @testset "gather gradient for tuple index" begin
-        src = device(Float64[
+        src = Float64[
             3 5 7
-            4 6 8])
-        idx = device([(1,1), (1,2), (1,3), (2,1), (2,2), (2,3)])
-        dst = device(Float64[3, 5, 7, 4, 6, 8])
-        Backend == CPU ?
-            gradtest_fn(xs -> gather!(dst, xs, idx), src) :
-            gradtest_fn((d, s, i) -> gather!(d, s, i), dst, src, idx)
-        Backend == CPU ?
-            gradtest_fn(xs -> gather(xs, idx), src) :
-            gradtest_fn((s, i) -> gather(s, i), src, idx)
+            4 6 8]
+        idx = [(1,1), (1,2), (1,3), (2,1), (2,2), (2,3)]
+        dst = Float64[3, 5, 7, 4, 6, 8]
+        @test test_gradients(xs -> gather!(dst, xs, idx), src; test_gpu = Backend != CPU)
+        @test test_gradients(xs -> gather(xs, idx), src; test_gpu = Backend != CPU)
     end
 
     @testset "gather(src, IJK...)" begin

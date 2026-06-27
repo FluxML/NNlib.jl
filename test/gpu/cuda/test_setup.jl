@@ -1,6 +1,6 @@
 # Setup for the CUDA test files: backend imports + the CUDA `gputest` (which takes
 # CPU inputs and moves them to the device). Loaded into every CUDA-run worker by
-# `init_code` in `test/runtests.jl`. Distinct from `gpu_gradtest` in
+# `init_code` in `test/runtests.jl`. Distinct from `test_gradients` in
 # `test_module.jl`, which the shared `common_testsuite/` suites use.
 
 using Test

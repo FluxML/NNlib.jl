@@ -89,36 +89,6 @@ function gradtest(
     return true
 end
 
-"""
-    gpu_gradtest(f, xs...; checkgrad=true, atol=1e-6, kws...)
-
-Compare `f`'s output and gradients on the device vs CPU. `xs...` should already
-be on the device. Used by the shared `common_testsuite/` suites on GPU backends
-(the per-backend `gpu/*/test_setup.jl` files define their own `gputest`, which
-takes CPU inputs instead).
-"""
-function gpu_gradtest(f, xs...; checkgrad=true, atol=1e-6, kws...)
-    cpu_xs = map(x -> adapt(CPU(), x), xs)
-
-    cpu_y = f(cpu_xs...; kws...)
-    y = f(xs...; kws...)
-    @test collect(cpu_y) ≈ collect(y)
-
-    if checkgrad
-        cpu_grad = gradient((x...) -> sum(f(x...; kws...)), cpu_xs...)
-        gpu_grad = gradient((x...) -> sum(f(x...; kws...)), xs...)
-
-        for (cpu_g, gpu_g) in zip(cpu_grad, adapt(CPU(), gpu_grad))
-            if cpu_g === nothing
-                @test gpu_g === nothing
-            else
-                @test collect(cpu_g) ≈ collect(gpu_g) atol=atol
-            end
-        end
-    end
-end
-
-
 ### GRADIENTS
 
 function withgradient(f::F, adtype::AutoZygote, x::Vararg{Any,N}) where {F,N}
@@ -248,14 +218,4 @@ function check_equal_leaves(a, b; rtol=1e-4, atol=1e-4)
         @assert isapprox(x, y; rtol, atol) "gradient mismatch: $x ≉ $y"
     end
     return true
-end
-
-# CPU adapter used by the shared `common_testsuite/` suites in place of `gradtest`: it
-# runs `test_gradients` wrapped in `@test` and maps `gradtest`'s `fdm` symbol onto a
-# finite-difference reference. The GPU branch of those suites keeps using `gpu_gradtest`.
-function cpu_gradtest(f, xs...; fdm::Symbol = :central, kws...)
-    fdm_obj = fdm === :forward  ? FiniteDifferences.forward_fdm(5, 1) :
-              fdm === :backward ? FiniteDifferences.backward_fdm(5, 1) :
-                                  _default_fdm()
-    return @test test_gradients(f, xs...; reference = AutoFiniteDifferences(; fdm = fdm_obj), kws...)
 end

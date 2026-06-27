@@ -1,6 +1,5 @@
 function upsample_testsuite(Backend)
     device(x) = adapt(Backend(), x)
-    gradtest_fn = Backend == CPU ? cpu_gradtest : gpu_gradtest
     T = Float32 # TODO test against all supported eltypes for each backend.
     atol = T == Float32 ? 1e-3 : 1e-6
 
@@ -14,12 +13,12 @@ function upsample_testsuite(Backend)
         @test cpu(y) ≈ cpu(y2)
 
         @test cpu(∇upsample_nearest(y, (2,3)))[:, :, 1, 1] == [6 12; 18 24]
-        gradtest_fn(
+        @test test_gradients(
             x -> upsample_nearest(x, (2,3)),
-            device(rand(T, 2,2,1,1)); atol)
-        gradtest_fn(
+            rand(T, 2,2,1,1); test_gpu = Backend != CPU, atol)
+        @test test_gradients(
             x -> upsample_nearest(x, size=(4,6)),
-            device(rand(T, 2,2,1,1)); atol)
+            rand(T, 2,2,1,1); test_gpu = Backend != CPU, atol)
 
         @test_throws ArgumentError ∇upsample_nearest(y, (2,4))
         @test_throws ArgumentError upsample_nearest(x, (1,2,3,4,5))
@@ -36,7 +35,7 @@ function upsample_testsuite(Backend)
         xd = device(x)
         @test y ≈ cpu(upsample_linear(xd, 2.5))
         @test y ≈ cpu(upsample_linear(xd; size=10))
-        gradtest_fn(x -> upsample_linear(x, 2.5), xd; atol)
+        @test test_gradients(x -> upsample_linear(x, 2.5), x; test_gpu = Backend != CPU, atol)
     end
 
     @testset "Bilinear upsampling (2D)" begin
@@ -62,7 +61,7 @@ function upsample_testsuite(Backend)
         @test eltype(y) == Float32
         @test cpu(y) ≈ y_true
 
-        gradtest_fn(x -> upsample_bilinear(x, (3, 2)), xd; atol)
+        @test test_gradients(x -> upsample_bilinear(x, (3, 2)), x; test_gpu = Backend != CPU, atol)
 
         # additional grad check, also compliant with pytorch
         o = ones(Float32,6,4,2,1)
@@ -117,9 +116,9 @@ function upsample_testsuite(Backend)
         @test eltype(y) == T
         @test collect(y) ≈ collect(y_true)
 
-        gradtest_fn(
-            x -> upsample_trilinear(x, (2,2,2)), xd;
-            atol=(T == Float32) ? 1e-2 : 1e-5)
+        @test test_gradients(
+            x -> upsample_trilinear(x, (2,2,2)), x;
+            test_gpu = Backend != CPU, atol=(T == Float32) ? 1e-2 : 1e-5)
 
         # This test only works when `align_corners=false`.
         o = device(ones(Float32,8,8,8,1,1))
@@ -188,7 +187,7 @@ function upsample_testsuite(Backend)
 
             y = pixel_shuffle(xd, r)
             @test size(y) == ((r .* insize)..., c, n)
-            gradtest_fn(x -> pixel_shuffle(x, r), xd)
+            @test test_gradients(x -> pixel_shuffle(x, r), x; test_gpu = Backend != CPU)
         end
     end
 

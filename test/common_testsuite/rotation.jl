@@ -1,6 +1,5 @@
 function rotation_testsuite(Backend)
     device(x) = adapt(Backend(), x)
-    gradtest_fn = Backend == CPU ? cpu_gradtest : gpu_gradtest
     T = Float64
     atol = T == Float32 ? 1e-3 : 1e-6
     rtol = T == Float32 ? 1f-3 : 1f-6
@@ -67,12 +66,12 @@ function rotation_testsuite(Backend)
         @testset "Test gradients" begin
             for method in [:nearest, :bilinear]
                 for angle in angles 
-                    gradtest_fn(
+                    @test test_gradients(
                         x -> NNlib.imrotate(x, angle; method),
-                        device(rand(T, 11,11,1,1)); atol)
-                    gradtest_fn(
+                        rand(T, 11,11,1,1); test_gpu = Backend != CPU, atol)
+                    @test test_gradients(
                         x -> NNlib.imrotate(x, angle; method),
-                        device(rand(T, 10,10,1,1)); atol)        
+                        rand(T, 10,10,1,1); test_gpu = Backend != CPU, atol)
                 end
             end
         end

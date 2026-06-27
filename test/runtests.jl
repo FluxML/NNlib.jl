@@ -107,7 +107,7 @@ end
 # Bring in the shared imports + helpers, then (for a GPU run) the active backend's
 # setup: its package, extra imports, and the backend-specific `gputest`. `include`
 # runs at module top level, so the `using` statements inside are valid. The shared
-# `common_testsuite/` suites use `gpu_gradtest` (from test_module.jl) instead, so
+# `common_testsuite/` suites use `test_gradients` (from test_module.jl) instead, so
 # the two never collide.
 init_code = quote
     include($(joinpath(@__DIR__, "test_module.jl")))

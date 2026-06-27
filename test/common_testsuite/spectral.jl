@@ -1,7 +1,6 @@
 function spectral_testsuite(Backend)
     cpu(x) = adapt(CPU(), x)
     device(x) = adapt(Backend(), x)
-    gradtest_fn = Backend == CPU ? cpu_gradtest : gpu_gradtest
 
     @testset "Window functions" begin
         for window_fn in (hann_window, hamming_window)
@@ -25,15 +24,15 @@ function spectral_testsuite(Backend)
                 x = rand(Float32, 16, batch...)
                 window = hann_window(16)
 
-                gradtest_fn(s -> abs.(stft(s; n_fft=16)), x)
-                gradtest_fn((s, w) -> abs.(stft(s; n_fft=16, window=w)), x, window)
+                @test test_gradients(s -> abs.(stft(s; n_fft=16)), x; test_gpu = true)
+                @test test_gradients((s, w) -> abs.(stft(s; n_fft=16, window=w)), x, window; test_gpu = true)
 
                 x = rand(Float32, 2045, batch...)
                 n_fft = 256
                 window = hann_window(n_fft)
-                gradtest_fn((s, w) -> abs.(stft(s; n_fft, window=w)), x, window)
-                gradtest_fn((s, w) -> abs.(stft(s; n_fft, window=w, center=false)), x, window)
-                gradtest_fn((s, w) -> abs.(stft(s; n_fft, window=w, normalized=true)), x, window)
+                @test test_gradients((s, w) -> abs.(stft(s; n_fft, window=w)), x, window; test_gpu = true)
+                @test test_gradients((s, w) -> abs.(stft(s; n_fft, window=w, center=false)), x, window; test_gpu = true)
+                @test test_gradients((s, w) -> abs.(stft(s; n_fft, window=w, normalized=true)), x, window; test_gpu = true)
             end
         end
 
@@ -141,9 +140,9 @@ function spectral_testsuite(Backend)
                     x = rand(Float32, 2045, batch...)
                     n_fft = 256
                     window = hann_window(n_fft)
-                    gradtest_fn((s, w) -> spectrogram(s; n_fft, hop_length=n_fft ÷ 4, window=w), x, window)
-                    gradtest_fn((s, w) -> spectrogram(s; n_fft, hop_length=n_fft ÷ 4, window=w, center=false), x, window)
-                    gradtest_fn((s, w) -> spectrogram(s; n_fft, hop_length=n_fft ÷ 4, window=w, normalized=true), x, window)
+                    @test test_gradients((s, w) -> spectrogram(s; n_fft, hop_length=n_fft ÷ 4, window=w), x, window; test_gpu = true)
+                    @test test_gradients((s, w) -> spectrogram(s; n_fft, hop_length=n_fft ÷ 4, window=w, center=false), x, window; test_gpu = true)
+                    @test test_gradients((s, w) -> spectrogram(s; n_fft, hop_length=n_fft ÷ 4, window=w, normalized=true), x, window; test_gpu = true)
                 end
             end
         end
