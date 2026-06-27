@@ -65,7 +65,7 @@ jobs:
           file: lcov.info
 
   test-threaded:
-    name: Julia 1 - ${{ matrix.os }} - 2 threads
+    name: Julia 1 - ubuntu-latest - 2 threads
     runs-on: ubuntu-latest
     env:
       NNLIB_TEST_THREADED: 'true'

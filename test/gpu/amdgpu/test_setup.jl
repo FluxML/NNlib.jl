@@ -1,5 +1,5 @@
-# Setup for the AMDGPU test files. Included once per `gpu/amdgpu/*` worker by the
-# wrapper in `test/runtests.jl`.
+# Setup for the AMDGPU test files: backend imports + the AMDGPU `gputest`.
+# Loaded into every AMDGPU-run worker by `init_code` in `test/runtests.jl`.
 
 using AMDGPU
 using NNlib: batched_adjoint, batched_mul, batched_mul!, batched_transpose

@@ -89,12 +89,14 @@ function gradtest(
 end
 
 """
-    gputest(f, xs...; checkgrad=true, atol=1e-6, kws...)
+    gpu_gradtest(f, xs...; checkgrad=true, atol=1e-6, kws...)
 
-Compare gradients computed on the device vs CPU.
-`xs...` should already be on the device.
+Compare `f`'s output and gradients on the device vs CPU. `xs...` should already
+be on the device. Used by the shared `common_testsuite/` suites on GPU backends
+(the per-backend `gpu/*/test_setup.jl` files define their own `gputest`, which
+takes CPU inputs instead).
 """
-function gputest(f, xs...; checkgrad=true, atol=1e-6, kws...)
+function gpu_gradtest(f, xs...; checkgrad=true, atol=1e-6, kws...)
     cpu_xs = map(x -> adapt(CPU(), x), xs)
 
     cpu_y = f(cpu_xs...; kws...)

@@ -1,5 +1,5 @@
-# Setup for the Metal test files. Included once per `gpu/metal/*` worker by the
-# wrapper in `test/runtests.jl`.
+# Setup for the Metal test files: backend imports + the Metal `gputest` + `DEVICE`.
+# Loaded into every Metal-run worker by `init_code` in `test/runtests.jl`.
 
 using NNlib
 using Test

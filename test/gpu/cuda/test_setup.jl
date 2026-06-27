@@ -1,7 +1,7 @@
-# Setup for the CUDA test files. Included once per `gpu/cuda/*` worker by the
-# wrapper in `test/runtests.jl` (so the CUDA-specific `gputest` below stays
-# scoped to gpu/cuda workers and does not clobber the adapt-based `gputest`
-# from `test_module.jl` used by the shared `common_testsuite/` suites).
+# Setup for the CUDA test files: backend imports + the CUDA `gputest` (which takes
+# CPU inputs and moves them to the device). Loaded into every CUDA-run worker by
+# `init_code` in `test/runtests.jl`. Distinct from `gpu_gradtest` in
+# `test_module.jl`, which the shared `common_testsuite/` suites use.
 
 using Test
 using NNlib

@@ -85,8 +85,7 @@ steps:
     timeout_in_minutes: 30
 
   - label: ":julia: Julia {{matrix.julia}} - Metal GPU"
-    command:
-      - echo 'Metal = "dde4c033-4e86-420c-a63e-0dd931031962"' >> test/Project.toml
+    # Metal is declared in test/Project.toml [deps], so no `echo >>` is needed here.
     plugins:
       - JuliaCI/julia#v1:
           version: "{{matrix.julia}}"

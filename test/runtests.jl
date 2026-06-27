@@ -1,4 +1,3 @@
-using Pkg
 using NNlib
 using ParallelTestRunner
 
@@ -29,10 +28,9 @@ const THREADED_TESTS = [
     "common_testsuite/fold",
 ]
 
-# --- Optional GPU package installation (main process, before workers start) ---
-NNLIB_TEST_CUDA   && Pkg.add(["CUDA", "cuDNN"])
-NNLIB_TEST_AMDGPU && Pkg.add("AMDGPU")
-NNLIB_TEST_METAL  && Pkg.add("Metal")
+# GPU backends are added to the test project beforehand (Metal via test/Project.toml
+# `[deps]`; CUDA/cuDNN/AMDGPU via the `echo >>` step in .buildkite/pipeline.yml), so
+# they are already present in the resolved environment when the active flag is set.
 
 # --- Auto-discover all .jl test files (except runtests.jl) ---
 testsuite = find_tests(@__DIR__)
@@ -50,22 +48,6 @@ const SHARED_SUITES = sort!([String(chopprefix(k, "common_testsuite/"))
                              for k in keys(testsuite) if startswith(k, "common_testsuite/")])
 for s in SHARED_SUITES
     delete!(testsuite, "common_testsuite/$s")
-end
-
-# Wrap each `gpu/<backend>/*` test so the worker first loads that backend's setup
-# (extra imports + the backend-specific `gputest`, which overrides the adapt-based
-# one from `test_module.jl`). `include` runs the setup at the worker module's top
-# level, so its `using` statements are valid there.
-function wrap_ext_setup!(testsuite, gpu)
-    setup = joinpath(@__DIR__, gpu, "test_setup.jl")
-    for k in collect(keys(testsuite))
-        startswith(k, "$gpu/") || continue
-        inner = testsuite[k]
-        testsuite[k] = quote
-            include($setup)
-            $inner
-        end
-    end
 end
 
 if NNLIB_TEST_THREADED
@@ -95,7 +77,7 @@ else
     # re-added below for the active GPU backend).
     !NNLIB_TEST_CPU    && filter!(((k, _),) -> startswith(k, "gpu/"), testsuite)
 
-    # One entry per (shared suite, active backend), honoring per-backend skips.
+    # One entry per (shared suite, active backend), honoring per-backend skips in the shared suites.
     # `btype` is interpolated as a symbol and resolves in the worker because the
     # backend package is loaded by `init_code`.
     backends = []
@@ -103,6 +85,8 @@ else
     NNLIB_TEST_CUDA   && push!(backends, (label="CUDA",   btype=:CUDABackend, skips=Set(["scatter", "gather"])))
     NNLIB_TEST_AMDGPU && push!(backends, (label="AMDGPU", btype=:ROCBackend,  skips=Set{String}()))
     # Metal: shared suites stay disabled (matches the previous commented-out behavior).
+    
+    # Create a new entry in `testsuite` for each (suite, backend) pair.
     for s in SHARED_SUITES, b in backends
         s in b.skips && continue
         path = joinpath(@__DIR__, "common_testsuite", "$s.jl")
@@ -113,21 +97,20 @@ else
         end
     end
 
-    wrap_ext_setup!(testsuite, "gpu/cuda")
-    wrap_ext_setup!(testsuite, "gpu/amdgpu")
-    wrap_ext_setup!(testsuite, "gpu/metal")
-
     test_worker = Returns(nothing)
 end
 
-# --- init_code: runs in every worker (at module top level) before each test ---
-# Load the active backend package here (top level) so backend types resolve and
-# `adapt` dispatches; then bring in the shared imports and helpers.
+# --- init_code: evaluated at the top level of each test's sandbox module ---
+# Bring in the shared imports + helpers, then (for a GPU run) the active backend's
+# setup: its package, extra imports, and the backend-specific `gputest`. `include`
+# runs at module top level, so the `using` statements inside are valid. The shared
+# `common_testsuite/` suites use `gpu_gradtest` (from test_module.jl) instead, so
+# the two never collide.
 init_code = quote
-    $(NNLIB_TEST_CUDA   ? :(using CUDA, cuDNN) : nothing)
-    $(NNLIB_TEST_AMDGPU ? :(using AMDGPU)      : nothing)
-    $(NNLIB_TEST_METAL  ? :(using Metal)       : nothing)
     include($(joinpath(@__DIR__, "test_module.jl")))
+    $(NNLIB_TEST_CUDA   ? :(include($(joinpath(@__DIR__, "gpu", "cuda",   "test_setup.jl")))) : nothing)
+    $(NNLIB_TEST_AMDGPU ? :(include($(joinpath(@__DIR__, "gpu", "amdgpu", "test_setup.jl")))) : nothing)
+    $(NNLIB_TEST_METAL  ? :(include($(joinpath(@__DIR__, "gpu", "metal",  "test_setup.jl")))) : nothing)
 end
 
 runtests(NNlib, ARGS; testsuite, init_code, test_worker)
