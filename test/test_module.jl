@@ -104,17 +104,20 @@ function test_gradients(
             xs...;
             rtol=1e-4, atol=1e-4,
             test_gpu = false,
-            test_cpu = true,
+            # On a GPU backend we only check the GPU gradient against the reference; the
+            # CPU-vs-reference comparison is already covered by the dedicated CPU run.
+            test_cpu = !test_gpu,
             # Optional GPU-adapted version of `f`. Use when `f` captures CPU arrays
             # that must also be on GPU (e.g. index arrays in gather/scatter). When
             # `nothing`, `f |> gpu_dev` is attempted (works for closures that only
             # capture non-array scalars/config objects).
             f_gpu = nothing,
-            reference::AbstractADType = AutoFiniteDifferences(; fdm = _default_fdm()),
+            reference::AbstractADType = test_cpu ? AutoFiniteDifferences(;fdm=_default_fdm()) : AutoZygote(),
             compare::AbstractADType = AutoZygote(),
             loss = (f, xs...) -> mean(f(xs...)),
             )
 
+    @assert test_cpu || test_gpu "at least one of `test_cpu` or `test_gpu` must be true"
 
     cpu_dev = cpu_device()
 
