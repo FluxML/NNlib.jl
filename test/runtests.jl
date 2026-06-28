@@ -87,10 +87,10 @@ else
     NNLIB_TEST_CPU    && push!(backends, (label="CPU",    btype=:CPU,         skips=Set{String}()))
     NNLIB_TEST_CUDA   && push!(backends, (label="CUDA",   btype=:CUDABackend, skips=Set(["scatter", "gather"])))
     NNLIB_TEST_AMDGPU && push!(backends, (label="AMDGPU", btype=:ROCBackend,  skips=Set{String}()))
-    # Metal: only `scatter` is Metal-ready so far; the other shared suites still hit
-    # Metal limitations (Float64, scalar indexing, complex activations, ImageTransformations).
+    # Metal: `spectral`/`rotation` need NNlib source work (scalar indexing, unsupported
+    # imrotate kernel), and `activations` fails only on the complex-valued broadcasts.
     NNLIB_TEST_METAL  && push!(backends, (label="Metal",  btype=:MetalBackend,
-        skips=Set(["activations", "fold", "gather", "rotation", "spectral", "upsample"])))
+        skips=Set(["activations", "rotation", "spectral"])))
     
     # Create a new entry in `testsuite` for each (suite, backend) pair.
     for s in SHARED_SUITES, b in backends
