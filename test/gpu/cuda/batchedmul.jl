@@ -1,7 +1,4 @@
 @testset "batched_mul" begin
-    using NNlib: batched_mul, batched_mul!, batched_vec, 
-                 batched_adjoint, batched_transpose
-
     A = randn(Float32, 3,3,2);
     B = randn(Float32, 3,3,2);
 
@@ -38,19 +35,16 @@
 end
 
 @testset "NNlib storage_type etc." begin
-    using LinearAlgebra
-    using NNlib: is_strided, are_strided, storage_type
-
     M = cu(ones(10,10))
 
-    @test is_strided(M)
-    @test is_strided(view(M, 1:2:5,:))
-    @test is_strided(PermutedDimsArray(M, (2,1)))
+    @test NNlib.is_strided(M)
+    @test NNlib.is_strided(view(M, 1:2:5,:))
+    @test NNlib.is_strided(PermutedDimsArray(M, (2,1)))
 
-    @test !is_strided(reshape(view(M, 1:2:10,:), 10,:))
-    @test !is_strided((M .+ im)')
-    @test !is_strided(Diagonal(cu(ones(3))))
+    @test !NNlib.is_strided(reshape(view(M, 1:2:10,:), 10,:))
+    @test !NNlib.is_strided((M .+ im)')
+    @test !NNlib.is_strided(LinearAlgebra.Diagonal(cu(ones(3))))
 
-    @test storage_type(M) <: CuArray{Float32,2}
-    @test storage_type(reshape(view(M, 1:2:10,:), 10,:)) <: CuArray{Float32,2}
+    @test NNlib.storage_type(M) <: CuArray{Float32,2}
+    @test NNlib.storage_type(reshape(view(M, 1:2:10,:), 10,:)) <: CuArray{Float32,2}
 end

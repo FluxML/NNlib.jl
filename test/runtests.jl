@@ -16,6 +16,9 @@ const NNLIB_TEST_AMDGPU   = get(ENV, "NNLIB_TEST_AMDGPU",   "false") == "true"
 const NNLIB_TEST_METAL    = get(ENV, "NNLIB_TEST_METAL",    "false") == "true"
 const NNLIB_TEST_THREADED = get(ENV, "NNLIB_TEST_THREADED", "false") == "true"
 
+# some enzyme tests on AMDGPU are crashing julia
+const Test_Enzyme = VERSION <= v"1.13-" && !NNLIB_TEST_AMDGPU
+
 # Tests that exercise NNlib's multithreaded code paths (`@spawn` / `@threads`).
 # The dedicated `NNLIB_TEST_THREADED` job runs *only* these, on multithreaded
 # workers. Add or remove thread-sensitive tests here (paths as shown by `--list`).
@@ -104,10 +107,11 @@ end
 # Bring in the shared imports + helpers, then (for a GPU run) the active backend's
 # setup: its package, extra imports, and the backend-specific `gputest`. `include`
 # runs at module top level, so the `using` statements inside are valid. The shared
-# `common_testsuite/` suites use `gpu_gradtest` (from test_module.jl) instead, so
+# `common_testsuite/` suites use `test_gradients` (from test_module.jl) instead, so
 # the two never collide.
 init_code = quote
     include($(joinpath(@__DIR__, "test_module.jl")))
+    const Test_Enzyme = $Test_Enzyme
     $(NNLIB_TEST_CUDA   ? :(include($(joinpath(@__DIR__, "gpu", "cuda",   "test_setup.jl")))) : nothing)
     $(NNLIB_TEST_AMDGPU ? :(include($(joinpath(@__DIR__, "gpu", "amdgpu", "test_setup.jl")))) : nothing)
     $(NNLIB_TEST_METAL  ? :(include($(joinpath(@__DIR__, "gpu", "metal",  "test_setup.jl")))) : nothing)

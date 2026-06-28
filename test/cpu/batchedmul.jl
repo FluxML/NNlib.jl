@@ -1,8 +1,3 @@
-using NNlib, Test, LinearAlgebra, Logging
-using NNlib: storage_type, storage_typejoin, is_strided,
-    batched_mul_generic!, _unbatch, _copy_if_faster,
-    BatchedAdjoint, BatchedTranspose
-
 function bmm_test(a,b; transA = false, transB = false)
     bs = size(a,3)
     transA && (a = permutedims(a, [2,1,3]))
@@ -139,7 +134,7 @@ perm_23(A) = PermutedDimsArray(A, (1,3,2))
         α, β = rand(T), rand(T)
         D = rand(T, size(C))
         @test batched_mul!(copy(D), A, B, α, β) ≈ α .* C .+ β .* D
-        @test batched_mul_generic!(copy(D), A, B, α, β) ≈ α .* C .+ β .* D
+        @test NNlib.batched_mul_generic!(copy(D), A, B, α, β) ≈ α .* C .+ β .* D
 
         # ... and with weird LHS -- all to batched_mul_generic! right now
         C2 = batched_transpose(permutedims(C, (2,1,3)))
@@ -238,12 +233,12 @@ end
 
 @testset "storage_type" begin
 
-    @test storage_type(transpose(reshape(view(rand(10), 2:9),4,:))) == Vector{Float64}
-    @test storage_type(transpose(reshape(view(1:10,     2:9),4,:))) == UnitRange{Int}
+    @test NNlib.storage_type(transpose(reshape(view(rand(10), 2:9),4,:))) == Vector{Float64}
+    @test NNlib.storage_type(transpose(reshape(view(1:10,     2:9),4,:))) == UnitRange{Int}
 
-    @test storage_typejoin(rand(2), rand(Float32, 2)) == Vector{<:Any}
-    @test storage_typejoin(rand(2), rand(2,3)', rand(2,3,4)) == Array{Float64}
-    @test storage_typejoin([1,2,3], 4:5) == AbstractVector{Int}
+    @test NNlib.storage_typejoin(rand(2), rand(Float32, 2)) == Vector{<:Any}
+    @test NNlib.storage_typejoin(rand(2), rand(2,3)', rand(2,3,4)) == Array{Float64}
+    @test NNlib.storage_typejoin([1,2,3], 4:5) == AbstractVector{Int}
 
 end
 
@@ -251,57 +246,57 @@ end
 
     M = ones(10,10)
 
-    @test is_strided(M)
-    @test is_strided(view(M, 1:2:5,:))
-    @test is_strided(PermutedDimsArray(M, (2,1)))
+    @test NNlib.is_strided(M)
+    @test NNlib.is_strided(view(M, 1:2:5,:))
+    @test NNlib.is_strided(PermutedDimsArray(M, (2,1)))
 
-    @test !is_strided(reshape(view(M, 1:2:10,:), 10,:))
-    @test !is_strided((M.+im)')
-    @test !is_strided(Diagonal(ones(3)))
+    @test !NNlib.is_strided(reshape(view(M, 1:2:10,:), 10,:))
+    @test !NNlib.is_strided((M.+im)')
+    @test !NNlib.is_strided(LinearAlgebra.Diagonal(ones(3)))
 
     A = ones(2,2,2)
 
-    @test is_strided(batched_adjoint(A))
-    @test is_strided(batched_transpose(A))
-    @test !is_strided(batched_adjoint(A .+ im))
-    @test is_strided(batched_transpose(A .+ im))
+    @test NNlib.is_strided(batched_adjoint(A))
+    @test NNlib.is_strided(batched_transpose(A))
+    @test !NNlib.is_strided(batched_adjoint(A .+ im))
+    @test NNlib.is_strided(batched_transpose(A .+ im))
 
 end
 
-FiniteDifferences.to_vec(x::BatchedAdjoint) = FiniteDifferences.to_vec(collect(x))
-FiniteDifferences.to_vec(x::BatchedTranspose) = FiniteDifferences.to_vec(collect(x))
+FiniteDifferences.to_vec(x::NNlib.BatchedAdjoint) = FiniteDifferences.to_vec(collect(x))
+FiniteDifferences.to_vec(x::NNlib.BatchedTranspose) = FiniteDifferences.to_vec(collect(x))
 
 @testset "AutoDiff" begin
     M, P, Q = 13, 7, 11
     B = 3
     # Two 3-arrays
-    gradtest(batched_mul, randn(rng, M, P, B), randn(rng, P, Q, B))
-    gradtest(batched_mul, batched_adjoint(randn(rng, P, M, B)), randn(rng, P, Q, B))
-    gradtest(batched_mul, randn(rng, M, P, B), batched_transpose(randn(rng, Q, P, B)))
+    @test test_gradients(batched_mul, randn(rng, M, P, B), randn(rng, P, Q, B))
+    @test test_gradients(batched_mul, batched_adjoint(randn(rng, P, M, B)), randn(rng, P, Q, B))
+    @test test_gradients(batched_mul, randn(rng, M, P, B), batched_transpose(randn(rng, Q, P, B)))
 
     # One a matrix...
-    gradtest(batched_mul, randn(rng, M, P), randn(rng, P, Q, B))
-    gradtest(batched_mul, adjoint(randn(rng, P, M)), randn(rng, P, Q, B))
-    gradtest(batched_mul, randn(rng, M, P), batched_adjoint(randn(rng, Q, P, B)))
+    @test test_gradients(batched_mul, randn(rng, M, P), randn(rng, P, Q, B))
+    @test test_gradients(batched_mul, adjoint(randn(rng, P, M)), randn(rng, P, Q, B))
+    @test test_gradients(batched_mul, randn(rng, M, P), batched_adjoint(randn(rng, Q, P, B)))
 
-    gradtest(batched_mul, randn(rng, M, P, B), randn(rng, P, Q))
-    gradtest(batched_mul, batched_transpose(randn(rng, P, M, B)), randn(rng, P, Q))
-    gradtest(batched_mul, randn(rng, M, P, B), transpose(randn(rng, Q, P)))
+    @test test_gradients(batched_mul, randn(rng, M, P, B), randn(rng, P, Q))
+    @test test_gradients(batched_mul, batched_transpose(randn(rng, P, M, B)), randn(rng, P, Q))
+    @test test_gradients(batched_mul, randn(rng, M, P, B), transpose(randn(rng, Q, P)))
 
     # ... or equivalent to a matrix
-    gradtest(batched_mul, randn(rng, M, P, 1), randn(rng, P, Q, B))
-    gradtest(batched_mul, batched_transpose(randn(rng, P, M, 1)), randn(rng, P, Q, B))
-    gradtest(batched_mul, randn(rng, M, P, 1), batched_transpose(randn(rng, Q, P, B)))
+    @test test_gradients(batched_mul, randn(rng, M, P, 1), randn(rng, P, Q, B))
+    @test test_gradients(batched_mul, batched_transpose(randn(rng, P, M, 1)), randn(rng, P, Q, B))
+    @test test_gradients(batched_mul, randn(rng, M, P, 1), batched_transpose(randn(rng, Q, P, B)))
 
-    gradtest(batched_mul, randn(rng, M, P, B), randn(rng, P, Q, 1))
-    gradtest(batched_mul, batched_adjoint(randn(rng, P, M, B)), randn(rng, P, Q, 1))
-    gradtest(batched_mul, randn(rng, M, P, B), batched_adjoint(randn(rng, Q, P, 1)))
+    @test test_gradients(batched_mul, randn(rng, M, P, B), randn(rng, P, Q, 1))
+    @test test_gradients(batched_mul, batched_adjoint(randn(rng, P, M, B)), randn(rng, P, Q, 1))
+    @test test_gradients(batched_mul, randn(rng, M, P, B), batched_adjoint(randn(rng, Q, P, 1)))
 
     # batched_vec
-    gradtest(batched_vec, randn(rng, M, P, B), randn(rng, P, B))
-    gradtest(batched_vec, randn(rng, M, P, B), transpose(randn(rng, B, P)))
+    @test test_gradients(batched_vec, randn(rng, M, P, B), randn(rng, P, B))
+    @test test_gradients(batched_vec, randn(rng, M, P, B), transpose(randn(rng, B, P)))
 
-    gradtest(batched_vec, randn(rng, M, P, B), randn(rng, P))
+    @test test_gradients(batched_vec, randn(rng, M, P, B), randn(rng, P))
 end
 
 @static if Test_Enzyme

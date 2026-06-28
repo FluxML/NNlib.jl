@@ -1,6 +1,3 @@
-using NNlib, Test, Statistics, Random, LinearAlgebra
-using Zygote, StableRNGs, ChainRulesCore, Enzyme
-
 @testset "dropout" begin
     # Basics
     x1 = randn(Float32, 3, 4)
@@ -15,7 +12,7 @@ using Zygote, StableRNGs, ChainRulesCore, Enzyme
     @test size(@inferred dropout(rng, x1, 0.1)) == (3, 4)
     @test size(@inferred dropout(rng, x1, 0.1; dims=2)) == (3, 4)
 
-    x2 = Diagonal(randn(Float32, 10))  # Just to check it runs on weird matrices.
+    x2 = LinearAlgebra.Diagonal(randn(Float32, 10))  # Just to check it runs on weird matrices.
     @test dropout(x2, 0.3) isa Matrix{Float32}  # does not infer, but that's OK?
     
     # Values

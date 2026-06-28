@@ -53,7 +53,7 @@ end
 
 @testset "dropout" begin
     q = k = v = rand(10, 10, 10)
-    fdrop(x, p) = (rand!(similar(x)) .> p) .* x ./ (1-p)
+    fdrop(x, p) = (Random.rand!(similar(x)) .> p) .* x ./ (1-p)
     y, α = dot_product_attention(q, k, v; nheads=2, fdrop = x -> fdrop(x, 0.5))
     @test 0.6 > mean(>(0), α) > 0.4
 end
@@ -72,5 +72,5 @@ end
     k = v = rand(4, 3, 1)
     bias = randn(3, 5)
     y, α = dot_product_attention(q, k, v, bias; nheads=2)
-    gradtest((x...) -> dot_product_attention(x...; nheads=2)[1], q, k, v, bias)
+    @test test_gradients((x...) -> dot_product_attention(x...; nheads=2)[1], q, k, v, bias)
 end

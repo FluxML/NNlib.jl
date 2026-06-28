@@ -1,6 +1,3 @@
-using Statistics: mean
-using NNlib: ∇softmax, ∇logsoftmax
-
 @testset "softmax integer input" begin
     @test softmax(Int[0, 0]) == [0.5, 0.5]
 end
@@ -112,18 +109,18 @@ end
 
 @testset "AutoDiff" begin
     for f in (softmax, logsoftmax), d in (:, 1, 2)
-        gradtest(f, (3,4); fkwargs = (dims = d,), check_rrule = true)
+        @test test_gradients(x -> f(x; dims = d), randn(rng, 3, 4))
     end
-    gradtest(x -> softmax(x) .* (1:3), 3)
-    gradtest(x -> softmax(x) .* (1:3), (3,5), atol = 1e-4)
-    gradtest(x -> softmax(x, dims = 2) .* (1:3), (3,5), atol = 1e-4)
+    @test test_gradients(x -> softmax(x) .* (1:3), randn(rng, 3))
+    @test test_gradients(x -> softmax(x) .* (1:3), randn(rng, 3, 5))
+    @test test_gradients(x -> softmax(x, dims = 2) .* (1:3), randn(rng, 3, 5))
 
-    gradtest(x -> logsoftmax(x) .* (1:3), 3)
-    gradtest(x -> logsoftmax(x) .* (1:3), (3,5))
-    gradtest(x -> logsoftmax(x, dims = 2) .* (1:3), (3,5))
+    @test test_gradients(x -> logsoftmax(x) .* (1:3), randn(rng, 3))
+    @test test_gradients(x -> logsoftmax(x) .* (1:3), randn(rng, 3, 5))
+    @test test_gradients(x -> logsoftmax(x, dims = 2) .* (1:3), randn(rng, 3, 5))
 
     for d  in (:, 1, 2)
-        gradtest(logsumexp, (3,4), fkwargs = (dims = d,))
+        @test test_gradients(x -> logsumexp(x; dims = d), randn(rng, 3, 4))
     end
 end
 

@@ -1,6 +1,3 @@
-using NNlib, Zygote, ChainRulesCore, Test
-using Zygote: ForwardDiff
-
 ACTIVATION_FUNCTIONS =
     [@eval($a) for a in NNlib.ACTIVATIONS]
 

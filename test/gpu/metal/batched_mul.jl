@@ -1,6 +1,4 @@
 # Tests for batched_mul on Metal, see https://github.com/FluxML/NNlib.jl/issues/581
-using NNlib: batched_mul, batched_mul!, batched_vec, batched_adjoint, batched_transpose
-
 @testset "batched_mul" begin
     A = randn(Float32, 3, 4, 5)
     B = randn(Float32, 4, 6, 5)

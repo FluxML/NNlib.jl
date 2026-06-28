@@ -224,8 +224,6 @@ end
 
 ## Faster variants
 
-using NNlib: tanh_fast, sigmoid_fast
-
 function countepsfrom(x::T, xtrue) where {T<:AbstractFloat}
     target = T(xtrue)
     for n in Iterators.flatten(zip(0:100, -1:-1:-100))
@@ -332,8 +330,6 @@ has_rule(a) = rrule(a, 1f0) === nothing ? "(no rule)" : ""
     end
 end
 
-using Base.Broadcast: broadcasted
-
 @testset "lazy broadcasting" begin
     # ChainRules returns a Broadcasted, check these rules accept it
     @test rrule(broadcasted, relu, rrule(broadcasted, +, [1,2], 3)[1]) != nothing
@@ -349,17 +345,17 @@ end
         
         ## Avoid singular points of some activations
         ## problematic for finite diff methods
-        gradtest(f, +2 + rand(rng))
-        gradtest(f, -2 - rand(rng))
-        gradtest(f, +2 .+ rand(rng, 2, 2), check_broadcast=true)
-        gradtest(f, -2 .- rand(rng, 2, 2), check_broadcast=true)
+        @test test_gradients(f, +2 + rand(rng))
+        @test test_gradients(f, -2 - rand(rng))
+        @test test_gradients(x -> f.(x), +2 .+ rand(rng, 2, 2))
+        @test test_gradients(x -> f.(x), -2 .- rand(rng, 2, 2))
 
         if f in BINARY_ACTIVATIONS
-            gradtest(x -> f(x, 0.2), 1 + rand(rng))
-            gradtest(x -> f(x, 0.7), 1 + rand(rng))
+            @test test_gradients(x -> f(x, 0.2), 1 + rand(rng))
+            @test test_gradients(x -> f(x, 0.7), 1 + rand(rng))
 
-            gradtest(x -> f(x, 0.2), -2 + rand(rng))
-            gradtest(x -> f(x, 0.7), -2 + rand(rng))
+            @test test_gradients(x -> f(x, 0.2), -2 + rand(rng))
+            @test test_gradients(x -> f(x, 0.7), -2 + rand(rng))
         end
 
         ## Check that rules, including broadcast rules, are defined:
@@ -375,21 +371,21 @@ end
     
     @testset "Flux-like usage" begin
         ## This checks some broadcast rules for correctness:
-        gradtest((x, W, b) -> σ.(W*x .+ b), 5, (2,5), 2)
-        gradtest((x, W, b) -> σ.(W*x .+ b), (5,3), (2,5), 2)
-        gradtest((x, W, b) -> relu.(W*x .+ b), 5, (2,5), 2)
-        gradtest((x, W, b) -> relu.(W*x .+ b), (5,3), (2,5), 2)
-        gradtest((x, W, b) -> selu.(W*x .+ b), 5, (2,5), 2)
-        gradtest((x, W, b) -> selu.(W*x .+ b), (5,3), (2,5), 2, atol=1e-4)
-        gradtest((x, W, b) -> elu.(W*x .+ b, 2), 5, (2,5), 2)
-        gradtest((x, W, b) -> elu.(W*x .+ b, 2), (5,3), (2,5), 2, atol=1e-4)
+        @test test_gradients((x, W, b) -> σ.(W*x .+ b), randn(rng, 5), randn(rng, 2, 5), randn(rng, 2))
+        @test test_gradients((x, W, b) -> σ.(W*x .+ b), randn(rng, 5, 3), randn(rng, 2, 5), randn(rng, 2))
+        @test test_gradients((x, W, b) -> relu.(W*x .+ b), randn(rng, 5), randn(rng, 2, 5), randn(rng, 2))
+        @test test_gradients((x, W, b) -> relu.(W*x .+ b), randn(rng, 5, 3), randn(rng, 2, 5), randn(rng, 2))
+        @test test_gradients((x, W, b) -> selu.(W*x .+ b), randn(rng, 5), randn(rng, 2, 5), randn(rng, 2))
+        @test test_gradients((x, W, b) -> selu.(W*x .+ b), randn(rng, 5, 3), randn(rng, 2, 5), randn(rng, 2))
+        @test test_gradients((x, W, b) -> elu.(W*x .+ b, 2), randn(rng, 5), randn(rng, 2, 5), randn(rng, 2))
+        @test test_gradients((x, W, b) -> elu.(W*x .+ b, 2), randn(rng, 5, 3), randn(rng, 2, 5), randn(rng, 2))
 
-        gradtest((x, W, b) -> logσ.(W*x .+ b), 5, (2,5), 2)
-        gradtest((x, W, b) -> logσ.(W*x .+ b), (5,3), (2,5), 2)
+        @test test_gradients((x, W, b) -> logσ.(W*x .+ b), randn(rng, 5), randn(rng, 2, 5), randn(rng, 2))
+        @test test_gradients((x, W, b) -> logσ.(W*x .+ b), randn(rng, 5, 3), randn(rng, 2, 5), randn(rng, 2))
 
         ## Binary functions have their own broadcast rules:
-        gradtest((x, W, b) -> leakyrelu.(W*x .+ b, 0.2), 5, (2,5), 2)
-        gradtest((x, W, b) -> leakyrelu.(W*x .+ b, 0.7), (5,3), (2,5), 2)
+        @test test_gradients((x, W, b) -> leakyrelu.(W*x .+ b, 0.2), randn(rng, 5), randn(rng, 2, 5), randn(rng, 2))
+        @test test_gradients((x, W, b) -> leakyrelu.(W*x .+ b, 0.7), randn(rng, 5, 3), randn(rng, 2, 5), randn(rng, 2))
     end
 
     @testset "Zygote issue 758" begin
@@ -399,11 +395,11 @@ end
         @test gradient(xs -> sum(elu.(xs, 2)), [1_000, 10_000]) == ([1., 1.],)
         @test gradient(x -> elu(x, 2), 1_000) == (1.,)
         @test gradient(x -> elu(x, 2), -1) == (2*exp(-1),)
-        gradtest(x-> selu.(x),[100., 1_000.])
-        gradtest(x -> elu.(x, 3.5),[100., 1_000.])
-        gradtest(x -> elu.(x, 3.5),[1_000., 10_000.])
-        gradtest(x -> selu.(x), [1_000., 10_000.])
-        gradtest(x -> selu.(x), 10, atol=1e-4)
+        @test test_gradients(x-> selu.(x),[100., 1_000.])
+        @test test_gradients(x -> elu.(x, 3.5),[100., 1_000.])
+        @test test_gradients(x -> elu.(x, 3.5),[1_000., 10_000.])
+        @test test_gradients(x -> selu.(x), [1_000., 10_000.])
+        @test test_gradients(x -> selu.(x), randn(rng, 10))
     end
 
     @testset "saturated gradients: $f" for f in (hardσ, hardtanh, relu6, hardswish)

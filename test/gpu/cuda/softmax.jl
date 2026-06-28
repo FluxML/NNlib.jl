@@ -18,7 +18,7 @@ end
 
 @testset "Second derivatives" begin
     # On the GPU the second-derivative path goes through the generic broadcast
-    # (the `within_gradient(y)` branch of ∇softmax/∇logsoftmax), not cuDNN.
+    # (the `NNlib.within_gradient(y)` branch of ∇softmax/∇logsoftmax), not cuDNN.
     # We use a polynomial loss rather than `sum(sin, ...)` as in the CPU test:
     # Zygote's forward-over-reverse `Dual` broadcast for `sin` does not compile
     # to a GPU kernel, which is a limitation unrelated to softmax.

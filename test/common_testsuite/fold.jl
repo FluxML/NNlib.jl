@@ -1,8 +1,5 @@
-import NNlib
-
 function fold_testsuite(Backend)
     device(x) = adapt(Backend(), x)
-    gradtest_fn = Backend == CPU ? gradtest : gpu_gradtest
 
     @testset "unfold wrapper" begin
         x = device(rand(rng, 16, 16, 3, 10))
@@ -34,15 +31,15 @@ function fold_testsuite(Backend)
     end
 
     @testset "AutoDiff: spatial_rank=$spatial_rank" for spatial_rank in (1, 2, 3)
-        x = device(rand(rng, repeat([5], spatial_rank)..., 3, 2))
-        w = device(rand(rng, repeat([3], spatial_rank)..., 3, 3))
+        x = rand(rng, repeat([5], spatial_rank)..., 3, 2)
+        w = rand(rng, repeat([3], spatial_rank)..., 3, 3)
         cdims = DenseConvDims(x, w)
 
-        gradtest_fn(x -> NNlib.unfold(x, cdims), x)
-        Backend == CPU && test_rrule(NNlib.unfold, x, cdims)
+        @test test_gradients(x -> NNlib.unfold(x, cdims), x; test_gpu = Backend != CPU)
+        Backend == CPU && ChainRulesTestUtils.test_rrule(NNlib.unfold, x, cdims)
 
         y = NNlib.unfold(x, cdims)
-        gradtest_fn(y -> NNlib.fold(y, size(x), cdims), y)
-        Backend == CPU && test_rrule(NNlib.fold, y, size(x), cdims)
+        @test test_gradients(y -> NNlib.fold(y, size(x), cdims), y; test_gpu = Backend != CPU)
+        Backend == CPU && ChainRulesTestUtils.test_rrule(NNlib.fold, y, size(x), cdims)
     end
 end

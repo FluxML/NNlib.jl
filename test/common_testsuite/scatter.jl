@@ -1,5 +1,3 @@
-using NNlib: scatter, scatter!
-
 dsts = Dict(
     0 => [3, 4, 5, 6, 7],
     1 => [3 3 4 4 5;
@@ -107,7 +105,6 @@ end
 
 function scatter_testsuite(Backend)
     device(x) = adapt(Backend(), x)
-    gradtest_fn = Backend == CPU ? gradtest : gpu_gradtest
 
     ops_skip_types = Dict(
         (+) => [],
@@ -115,16 +112,13 @@ function scatter_testsuite(Backend)
         (*) => [UInt8, Int8],
         max => [BigInt],
         min => [BigInt])
-    types = if Backend == CPU
-        [UInt8,  UInt32, UInt64, Int32, Int64, Float16, Float32, Float64, BigFloat, Rational]
-    elseif Symbol(Backend) == :CUDABackend
+    # All GPU backends now cover the full op set on float `dst`: CUDA/AMDGPU through
+    # Atomix, Metal through `Metal.@atomic` (a compare-and-swap fallback) in
+    # NNlibMetalExt. (Atomix's Metal atomics still lack float `max`/`min`/`*`/`/`, hence
+    # the ext.) So AMDGPU/Metal are tested like CUDA, with `Float` types for `min`/`max`.
+    types = Backend == CPU ?
+        [UInt8,  UInt32, UInt64, Int32, Int64, Float16, Float32, Float64, BigFloat, Rational] :
         [Int32, Int64, Float32, Float64]
-    else
-        # Need LLVM 15+ for atomic fmin/fmax:
-        # https://reviews.llvm.org/D127041
-        # But fmin/fmax can be done by reinterpreting an array to `UInt`.
-        [Int32, Int64, UInt32, UInt64]
-    end
     ops = Backend == CPU ?
         (+, -, max, min, *) :
         (+, -, max, min)
@@ -133,15 +127,9 @@ function scatter_testsuite(Backend)
     types = Backend == CPU ?
         [Float16, Float32, BigFloat, Rational] :
         [Float32, Float64]
-    ops = if Backend == CPU
-        (/, mean)
-    elseif Symbol(Backend) == :CUDABackend
+    ops = Backend == CPU ?
+        (/, mean) :
         (*, /, mean)
-    else
-        # LLVM does not support atomic fmul/fdiv:
-        # https://llvm.org/docs/LangRef.html#atomicrmw-instruction
-        (mean,)
-    end
     test_scatter(device, types, ops; pt=Float64, ops_skip_types=Dict())
 
     if Backend == CPU
@@ -154,69 +142,57 @@ function scatter_testsuite(Backend)
 
     @testset "∇scatter" begin
         T = Float64
-        fdm(op) = op == min ? :backward : :forward
+        # `scatter`'s `min`/`max`/`*`/`/` gradients are kinked; use a one-sided
+        # finite-difference reference (forward, or backward for `min`) to stay on the
+        # correct branch.
+        get_reference_ad(op) = Backend != CPU ? AutoZygote() : fdm(op)  
+        fdm(op) = AutoFiniteDifferences(fdm = op == min ?
+            FiniteDifferences.backward_fdm(5, 1) : FiniteDifferences.forward_fdm(5, 1))
 
         @testset "dstsize" begin
-            idx = device([2, 2, 3, 4, 4])
-            src = device(ones(T, 3, 5))
-            y = scatter(+, src, idx, dstsize = (3, 6))
+            idx_cpu = [2, 2, 3, 4, 4]
+            src = ones(T, 3, 5)
+            y = scatter(+, src, idx_cpu, dstsize = (3, 6))
             @test eltype(y) == T
             @test size(y) == (3, 6)
-            Backend == CPU ?
-                gradtest_fn(x -> scatter(+, x, idx; dstsize=(3, 6)), src) :
-                gradtest_fn((x, i) -> scatter(+, x, i; dstsize=(3, 6)), src, idx)
+            idx_d = device(idx_cpu)
+            @test test_gradients(x -> scatter(+, x, idx_cpu; dstsize=(3, 6)), src;
+                test_gpu = Backend != CPU,
+                f_gpu = x -> scatter(+, x, idx_d; dstsize=(3, 6)))
         end
 
         @testset "∂dst" begin
-            ops = if Backend == CPU || Symbol(Backend) == :CUDABackend
-                (+, -, *, /, mean, max, min)
-            else
-                (+, -, mean, max, min)
-            end
-            for op in ops, i in (0, 1), IT in (Int8, Int64)
-                PT = ( # If not CPU and CUDA -> use Int64 for min/max.
-                    Backend != CPU &&
-                    Symbol(Backend) != :CUDABackend &&
-                    (op == max || op == min)) ? Int64 : T
-
-                src = device(srcs[(i, true)])
-                idx = device(IT.(idxs[:int]))
-                dst = device(PT.(dsts[i]))
-                Backend == CPU ?
-                    gradtest_fn(x -> scatter!(op, copy(x), src, idx), dst; fdm=fdm(op)) :
-                    gradtest_fn((x, s, i) -> scatter!(op, x, s, i), dst, src, idx)
+            for op in (+, -, *, /, mean, max, min), i in (0, 1), IT in (Int8, Int64)
+                src = srcs[(i, true)]
+                idx = IT.(idxs[:int])
+                dst = T.(dsts[i])
+                src_d = device(src); idx_d = device(idx)
+                @test test_gradients(x -> scatter!(op, copy(x), src, idx), dst;
+                    test_gpu = Backend != CPU, reference = get_reference_ad(op),
+                    f_gpu = x -> scatter!(op, copy(x), src_d, idx_d))
             end
         end
 
         @testset "∂src" begin
-            ops = if Backend == CPU || Symbol(Backend) == :CUDABackend
-                (+, -, *, /, mean, max, min)
-            else
-                (+, -, mean, max, min)
-            end
-            for op in ops, i in (0, 1), IT in (Int8, Int64)
-                PT = ( # If not CPU and CUDA -> use Int64 for min/max.
-                    Backend != CPU &&
-                    Symbol(Backend) != :CUDABackend &&
-                    (op == max || op == min)) ? Int64 : T
-                src = PT.(device(srcs[(i, false)]))
-                idx = device(IT.(idxs[:int]))
-                Backend == CPU ?
-                    gradtest_fn(xs -> scatter(op, xs, idx), src; fdm=fdm(op)) :
-                    gradtest_fn((xs, i) -> scatter(op, xs, i), src, idx)
+            for op in (+, -, *, /, mean, max, min), i in (0, 1), IT in (Int8, Int64)
+                src = T.(srcs[(i, false)])
+                idx = IT.(idxs[:int])
+                idx_d = device(idx)
+                @test test_gradients(xs -> scatter(op, xs, idx), src;
+                    test_gpu = Backend != CPU, reference = get_reference_ad(op),
+                    f_gpu = xs -> scatter(op, xs, idx_d))
             end
         end
 
         # Regression test for #703: `*`/`/` gradients used to error for a 1-D
         # (vector) index array, because `reverse_indices` mishandled linear keys.
-        if Backend == CPU || Symbol(Backend) == :CUDABackend
-            @testset "∂src vector index (#703) - $op" for op in (*, /)
-                idx = device([3, 1, 2, 2])      # 1-D index, with a uniquely-mapped value
-                src = device(T[10, 100, 1000, 1])
-                Backend == CPU ?
-                    gradtest_fn(xs -> scatter(op, xs, idx), src; fdm=fdm(op)) :
-                    gradtest_fn((xs, i) -> scatter(op, xs, i), src, idx)
-            end
+        @testset "∂src vector index (#703) - $op" for op in (*, /)
+            idx = [3, 1, 2, 2]      # 1-D index, with a uniquely-mapped value
+            src = T[10, 100, 1000, 1]
+            idx_d = device(idx)
+            @test test_gradients(xs -> scatter(op, xs, idx), src;
+                test_gpu = Backend != CPU, reference = get_reference_ad(op),
+                f_gpu = xs -> scatter(op, xs, idx_d))
         end
 
 

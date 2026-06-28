@@ -1,13 +1,10 @@
 # Setup for the Metal test files: backend imports + the Metal `gputest` + `DEVICE`.
-# Loaded into every Metal-run worker by `init_code` in `test/runtests.jl`.
+# Loaded into every Metal-run worker by `init_code` in `test/runtests.jl`, AFTER
+# `test_module.jl` — so the shared imports (NNlib, Test, Zygote, Statistics,
+# MLDataDevices, ...) are already in scope here.
 
-using NNlib
-using Test
 using Metal
-using Zygote: gradient
-using MLDataDevices: gpu_device
-using ForwardDiff: Dual
-using Statistics: mean
+using ForwardDiff: Dual    # bare `Dual` in metal/activations.jl
 
 Metal.allowscalar(false)
 

@@ -1,19 +1,15 @@
 # Setup for the CUDA test files: backend imports + the CUDA `gputest` (which takes
 # CPU inputs and moves them to the device). Loaded into every CUDA-run worker by
-# `init_code` in `test/runtests.jl`. Distinct from `gpu_gradtest` in
-# `test_module.jl`, which the shared `common_testsuite/` suites use.
+# `init_code` in `test/runtests.jl`, AFTER `test_module.jl` — so the shared imports
+# (Test, NNlib, Zygote, Random, Statistics, Mooncake, ...) are already in scope here.
+# Distinct from `test_gradients` in `test_module.jl`, which the shared
+# `common_testsuite/` suites use.
 
-using Test
-using NNlib
-using Mooncake
-using Mooncake.TestUtils: test_rule
-using Random
-using Zygote
-using ForwardDiff: Dual
-using Statistics: mean
 using CUDA, cuDNN
 import CUDA.CUSPARSE: CuSparseMatrixCSC, CuSparseMatrixCSR, CuSparseMatrixCOO
-using NNlib: batchnorm, ∇batchnorm
+using ForwardDiff: Dual              # bare `Dual` in cuda/{activations,softmax}.jl
+using Mooncake.TestUtils: test_rule  # bare `test_rule` in cuda/batchnorm.jl
+using NNlib: batchnorm, ∇batchnorm   # NNlib internals exercised by cuda/batchnorm.jl
 CUDA.allowscalar(false)
 
 function gputest(f, xs...; checkgrad=true, rtol=1e-7, atol=1e-10, broken=false, broken_grad=false, kws...)

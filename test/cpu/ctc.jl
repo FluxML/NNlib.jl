@@ -1,33 +1,8 @@
-using Test
-using NNlib: ctc_loss
-using Zygote: gradient
-using LinearAlgebra
-
-# Custom function to check numerical gradient of ctc loss,
-# based on `ngradient` in `Tracker.jl`
-function ctc_ngradient(x, y)
-  f = ctc_loss
-  grads = zero(x)
-  for i in 1:length(x)
-    δ = sqrt(eps())
-    tmp = x[i]
-    x[i] = tmp - δ/2
-    y1 = f(x, y)
-    x[i] = tmp + δ/2
-    y2 = f(x, y)
-    x[i] = tmp
-    grads[i] = (y2-y1)/δ
-  end
-  return grads
-end
-
 @testset "ctc_loss" begin
   x = rand(10, 50)
   y = rand(1:9, 30)
-  g1 = gradient(ctc_loss, x, y)[1]
-  g2 = ctc_ngradient(x, y)
-  @test g1 ≈ g2 rtol=1e-5 atol=1e-5
-  
+  @test test_gradients(x -> ctc_loss(x, y), x; rtol=1e-5, atol=1e-5)
+
   # tests using hand-calculated values
   x = [1. 2. 3.; 2. 1. 1.; 3. 3. 2.]
   y = [1, 2]
