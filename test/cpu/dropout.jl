@@ -71,7 +71,7 @@
     @test_throws ArgumentError dropout!(y1, x1, 3)
 end
 
-@static if Test_Enzyme
+@static if NNLIB_TEST_ENZYME
 
 @testset "EnzymeRules: dropout " begin
     rng = Random.default_rng()

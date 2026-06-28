@@ -895,7 +895,7 @@ end
   @test test_gradients((y, w) -> sum(∇depthwiseconv_data(y, w, dcdims)), y, w)
 end
 
-@static if Test_Enzyme
+@static if NNLIB_TEST_ENZYME
 
 @testset "EnzymeRules: conv! spatial_rank=$spatial_rank" for spatial_rank in (1, 2, 3)
   x = rand(rng, repeat([5], spatial_rank)..., 3, 2)

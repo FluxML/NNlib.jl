@@ -299,7 +299,7 @@ FiniteDifferences.to_vec(x::NNlib.BatchedTranspose) = FiniteDifferences.to_vec(c
     @test test_gradients(batched_vec, randn(rng, M, P, B), randn(rng, P))
 end
 
-@static if Test_Enzyme
+@static if NNLIB_TEST_ENZYME
 
 # Regression test for https://github.com/FluxML/NNlib.jl/issues/707:
 # the custom EnzymeRules avoid differentiating through the threaded `batched_gemm!`.
@@ -327,7 +327,7 @@ end
     end
 end
 
-end # Test_Enzyme
+end # NNLIB_TEST_ENZYME
 
 @testset "batched_vec: N-D batches" begin
     # Test 4D case: A is 4D, B is 3D
