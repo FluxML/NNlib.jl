@@ -1,6 +1,10 @@
 function gather_testsuite(Backend)
     device(x) = adapt(Backend(), x)
     T = Float32
+    # Gradient fixtures: Float64 everywhere except Metal (no Float64). The CPU
+    # finite-difference reference needs Float64 precision in the in-place `gather!`
+    # output; Metal uses a Zygote reference, which is exact for gather at Float32.
+    Tgrad = nameof(Backend) === :MetalBackend ? Float32 : Float64
 
     @testset "gather scalar index" begin
         ## 1d src, 2d index of ints -> 2d output
@@ -132,12 +136,12 @@ function gather_testsuite(Backend)
     end
 
     @testset "gather gradient for scalar index" begin
-        src = Float64[3, 4, 5, 6, 7]
+        src = Tgrad[3, 4, 5, 6, 7]
         idx_cpu = [
             1 2 3 4;
             4 2 1 3;
             3 5 5 3]
-        dst_cpu = Float64[
+        dst_cpu = Tgrad[
             3 4 5 6;
             6 4 3 5;
             5 7 7 5]
@@ -151,7 +155,9 @@ function gather_testsuite(Backend)
             f_gpu = xs -> gather(xs, idx_d))
     end
 
-    if Test_Enzyme
+    # Skip on Metal: `EnzymeTestUtils.test_reverse` does scalar indexing (disallowed on
+    # Metal). (`MetalBackend` isn't loaded on other workers, so match by type name.)
+    if Test_Enzyme && nameof(Backend) !== :MetalBackend
         @testset "EnzymeRules: gather! gradient for scalar index" begin
             src = device(Float64[3, 4, 5, 6, 7])
             idx = device([
@@ -170,11 +176,11 @@ function gather_testsuite(Backend)
     end
 
     @testset "gather gradient for tuple index" begin
-        src = Float64[
+        src = Tgrad[
             3 5 7
             4 6 8]
         idx_cpu = [(1,1), (1,2), (1,3), (2,1), (2,2), (2,3)]
-        dst_cpu = Float64[3, 5, 7, 4, 6, 8]
+        dst_cpu = Tgrad[3, 5, 7, 4, 6, 8]
         idx_d = device(idx_cpu)
         dst_d = device(dst_cpu)
         @test test_gradients(xs -> gather!(dst_cpu, xs, idx_cpu), src;

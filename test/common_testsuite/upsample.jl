@@ -182,7 +182,7 @@ function upsample_testsuite(Backend)
             n = rand(1:5)
             c = rand(1:5)
             insize = rand(1:5, d)
-            x = rand(insize..., r^d*c, n)
+            x = rand(Float32, insize..., r^d*c, n)   # Float32: Metal has no Float64
             xd = device(x)
 
             y = pixel_shuffle(xd, r)
