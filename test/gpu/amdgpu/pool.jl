@@ -1,12 +1,12 @@
 @testset "Compare CPU & GPU" begin
     channels, batch = 3, 2
-    for T in (Float16, Float32), nd in (1, 2, 3)
+    for (T, atol) in ((Float16, 1f-2), (Float32, 1f-5)), nd in (1, 2, 3)
         x = rand(T, fill(8, nd)..., channels, batch)
         pdims = PoolDims(x, 2)
         # NOTE: Disable grad check for maxpool as *sometimes*
         # it does not *completely* agree with CPU :/
         gputest(x -> NNlib.maxpool(x, pdims), x; checkgrad=false)
-        gputest(x -> NNlib.meanpool(x, pdims), x)
+        @test test_gradients(x -> NNlib.meanpool(x, pdims), x; test_gpu=true, atol)
     end
 end
 

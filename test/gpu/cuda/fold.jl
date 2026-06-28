@@ -28,8 +28,8 @@
             y = NNlib.unfold(x, cdims)
 
             # test equivalence of fold/unfold across GPU/CPU
-            gputest(x -> NNlib.unfold(x, cdims), x) 
-            gputest(y -> NNlib.fold(y, size(x), cdims), y) 
+            @test test_gradients(x -> NNlib.unfold(x, cdims), x; test_gpu=true)
+            @test test_gradients(y -> NNlib.fold(y, size(x), cdims), y; test_gpu=true)
         end
     end
 end

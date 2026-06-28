@@ -5,10 +5,10 @@
         w = rand(Float32, fill(2, nd)..., channels, 4)
 
         cdims = DenseConvDims(x, w, flipkernel=true)
-        gputest((x, w) -> NNlib.conv(x, w, cdims), x, w; atol=1e-4)
+        @test test_gradients((x, w) -> NNlib.conv(x, w, cdims), x, w; test_gpu=true, atol=1e-4)
 
         # This one flips manually kernel for AMDGPU.
         cdims = DenseConvDims(x, w)
-        gputest((x, w) -> NNlib.conv(x, w, cdims), x, w; atol=1e-4)
+        @test test_gradients((x, w) -> NNlib.conv(x, w, cdims), x, w; test_gpu=true, atol=1e-4)
     end
 end

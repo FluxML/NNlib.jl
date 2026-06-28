@@ -16,9 +16,9 @@
         qh = rand(Float32, n, lenq, batch_size...)
         kh = rand(Float32, n, lenkv, batch_size...)
         vh = rand(Float32, n, lenkv, batch_size...)
-        gputest(
+        @test test_gradients(
             (x...) -> dot_product_attention(x...; nheads)[1], qh, kh, vh;
-            atol=1f-5)
+            test_gpu=true, atol=1f-5)
     end
 end
 
