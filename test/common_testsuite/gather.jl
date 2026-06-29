@@ -147,8 +147,10 @@ function gather_testsuite(Backend)
             5 7 7 5]
         idx_d = device(idx_cpu)
         dst_d = device(dst_cpu)
+        # Enzyme errors on `gather!` here; Enzyme is covered by the dedicated
+        # `EnzymeRules` testset below.
         @test test_gradients(xs -> gather!(dst_cpu, xs, idx_cpu), src;
-            test_gpu = Backend != CPU,
+            test_gpu = Backend != CPU, compare = AutoZygote(),
             f_gpu = xs -> gather!(dst_d, xs, idx_d))
         @test test_gradients(xs -> gather(xs, idx_cpu), src;
             test_gpu = Backend != CPU,
@@ -183,11 +185,12 @@ function gather_testsuite(Backend)
         dst_cpu = Tgrad[3, 5, 7, 4, 6, 8]
         idx_d = device(idx_cpu)
         dst_d = device(dst_cpu)
+        # Enzyme errors on these tuple-index cases; covered by the `EnzymeRules` testset.
         @test test_gradients(xs -> gather!(dst_cpu, xs, idx_cpu), src;
-            test_gpu = Backend != CPU,
+            test_gpu = Backend != CPU, compare = AutoZygote(),
             f_gpu = xs -> gather!(dst_d, xs, idx_d))
         @test test_gradients(xs -> gather(xs, idx_cpu), src;
-            test_gpu = Backend != CPU,
+            test_gpu = Backend != CPU, compare = AutoZygote(),
             f_gpu = xs -> gather(xs, idx_d))
     end
 

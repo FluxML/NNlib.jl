@@ -275,13 +275,16 @@ FiniteDifferences.to_vec(x::NNlib.BatchedTranspose) = FiniteDifferences.to_vec(c
     @test test_gradients(batched_mul, randn(rng, M, P, B), batched_transpose(randn(rng, Q, P, B)))
 
     # One a matrix...
+    # `adjoint`/`transpose` (LinearAlgebra wrappers) inputs: Enzyme returns a
+    # structural `(parent = ...)` tangent that `check_equal` can't compare against
+    # the array-shaped reference, so compare against Zygote only here.
     @test test_gradients(batched_mul, randn(rng, M, P), randn(rng, P, Q, B))
-    @test test_gradients(batched_mul, adjoint(randn(rng, P, M)), randn(rng, P, Q, B))
+    @test test_gradients(batched_mul, adjoint(randn(rng, P, M)), randn(rng, P, Q, B); compare = AutoZygote())
     @test test_gradients(batched_mul, randn(rng, M, P), batched_adjoint(randn(rng, Q, P, B)))
 
     @test test_gradients(batched_mul, randn(rng, M, P, B), randn(rng, P, Q))
     @test test_gradients(batched_mul, batched_transpose(randn(rng, P, M, B)), randn(rng, P, Q))
-    @test test_gradients(batched_mul, randn(rng, M, P, B), transpose(randn(rng, Q, P)))
+    @test test_gradients(batched_mul, randn(rng, M, P, B), transpose(randn(rng, Q, P)); compare = AutoZygote())
 
     # ... or equivalent to a matrix
     @test test_gradients(batched_mul, randn(rng, M, P, 1), randn(rng, P, Q, B))
@@ -294,7 +297,7 @@ FiniteDifferences.to_vec(x::NNlib.BatchedTranspose) = FiniteDifferences.to_vec(c
 
     # batched_vec
     @test test_gradients(batched_vec, randn(rng, M, P, B), randn(rng, P, B))
-    @test test_gradients(batched_vec, randn(rng, M, P, B), transpose(randn(rng, B, P)))
+    @test test_gradients(batched_vec, randn(rng, M, P, B), transpose(randn(rng, B, P)); compare = AutoZygote())
 
     @test test_gradients(batched_vec, randn(rng, M, P, B), randn(rng, P))
 end
