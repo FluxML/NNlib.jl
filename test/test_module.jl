@@ -122,8 +122,8 @@ function test_gradients(
             test_cpu = !test_gpu,
             # Optional GPU-adapted version of `f`. Use when `f` captures CPU arrays
             # that must also be on GPU (e.g. index arrays in gather/scatter). When
-            # `nothing`, `f |> gpu_dev` is attempted (works for closures that only
-            # capture non-array scalars/config objects).
+            # `nothing`, `f` is used as-is on the GPU inputs (it is never moved to the
+            # GPU, since it captures only non-array config like `DenseConvDims`/kwargs).
             f_gpu = nothing,
             reference::AbstractADType = test_cpu ? AutoFiniteDifferences(;fdm=_default_fdm()) : AutoZygote(),
             compare::AbstractADType = AutoZygote(),
@@ -138,19 +138,13 @@ function test_gradients(
         gpu_dev = gpu_device(force=true)
         cpu_dev = cpu_device()
         xs_gpu = xs |> gpu_dev
-        _f_gpu = isnothing(f_gpu) ? (f |> gpu_dev) : f_gpu
+        _f_gpu = isnothing(f_gpu) ? f : f_gpu
     end
 
     ## Let's make sure first that the forward pass works.
     l = loss(f, xs...)
     @assert l isa Number "loss should return a number, got $(typeof(l))"
 
-    # We only differentiate the inputs `xs`, not `f`: `f` is captured in the closures
-    # below so its (possibly non-differentiable) configuration — e.g. `DenseConvDims`,
-    # `PoolDims`, kwargs — is never perturbed by the AD/finite-difference backends.
-
-    # Compute reference gradients with inputs promoted to f64 precision. `f` itself is
-    # left untouched (we don't differentiate it, so it needn't be reconstructed by `f64`).
     y, gs = withgradient((xs...) -> loss(f, xs...), reference, f64(xs)...)
     @assert isapprox(l, y; rtol, atol) "forward pass mismatch: $l ≉ $y (reference)"
 

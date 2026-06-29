@@ -4,30 +4,30 @@
     B = randn(Float32, 4, 6, 5)
 
     # plain, and with batched transpose / adjoint wrappers on either side
-    @test gputest(DEVICE, batched_mul, A, B; atol=1f-3)
-    @test gputest(DEVICE, (a, b) -> batched_mul(batched_transpose(a), b),
-                  randn(Float32, 4, 3, 5), B; atol=1f-3)
-    @test gputest(DEVICE, (a, b) -> batched_mul(a, batched_adjoint(b)),
-                  A, randn(Float32, 6, 4, 5); atol=1f-3)
-    @test gputest(DEVICE, (a, b) -> batched_mul(batched_transpose(a), batched_adjoint(b)),
-                  randn(Float32, 4, 3, 5), randn(Float32, 6, 4, 5); atol=1f-3)
+    @test test_gradients(batched_mul, A, B; test_gpu=true, atol=1f-3)
+    @test test_gradients((a, b) -> batched_mul(batched_transpose(a), b),
+                  randn(Float32, 4, 3, 5), B; test_gpu=true, atol=1f-3)
+    @test test_gradients((a, b) -> batched_mul(a, batched_adjoint(b)),
+                  A, randn(Float32, 6, 4, 5); test_gpu=true, atol=1f-3)
+    @test test_gradients((a, b) -> batched_mul(batched_transpose(a), batched_adjoint(b)),
+                  randn(Float32, 4, 3, 5), randn(Float32, 6, 4, 5); test_gpu=true, atol=1f-3)
 
     # PermutedDimsArray(_, (2,1,3)) is understood as a batched transpose
-    @test gputest(DEVICE, (a, b) -> batched_mul(PermutedDimsArray(a, (2, 1, 3)), b),
-                  randn(Float32, 4, 3, 5), B; atol=1f-3)
+    @test test_gradients((a, b) -> batched_mul(PermutedDimsArray(a, (2, 1, 3)), b),
+                  randn(Float32, 4, 3, 5), B; test_gpu=true, atol=1f-3)
 
     # one operand lacking a batch index reshapes/broadcasts the batch dimension,
     # which MPS cannot do natively (falls back to the generic per-slice path)
-    @test gputest(DEVICE, batched_mul, A, randn(Float32, 4, 6); atol=1f-3)
-    @test gputest(DEVICE, batched_mul, randn(Float32, 7, 3), A; atol=1f-3)
-    @test gputest(DEVICE, batched_mul, randn(Float32, 3, 4, 1), B; atol=1f-3)  # broadcast batch
+    @test test_gradients(batched_mul, A, randn(Float32, 4, 6); test_gpu=true, atol=1f-3)
+    @test test_gradients(batched_mul, randn(Float32, 7, 3), A; test_gpu=true, atol=1f-3)
+    @test test_gradients(batched_mul, randn(Float32, 3, 4, 1), B; test_gpu=true, atol=1f-3)  # broadcast batch
 
     # regard B as a batch of vectors: A[:,:,k] * b[:,k]
-    @test gputest(DEVICE, batched_vec, randn(Float32, 4, 5, 3), randn(Float32, 5, 3); atol=1f-3)
+    @test test_gradients(batched_vec, randn(Float32, 4, 5, 3), randn(Float32, 5, 3); test_gpu=true, atol=1f-3)
 
     # tiny arrays previously tripped MPS bugs (the original report)
     for n in (1, 2, 3)
-        @test gputest(DEVICE, batched_mul, randn(Float32, n, n, 2), randn(Float32, n, n, 2); atol=1f-3)
+        @test test_gradients(batched_mul, randn(Float32, n, n, 2), randn(Float32, n, n, 2); test_gpu=true, atol=1f-3)
     end
 
     # Float16 goes through the generic per-slice path

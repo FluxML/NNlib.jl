@@ -11,9 +11,9 @@
         pdims = PoolDims(x, 2)
         y = maxpool(x, pdims)
         dy = ones(size(y))
-        gputest(x -> maxpool(x, pdims), x)
+        @test test_gradients(x -> maxpool(x, pdims), x; test_gpu=true)
         gputest((dy, y, x) -> ∇maxpool(dy, y, x, pdims), dy, y, x, checkgrad=false)
-        gputest(x -> maxpool(x, pdims), x)
+        @test test_gradients(x -> maxpool(x, pdims), x; test_gpu=true)
         gputest((dy, y, x) -> ∇maxpool(dy, y, x, pdims), dy, y, x, checkgrad=false)
 
         # meanpool count_include_pad (issue #218): with padding the two modes differ,
@@ -22,7 +22,7 @@
         for cip in (true, false)
             ym = meanpool(x, pdims_pad; count_include_pad=cip)
             dym = ones(size(ym))
-            gputest(x -> meanpool(x, pdims_pad; count_include_pad=cip), x)
+            @test test_gradients(x -> meanpool(x, pdims_pad; count_include_pad=cip), x; test_gpu=true)
             gputest((dy, y, x) -> ∇meanpool(dy, y, x, pdims_pad; count_include_pad=cip),
                     dym, ym, x, checkgrad=false)
         end

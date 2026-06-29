@@ -1,7 +1,7 @@
 @testset "activation broadcast" begin
     for f in NNlib.ACTIVATIONS
         if f ∉ [:rrelu]
-            @eval gputest(x -> $f.(x), rand(Float64, 5))
+            @eval @test test_gradients(x -> $f.(x), rand(Float64, 5); test_gpu=true)
         end
     end
 end

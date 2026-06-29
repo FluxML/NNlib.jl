@@ -4,11 +4,11 @@
         dy = randn(Float64, sz)
 
         y = softmax(x, dims=dims)
-        gputest(softmax, x, dims=dims)
+        @test test_gradients(x -> softmax(x; dims), x; test_gpu=true)
         gputest(NNlib.∇softmax, dy, y; dims=dims)
 
         y2 = logsoftmax(x, dims=dims)
-        gputest(logsoftmax, x, dims=dims)
+        @test test_gradients(x -> logsoftmax(x; dims), x; test_gpu=true)
         gputest(NNlib.∇logsoftmax, dy, y2; dims=dims)
 
         @test NNlib.∇softmax(dy, y; dims=dims) ≈ collect(∇softmax!(similar(cu(x)), cu(dy), cu(y); dims=dims)) atol=1e-4

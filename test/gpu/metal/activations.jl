@@ -2,7 +2,7 @@
     for name in NNlib.ACTIVATIONS
         # println("Testing forward diff for activation: ", name)
         f = @eval $name
-        @test gputest(DEVICE, x -> f.(x), rand(5))
+        @test test_gradients(x -> f.(x), rand(5); test_gpu=true)
     end
 end
 

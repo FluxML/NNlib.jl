@@ -48,7 +48,7 @@ end
         grid[2, xi, yi, ni] = (yi / h) * 2.0 - 1.0
     end
     for padding_mode in (:zeros, :border)
-        gputest(grid_sample, input, grid; atol=1e-6, padding_mode=padding_mode)
+        @test test_gradients((input, grid) -> grid_sample(input, grid; padding_mode), input, grid; test_gpu=true)
     end
 end
 
@@ -114,6 +114,6 @@ end
         grid[3, xi, yi, zi, ni] = (zi / d) * 2.0 - 1.0
     end
     for padding_mode in (:zeros, :border)
-        gputest(grid_sample, input, grid; atol=1e-6, padding_mode=padding_mode)
+        @test test_gradients((input, grid) -> grid_sample(input, grid; padding_mode), input, grid; test_gpu=true)
     end
 end

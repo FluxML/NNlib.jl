@@ -17,7 +17,7 @@ const NNLIB_TEST_METAL    = get(ENV, "NNLIB_TEST_METAL",    "false") == "true"
 const NNLIB_TEST_THREADED = get(ENV, "NNLIB_TEST_THREADED", "false") == "true"
 
 # some enzyme tests on AMDGPU are crashing julia
-const Test_Enzyme = VERSION <= v"1.13-" && !NNLIB_TEST_AMDGPU
+const NNLIB_TEST_ENZYME = VERSION <= v"1.13-" && !NNLIB_TEST_AMDGPU
 
 # Tests that exercise NNlib's multithreaded code paths (`@spawn` / `@threads`).
 # The dedicated `NNLIB_TEST_THREADED` job runs *only* these, on multithreaded
@@ -114,7 +114,7 @@ end
 # the two never collide.
 init_code = quote
     include($(joinpath(@__DIR__, "test_module.jl")))
-    const Test_Enzyme = $Test_Enzyme
+    const NNLIB_TEST_ENZYME = $NNLIB_TEST_ENZYME
     $(NNLIB_TEST_CUDA   ? :(include($(joinpath(@__DIR__, "gpu", "cuda",   "test_setup.jl")))) : nothing)
     $(NNLIB_TEST_AMDGPU ? :(include($(joinpath(@__DIR__, "gpu", "amdgpu", "test_setup.jl")))) : nothing)
     $(NNLIB_TEST_METAL  ? :(include($(joinpath(@__DIR__, "gpu", "metal",  "test_setup.jl")))) : nothing)

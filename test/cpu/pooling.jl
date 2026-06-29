@@ -1056,7 +1056,7 @@ end
   @test test_gradients(z -> sum(meanpool(z, k1; pad=1, stride=2, count_include_pad=false)), xp)
 end
 
-@static if Test_Enzyme
+@static if NNLIB_TEST_ENZYME
 
 @testset "EnzymeRules: pooling! $pool spatial_rank=$spatial_rank " for spatial_rank in (1, 2),
                                                                                 (pool, pool!) in ((maxpool, maxpool!), (meanpool, meanpool!))

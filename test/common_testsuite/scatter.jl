@@ -205,7 +205,7 @@ function scatter_testsuite(Backend)
         # Skip on Metal: `EnzymeTestUtils.test_reverse` does scalar indexing internally,
         # which is disallowed on Metal. (`MetalBackend` isn't loaded on other workers, so
         # match by type name rather than referencing the type.)
-        if Test_Enzyme && nameof(Backend) !== :MetalBackend
+        if NNLIB_TEST_ENZYME && nameof(Backend) !== :MetalBackend
 
         @testset "EnzymeRules" begin
             idx = device(Int32[2, 2, 3, 4, 4])
