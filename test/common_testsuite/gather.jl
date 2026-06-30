@@ -157,9 +157,7 @@ function gather_testsuite(Backend)
             f_gpu = xs -> gather(xs, idx_d))
     end
 
-    # Skip on Metal: `EnzymeTestUtils.test_reverse` does scalar indexing (disallowed on
-    # Metal). (`MetalBackend` isn't loaded on other workers, so match by type name.)
-    if NNLIB_TEST_ENZYME && nameof(Backend) !== :MetalBackend
+    if NNLIB_TEST_ENZYME
         @testset "EnzymeRules: gather! gradient for scalar index" begin
             src = device(Float64[3, 4, 5, 6, 7])
             idx = device([

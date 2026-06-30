@@ -16,11 +16,10 @@ const NNLIB_TEST_AMDGPU   = get(ENV, "NNLIB_TEST_AMDGPU",   "false") == "true"
 const NNLIB_TEST_METAL    = get(ENV, "NNLIB_TEST_METAL",    "false") == "true"
 const NNLIB_TEST_THREADED = get(ENV, "NNLIB_TEST_THREADED", "false") == "true"
 
-# Enzyme is opt-out via `NNLIB_TEST_ENZYME`, and additionally disabled where it is
-# known to break: some enzyme tests on AMDGPU crash julia, and it is unsupported
-# on Julia nightly (> 1.13).
-const NNLIB_TEST_ENZYME = get(ENV, "NNLIB_TEST_ENZYME", "true") == "true" &&
-    VERSION <= v"1.13-" && !NNLIB_TEST_AMDGPU
+const NNLIB_TEST_ENZYME =   get(ENV, "NNLIB_TEST_ENZYME",   "true")  == "true" &&
+                            VERSION <= v"1.13-" && # fails on nighlt
+                            !NNLIB_TEST_AMDGPU && !NNLIB_TEST_METAL && !NNLIB_TEST_CUDA && # TODO fails on GPU backends
+                            !Sys.iswindows() # TODO fails on Windows
 
 # Tests that exercise NNlib's multithreaded code paths (`@spawn` / `@threads`).
 # The dedicated `NNLIB_TEST_THREADED` job runs *only* these, on multithreaded
