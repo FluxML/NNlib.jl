@@ -36,7 +36,9 @@
     @test eltype(∇input) == Float64
     @test eltype(∇grid) == Float64
 
-    @test test_gradients((x, grid) -> grid_sample(x, grid; padding_mode), x, grid)
+    # Enzyme returns a (near-zero) wrong gradient for `grid_sample`, so compare
+    # against Zygote only for now.
+    @test test_gradients((x, grid) -> grid_sample(x, grid; padding_mode), x, grid; compare = AutoZygote())
 end
 
 @testset "Test out-of-bounds for different paddings" begin
@@ -119,7 +121,9 @@ end
     @test eltype(∇input) == Float64
     @test eltype(∇grid) == Float64
 
-    @test test_gradients((x, grid) -> grid_sample(x, grid; padding_mode), x, grid)
+    # Enzyme returns a (near-zero) wrong gradient for `grid_sample`, so compare
+    # against Zygote only for now.
+    @test test_gradients((x, grid) -> grid_sample(x, grid; padding_mode), x, grid; compare = AutoZygote())
 end
 
 @testset "Test out-of-bounds for different paddings 3D" begin

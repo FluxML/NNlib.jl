@@ -147,17 +147,17 @@ function gather_testsuite(Backend)
             5 7 7 5]
         idx_d = device(idx_cpu)
         dst_d = device(dst_cpu)
+        # Enzyme errors on `gather!` here; Enzyme is covered by the dedicated
+        # `EnzymeRules` testset below.
         @test test_gradients(xs -> gather!(dst_cpu, xs, idx_cpu), src;
-            test_gpu = Backend != CPU,
+            test_gpu = Backend != CPU, compare = AutoZygote(),
             f_gpu = xs -> gather!(dst_d, xs, idx_d))
         @test test_gradients(xs -> gather(xs, idx_cpu), src;
             test_gpu = Backend != CPU,
             f_gpu = xs -> gather(xs, idx_d))
     end
 
-    # Skip on Metal: `EnzymeTestUtils.test_reverse` does scalar indexing (disallowed on
-    # Metal). (`MetalBackend` isn't loaded on other workers, so match by type name.)
-    if NNLIB_TEST_ENZYME && nameof(Backend) !== :MetalBackend
+    if NNLIB_TEST_ENZYME
         @testset "EnzymeRules: gather! gradient for scalar index" begin
             src = device(Float64[3, 4, 5, 6, 7])
             idx = device([
@@ -183,11 +183,12 @@ function gather_testsuite(Backend)
         dst_cpu = Tgrad[3, 5, 7, 4, 6, 8]
         idx_d = device(idx_cpu)
         dst_d = device(dst_cpu)
+        # Enzyme errors on these tuple-index cases; covered by the `EnzymeRules` testset.
         @test test_gradients(xs -> gather!(dst_cpu, xs, idx_cpu), src;
-            test_gpu = Backend != CPU,
+            test_gpu = Backend != CPU, compare = AutoZygote(),
             f_gpu = xs -> gather!(dst_d, xs, idx_d))
         @test test_gradients(xs -> gather(xs, idx_cpu), src;
-            test_gpu = Backend != CPU,
+            test_gpu = Backend != CPU, compare = AutoZygote(),
             f_gpu = xs -> gather(xs, idx_d))
     end
 

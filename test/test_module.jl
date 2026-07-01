@@ -126,11 +126,16 @@ function test_gradients(
             # GPU, since it captures only non-array config like `DenseConvDims`/kwargs).
             f_gpu = nothing,
             reference::AbstractADType = test_cpu ? AutoFiniteDifferences(;fdm=_default_fdm()) : AutoZygote(),
-            compare::AbstractADType = AutoZygote(),
+            compare::Union{AbstractADType, Vector{<:AbstractADType}} = [AutoZygote(), AutoEnzyme()],
             loss = (f, xs...) -> mean(f(xs...)),
             )
 
     @assert test_cpu || test_gpu "at least one of `test_cpu` or `test_gpu` must be true"
+
+    compares = compare isa AbstractADType ? [compare,] : compare
+    if !NNLIB_TEST_ENZYME
+        compares = filter(adtype -> !(adtype isa AutoEnzyme), compares)
+    end
 
     cpu_dev = cpu_device()
 
@@ -145,22 +150,31 @@ function test_gradients(
     l = loss(f, xs...)
     @assert l isa Number "loss should return a number, got $(typeof(l))"
 
+    # Compute reference gradients with inputs promoted to f64 precision.
     y, gs = withgradient((xs...) -> loss(f, xs...), reference, f64(xs)...)
     @assert isapprox(l, y; rtol, atol) "forward pass mismatch: $l ≉ $y (reference)"
 
     if test_cpu
-        y2, gs2 = withgradient((xs...) -> loss(f, xs...), compare, xs...)
-        @assert isapprox(l, y2; rtol, atol) "forward pass mismatch: $l ≉ $y2 (compare)"
-        check_equal(gs, gs2; rtol, atol)
+        for adtype in compares
+            y2, gs2 = withgradient((xs...) -> loss(f, xs...), adtype, xs...)
+            @assert isapprox(l, y2; rtol, atol) "forward pass mismatch: $l ≉ $y2 (compare $adtype)"
+            check_equal(gs, gs2; rtol, atol)
+        end
     end
 
     if test_gpu
         l_gpu = loss(_f_gpu, xs_gpu...)
         @assert l_gpu isa Number "gpu loss should return a number, got $(typeof(l_gpu))"
 
-        y_gpu, gs_gpu = withgradient((xs...) -> loss(_f_gpu, xs...), compare, xs_gpu...)
-        @assert isapprox(l_gpu, y_gpu; rtol, atol) "gpu forward pass mismatch: $l_gpu ≉ $y_gpu"
-        check_equal(gs, gs_gpu |> cpu_dev; rtol, atol)
+        # TODO fix Enzyme errors on Metal
+        gpu_compares = nameof(typeof(gpu_dev)) === :MetalDevice ?
+            filter(adtype -> !(adtype isa AutoEnzyme), compares) : compares
+
+        for adtype in gpu_compares
+            y_gpu, gs_gpu = withgradient((xs...) -> loss(_f_gpu, xs...), adtype, xs_gpu...)
+            @assert isapprox(l_gpu, y_gpu; rtol, atol) "gpu forward pass mismatch: $l_gpu ≉ $y_gpu (compare $adtype)"
+            check_equal(gs, gs_gpu |> cpu_dev; rtol, atol)
+        end
     end
 
     return true
