@@ -532,6 +532,54 @@ function EnzymeRules.reverse(config, func::EnzymeCore.Const{typeof(NNlib.batchno
     return (nothing, nothing, nothing, nothing, nothing, nothing)
 end
 
+# `unfold(x, cdims)` / `fold(y, output_size, cdims)` are adjoints of each other
+# (the `unfold` pullback is `fold` and vice versa — see their rrules). Enzyme can't
+# differentiate the underlying `unfold!`/`fold!` KA kernels (LLVM verifier crash /
+# ReadOnlyMemoryError), so route the reverse pass through the sibling operator. The
+# rules target the `DenseConvDims` methods; the `kernel_size` convenience methods
+# forward to these, so Enzyme reaches the rule through them too.
+function EnzymeRules.augmented_primal(config, func::EnzymeCore.Const{typeof(NNlib.unfold)},
+        ::Type{RT}, x, cdims::EnzymeCore.Const{<:NNlib.DenseConvDims}) where {RT}
+    y = func.val(x.val, cdims.val)
+    shadow = EnzymeRules.needs_shadow(config) ? _enz_shadow(config, y) : nothing
+    primal = EnzymeRules.needs_primal(config) ? y : nothing
+    return EnzymeRules.AugmentedReturn(primal, shadow, (shadow, Base.size(x.val), cdims.val))
+end
+
+function EnzymeRules.reverse(config, func::EnzymeCore.Const{typeof(NNlib.unfold)},
+        ::Type{RT}, cache, x, cdims::EnzymeCore.Const{<:NNlib.DenseConvDims}) where {RT}
+    shadow, xsize, cd = cache
+    if !(x isa EnzymeCore.Const)
+        wv = Val(EnzymeRules.width(config))
+        for i in 1:EnzymeRules.width(config)
+            dy = _enz_slice(wv, shadow, i)
+            _enz_slice(wv, x.dval, i) .+= NNlib.fold(dy, xsize, cd)
+        end
+    end
+    return (nothing, nothing)
+end
+
+function EnzymeRules.augmented_primal(config, func::EnzymeCore.Const{typeof(NNlib.fold)},
+        ::Type{RT}, x, output_size, cdims::EnzymeCore.Const{<:NNlib.DenseConvDims}) where {RT}
+    y = func.val(x.val, output_size.val, cdims.val)
+    shadow = EnzymeRules.needs_shadow(config) ? _enz_shadow(config, y) : nothing
+    primal = EnzymeRules.needs_primal(config) ? y : nothing
+    return EnzymeRules.AugmentedReturn(primal, shadow, (shadow, cdims.val))
+end
+
+function EnzymeRules.reverse(config, func::EnzymeCore.Const{typeof(NNlib.fold)},
+        ::Type{RT}, cache, x, output_size, cdims::EnzymeCore.Const{<:NNlib.DenseConvDims}) where {RT}
+    shadow, cd = cache
+    if !(x isa EnzymeCore.Const)
+        wv = Val(EnzymeRules.width(config))
+        for i in 1:EnzymeRules.width(config)
+            dy = _enz_slice(wv, shadow, i)
+            _enz_slice(wv, x.dval, i) .+= NNlib.unfold(dy, cd)
+        end
+    end
+    return (nothing, nothing, nothing)
+end
+
 function EnzymeRules.augmented_primal(config, func::EnzymeCore.Const{typeof(NNlib._dropout!)}, ::Type{RT}, rng, dst::OutType, src, p, dims) where {OutType, RT}
 
     T = float(real(eltype(dst.val)))
