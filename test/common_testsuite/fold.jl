@@ -40,13 +40,11 @@ function fold_testsuite(Backend)
         w = rand(rng, repeat([3], spatial_rank)..., 3, 3)
         cdims = DenseConvDims(x, w)
 
-        # Enzyme fails to compile the `unfold`/`fold` gradient (LLVM verifier crash),
-        # so compare against Zygote only for now.
-        @test test_gradients(x -> NNlib.unfold(x, cdims), x; test_gpu = Backend != CPU, compare = AutoZygote())
+        @test test_gradients(x -> NNlib.unfold(x, cdims), x; test_gpu = Backend != CPU)
         Backend == CPU && ChainRulesTestUtils.test_rrule(NNlib.unfold, x, cdims)
 
         y = NNlib.unfold(x, cdims)
-        @test test_gradients(y -> NNlib.fold(y, size(x), cdims), y; test_gpu = Backend != CPU, compare = AutoZygote())
+        @test test_gradients(y -> NNlib.fold(y, size(x), cdims), y; test_gpu = Backend != CPU)
         Backend == CPU && ChainRulesTestUtils.test_rrule(NNlib.fold, y, size(x), cdims)
     end
 end

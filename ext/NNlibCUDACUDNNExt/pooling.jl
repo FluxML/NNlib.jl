@@ -17,10 +17,11 @@ function maxpool!(y::DenseCuArray{T}, x::DenseCuArray{T}, pdims::PoolDims) where
     cudnnPoolingForward!(y, x, d)
 end
 
-function ∇maxpool!(dx::DenseCuArray{T}, dy::DenseCuArray{T}, y::DenseCuArray{T}, x::DenseCuArray{T}, pdims::PoolDims) where T<:CUDNNFloat
+function ∇maxpool!(dx::DenseCuArray{T}, dy::DenseCuArray{T}, y::DenseCuArray{T}, x::DenseCuArray{T}, pdims::PoolDims;
+                   alpha=1, beta=0, kwargs...) where T<:CUDNNFloat
     xDesc, yDesc = cudnnTensorDescriptor.((x, y))
     d = cudnnPoolingDescriptor(pdims, x, CUDNN_POOLING_MAX)
-    alpha, beta = scalingParameter(T,1), scalingParameter(T,0)
+    alpha, beta = scalingParameter(T,alpha), scalingParameter(T,beta)
     cudnnPoolingBackward(handle(), d, alpha, yDesc, y, yDesc, dy, xDesc, x, beta, xDesc, dx)
     return dx
 end
@@ -36,10 +37,10 @@ function meanpool!(y::DenseCuArray{T}, x::DenseCuArray{T}, pdims::PoolDims;
 end
 
 function ∇meanpool!(dx::DenseCuArray{T}, dy::DenseCuArray{T}, y::DenseCuArray{T}, x::DenseCuArray{T}, pdims::PoolDims;
-                    count_include_pad::Bool=true) where T<:CUDNNFloat
+                    count_include_pad::Bool=true, alpha=1, beta=0, kwargs...) where T<:CUDNNFloat
     xDesc, yDesc = cudnnTensorDescriptor.((x, y))
     d = cudnnPoolingDescriptor(pdims, x, meanpool_mode(count_include_pad))
-    alpha, beta = scalingParameter(T,1), scalingParameter(T,0)
+    alpha, beta = scalingParameter(T,alpha), scalingParameter(T,beta)
     cudnnPoolingBackward(handle(), d, alpha, yDesc, y, yDesc, dy, xDesc, x, beta, xDesc, dx)
     return dx
 end
@@ -68,14 +69,14 @@ function meanpool!(y::DenseCuArray{T,3}, x::DenseCuArray{T,3}, pdims::PoolDims;
     return y
 end
 
-function ∇maxpool!(dx::DenseCuArray{T,3}, dy::DenseCuArray{T,3}, y::DenseCuArray{T,3}, x::DenseCuArray{T,3}, pdims::PoolDims) where T<:CUDNNFloat
-    ∇maxpool!(add1d(dx), add1d(dy), add1d(y), add1d(x), fix_pooldims_1d(pdims))
+function ∇maxpool!(dx::DenseCuArray{T,3}, dy::DenseCuArray{T,3}, y::DenseCuArray{T,3}, x::DenseCuArray{T,3}, pdims::PoolDims; kwargs...) where T<:CUDNNFloat
+    ∇maxpool!(add1d(dx), add1d(dy), add1d(y), add1d(x), fix_pooldims_1d(pdims); kwargs...)
     return dx
 end
 
 function ∇meanpool!(dx::DenseCuArray{T,3}, dy::DenseCuArray{T,3}, y::DenseCuArray{T,3}, x::DenseCuArray{T,3}, pdims::PoolDims;
-                    count_include_pad::Bool=true) where T<:CUDNNFloat
-    ∇meanpool!(add1d(dx), add1d(dy), add1d(y), add1d(x), fix_pooldims_1d(pdims); count_include_pad)
+                    count_include_pad::Bool=true, kwargs...) where T<:CUDNNFloat
+    ∇meanpool!(add1d(dx), add1d(dy), add1d(y), add1d(x), fix_pooldims_1d(pdims); count_include_pad, kwargs...)
     return dx
 end
 
