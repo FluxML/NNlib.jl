@@ -315,6 +315,58 @@ end
 end
 end
 
+# `softmax!`/`logsoftmax!` gradients depend only on the output `y` (= the written
+# destination) and the seed `dy`, via `∇softmax!(dx, dy, y; dims)`. Without a rule
+# Enzyme would try to differentiate the underlying implementation directly — on a
+# GPU that is a cuDNN `ccall` it cannot handle (Enzyme recurses/hangs), and even on
+# the CPU a hand-off to `∇softmax!` matches the ChainRules `rrule`. The rule caches
+# `y` in the augmented pass and accumulates `∇softmax!` into the input shadow on
+# reverse. These are first-order rules (they use the fast, non-`within_gradient`
+# `∇softmax!`), matching what `test_gradients` compares.
+for (fwd!, bwd!) in ((:(NNlib.softmax!),    :(NNlib.∇softmax!)),
+                     (:(NNlib.logsoftmax!), :(NNlib.∇logsoftmax!)))
+    @eval begin
+
+function EnzymeRules.augmented_primal(config, func::EnzymeCore.Const{typeof($fwd!)}, ::Type{RT},
+                                      out::OutType, x; dims=1) where {OutType, RT}
+    if OutType <: EnzymeCore.Duplicated || OutType <: EnzymeCore.BatchDuplicated
+        func.val(out.val, x.val; dims)
+    end
+
+    primal = EnzymeRules.needs_primal(config) ? out.val : nothing
+    shadow = EnzymeRules.needs_shadow(config) ? out.dval : nothing
+
+    # Cache the output `y` (needed by `∇softmax!`); `out.val` may be overwritten
+    # downstream, so copy it unless neither input nor output is differentiated.
+    cache_y = ( !(typeof(x) <: EnzymeCore.Const) && !(typeof(out) <: EnzymeCore.Const)
+              ) ? copy(out.val) : nothing
+
+    return EnzymeRules.AugmentedReturn(primal, shadow, cache_y)
+end
+
+function EnzymeRules.reverse(config, func::EnzymeCore.Const{typeof($fwd!)}, ::Type{RT}, cache_y,
+                             out::OutType, x; dims=1) where {OutType, RT}
+    if !(typeof(x) <: EnzymeCore.Const) && !(typeof(out) <: EnzymeCore.Const)
+        dys = out.dval
+        dxs = x.dval
+        if EnzymeRules.width(config) == 1
+            dys = (dys,)
+            dxs = (dxs,)
+        end
+
+        for (dy, dx) in zip(dys, dxs)
+            # `∇softmax!` overwrites its destination, so accumulate via a temporary.
+            dx .+= $bwd!(similar(dx), dy, cache_y; dims)
+            dy .= 0
+        end
+    end
+
+    return (nothing, nothing)
+end
+
+    end
+end
+
 function EnzymeRules.augmented_primal(config, func::EnzymeCore.Const{typeof(NNlib._dropout!)}, ::Type{RT}, rng, dst::OutType, src, p, dims) where {OutType, RT}
 
     T = float(real(eltype(dst.val)))
