@@ -367,6 +367,88 @@ end
     end
 end
 
+# ---------------------------------------------------------------------------
+# Allocating ops whose gradient has a dedicated `∇` kernel: `imrotate`,
+# `upsample_nearest`, `upsample_linear` (the latter also covers `upsample_bi/
+# trilinear`, which forward to it). Enzyme cannot differentiate these forward
+# kernels on the GPU ("Active kernel arguments not supported"), so we wrap them:
+# the augmented pass allocates the output shadow, and the reverse pass feeds it to
+# the `∇` kernel and accumulates into the input shadow. This mirrors each op's
+# ChainRules `rrule`. (Written explicitly rather than via `Enzyme.@import_rrule`,
+# per Enzyme maintainers' recommendation, and so the rules stay in the lighter
+# EnzymeCore extension.)
+
+# Allocate the return shadow (a zeroed copy of `y`), respecting the batch width.
+_enz_shadow(config, y) =
+    EnzymeRules.width(config) == 1 ? EnzymeCore.make_zero(y) :
+        ntuple(_ -> EnzymeCore.make_zero(y), EnzymeRules.width(config))
+
+# Pair each return-shadow (`dy`) with its input shadow (`dx`) across the width.
+_enz_pairs(config, dy, dx) =
+    EnzymeRules.width(config) == 1 ? ((dy, dx),) : zip(dy, dx)
+
+function EnzymeRules.augmented_primal(config, func::EnzymeCore.Const{typeof(NNlib.imrotate)},
+        ::Type{RT}, arr, θ;
+        method=:bilinear, rotation_center=size(arr.val) .÷ 2 .+ 1) where {RT}
+    y = func.val(arr.val, θ.val; method, rotation_center)
+    shadow = EnzymeRules.needs_shadow(config) ? _enz_shadow(config, y) : nothing
+    primal = EnzymeRules.needs_primal(config) ? y : nothing
+    # `∇imrotate` reads only `arr`'s shape/backend (the op is linear in `arr`), so
+    # keeping `arr.val` — not a copy — is safe even if it is later overwritten.
+    return EnzymeRules.AugmentedReturn(primal, shadow, (shadow, arr.val, θ.val, method, rotation_center))
+end
+
+function EnzymeRules.reverse(config, func::EnzymeCore.Const{typeof(NNlib.imrotate)},
+        ::Type{RT}, cache, arr, θ; kwargs...) where {RT}
+    shadow, arr_val, θ_val, method, rotation_center = cache
+    if !(arr isa EnzymeCore.Const)
+        for (dy, dx) in _enz_pairs(config, shadow, arr.dval)
+            dx .+= NNlib.∇imrotate(dy, arr_val, θ_val; method, rotation_center)
+        end
+    end
+    return (nothing, nothing)   # θ is `NoTangent` in the rrule
+end
+
+function EnzymeRules.augmented_primal(config, func::EnzymeCore.Const{typeof(NNlib.upsample_nearest)},
+        ::Type{RT}, x, s) where {RT}
+    y = func.val(x.val, s.val)
+    shadow = EnzymeRules.needs_shadow(config) ? _enz_shadow(config, y) : nothing
+    primal = EnzymeRules.needs_primal(config) ? y : nothing
+    return EnzymeRules.AugmentedReturn(primal, shadow, (shadow, s.val))
+end
+
+function EnzymeRules.reverse(config, func::EnzymeCore.Const{typeof(NNlib.upsample_nearest)},
+        ::Type{RT}, cache, x, s) where {RT}
+    shadow, scales = cache
+    if !(x isa EnzymeCore.Const)
+        for (dy, dx) in _enz_pairs(config, shadow, x.dval)
+            dx .+= NNlib.∇upsample_nearest(dy, scales)
+        end
+    end
+    return (nothing, nothing)
+end
+
+function EnzymeRules.augmented_primal(config, func::EnzymeCore.Const{typeof(NNlib.upsample_linear)},
+        ::Type{RT}, x; size, align_corners::Bool=true) where {RT}
+    y = func.val(x.val; size, align_corners)
+    shadow = EnzymeRules.needs_shadow(config) ? _enz_shadow(config, y) : nothing
+    primal = EnzymeRules.needs_primal(config) ? y : nothing
+    # `∇upsample_linear` needs the original spatial size of `x` (see the rrule).
+    insize = Base.size(x.val)[1:ndims(x.val)-2]
+    return EnzymeRules.AugmentedReturn(primal, shadow, (shadow, insize, align_corners))
+end
+
+function EnzymeRules.reverse(config, func::EnzymeCore.Const{typeof(NNlib.upsample_linear)},
+        ::Type{RT}, cache, x; kwargs...) where {RT}
+    shadow, insize, align_corners = cache
+    if !(x isa EnzymeCore.Const)
+        for (dy, dx) in _enz_pairs(config, shadow, x.dval)
+            dx .+= NNlib.∇upsample_linear(dy; size=insize, align_corners)
+        end
+    end
+    return (nothing,)
+end
+
 function EnzymeRules.augmented_primal(config, func::EnzymeCore.Const{typeof(NNlib._dropout!)}, ::Type{RT}, rng, dst::OutType, src, p, dims) where {OutType, RT}
 
     T = float(real(eltype(dst.val)))
