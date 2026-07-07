@@ -66,4 +66,140 @@ Base.Array{T, N}(b::Union{MtlBatchedAdjOrTrans, WrappedMtlBatchedAdjOrTrans}) wh
 Base.collect(b::Union{MtlBatchedAdjOrTrans, WrappedMtlBatchedAdjOrTrans}) =
     collect(adapt(Array, b))
 
+const MtlFloatArray{T, N} = MtlArray{T, N} where {T<:Union{Float16, Float32}, N}
+
+function supports_mpsgraph_softmax(x::MtlArray, dims)
+    return dims isa Integer && 1 <= dims <= ndims(x)
+end
+
+function NNlib.softmax!(y::MtlFloatArray{T, N}, x::MtlFloatArray{T, N};
+                        dims = 1) where {T, N}
+    supports_mpsgraph_softmax(x, dims) || return NNlib._softmax!(y, x; dims)
+    return Metal.MPSGraphs.graph_softmax!(y, x; dims)
+end
+
+function NNlib.logsoftmax!(y::MtlFloatArray{T, N}, x::MtlFloatArray{T, N};
+                           dims = 1) where {T, N}
+    supports_mpsgraph_softmax(x, dims) || return NNlib._logsoftmax!(y, x; dims)
+    return Metal.MPSGraphs.graph_logsoftmax!(y, x; dims)
+end
+
+function NNlib.∇softmax!(dx::MtlFloatArray{T, N}, dy::MtlFloatArray{T, N},
+                         y::MtlFloatArray{T, N}; dims = 1) where {T, N}
+    supports_mpsgraph_softmax(y, dims) || return NNlib._∇softmax!(dx, dy, y; dims)
+    return Metal.MPSGraphs.graph_softmax_grad!(dx, dy, y; dims)
+end
+
+function NNlib.∇logsoftmax!(dx::MtlFloatArray{T, N}, dy::MtlFloatArray{T, N},
+                            y::MtlFloatArray{T, N}; dims = 1) where {T, N}
+    supports_mpsgraph_softmax(y, dims) || return NNlib._∇logsoftmax!(dx, dy, y; dims)
+    return Metal.MPSGraphs.graph_logsoftmax_grad!(dx, dy, y; dims)
+end
+
+function supports_mpsgraph_conv(cdims)
+    return cdims isa NNlib.DenseConvDims{2}
+end
+
+function NNlib.conv!(y::MtlFloatArray{T, 4}, x::MtlFloatArray{T, 4},
+                     w::MtlFloatArray{T, 4}, cdims::NNlib.DenseConvDims{2};
+                     kwargs...) where {T}
+    if supports_mpsgraph_conv(cdims) && isempty(kwargs)
+        return Metal.MPSGraphs.graph_conv!(y, x, w; stride=NNlib.stride(cdims),
+                                           padding=NNlib.padding(cdims),
+                                           dilation=NNlib.dilation(cdims),
+                                           groups=NNlib.groupcount(cdims),
+                                           flipkernel=NNlib.flipkernel(cdims))
+    else
+        return NNlib.conv_im2col!(y, x, w, cdims; kwargs...)
+    end
+end
+
+function NNlib.∇conv_data!(dx::MtlFloatArray{T, 4}, dy::MtlFloatArray{T, 4},
+                            w::MtlFloatArray{T, 4}, cdims::NNlib.DenseConvDims{2};
+                            kwargs...) where {T}
+    if supports_mpsgraph_conv(cdims) && isempty(kwargs)
+        return Metal.MPSGraphs.graph_conv_data_grad!(dx, dy, w; stride=NNlib.stride(cdims),
+                                                     padding=NNlib.padding(cdims),
+                                                     dilation=NNlib.dilation(cdims),
+                                                     groups=NNlib.groupcount(cdims),
+                                                     flipkernel=NNlib.flipkernel(cdims))
+    else
+        return NNlib.∇conv_data_im2col!(dx, dy, w, cdims; kwargs...)
+    end
+end
+
+function NNlib.∇conv_filter!(dw::MtlFloatArray{T, 4}, x::MtlFloatArray{T, 4},
+                              dy::MtlFloatArray{T, 4}, cdims::NNlib.DenseConvDims{2};
+                              kwargs...) where {T}
+    if supports_mpsgraph_conv(cdims) && isempty(kwargs)
+        return Metal.MPSGraphs.graph_conv_filter_grad!(dw, x, dy; stride=NNlib.stride(cdims),
+                                                       padding=NNlib.padding(cdims),
+                                                       dilation=NNlib.dilation(cdims),
+                                                       groups=NNlib.groupcount(cdims),
+                                                       flipkernel=NNlib.flipkernel(cdims))
+    else
+        return NNlib.∇conv_filter_im2col!(dw, x, dy, cdims; kwargs...)
+    end
+end
+
+function supports_mpsgraph_pool(pdims)
+    return pdims isa NNlib.PoolDims{2}
+end
+
+function NNlib.maxpool!(y::MtlFloatArray{T, 4}, x::MtlFloatArray{T, 4},
+                        pdims::NNlib.PoolDims{2}; kwargs...) where {T}
+    if supports_mpsgraph_pool(pdims) && isempty(kwargs)
+        return Metal.MPSGraphs.graph_maxpool!(y, x; kernel=NNlib.kernel_size(pdims),
+                                              stride=NNlib.stride(pdims),
+                                              padding=NNlib.padding(pdims),
+                                              dilation=NNlib.dilation(pdims))
+    else
+        return NNlib.maxpool_direct!(y, x, pdims; kwargs...)
+    end
+end
+
+function NNlib.∇maxpool!(dx::MtlFloatArray{T, 4}, dy::MtlFloatArray{T, 4},
+                         y::MtlFloatArray{T, 4}, x::MtlFloatArray{T, 4},
+                         pdims::NNlib.PoolDims{2}; kwargs...) where {T}
+    if supports_mpsgraph_pool(pdims) && isempty(kwargs)
+        return Metal.MPSGraphs.graph_maxpool_grad!(dx, dy, x; kernel=NNlib.kernel_size(pdims),
+                                                   stride=NNlib.stride(pdims),
+                                                   padding=NNlib.padding(pdims),
+                                                   dilation=NNlib.dilation(pdims))
+    else
+        return NNlib.∇maxpool_direct!(dx, dy, y, x, pdims; kwargs...)
+    end
+end
+
+function NNlib.meanpool!(y::MtlFloatArray{T, 4}, x::MtlFloatArray{T, 4},
+                         pdims::NNlib.PoolDims{2}; count_include_pad = true,
+                         kwargs...) where {T}
+    if supports_mpsgraph_pool(pdims) && isempty(kwargs)
+        return Metal.MPSGraphs.graph_meanpool!(y, x; kernel=NNlib.kernel_size(pdims),
+                                               stride=NNlib.stride(pdims),
+                                               padding=NNlib.padding(pdims),
+                                               dilation=NNlib.dilation(pdims),
+                                               count_include_pad)
+    else
+        return NNlib.meanpool_direct!(y, x, pdims; count_include_pad, kwargs...)
+    end
+end
+
+function NNlib.∇meanpool!(dx::MtlFloatArray{T, 4}, dy::MtlFloatArray{T, 4},
+                          y::MtlFloatArray{T, 4}, x::MtlFloatArray{T, 4},
+                          pdims::NNlib.PoolDims{2}; count_include_pad = true,
+                          kwargs...) where {T}
+    if supports_mpsgraph_pool(pdims) && isempty(kwargs)
+        return Metal.MPSGraphs.graph_meanpool_grad!(dx, dy, x;
+                                                    kernel=NNlib.kernel_size(pdims),
+                                                    stride=NNlib.stride(pdims),
+                                                    padding=NNlib.padding(pdims),
+                                                    dilation=NNlib.dilation(pdims),
+                                                    count_include_pad)
+    else
+        return NNlib.∇meanpool_direct!(dx, dy, y, x, pdims; count_include_pad,
+                                       kwargs...)
+    end
+end
+
 end
