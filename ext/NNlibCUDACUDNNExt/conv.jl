@@ -19,7 +19,7 @@ conv_kwargs(cdims::DenseConvDims, ::Type{T}) where {T} =
     (padding=NNlib.padding(cdims),
      stride=NNlib.stride(cdims),
      dilation=NNlib.dilation(cdims),
-     group=NNlib.groupcount(cdims),
+     groups=NNlib.groupcount(cdims),
      mode=conv_mode(cdims),
      compute_type=conv_compute_type(real(T)))
 
