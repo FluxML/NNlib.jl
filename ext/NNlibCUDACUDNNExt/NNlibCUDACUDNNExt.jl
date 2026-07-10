@@ -5,8 +5,6 @@ using cuDNN
 using CUDA
 using Random, Statistics
 
-using cuDNN: handle, cudnnTensorDescriptor
-
 include("conv.jl")
 include("pooling.jl")
 include("softmax.jl")
