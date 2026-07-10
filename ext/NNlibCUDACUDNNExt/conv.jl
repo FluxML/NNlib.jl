@@ -2,9 +2,8 @@
 using NNlib: DenseConvDims
 import NNlib: conv!, ∇conv_filter!, ∇conv_data!, conv_bias_act!
 
-using cuDNN: scalingParameter, CUDNN_CONVOLUTION, CUDNN_CROSS_CORRELATION,
-             convolution!, convolution_data_gradient!, convolution_filter_gradient!,
-             cudnnConvolutionBackwardBias
+using cuDNN: CUDNN_CONVOLUTION, CUDNN_CROSS_CORRELATION, convolution!,
+             convolution_data_gradient!, convolution_filter_gradient!
 
 const CUDNNFloat = Union{Float16,Float32,Float64}
 const CUDNNComplexFloat = Union{ComplexF16,ComplexF32,ComplexF64}
@@ -162,18 +161,4 @@ function ∇conv_filter!(dw::DenseCuArray{T1}, x::DenseCuArray{T2}, dy::DenseCuA
     dwr = ∇conv_filter!(similar(real(dw)), x, dyr, cdims; alpha=1, beta=0, algo=algo)
     dwi = ∇conv_filter!(similar(dwr), x, dyi, cdims; alpha=1, beta=0, algo=algo)
     return _complex!(dw, dwr, dwi; alpha=alpha, beta=beta)
-end
-
-function ∇conv_bias!(db::DenseCuArray{T}, dy::DenseCuArray{T}; alpha=1, beta=0) where T<:CUDNNFloat
-    alpha,beta = scalingParameter(T,alpha), scalingParameter(T,beta)
-    bDesc, yDesc = cudnnTensorDescriptor.((db,dy))
-    cudnnConvolutionBackwardBias(handle(), alpha, yDesc, dy, beta, bDesc, db)
-    return db
-end
-
-function ∇conv_bias!(db::DenseCuArray{T}, dy::DenseCuArray{T}; alpha=1, beta=0) where T<:CUDNNComplexFloat
-    dyr, dyi = reim(dy)
-    dbr = ∇conv_bias!(similar(real(db)), dyr; alpha=1, beta=0)
-    dbi = ∇conv_bias!(similar(dbr), dyi; alpha=1, beta=0)
-    return _complex!(db, dbr, dbi; alpha=alpha, beta=beta)
 end
