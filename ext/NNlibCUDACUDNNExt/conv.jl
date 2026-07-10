@@ -89,9 +89,8 @@ function conv_bias_act!(y::DenseCuArray{T}, x::DenseCuArray{T}, w::DenseCuArray{
     if algo != -1
         @warn "The algo option has been deprecated, the fastest algo is computed automatically" maxlog=1
     end
-    zsrc = beta != 0 && z === y ? copy(y) : z
     act = conv_bias_activation(σ)
-    convolution!(y, x, w; conv_kwargs(cdims, T)..., alpha, beta, z=zsrc, bias,
+    convolution!(y, x, w; conv_kwargs(cdims, T)..., alpha, beta, z, bias,
                  activation=act)
     if act === nothing && σ ∉ (nothing, identity)
         @. y = σ(y)
