@@ -1,10 +1,6 @@
-using cuDNN: CUDNN_BN_MIN_EPSILON, cudnnBatchNormalizationBackward,
-             cudnnBatchNormalizationForwardInference, CUDNN_BATCHNORM_SPATIAL,
-             cudnnBatchNormalizationForwardTraining
+using cuDNN: CUDNN_BN_MIN_EPSILON, batchnorm_gradient!, batchnorm_inference!,
+             batchnorm_training!
 import NNlib: batchnorm, ∇batchnorm
-
-# TODO: replace with new cudnn normalization interface
-# https://github.com/JuliaGPU/CUDA.jl/blob/master/lib/cudnn/normalization.jl
 
 mutable struct BNCache
   mean
@@ -59,39 +55,21 @@ function cudnnBNForward!(y::DenseCuArray{T}, g::DenseCuArray{T}, b::DenseCuArray
     end
   end
 
-  xd = cudnnTensorDescriptor(x)
-  yd = cudnnTensorDescriptor(y)
-  gd = cudnnTensorDescriptor(CUDNN_TENSOR_NCHW, cudnnDataType(T), Cint(length(dims)), dim4(dims,Val(CUDNN_TENSOR_NCHW)))
-
   if training
-    if !track_stats
-      running_mean = CU_NULL
-      running_var = CU_NULL
-    end
-
-    if cache !== nothing
-      mean = fill!(similar(x, dims), 0)
-      ivar = fill!(similar(x, dims), 1)
-    else
-      mean = CU_NULL
-      ivar = CU_NULL
-    end
-
-    cudnnBatchNormalizationForwardTraining(handle(), CUDNN_BATCHNORM_SPATIAL, scalingParameter(T, alpha), scalingParameter(T, beta), xd, x, yd, y, gd, g, b, momentum, running_mean, running_var, eps, mean, ivar)
-
+    rm = track_stats ? running_mean : nothing
+    rv = track_stats ? running_var : nothing
+    mean, ivar = batchnorm_training!(y, x, g, b; running_mean=rm, running_var=rv,
+                                     momentum, epsilon=eps, alpha, beta)
     if cache !== nothing
       cache.mean = mean
       cache.ivar = ivar
     end
   else
     if track_stats
-      cudnnBatchNormalizationForwardInference(handle(), CUDNN_BATCHNORM_SPATIAL, scalingParameter(T, alpha), scalingParameter(T, beta), xd, x, yd, y, gd, g, b, running_mean, running_var, eps)
+      batchnorm_inference!(y, x, g, b, running_mean, running_var; epsilon=eps,
+                           alpha, beta)
     else
-      # cudnnBatchNormalizationForwardInference does not accept CV_NULL for running_mean
-      # and running_var. We could calculate mean and var of `x` here, but instead use
-      # cudnnBatchNormalizationFowardTraining. cudnnBatchNormalizationForwardTraining does
-      # accept CV_NULL and will calculate mean and var itself.
-      cudnnBatchNormalizationForwardTraining(handle(), CUDNN_BATCHNORM_SPATIAL, scalingParameter(T, alpha), scalingParameter(T, beta), xd, x, yd, y, gd, g, b, momentum, CU_NULL, CU_NULL, eps, CU_NULL, CU_NULL)
+      batchnorm_training!(y, x, g, b; momentum, epsilon=eps, alpha, beta)
     end
   end
   return y
@@ -136,20 +114,12 @@ function cudnnBNBackward!(dg::DenseCuArray{T}, g::DenseCuArray{T}, db::DenseCuAr
                           alpha = T(1), beta = T(0),
                           dalpha = T(1), dbeta = T(0), training = true,
                           track_stats = true) where T<:CUDNNFloat
-  if !track_stats
-    running_mean = CU_NULL
-    running_var = CU_NULL
-  end
-
-  xd = cudnnTensorDescriptor(x)
-  dyd = cudnnTensorDescriptor(dy)
-  dxd = cudnnTensorDescriptor(dx)
-  gd = cudnnTensorDescriptor(CUDNN_TENSOR_NCHW, cudnnDataType(T), Cint(length(_wsize(x))), dim4(_wsize(x),Val(CUDNN_TENSOR_NCHW)))
   if cache !== nothing
     @debug "fetching mean and ivar from the cache"
     mean, ivar = cache.mean, cache.ivar
   else
-    mean, ivar = CU_NULL, CU_NULL
+    tmp = similar(x)
+    mean, ivar = batchnorm_training!(tmp, x, g, db; epsilon=eps)
   end
 
   if eps < CUDNN_BN_MIN_EPSILON
@@ -157,7 +127,6 @@ function cudnnBNBackward!(dg::DenseCuArray{T}, g::DenseCuArray{T}, db::DenseCuAr
     eps = CUDNN_BN_MIN_EPSILON
   end
 
-  cudnnBatchNormalizationBackward(handle(), CUDNN_BATCHNORM_SPATIAL,
-        scalingParameter(T, alpha), scalingParameter(T, beta), scalingParameter(T, dalpha), scalingParameter(T, dbeta),
-        xd, x, dyd, dy, dxd, dx, gd, g, dg, db, eps, mean, ivar)
+  batchnorm_gradient!(dx, dg, db, dy, x, g, mean, ivar; epsilon=eps, alpha, beta,
+                      dalpha, dbeta)
 end

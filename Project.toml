@@ -32,7 +32,6 @@ NNlibAMDGPUExt = "AMDGPU"
 NNlibCUDACUDNNExt = ["CUDA", "cuDNN"]
 NNlibCUDAExt = "CUDA"
 NNlibEnzymeCoreExt = "EnzymeCore"
-NNlibEnzymeCoreCUDNNExt = ["EnzymeCore", "CUDA", "cuDNN"]
 NNlibMooncakeCUDAExt = ["Mooncake", "CUDA"]
 NNlibFFTWExt = "FFTW"
 NNlibForwardDiffExt = "ForwardDiff"

@@ -1,51 +1,30 @@
-using cuDNN: cudnnPoolingMode_t, CUDNN_POOLING_MAX,
-             CUDNN_POOLING_AVERAGE_COUNT_INCLUDE_PADDING,
-             CUDNN_POOLING_AVERAGE_COUNT_EXCLUDE_PADDING,
-             cudnnPoolingForward!, pooldims, cudnnPoolingBackward
-
 import NNlib: maxpool!, ∇maxpool!, meanpool!, ∇meanpool!
-import cuDNN: cudnnPoolingDescriptor
 
-function cudnnPoolingDescriptor(pdims::PoolDims, x::DenseCuArray{T}, mode::cudnnPoolingMode_t) where T
-    window, padding, stride = NNlib.kernel_size(pdims), nnlibPadding(pdims), NNlib.stride(pdims)
-    nanOpt = CUDNN_NOT_PROPAGATE_NAN
-    cudnnPoolingDescriptor(mode, nanOpt, Cint(ndims(x)-2), pooldims(window,size(x)), pooldims(padding,size(x)), pooldims(stride,size(x)))
-end
+pool_kwargs(pdims::PoolDims) =
+    (window=NNlib.kernel_size(pdims),
+     padding=NNlib.padding(pdims),
+     stride=NNlib.stride(pdims))
 
 function maxpool!(y::DenseCuArray{T}, x::DenseCuArray{T}, pdims::PoolDims) where T<:CUDNNFloat
-    d = cudnnPoolingDescriptor(pdims, x, CUDNN_POOLING_MAX)
-    cudnnPoolingForward!(y, x, d)
+    cuDNN.maxpool!(y, x; pool_kwargs(pdims)...)
 end
 
 function ∇maxpool!(dx::DenseCuArray{T}, dy::DenseCuArray{T}, y::DenseCuArray{T}, x::DenseCuArray{T}, pdims::PoolDims;
                    alpha=1, beta=0, kwargs...) where T<:CUDNNFloat
-    xDesc, yDesc = cudnnTensorDescriptor.((x, y))
-    d = cudnnPoolingDescriptor(pdims, x, CUDNN_POOLING_MAX)
-    alpha, beta = scalingParameter(T,alpha), scalingParameter(T,beta)
-    cudnnPoolingBackward(handle(), d, alpha, yDesc, y, yDesc, dy, xDesc, x, beta, xDesc, dx)
-    return dx
+    cuDNN.∇maxpool!(dx, dy, y, x; pool_kwargs(pdims)..., alpha, beta)
 end
-
-meanpool_mode(count_include_pad::Bool) = count_include_pad ?
-    CUDNN_POOLING_AVERAGE_COUNT_INCLUDE_PADDING :
-    CUDNN_POOLING_AVERAGE_COUNT_EXCLUDE_PADDING
 
 function meanpool!(y::DenseCuArray{T}, x::DenseCuArray{T}, pdims::PoolDims;
                    count_include_pad::Bool=true) where T<:CUDNNFloat
-    d = cudnnPoolingDescriptor(pdims, x, meanpool_mode(count_include_pad))
-    cudnnPoolingForward!(y, x, d)
+    cuDNN.meanpool!(y, x; pool_kwargs(pdims)..., count_include_pad)
 end
 
 function ∇meanpool!(dx::DenseCuArray{T}, dy::DenseCuArray{T}, y::DenseCuArray{T}, x::DenseCuArray{T}, pdims::PoolDims;
                     count_include_pad::Bool=true, alpha=1, beta=0, kwargs...) where T<:CUDNNFloat
-    xDesc, yDesc = cudnnTensorDescriptor.((x, y))
-    d = cudnnPoolingDescriptor(pdims, x, meanpool_mode(count_include_pad))
-    alpha, beta = scalingParameter(T,alpha), scalingParameter(T,beta)
-    cudnnPoolingBackward(handle(), d, alpha, yDesc, y, yDesc, dy, xDesc, x, beta, xDesc, dx)
-    return dx
+    cuDNN.∇meanpool!(dx, dy, y, x; pool_kwargs(pdims)..., count_include_pad, alpha, beta)
 end
 
-### Since CUDA.jl does not support 1D pooling, we have to convert to 2d
+### Preserve NNlib's 1D pooling promotion.
 
 add1d(x) = reshape(x, 1, size(x)...)
 
@@ -79,5 +58,3 @@ function ∇meanpool!(dx::DenseCuArray{T,3}, dy::DenseCuArray{T,3}, y::DenseCuAr
     ∇meanpool!(add1d(dx), add1d(dy), add1d(y), add1d(x), fix_pooldims_1d(pdims); count_include_pad, kwargs...)
     return dx
 end
-
-
