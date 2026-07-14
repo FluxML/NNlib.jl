@@ -241,6 +241,17 @@ join_heads(x) = reshape(x, :, size(x)[3:end]...)
 # [x] = [head_dim, nkvheads, len, batch] -> [head_dim, nkvheads * r, len, batch]
 repeat_kv_heads(x::AA4, r::Int) = repeat(x; inner=(1, r, 1, 1))
 
+function rrule(::typeof(repeat_kv_heads), x::AA4, r::Int)
+    y = repeat_kv_heads(x, r)
+    function repeat_kv_heads_pullback(Δ)
+        Δ = unthunk(Δ)
+        Δ = reshape(Δ, size(x, 1), r, size(x, 2), size(x, 3), size(x, 4))
+        dx = reshape(sum(Δ; dims=2), size(x))
+        return NoTangent(), dx, NoTangent()
+    end
+    return y, repeat_kv_heads_pullback
+end
+
 @non_differentiable make_causal_mask(::Any...)
 @non_differentiable trues_like(::Any...)
 @non_differentiable falses_like(::Any...)
