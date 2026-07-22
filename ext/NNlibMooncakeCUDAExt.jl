@@ -65,7 +65,10 @@ function rrule!!(
     prv = primal(running_var)
     pm = primal(momentum)
 
-    fwd_cache = _BNFwdCache()
+    # cudnnBNForward! only populates a passed-in cache when training=true; in eval mode
+    # it's left unset, and cudnnBNBackward! reads it anyway, crashing on the stale
+    # `nothing`. Only build a live cache when training is actually on.
+    fwd_cache = get(pkw, :training, true) ? _BNFwdCache() : nothing
     y = batchnorm(pg, pb, px, prm, prv, pm; pkw..., cache=fwd_cache)
     dy_out = zero(y)
     zero_kw = zero_rdata(pkw)
