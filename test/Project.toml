@@ -7,6 +7,7 @@ ParallelTestRunner = "2"
 # NOTE: keep `[deps]` as the LAST section. The Buildkite GPU jobs append the
 # backend packages (e.g. `CUDA = "..."`) to the end of this file with `echo >>`,
 # which must land inside `[deps]`.
+StableRNGs = "1.0.4"
 [deps]
 ADTypes = "47edcb42-4c32-4615-8424-f2b9edc5f35b"
 Adapt = "79e6a3ab-5dfb-504d-930d-738a2a938a0e"
