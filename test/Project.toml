@@ -2,6 +2,7 @@
 NNlib = {path = ".."}
 
 [compat]
+KernelAbstractions = "0.9.42"
 ParallelTestRunner = "2"
 
 # NOTE: keep `[deps]` as the LAST section. The Buildkite GPU jobs append the
