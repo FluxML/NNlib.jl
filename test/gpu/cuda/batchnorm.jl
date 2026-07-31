@@ -43,4 +43,54 @@
         # stats are calculated only on the input.
         @test y_no_track_stats ≈ y_track_stats
     end
+
+    @testset "Float16" begin
+        x = CUDA.rand(Float16, 1, 1, 3, 4)
+        g = CUDA.rand(Float16, 3)
+        b = CUDA.rand(Float16, 3)
+        running_mean = CUDA.zeros(Float16, 3)
+        running_var = CUDA.ones(Float16, 3)
+        ext = Base.get_extension(NNlib, :NNlibCUDACUDNNExt)
+        cache = ext.BNCache()
+        y = batchnorm(g, b, x, running_mean, running_var, 0.1f0; training=true,
+                      track_stats=true, cache)
+
+        x32 = Float32.(Array(x))
+        mean = sum(x32; dims=(1, 2, 4)) ./ 4
+        var = sum(abs2, x32 .- mean; dims=(1, 2, 4)) ./ 4
+        g32 = reshape(Float32.(Array(g)), 1, 1, 3, 1)
+        b32 = reshape(Float32.(Array(b)), 1, 1, 3, 1)
+        ref = @. g32 * (x32 - mean) / sqrt(var + 1f-5) + b32
+        @test eltype(y) == Float16
+        @test Float32.(Array(y)) ≈ ref rtol=2f-3 atol=2f-3
+        @test eltype(cache.mean) == Float32
+        @test eltype(cache.ivar) == Float32
+        @test eltype(running_mean) == Float16
+        @test eltype(running_var) == Float16
+
+        yi = batchnorm(g, b, x, running_mean, running_var, 0.1f0; training=false,
+                       track_stats=true)
+        running_mean32 = reshape(Float32.(Array(running_mean)), 1, 1, 3, 1)
+        running_var32 = reshape(Float32.(Array(running_var)), 1, 1, 3, 1)
+        inference_ref = @. g32 * (x32 - running_mean32) /
+                           sqrt(running_var32 + 1f-5) + b32
+        @test Float32.(Array(yi)) ≈ inference_ref rtol=2f-3 atol=2f-3
+
+        dy = CUDA.rand(Float16, size(x))
+        dg, db, dx = ∇batchnorm(g, b, x, dy, running_mean, running_var, 0.1f0;
+                                   training=true, track_stats=true, cache)
+        @test eltype(dg) == Float16
+        @test eltype(db) == Float16
+        @test eltype(dx) == Float16
+
+        dy32 = Float32.(Array(dy))
+        invvar = @. inv(sqrt(var + 1f-5))
+        xhat = @. (x32 - mean) * invvar
+        db_ref = sum(dy32; dims=(1, 2, 4))
+        dg_ref = sum(dy32 .* xhat; dims=(1, 2, 4))
+        dx_ref = @. g32 * invvar / 4 * (4 * dy32 - db_ref - xhat * dg_ref)
+        @test Float32.(Array(dg)) ≈ vec(dg_ref) rtol=3f-3 atol=3f-3
+        @test Float32.(Array(db)) ≈ vec(db_ref) rtol=3f-3 atol=3f-3
+        @test Float32.(Array(dx)) ≈ dx_ref rtol=3f-3 atol=3f-3
+    end
 end
