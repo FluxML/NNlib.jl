@@ -276,7 +276,6 @@ function _∇norm_channel(g, b, x::AbstractArray{T,N}, dy, running_mean, running
     dyc = Tc === T ? dy : Tc.(dy)
     ϵ = _epsof(xc, eps)
     affine_shape = ntuple(i -> i == N-1 ? size(x, N-1) : 1, N)
-    param_dims = (ntuple(identity, N-2)..., N)   # every dimension but the channel
     stat_from_x = training || running_mean === nothing
     if stat_from_x
         μ = mean(xc; dims=reduce_dims)
@@ -287,12 +286,31 @@ function _∇norm_channel(g, b, x::AbstractArray{T,N}, dy, running_mean, running
     end
     σ = sqrt.(σ² .+ ϵ)
     x̂ = (xc .- μ) ./ σ
-    dg = g === nothing ? nothing : reshape(sum(dyc .* x̂; dims=param_dims), size(g))
-    db = b === nothing ? nothing : reshape(sum(dyc; dims=param_dims), size(b))
-    dx̂ = g === nothing ? dyc : dyc .* reshape(g, affine_shape)
-    dx = stat_from_x ?
-        (dx̂ .- mean(dx̂; dims=reduce_dims) .- x̂ .* mean(dx̂ .* x̂; dims=reduce_dims)) ./ σ :
-        dx̂ ./ σ
+    # Reduce over `reduce_dims` once. The per-channel scale `g` is constant over
+    # `reduce_dims`, so the input gradient factors as
+    # `dx = g/σ ⋅ (dy - mean_R(dy) - x̂ ⋅ mean_R(dy⋅x̂))`, letting a single `dy⋅x̂`
+    # product serve both `dg` and the `x̂`-correction term (rather than materialising
+    # `dy⋅x̂`, `dy⋅g` and `dy⋅g⋅x̂` separately). The parameter gradients further reduce
+    # the batch dim `N` for InstanceNorm (`N ∉ reduce_dims`); for BatchNorm it is
+    # already among `reduce_dims`, so `sum_dy`/`sum_p` are the parameter gradients.
+    sum_dy = sum(dyc;      dims=reduce_dims)
+    sum_p  = sum(dyc .* x̂; dims=reduce_dims)
+    foldbatch(s) = N in reduce_dims ? s : sum(s; dims=N)
+    dg = g === nothing ? nothing : reshape(foldbatch(sum_p),  size(g))
+    db = b === nothing ? nothing : reshape(foldbatch(sum_dy), size(b))
+    if stat_from_x
+        m = prod(i -> size(x, i), reduce_dims)
+        s_dy = sum_dy ./ m
+        s_p  = sum_p  ./ m
+        if g === nothing
+            dx = @. (dyc - s_dy - x̂ * s_p) / σ
+        else
+            gc = reshape(g, affine_shape)
+            dx = @. gc * (dyc - s_dy - x̂ * s_p) / σ
+        end
+    else
+        dx = g === nothing ? dyc ./ σ : reshape(g, affine_shape) .* dyc ./ σ
+    end
     return dg, db, Tc === T ? dx : T.(dx)
 end
 
