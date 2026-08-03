@@ -3,6 +3,7 @@ module NNlibEnzymeCoreExt
 using NNlib
 import EnzymeCore
 using Random
+using GPUArraysCore: AbstractGPUArray
 
 using EnzymeCore.EnzymeRules
 
@@ -521,18 +522,22 @@ function EnzymeRules.reverse(config, func::EnzymeCore.Const{typeof(NNlib.ctc_los
     return (nothing, nothing)
 end
 
-# `batchnorm(g, b, x, running_mean, running_var, momentum)` — allocating, GPU-only
-# (cuDNN); differentiable in `g`, `b`, `x`. `∇batchnorm` returns `(dg, db, dx)`
-# (with `dg`/`db` possibly `nothing` when non-affine).
+# `batchnorm(g, b, x, running_mean, running_var, momentum)` — the allocating cuDNN
+# fast path routed through `∇batchnorm`, which only exists for GPU arrays. The rule
+# is therefore restricted to GPU `x`; on the CPU the generic `batchnorm` is
+# differentiated through Enzyme directly. Differentiable in `g`, `b`, `x`;
+# `∇batchnorm` returns `(dg, db, dx)` (with `dg`/`db` possibly `nothing` when non-affine).
 function EnzymeRules.augmented_primal(config, func::EnzymeCore.Const{typeof(NNlib.batchnorm)},
-        ::Type{RT}, g, b, x, running_mean, running_var, momentum; kwargs...) where {RT}
+        ::Type{RT}, g, b, x::EnzymeCore.Annotation{<:AbstractGPUArray},
+        running_mean, running_var, momentum; kwargs...) where {RT}
     y = func.val(g.val, b.val, x.val, running_mean.val, running_var.val, momentum.val; kwargs...)
     return _enz_alloc_augmented(config, y, (copy(g.val), copy(b.val), copy(x.val),
                                             running_mean.val, running_var.val, momentum.val))
 end
 
 function EnzymeRules.reverse(config, func::EnzymeCore.Const{typeof(NNlib.batchnorm)},
-        ::Type{RT}, cache, g, b, x, running_mean, running_var, momentum; kwargs...) where {RT}
+        ::Type{RT}, cache, g, b, x::EnzymeCore.Annotation{<:AbstractGPUArray},
+        running_mean, running_var, momentum; kwargs...) where {RT}
     shadow, gval, bval, xval, rm, rv, mom = cache
     # `∇batchnorm` returns `(dg, db, dx)` aligned with `(g, b, x)`; `dg`/`db` may be
     # `nothing` (non-affine), which `_enz_accum!` skips.

@@ -161,6 +161,20 @@ grid_sample
 ∇grid_sample
 ```
 
+## Normalization
+
+`Flux`'s `BatchNorm`, `InstanceNorm`, `GroupNorm` and `LayerNorm` layers can use
+`NNlib.batchnorm`, `NNlib.instancenorm`, `NNlib.groupnorm` and `NNlib.layernorm`
+as their functional backend.
+
+```@docs
+NNlib.normalise
+NNlib.batchnorm
+NNlib.instancenorm
+NNlib.groupnorm
+NNlib.layernorm
+```
+
 ## Losses
 
 ```@docs
