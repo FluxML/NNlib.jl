@@ -10,7 +10,7 @@ using BFloat16s: BFloat16             # bare `BFloat16` in cuda/bfloat16.jl
 import CUDA.CUSPARSE: CuSparseMatrixCSC, CuSparseMatrixCSR, CuSparseMatrixCOO
 using ForwardDiff: Dual              # bare `Dual` in cuda/{activations,softmax}.jl
 using Mooncake.TestUtils: test_rule  # bare `test_rule` in cuda/batchnorm.jl
-using NNlib: batchnorm, ∇batchnorm   # NNlib internals exercised by cuda/batchnorm.jl
+using NNlib: batchnorm, ∇batchnorm, instancenorm, groupnorm, layernorm  # exercised by cuda/{batchnorm,bfloat16}.jl
 CUDA.allowscalar(false)
 
 function gputest(f, xs...; checkgrad=true, rtol=1e-7, atol=1e-10, broken=false, broken_grad=false, kws...)

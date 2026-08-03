@@ -5,6 +5,7 @@ import ChainRulesCore: rrule
 
 using Base.Broadcast: broadcasted
 using Base.Threads
+using BFloat16s: BFloat16
 using ChainRulesCore
 using GPUArraysCore
 using KernelAbstractions
@@ -101,7 +102,6 @@ include("sampling.jl")
 include("functions.jl")
 
 include("normalization.jl")
-# export batchnorm, ∇batchnorm
 
 ## Include implementations
 include("impl/padding_edges.jl")
@@ -126,7 +126,8 @@ export stft, istft, hann_window, hamming_window, spectrogram, melscale_filterban
 # Mark the documented but non-exported API with the `public` keyword.
 # `public` is only valid syntax on Julia 1.11+, so parse it lazily.
 @static if VERSION >= v"1.11.0-DEV.469"
-    eval(Meta.parse("public gather, gather!, scatter, scatter!, fold, unfold, glu, within_gradient"))
+    eval(Meta.parse("public gather, gather!, scatter, scatter!, fold, unfold, glu, within_gradient, " *
+                    "normalise, batchnorm, instancenorm, groupnorm, layernorm"))
 end
 
 end # module NNlib

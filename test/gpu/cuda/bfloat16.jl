@@ -154,3 +154,52 @@ BF16_CUDNN && @testset "batchnorm" begin
         @test eltype(y) == BFloat16
     end
 end
+
+# instancenorm/groupnorm/layernorm (and batchnorm on non-2D/4D/5D inputs) have no
+# cuDNN path, so they use the generic NNlib implementation. On half precision it
+# accumulates the statistics in Float32 and casts the result back to BFloat16, and
+# requires Float32 scale/bias/running statistics — matching the cuDNN contract.
+BF16_CUDNN && @testset "generic normalization" begin
+    rng = StableRNG(41)
+    gf = CuArray(rand(rng, Float32, 3)); bf = CuArray(rand(rng, Float32, 3))
+
+    @testset "instancenorm" begin
+        xf = CuArray(rand(rng, Float32, 4, 4, 3, 8)); xb = tobf(collect(xf))
+        yf = instancenorm(gf, bf, xf); yb = instancenorm(gf, bf, xb)
+        @test eltype(yb) == BFloat16
+        @test Float32.(collect(yb)) ≈ collect(yf) rtol=5e-2 atol=5e-2
+    end
+
+    @testset "groupnorm" begin
+        xf = CuArray(rand(rng, Float32, 4, 4, 3, 8)); xb = tobf(collect(xf))
+        yf = groupnorm(gf, bf, xf, 3); yb = groupnorm(gf, bf, xb, 3)
+        @test eltype(yb) == BFloat16
+        @test Float32.(collect(yb)) ≈ collect(yf) rtol=5e-2 atol=5e-2
+    end
+
+    @testset "layernorm" begin
+        gl = CuArray(rand(rng, Float32, 4)); bl = CuArray(rand(rng, Float32, 4))
+        xf = CuArray(rand(rng, Float32, 4, 8)); xb = tobf(collect(xf))
+        yf = layernorm(gl, bl, xf; dims=1); yb = layernorm(gl, bl, xb; dims=1)
+        @test eltype(yb) == BFloat16
+        @test Float32.(collect(yb)) ≈ collect(yf) rtol=5e-2 atol=5e-2
+    end
+
+    @testset "batchnorm (generic 3D path)" begin
+        xf = CuArray(rand(rng, Float32, 6, 3, 8)); xb = tobf(collect(xf))  # (W, C, N)
+        yf = batchnorm(gf, bf, xf); yb = batchnorm(gf, bf, xb)
+        @test eltype(yb) == BFloat16
+        @test Float32.(collect(yb)) ≈ collect(yf) rtol=5e-2 atol=5e-2
+    end
+
+    @testset "type contract" begin
+        xb = CUDA.randn(BFloat16, 4, 4, 3, 8)
+        gb = CUDA.rand(BFloat16, 3); bb = CUDA.rand(BFloat16, 3)
+        rmb = CUDA.zeros(BFloat16, 3); rvb = CUDA.ones(BFloat16, 3)
+        @test_throws ArgumentError instancenorm(gb, bb, xb)
+        @test_throws ArgumentError groupnorm(gb, bb, xb, 3)
+        @test_throws ArgumentError layernorm(gb, bb, xb; dims=1)
+        # Float32 params but half-precision running stats are rejected too.
+        @test_throws ArgumentError instancenorm(gf, bf, xb, rmb, rvb, 0.1f0; training=true, track_stats=true)
+    end
+end

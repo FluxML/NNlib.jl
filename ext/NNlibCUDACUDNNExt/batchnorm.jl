@@ -1,6 +1,7 @@
 using cuDNN: CUDNN_BN_MIN_EPSILON, cudnnBatchNormalizationBackward,
              cudnnBatchNormalizationForwardInference, CUDNN_BATCHNORM_SPATIAL,
              cudnnBatchNormalizationForwardTraining
+using ChainRulesCore: ChainRulesCore, NoTangent, unthunk
 import NNlib: batchnorm, ∇batchnorm
 
 # TODO: replace with new cudnn normalization interface
@@ -188,4 +189,17 @@ function cudnnBNBackward!(dg::DenseCuArray{P}, g::DenseCuArray{P}, db::DenseCuAr
   cudnnBatchNormalizationBackward(handle(), CUDNN_BATCHNORM_SPATIAL,
         scalingParameter(T, alpha), scalingParameter(T, beta), scalingParameter(T, dalpha), scalingParameter(T, dbeta),
         xd, x, dyd, dy, dxd, dx, gd, g, dg, db, eps, mean, ivar)
+end
+
+# GPU differentiation of the cuDNN fast path. The generic `batchnorm` in NNlib core
+# has no `rrule`, so on the CPU (and other array types) it is differentiated through
+# the standard AD path instead.
+function ChainRulesCore.rrule(::typeof(batchnorm), g, b, x::DenseCuArray,
+                              running_mean, running_var, momentum; kw...)
+  y = batchnorm(g, b, x, running_mean, running_var, momentum; kw...)
+  function batchnorm_pullback(Δ)
+    grad = ∇batchnorm(g, b, x, unthunk(Δ), running_mean, running_var, momentum; kw...)
+    (NoTangent(), grad..., NoTangent(), NoTangent(), NoTangent())
+  end
+  y, batchnorm_pullback
 end
