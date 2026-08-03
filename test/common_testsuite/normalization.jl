@@ -35,6 +35,10 @@ function normalization_testsuite(Backend)
         @test test_gradients(batchnorm, g, b, x; test_gpu=gpu, atol, compare=cmp)
 
         @test_throws ArgumentError batchnorm(nothing, nothing, device(randn(T, 5)))
+        # the scale and bias must be given together or not at all
+        @test_throws ArgumentError batchnorm(device(g), nothing, device(x))
+        @test_throws ArgumentError batchnorm(nothing, device(b), device(x))
+        @test_throws ArgumentError NNlib.∇batchnorm(device(g), nothing, device(x), device(x))
     end
 
     @testset "batchnorm running stats" begin
@@ -97,5 +101,47 @@ function normalization_testsuite(Backend)
         # normalise: zero mean, unit std over `dims`
         z = cpu(normalise(device(x); dims=1))
         @test all(isapprox.(vec(Statistics.std(z; dims=1, corrected=false)), 1; atol=1e-3))
+    end
+
+    @testset "gradient operators (∇)" begin
+        # The explicit VJPs must agree with the pullback returned by the rrule
+        # (which is what `test_gradients` above checks against finite differences).
+        x = randn(T, 4, 5, 3, 8); g = randn(T, 3); b = randn(T, 3)
+        dy = randn(T, size(x))
+        xd, gd, bd, dyd = device(x), device(g), device(b), device(dy)
+        for (∇op, f) in (
+                (NNlib.∇batchnorm,    (g,b,x) -> batchnorm(g, b, x)),
+                (NNlib.∇instancenorm, (g,b,x) -> instancenorm(g, b, x)),
+            )
+            dg, db, dx = ∇op(gd, bd, xd, dyd)
+            _, back = Zygote.pullback(f, gd, bd, xd)
+            dgz, dbz, dxz = back(dyd)
+            @test cpu(dg) ≈ cpu(dgz) atol=atol
+            @test cpu(db) ≈ cpu(dbz) atol=atol
+            @test cpu(dx) ≈ cpu(dxz) atol=atol
+        end
+        dg, db, dx = NNlib.∇groupnorm(gd, bd, xd, dyd, 3)
+        _, back = Zygote.pullback((g,b,x) -> groupnorm(g, b, x, 3), gd, bd, xd)
+        dgz, dbz, dxz = back(dyd)
+        @test cpu(dg) ≈ cpu(dgz) atol=atol
+        @test cpu(dx) ≈ cpu(dxz) atol=atol
+    end
+
+    # Second-order differentiation only through the generic (CPU) path: the cuDNN
+    # `batchnorm` backward is a non-differentiable kernel, so we don't nest AD on GPU.
+    Backend == CPU && @testset "second order" begin
+        x = randn(T, 4, 5, 3, 4); g = randn(T, 3); b = randn(T, 3)
+        gl = randn(T, 4, 5, 1, 1); bl = randn(T, 4, 5, 1, 1)
+        function hvp_match(loss, x0)
+            v = randn(T, size(x0)...)
+            ref = ForwardDiff.derivative(ε -> ForwardDiff.gradient(loss, x0 .+ ε .* v), zero(T))
+            grad(x) = Zygote.gradient(loss, x)[1]
+            zz = Zygote.gradient(x -> sum(grad(x) .* v), x0)[1]
+            return isapprox(zz, ref; rtol=1e-2, atol=1e-3)
+        end
+        @test hvp_match(x -> sum(abs2, layernorm(gl, bl, x; dims=(1,2))), x)
+        @test hvp_match(x -> sum(abs2, groupnorm(g, b, x, 3)), x)
+        @test hvp_match(x -> sum(abs2, batchnorm(g, b, x, nothing, nothing, 0.1f0)), x)
+        @test hvp_match(x -> sum(abs2, instancenorm(g, b, x, nothing, nothing, 0.1f0)), x)
     end
 end

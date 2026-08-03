@@ -29,8 +29,8 @@
 
         # Both or neither tracked or affine params must be set
         for (α, β) in ((v, nothing), (nothing, v))
-            @test_throws MethodError batchnorm(α, β, m, v, v, 1.0; kws...)
-            @test_throws MethodError ∇batchnorm(α, β, m, m, v, v, 1.0; kws...)
+            @test_throws ArgumentError batchnorm(α, β, m, v, v, 1.0; kws...)
+            @test_throws ArgumentError ∇batchnorm(α, β, m, m, v, v, 1.0; kws...)
             @test_throws ArgumentError batchnorm(v, v, m, α, β, 1.0; kws...)
         end
     end 
