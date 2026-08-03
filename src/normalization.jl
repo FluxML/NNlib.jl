@@ -39,6 +39,11 @@ function _check_norm_types(::Type{T}, g, b, running_mean, running_var) where {T}
     return nothing
 end
 
+# The scale `g` and bias `b` must be given together or not at all (matching the
+# cuDNN `batchnorm` methods, which only accept both arrays or both `nothing`).
+_check_affine(g, b) = (g === nothing) == (b === nothing) ? nothing : throw(ArgumentError(
+    "both or neither of the scale `g` and bias `b` must be `nothing`"))
+
 # Strip `ForwardDiff.Dual`s when writing back into running statistics (see #2122 in
 # Flux). Extended in `NNlibForwardDiffExt`; identity everywhere else.
 _value(x) = x
@@ -109,6 +114,7 @@ ChainRulesCore.@non_differentiable _update_running_stats!(::Any...)
 # dimension is `N-1`.
 function _norm_layer(g, b, x::AbstractArray{T,N}, running_mean, running_var,
                      reduce_dims; training, momentum, eps, track_stats) where {T,N}
+    _check_affine(g, b)
     _check_norm_types(T, g, b, running_mean, running_var)
     Tc = _stats_type(T)
     xc = Tc === T ? x : Tc.(x)  # half-precision: accumulate statistics in Float32
@@ -201,6 +207,7 @@ function groupnorm(g, b, x::AbstractArray{T,N}, G::Integer; eps=1f-5) where {T,N
     N > 2 || throw(ArgumentError("groupnorm expects an array with at least 3 dimensions, got $N"))
     C = size(x, N-1)
     C % G == 0 || throw(ArgumentError("the number of groups G=$G must divide the number of channels C=$C"))
+    _check_affine(g, b)
     _check_norm_types(T, g, b, nothing, nothing)
     Tc = _stats_type(T)
     sz = size(x)
@@ -232,6 +239,7 @@ See also [`normalise`](@ref), [`batchnorm`](@ref), [`instancenorm`](@ref),
 [`groupnorm`](@ref).
 """
 function layernorm(g, b, x::AbstractArray{T}; dims=1, eps=1f-5) where {T}
+    _check_affine(g, b)
     _check_norm_types(T, g, b, nothing, nothing)
     Tc = _stats_type(T)
     xc = Tc === T ? x : Tc.(x)
@@ -262,6 +270,7 @@ end
 # reduce over every dimension except the channel `N-1`.
 function _∇norm_channel(g, b, x::AbstractArray{T,N}, dy, running_mean, running_var,
                         reduce_dims; eps, training) where {T,N}
+    _check_affine(g, b)
     Tc = _stats_type(T)                        # half precision: work in Float32
     xc = Tc === T ? x : Tc.(x)
     dyc = Tc === T ? dy : Tc.(dy)
@@ -322,6 +331,7 @@ end
 Gradient of [`groupnorm`](@ref), returning `(dg, db, dx)`.
 """
 function ∇groupnorm(g, b, x::AbstractArray{T,N}, dy, G::Integer; eps=1f-5) where {T,N}
+    _check_affine(g, b)
     Tc = _stats_type(T)
     C = size(x, N-1); sz = size(x)
     x2 = reshape(Tc === T ? x : Tc.(x), sz[1:N-2]..., C ÷ G, G, sz[N])
@@ -349,6 +359,7 @@ end
 Gradient of [`layernorm`](@ref), returning `(dg, db, dx)`.
 """
 function ∇layernorm(g, b, x::AbstractArray{T,N}, dy; dims=1, eps=1f-5) where {T,N}
+    _check_affine(g, b)
     Tc = _stats_type(T)
     xc = Tc === T ? x : Tc.(x)
     dyc = Tc === T ? dy : Tc.(dy)

@@ -35,6 +35,10 @@ function normalization_testsuite(Backend)
         @test test_gradients(batchnorm, g, b, x; test_gpu=gpu, atol, compare=cmp)
 
         @test_throws ArgumentError batchnorm(nothing, nothing, device(randn(T, 5)))
+        # the scale and bias must be given together or not at all
+        @test_throws ArgumentError batchnorm(device(g), nothing, device(x))
+        @test_throws ArgumentError batchnorm(nothing, device(b), device(x))
+        @test_throws ArgumentError NNlib.∇batchnorm(device(g), nothing, device(x), device(x))
     end
 
     @testset "batchnorm running stats" begin
