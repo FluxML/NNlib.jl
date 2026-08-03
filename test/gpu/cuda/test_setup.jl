@@ -6,6 +6,7 @@
 # `common_testsuite/` suites use.
 
 using CUDA, cuDNN
+using BFloat16s: BFloat16             # bare `BFloat16` in cuda/bfloat16.jl
 import CUDA.CUSPARSE: CuSparseMatrixCSC, CuSparseMatrixCSR, CuSparseMatrixCOO
 using ForwardDiff: Dual              # bare `Dual` in cuda/{activations,softmax}.jl
 using Mooncake.TestUtils: test_rule  # bare `test_rule` in cuda/batchnorm.jl

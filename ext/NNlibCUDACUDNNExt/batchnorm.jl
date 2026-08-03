@@ -15,36 +15,61 @@ BNCache() = BNCache(nothing, nothing)
 
 @inline _wsize(x::AbstractArray{<:Any,N}) where N = ntuple(i -> i == N-1 ? size(x, N-1) : 1, N)
 
+# cuDNN requires the batchnorm affine and statistics tensors (scale `g`, bias `b`,
+# running mean/var, saved mean/ivar) to be Float32 when the feature maps `x` are
+# half precision (Float16/BFloat16), and to share the feature-map type otherwise.
+# We accept only the array-type combinations that satisfy this contract rather than
+# silently converting, so a type mismatch surfaces as a clear error here instead of
+# an opaque CUDNN_STATUS_BAD_PARAM. `P == bnparam(T)` is the required parameter
+# eltype for feature-map eltype `T`.
+bnparam(::Type{Float16})  = Float32
+bnparam(::Type{BFloat16}) = Float32
+bnparam(::Type{T}) where {T<:CUDNNFloat} = T
+
+@inline function _check_bn_param_types(::Type{T}, ::Type{P}, running_mean, running_var) where {T,P}
+  P === bnparam(T) || throw(ArgumentError(
+    "cuDNN batchnorm on $T feature maps requires $(bnparam(T)) scale/bias tensors, got $P. " *
+    "cuDNN needs Float32 affine parameters for half-precision (Float16/BFloat16) data."))
+  for s in (running_mean, running_var)
+    s === nothing || eltype(s) === P || throw(ArgumentError(
+      "cuDNN batchnorm on $T feature maps requires $(bnparam(T)) running statistics, got $(eltype(s))."))
+  end
+  return nothing
+end
+
 function batchnorm(g::Nothing, b::Nothing, x::DenseCuArray,
                    running_mean, running_var, momentum; kws...)
   affine_sz = _wsize(x)
-  g = fill!(similar(x, affine_sz), 1)
-  b = fill!(similar(x, affine_sz), 0)
+  P = bnparam(eltype(x))
+  g = fill!(similar(x, P, affine_sz), 1)
+  b = fill!(similar(x, P, affine_sz), 0)
   return batchnorm(g, b, x, running_mean, running_var, momentum; kws...)
 end
 
 # NOTE: CuDNN supports only 4D and 5D Tensors for BatchNorm Operations
 # so reshape a 2D Tensor into 4D
-function batchnorm(g::DenseCuArray{T}, b::DenseCuArray{T}, x::DenseCuArray{T,2},
-                   running_mean, running_var, momentum; kws...) where T<:CUDNNFloat
+function batchnorm(g::DenseCuArray{P}, b::DenseCuArray{P}, x::DenseCuArray{T,2},
+                   running_mean, running_var, momentum; kws...) where {T<:CUDNNFloat, P}
+  _check_bn_param_types(T, P, running_mean, running_var)
   x = reshape(x, 1, 1, size(x, 1), size(x, 2))
   y = batchnorm(g, b, x, running_mean, running_var, momentum; kws...)
   return dropdims(y, dims = (1, 2))
 end
 
-function batchnorm(g::DenseCuArray{T}, b::DenseCuArray{T}, x::Union{DenseCuArray{T,4},DenseCuArray{T,5}},
-                   running_mean, running_var, momentum; kws...) where T<:CUDNNFloat
+function batchnorm(g::DenseCuArray{P}, b::DenseCuArray{P}, x::Union{DenseCuArray{T,4},DenseCuArray{T,5}},
+                   running_mean, running_var, momentum; kws...) where {T<:CUDNNFloat, P}
+  _check_bn_param_types(T, P, running_mean, running_var)
   cudnnBNForward!(similar(x), g, b, x, running_mean, running_var, momentum; kws...)
 end
 
-function cudnnBNForward!(y::DenseCuArray{T}, g::DenseCuArray{T}, b::DenseCuArray{T}, x::DenseCuArray{T},
+function cudnnBNForward!(y::DenseCuArray{T}, g::DenseCuArray{P}, b::DenseCuArray{P}, x::DenseCuArray{T},
                         running_mean, running_var, momentum;
                         cache = nothing,
                         alpha = T(1), beta = T(0),
                         eps = T(1e-5),
                         training = true,
                         affine = true,
-                        track_stats = true) where T<:CUDNNFloat
+                        track_stats = true) where {T<:CUDNNFloat, P}
   dims = _wsize(x)
   if eps < CUDNN_BN_MIN_EPSILON
     @warn "eps $eps is too small for CuDNN, setting to CUDNN_BN_MIN_EPSILON=$CUDNN_BN_MIN_EPSILON"
@@ -54,14 +79,14 @@ function cudnnBNForward!(y::DenseCuArray{T}, g::DenseCuArray{T}, b::DenseCuArray
   if running_mean === nothing || running_var === nothing
     running_mean !== running_var && throw(ArgumentError("both or neither of running_mean and running_var must be nothing"))
     if track_stats || !training
-      running_mean = fill!(similar(x, dims), 0)
-      running_var = fill!(similar(x, dims), 1)
+      running_mean = fill!(similar(x, P, dims), 0)
+      running_var = fill!(similar(x, P, dims), 1)
     end
   end
 
   xd = cudnnTensorDescriptor(x)
   yd = cudnnTensorDescriptor(y)
-  gd = cudnnTensorDescriptor(CUDNN_TENSOR_NCHW, cudnnDataType(T), Cint(length(dims)), dim4(dims,Val(CUDNN_TENSOR_NCHW)))
+  gd = cudnnTensorDescriptor(CUDNN_TENSOR_NCHW, cudnnDataType(P), Cint(length(dims)), dim4(dims,Val(CUDNN_TENSOR_NCHW)))
 
   if training
     if !track_stats
@@ -70,8 +95,8 @@ function cudnnBNForward!(y::DenseCuArray{T}, g::DenseCuArray{T}, b::DenseCuArray
     end
 
     if cache !== nothing
-      mean = fill!(similar(x, dims), 0)
-      ivar = fill!(similar(x, dims), 1)
+      mean = fill!(similar(x, P, dims), 0)
+      ivar = fill!(similar(x, P, dims), 1)
     else
       mean = CU_NULL
       ivar = CU_NULL
@@ -100,23 +125,26 @@ end
 function ∇batchnorm(g::Nothing, b::Nothing, x::DenseCuArray, dy::DenseCuArray,
                     running_mean, running_var, momentum; kws...)
   affine_sz = _wsize(x)
-  g = fill!(similar(x, affine_sz), 1)
-  b = fill!(similar(x, affine_sz), 0)
+  P = bnparam(eltype(x))
+  g = fill!(similar(x, P, affine_sz), 1)
+  b = fill!(similar(x, P, affine_sz), 0)
   return ∇batchnorm(g, b, x, dy, running_mean, running_var, momentum; kws...)
 end
 
-function ∇batchnorm(g::DenseCuArray{T}, b::DenseCuArray{T}, x::DenseCuArray{T, 2}, dy::DenseCuArray{T, 2},
+function ∇batchnorm(g::DenseCuArray{P}, b::DenseCuArray{P}, x::DenseCuArray{T, 2}, dy::DenseCuArray{T, 2},
             running_mean, running_var, momentum;
-            kws...) where T<:CUDNNFloat
+            kws...) where {T<:CUDNNFloat, P}
+  _check_bn_param_types(T, P, running_mean, running_var)
   dg, db, dx = ∇batchnorm(g, b, reshape(x, 1, 1, size(x, 1), size(x, 2)), reshape(dy, 1, 1, size(dy, 1),
                           size(dy, 2)), running_mean, running_var, momentum; kws...)
   (dg, db, dropdims(dx, dims = (1, 2)))
 end
 
 
-function ∇batchnorm(g::DenseCuArray{T}, b::DenseCuArray{T}, x::DenseCuArray{T}, dy::DenseCuArray{T},
+function ∇batchnorm(g::DenseCuArray{P}, b::DenseCuArray{P}, x::DenseCuArray{T}, dy::DenseCuArray{T},
                     running_mean, running_var, momentum;
-                    affine=true, kws...) where T<:CUDNNFloat
+                    affine=true, kws...) where {T<:CUDNNFloat, P}
+  _check_bn_param_types(T, P, running_mean, running_var)
   dg = similar(g)
   db = similar(b)
   dx = similar(x)
@@ -129,13 +157,13 @@ function ∇batchnorm(g::DenseCuArray{T}, b::DenseCuArray{T}, x::DenseCuArray{T}
   end
 end
 
-function cudnnBNBackward!(dg::DenseCuArray{T}, g::DenseCuArray{T}, db::DenseCuArray{T},
+function cudnnBNBackward!(dg::DenseCuArray{P}, g::DenseCuArray{P}, db::DenseCuArray{P},
                           dx::DenseCuArray{T}, x::DenseCuArray{T}, dy::DenseCuArray{T},
                           running_mean, running_var,
                           momentum; cache = nothing, eps = T(1e-5),
                           alpha = T(1), beta = T(0),
                           dalpha = T(1), dbeta = T(0), training = true,
-                          track_stats = true) where T<:CUDNNFloat
+                          track_stats = true) where {T<:CUDNNFloat, P}
   if !track_stats
     running_mean = CU_NULL
     running_var = CU_NULL
@@ -144,7 +172,7 @@ function cudnnBNBackward!(dg::DenseCuArray{T}, g::DenseCuArray{T}, db::DenseCuAr
   xd = cudnnTensorDescriptor(x)
   dyd = cudnnTensorDescriptor(dy)
   dxd = cudnnTensorDescriptor(dx)
-  gd = cudnnTensorDescriptor(CUDNN_TENSOR_NCHW, cudnnDataType(T), Cint(length(_wsize(x))), dim4(_wsize(x),Val(CUDNN_TENSOR_NCHW)))
+  gd = cudnnTensorDescriptor(CUDNN_TENSOR_NCHW, cudnnDataType(P), Cint(length(_wsize(x))), dim4(_wsize(x),Val(CUDNN_TENSOR_NCHW)))
   if cache !== nothing
     @debug "fetching mean and ivar from the cache"
     mean, ivar = cache.mean, cache.ivar

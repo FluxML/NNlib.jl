@@ -3,6 +3,7 @@ module NNlibCUDACUDNNExt
 using NNlib
 using cuDNN
 using CUDA
+using BFloat16s: BFloat16
 using Random, Statistics
 
 using cuDNN: handle, with_workspace, cudnnTensorDescriptor, cudnnFilterDescriptor,

@@ -9,7 +9,7 @@ using cuDNN: scalingParameter, CUDNN_CONVOLUTION, convdims,
              cudnnConvolutionBackwardBias
 import cuDNN: cudnnConvolutionDescriptor
 
-const CUDNNFloat = Union{Float16,Float32,Float64}
+const CUDNNFloat = Union{Float16,BFloat16,Float32,Float64}
 const CUDNNComplexFloat = Union{ComplexF16,ComplexF32,ComplexF64}
 
 function cudnnConvolutionDescriptorAndPaddedInput(cdims::DenseConvDims, x::DenseCuArray{T}) where T
@@ -53,7 +53,10 @@ end
 # the standard choice (matching e.g. PyTorch). So we always compute Float16
 # convolutions in Float32.
 # Fixes https://github.com/FluxML/NNlib.jl/issues/505 and #515.
+# BFloat16 has no native cuDNN accumulation config at all, so it likewise computes
+# in Float32 (cuDNN requires a Float32 accumulator for CUDNN_DATA_BFLOAT16 data).
 conv_compute_type(::Type{Float16}) = Float32
+conv_compute_type(::Type{BFloat16}) = Float32
 conv_compute_type(::Type{T}) where T = T
 
 function cudnnConvolutionDescriptor(cdims::DenseConvDims, x::DenseCuArray{T}, pad = nnlibPadding(cdims)) where T
