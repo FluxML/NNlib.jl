@@ -34,6 +34,16 @@
             @test_throws ArgumentError batchnorm(v, v, m, α, β, 1.0; kws...)
         end
     end 
+    @testset "3D input (issue #753)" begin
+        # cuDNN batchnorm supports only 4D/5D descriptors; a 3D (W, C, N) input is
+        # reshaped to 4D (1, W, C, N) on both the forward and backward paths. Guards
+        # against the regression where the backward path errored with BAD_PARAM.
+        g3 = rand(Float32, 4)
+        b3 = rand(Float32, 4)
+        x3 = rand(Float32, 5, 4, 8)
+        _bn3(g, b, x) = batchnorm(g, b, x, nothing, nothing, 0.1f0; training=true)
+        gputest(_bn3, g3, b3, x3; rtol=1e-3, atol=1e-4)
+    end
     @testset "test mode" begin
         y_no_track_stats = batchnorm(v, v, m, nothing, nothing, 1.0; training=false, track_stats=false)
         running_mean = mean(m, dims=[2])

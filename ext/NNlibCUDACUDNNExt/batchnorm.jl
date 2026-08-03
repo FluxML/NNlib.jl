@@ -57,6 +57,16 @@ function batchnorm(g::DenseCuArray{P}, b::DenseCuArray{P}, x::DenseCuArray{T,2},
   return dropdims(y, dims = (1, 2))
 end
 
+# Likewise, reshape a 3D (W, C, N) Tensor into 4D (1, W, C, N) so the feature
+# (channel) dimension stays second-to-last, as cuDNN batchnorm requires.
+function batchnorm(g::DenseCuArray{P}, b::DenseCuArray{P}, x::DenseCuArray{T,3},
+                   running_mean, running_var, momentum; kws...) where {T<:CUDNNFloat, P}
+  _check_bn_param_types(T, P, running_mean, running_var)
+  x = reshape(x, 1, size(x, 1), size(x, 2), size(x, 3))
+  y = batchnorm(g, b, x, running_mean, running_var, momentum; kws...)
+  return dropdims(y, dims = 1)
+end
+
 function batchnorm(g::DenseCuArray{P}, b::DenseCuArray{P}, x::Union{DenseCuArray{T,4},DenseCuArray{T,5}},
                    running_mean, running_var, momentum; kws...) where {T<:CUDNNFloat, P}
   _check_bn_param_types(T, P, running_mean, running_var)
@@ -139,6 +149,16 @@ function ∇batchnorm(g::DenseCuArray{P}, b::DenseCuArray{P}, x::DenseCuArray{T,
   dg, db, dx = ∇batchnorm(g, b, reshape(x, 1, 1, size(x, 1), size(x, 2)), reshape(dy, 1, 1, size(dy, 1),
                           size(dy, 2)), running_mean, running_var, momentum; kws...)
   (dg, db, dropdims(dx, dims = (1, 2)))
+end
+
+function ∇batchnorm(g::DenseCuArray{P}, b::DenseCuArray{P}, x::DenseCuArray{T, 3}, dy::DenseCuArray{T, 3},
+            running_mean, running_var, momentum;
+            kws...) where {T<:CUDNNFloat, P}
+  _check_bn_param_types(T, P, running_mean, running_var)
+  dg, db, dx = ∇batchnorm(g, b, reshape(x, 1, size(x, 1), size(x, 2), size(x, 3)),
+                          reshape(dy, 1, size(dy, 1), size(dy, 2), size(dy, 3)),
+                          running_mean, running_var, momentum; kws...)
+  (dg, db, dropdims(dx, dims = 1))
 end
 
 
