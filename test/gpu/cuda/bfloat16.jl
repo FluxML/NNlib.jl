@@ -27,7 +27,14 @@ function bf16_matches_f32(f, xs...; rtol=5e-2, atol=5e-2)
     @test Float32.(collect(out)) ≈ Float32.(ref) rtol=rtol atol=atol
 end
 
-@testset "convolution" begin
+# cuDNN BFloat16 support requires an Ampere-or-newer GPU (compute capability 8.0+);
+# on older devices the calls raise CUDNN_STATUS_NOT_SUPPORTED_ARCH_MISMATCH. Skip
+# the whole audit there rather than fail.
+const BF16_CUDNN = CUDA.capability(CUDA.device()) >= v"8.0"
+BF16_CUDNN || @info "Skipping BFloat16 CUDA tests: $(CUDA.name(CUDA.device())) " *
+    "(compute capability $(CUDA.capability(CUDA.device()))) predates Ampere; cuDNN BFloat16 needs sm_80+."
+
+BF16_CUDNN && @testset "convolution" begin
     rng = StableRNG(17)
     @testset "groups=$groups, num_spatial_dims=$nsd" for groups in (1, 2), nsd in (1, 2, 3)
         C_in  = groups == 1 ? 3 : 4
@@ -51,7 +58,7 @@ end
     end
 end
 
-@testset "pooling" begin
+BF16_CUDNN && @testset "pooling" begin
     rng = StableRNG(23)
     @testset "num_spatial_dims=$nsd" for nsd in (1, 2, 3)
         x = rand(rng, Float32, fill(8, nsd)..., 3, 2)
@@ -78,7 +85,7 @@ end
     end
 end
 
-@testset "softmax" begin
+BF16_CUDNN && @testset "softmax" begin
     rng = StableRNG(29)
     # cuDNN routes a leading contiguous softmax axis; other `dims` use the generic
     # kernel. Both stay BFloat16 and match a Float32 reference.
@@ -89,7 +96,7 @@ end
     end
 end
 
-@testset "activations" begin
+BF16_CUDNN && @testset "activations" begin
     rng = StableRNG(31)
     # These activations are routed to cuDNN by NNlibCUDACUDNNExt; the rest fall back
     # to the generic broadcast, which also supports BFloat16.
@@ -99,7 +106,7 @@ end
     end
 end
 
-@testset "batchnorm" begin
+BF16_CUDNN && @testset "batchnorm" begin
     rng = StableRNG(37)
     # cuDNN requires the scale/bias/statistics tensors to be Float32 when the feature
     # maps are half precision. BFloat16 feature maps with Float32 parameters must
