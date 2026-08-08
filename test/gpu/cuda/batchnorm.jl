@@ -53,4 +53,23 @@
         # stats are calculated only on the input.
         @test y_no_track_stats ≈ y_track_stats
     end
+    @testset "test mode gradient (Flux.jl#2179)" begin
+        # In inference mode with tracked statistics the forward pass normalises by the
+        # *fixed* running mean/variance, so the gradient is a per-channel affine rescaling
+        # — not the training-mode gradient that `cudnnBatchNormalizationBackward` computes.
+        # This regressed silently because only the forward pass was checked above. Compare
+        # the cuDNN path against the generic (CPU) reference for the input and, where
+        # present, the affine-parameter gradients. Running stats differ from the batch
+        # statistics so the inference gradient is genuinely distinct from the training one.
+        @testset for sz in ((4, 8), (3, 3, 4, 8))
+            C = sz[end-1]
+            g = rand(Float32, C); b = rand(Float32, C)
+            rm = randn(Float32, C); rv = rand(Float32, C) .+ 0.5f0
+            x = randn(Float32, sz)
+            gputest((g, b, x, rm, rv) -> batchnorm(g, b, x, rm, rv, 0.1f0; training=false, track_stats=true),
+                    g, b, x, rm, rv; rtol=1e-3, atol=1e-4)
+            gputest((x, rm, rv) -> batchnorm(nothing, nothing, x, rm, rv, 0.1f0; training=false, track_stats=true),
+                    x, rm, rv; rtol=1e-3, atol=1e-4)
+        end
+    end
 end
