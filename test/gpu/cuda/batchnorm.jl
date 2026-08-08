@@ -53,4 +53,52 @@
         # stats are calculated only on the input.
         @test y_no_track_stats ≈ y_track_stats
     end
+    @testset "test mode gradient (Flux.jl#2179)" begin
+        # In inference mode with tracked statistics the forward pass normalises by the
+        # *fixed* running mean/variance, so the gradient is a per-channel affine rescaling
+        # — not the training-mode gradient that `cudnnBatchNormalizationBackward` computes.
+        # This regressed silently because only the forward pass was checked above. Compare
+        # the cuDNN path against the generic (CPU) reference for the input and, where
+        # present, the affine-parameter gradients. Running stats differ from the batch
+        # statistics so the inference gradient is genuinely distinct from the training one.
+        @testset for sz in ((4, 8), (3, 3, 4, 8))
+            C = sz[end-1]
+            g = rand(Float32, C); b = rand(Float32, C)
+            rm = randn(Float32, C); rv = rand(Float32, C) .+ 0.5f0
+            x = randn(Float32, sz)
+            gputest((g, b, x, rm, rv) -> batchnorm(g, b, x, rm, rv, 0.1f0; training=false, track_stats=true),
+                    g, b, x, rm, rv; rtol=1e-3, atol=1e-4)
+            gputest((x, rm, rv) -> batchnorm(nothing, nothing, x, rm, rv, 0.1f0; training=false, track_stats=true),
+                    x, rm, rv; rtol=1e-3, atol=1e-4)
+        end
+    end
+    @testset "second order (Flux.jl#2154)" begin
+        # BatchNorm must be twice differentiable on the GPU. First-order gradients use
+        # the fast cuDNN backward (dispatched on `x::CuArray{<:CUDNNFloat}`); nesting AD
+        # seeds `ForwardDiff.Dual` eltypes, which fall through that dispatch to the
+        # generic differentiable `batchnorm`/`∇batchnorm` in NNlib core. We check the
+        # Hessian–vector product both ways — forward-over-reverse and reverse-over-reverse
+        # — against the (finite-difference-validated) CPU reference. The loss multiplies
+        # by a fixed array `a` to break batchnorm's normalisation invariance, so the
+        # second-order term is genuinely non-zero.
+        hvp(loss, X, V) =  # (reverse-over-reverse, forward-over-reverse)
+            (Zygote.gradient(x -> sum(Zygote.gradient(loss, x)[1] .* V), X)[1],
+             ForwardDiff.derivative(ε -> Zygote.gradient(loss, X .+ ε .* V)[1], 0f0))
+        @testset for sz in ((3, 6), (4, 5, 3, 6))
+            C = sz[end-1]
+            gc = randn(Float32, C); bc = randn(Float32, C); ac = randn(Float32, sz)
+            xc = randn(Float32, sz); vc = randn(Float32, sz)
+            rmc = randn(Float32, C); rvc = rand(Float32, C) .+ 0.5f0
+            @testset for (training, rm, rv) in ((true, nothing, nothing), (false, rmc, rvc))
+                dev(a) = a === nothing ? nothing : CuArray(a)
+                mkloss(g, b, a, rm, rv) =
+                    x -> sum(abs2, a .* batchnorm(g, b, x, rm, rv, 0.1f0; training))
+                rev_c, fwd_c = hvp(mkloss(gc, bc, ac, rm, rv), xc, vc)
+                rev_g, fwd_g = hvp(mkloss(dev(gc), dev(bc), dev(ac), dev(rm), dev(rv)),
+                                   CuArray(xc), CuArray(vc))
+                @test collect(rev_g) ≈ rev_c rtol=1e-3 atol=1e-4
+                @test collect(fwd_g) ≈ fwd_c rtol=1e-3 atol=1e-4
+            end
+        end
+    end
 end

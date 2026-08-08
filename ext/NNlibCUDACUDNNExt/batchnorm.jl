@@ -2,6 +2,7 @@ using cuDNN: CUDNN_BN_MIN_EPSILON, cudnnBatchNormalizationBackward,
              cudnnBatchNormalizationForwardInference, CUDNN_BATCHNORM_SPATIAL,
              cudnnBatchNormalizationForwardTraining
 using ChainRulesCore: ChainRulesCore, NoTangent, unthunk
+using NNlib: within_gradient
 import NNlib: batchnorm, ∇batchnorm
 
 # TODO: replace with new cudnn normalization interface
@@ -38,7 +39,10 @@ bnparam(::Type{T}) where {T<:CUDNNFloat} = T
   return nothing
 end
 
-function batchnorm(g::Nothing, b::Nothing, x::DenseCuArray,
+# Restricted to cuDNN eltypes so that non-CUDNNFloat arrays (notably `ForwardDiff.Dual`
+# under forward-over-reverse) fall through to the generic differentiable `batchnorm`
+# rather than erroring in `bnparam`/cuDNN. See FluxML/Flux.jl#2154.
+function batchnorm(g::Nothing, b::Nothing, x::DenseCuArray{<:CUDNNFloat},
                    running_mean, running_var, momentum; kws...)
   affine_sz = _wsize(x)
   P = bnparam(eltype(x))
@@ -135,6 +139,12 @@ end
 
 function ∇batchnorm(g::Nothing, b::Nothing, x::DenseCuArray, dy::DenseCuArray,
                     running_mean, running_var, momentum; kws...)
+  # Under nested AD go straight to the differentiable generic VJP, which handles the
+  # affine-free case natively — bypassing both the non-differentiable cuDNN backward
+  # and the `fill!(similar(...))` allocation the outer AD can't trace (Flux.jl#2154).
+  if within_gradient(x) || within_gradient(dy)
+    return _∇batchnorm_generic(nothing, nothing, x, dy, running_mean, running_var; kws...)
+  end
   affine_sz = _wsize(x)
   P = bnparam(eltype(x))
   g = fill!(similar(x, P, affine_sz), 1)
@@ -166,6 +176,17 @@ function ∇batchnorm(g::DenseCuArray{P}, b::DenseCuArray{P}, x::DenseCuArray{T}
                     running_mean, running_var, momentum;
                     affine=true, kws...) where {T<:CUDNNFloat, P}
   _check_bn_param_types(T, P, running_mean, running_var)
+  # `cudnnBatchNormalizationBackward` is a non-differentiable foreigncall, so when this
+  # VJP is itself being differentiated (second-order / nested AD, e.g. a Hessian-vector
+  # product) reverse-mode can't trace it. Route through the generic broadcast VJP in
+  # NNlib core, which is built from `mean`/`var`/broadcast and is itself differentiable.
+  # Mirrors the `within_gradient` fast/slow split in `∇softmax`. See FluxML/Flux.jl#2154.
+  # (Forward-over-reverse already avoids cuDNN: `ForwardDiff.Dual` eltypes miss this
+  # `T<:CUDNNFloat` method and dispatch straight to the generic `∇batchnorm`.)
+  if within_gradient(x) || within_gradient(dy)
+    dg, db, dx = _∇batchnorm_generic(g, b, x, dy, running_mean, running_var; kws...)
+    return affine ? (dg, db, dx) : (nothing, nothing, dx)
+  end
   dg = similar(g)
   db = similar(b)
   dx = similar(x)
@@ -178,6 +199,15 @@ function ∇batchnorm(g::DenseCuArray{P}, b::DenseCuArray{P}, x::DenseCuArray{T}
   end
 end
 
+# Generic, differentiable batchnorm VJP (the `_∇norm_channel` engine in NNlib core).
+# The cuDNN `∇batchnorm` methods above shadow the generic `∇batchnorm` for `CuArray`s,
+# so call the engine directly to reach the differentiable path for nested AD.
+function _∇batchnorm_generic(g, b, x::AbstractArray{<:Any,N}, dy, running_mean, running_var;
+                             eps=1f-5, training::Bool=true, kws...) where N
+  reduce_dims = (ntuple(identity, N-2)..., N)
+  return NNlib._∇norm_channel(g, b, x, dy, running_mean, running_var, reduce_dims; eps, training)
+end
+
 function cudnnBNBackward!(dg::DenseCuArray{P}, g::DenseCuArray{P}, db::DenseCuArray{P},
                           dx::DenseCuArray{T}, x::DenseCuArray{T}, dy::DenseCuArray{T},
                           running_mean, running_var,
@@ -185,6 +215,33 @@ function cudnnBNBackward!(dg::DenseCuArray{P}, g::DenseCuArray{P}, db::DenseCuAr
                           alpha = T(1), beta = T(0),
                           dalpha = T(1), dbeta = T(0), training = true,
                           track_stats = true) where {T<:CUDNNFloat, P}
+  if eps < CUDNN_BN_MIN_EPSILON
+    @warn "eps $eps is too small for CuDNN, setting to CUDNN_BN_MIN_EPSILON=$CUDNN_BN_MIN_EPSILON"
+    eps = CUDNN_BN_MIN_EPSILON
+  end
+
+  # `cudnnBatchNormalizationBackward` only implements the *training*-mode gradient: it
+  # differentiates through the per-batch mean/variance and ignores the running statistics.
+  # In inference mode with tracked statistics, the forward pass instead normalises by the
+  # *fixed* running mean/variance (`cudnnBatchNormalizationForwardInference`), so its
+  # gradient is a plain per-channel affine rescaling. Calling the cuDNN backward here yields
+  # silently wrong `dx`/`dg` (FluxML/Flux.jl#2179), so compute the inference gradient
+  # directly. This assumes the default scaling parameters (alpha=1, beta=0, dalpha=1,
+  # dbeta=0), which is the only combination Flux/NNlib exercise.
+  if !training && track_stats && running_mean isa DenseCuArray && running_var isa DenseCuArray
+    N = ndims(x)
+    ws = _wsize(x)                                    # (1,…,1,C,1): channel dim is N-1
+    rstd = reshape(inv.(sqrt.(running_var .+ P(eps))), ws)
+    dx .= dy .* reshape(g, ws) .* rstd
+    reddims = ntuple(i -> i < N-1 ? i : i+1, N-1)     # all dims except the channel dim
+    x̂ = (x .- reshape(running_mean, ws)) .* rstd
+    # `dg`/`db` may arrive as length-C vectors (affine params) or as `_wsize`-shaped
+    # arrays (the affine=false fill path), so reshape the reduction to their layout.
+    dg .= reshape(sum(dy .* x̂; dims = reddims), size(dg))
+    db .= reshape(sum(dy; dims = reddims), size(db))
+    return
+  end
+
   if !track_stats
     running_mean = CU_NULL
     running_var = CU_NULL
@@ -199,11 +256,6 @@ function cudnnBNBackward!(dg::DenseCuArray{P}, g::DenseCuArray{P}, db::DenseCuAr
     mean, ivar = cache.mean, cache.ivar
   else
     mean, ivar = CU_NULL, CU_NULL
-  end
-
-  if eps < CUDNN_BN_MIN_EPSILON
-    @warn "eps $eps is too small for CuDNN, setting to CUDNN_BN_MIN_EPSILON=$CUDNN_BN_MIN_EPSILON"
-    eps = CUDNN_BN_MIN_EPSILON
   end
 
   cudnnBatchNormalizationBackward(handle(), CUDNN_BATCHNORM_SPATIAL,
