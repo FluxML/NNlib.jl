@@ -127,8 +127,11 @@ function normalization_testsuite(Backend)
         @test cpu(dx) ≈ cpu(dxz) atol=atol
     end
 
-    # Second-order differentiation only through the generic (CPU) path: the cuDNN
-    # `batchnorm` backward is a non-differentiable kernel, so we don't nest AD on GPU.
+    # Second-order differentiation. The reference HVP below builds a full Jacobian with
+    # `ForwardDiff.gradient`, which is impractical on the GPU, so this generic check runs
+    # on the CPU only. GPU second-order coverage lives in `test/gpu/cuda/batchnorm.jl`
+    # (Flux.jl#2154): nesting AD seeds `ForwardDiff.Dual` eltypes, which route away from
+    # the cuDNN kernels to this same differentiable path.
     Backend == CPU && @testset "second order" begin
         x = randn(T, 4, 5, 3, 4); g = randn(T, 3); b = randn(T, 3)
         gl = randn(T, 4, 5, 1, 1); bl = randn(T, 4, 5, 1, 1)
