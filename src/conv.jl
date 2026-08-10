@@ -217,23 +217,30 @@ function run_grouped_im2col!(worker, ngroups::Int, refarr, M::Int, K::Int,
         # Spawn one task per thread (not per group) and let each task sweep a
         # contiguous block of groups, reusing its own workspace slice. This keeps
         # the workspace at `(M, K, nchunks)` and the task count at `nchunks`,
-        # rather than `O(groups)` of either.
-        nchunks = min(nt, ngroups)
-        col = similar(refarr, M, K, nchunks)
-        Threads.@sync for (ci, chunk) in
-                enumerate(Iterators.partition(1:ngroups, cld(ngroups, nchunks)))
-            Threads.@spawn begin
-                cs = view(col, :, :, ci:ci)
-                for gi in chunk
-                    worker(gi, cs, 1)
-                end
-            end
-        end
+        # rather than `O(groups)` of either. Kept in its own function so the
+        # `col` workspace has a single assignment site and is not boxed when the
+        # spawned closures capture it.
+        run_grouped_im2col_parallel!(worker, ngroups, refarr, M, K, min(nt, ngroups))
     else
         ntasks = inner_threaded ? nt : 1
         col = similar(refarr, M, K, ntasks)
         for gi in 1:ngroups
             worker(gi, col, ntasks)
+        end
+    end
+    return nothing
+end
+
+function run_grouped_im2col_parallel!(worker, ngroups::Int, refarr, M::Int, K::Int,
+                                      nchunks::Int)
+    col = similar(refarr, M, K, nchunks)
+    Threads.@sync for (ci, chunk) in
+            enumerate(Iterators.partition(1:ngroups, cld(ngroups, nchunks)))
+        Threads.@spawn begin
+            cs = view(col, :, :, ci:ci)
+            for gi in chunk
+                worker(gi, cs, 1)
+            end
         end
     end
     return nothing
@@ -257,9 +264,9 @@ for (front_name, backend, signature) in (
             wsd = im2col_dims(cdims2)
             function conv_group(gi, col, ntasks)
                 xc = x_cs[gi]; wc = w_cs[gi]
-                x = @view in1[ntuple(i -> i == 4 ? xc : Colon(), 5)...]
-                w = @view in2[ntuple(i -> i == 5 ? wc : Colon(), 5)...]
-                y = @view out[ntuple(i -> i == 4 ? wc : Colon(), 5)...]
+                x = @view in1[:, :, :, xc, :]
+                w = @view in2[:, :, :, :, wc]
+                y = @view out[:, :, :, wc, :]
                 $(Symbol("$(front_name)_$(backend)!"))(y, x, w, cdims2;
                                                        col=col, ntasks=ntasks, kwargs...)
             end
@@ -332,9 +339,9 @@ for (front_name, backend, signature) in (
             wsd = im2col_dims(cdims2)
             function ∇conv_data_group(gi, col, ntasks)
                 xc = dx_cs[gi]; yc = dy_cs[gi]; wc = w_cs[gi]
-                dxv = @view out[ntuple(i -> i == 4 ? xc : Colon(), 5)...]
-                dyv = @view in1[ntuple(i -> i == 4 ? yc : Colon(), 5)...]
-                wv = @view in2[ntuple(i -> i == 5  ? wc : Colon(), 5)...]
+                dxv = @view out[:, :, :, xc, :]
+                dyv = @view in1[:, :, :, yc, :]
+                wv = @view in2[:, :, :, :, wc]
                 $(Symbol("$(front_name)_$(backend)!"))(dxv, dyv, wv, cdims2;
                                                        col=col, ntasks=ntasks, kwargs...)
             end
@@ -409,9 +416,9 @@ for (front_name, backend, signature) in (
             wsd = ∇filter_im2col_dims(cdims2)
             function ∇conv_filter_group(gi, col, ntasks)
                 wc = dw_cs[gi]; xc = x_cs[gi]; yc = dy_cs[gi]
-                x = @view in1[ntuple(i -> i == 4 ? xc : Colon(), 5)...]
-                dy = @view in2[ntuple(i -> i == 4 ? yc : Colon(), 5)...]
-                dw = @view out[ntuple(i -> i == 5 ? wc : Colon(), 5)...]
+                x = @view in1[:, :, :, xc, :]
+                dy = @view in2[:, :, :, yc, :]
+                dw = @view out[:, :, :, :, wc]
                 $(Symbol("$(front_name)_$(backend)!"))(dw, x, dy, cdims2; col=col, kwargs...)
             end
             run_grouped_im2col!(∇conv_filter_group, length(dw_cs), out, wsd[1], wsd[2], false)

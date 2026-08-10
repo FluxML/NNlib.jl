@@ -789,6 +789,32 @@ end
    @test test_gradients((x, w) -> sum(conv(x, w, csdims)), xs, ws)
 end
 
+# https://github.com/FluxML/Flux.jl/issues/2508: grouped/depthwise convs used to
+# allocate O(groups) workspaces/closures, so a depthwise conv over many channels
+# produced tens of thousands of allocations. The im2col workspace is now shared
+# and the per-group inner loop no longer boxes, so forward/backward allocations
+# are flat in the group count (bounded by the thread count, not the groups).
+@testset "grouped conv allocation count is flat in group count" begin
+    xg = rand(Float32, 16, 16, 256, 2)
+    function conv_allocs(G)
+        w = rand(Float32, 3, 3, 256 ÷ G, 256)
+        cd = DenseConvDims(xg, w; padding=1, groups=G)
+        y = conv(xg, w, cd)                       # warmup / compile
+        NNlib.∇conv_data(y, w, cd); NNlib.∇conv_filter(xg, y, cd)
+        fwd = @allocations conv(xg, w, cd)
+        gd  = @allocations NNlib.∇conv_data(y, w, cd)
+        gf  = @allocations NNlib.∇conv_filter(xg, y, cd)
+        return fwd, gd, gf
+    end
+    # Quadrupling the group count must not scale allocations with it (old code
+    # would grow ~4x). Allow a generous additive slack for scheduling noise.
+    f64, d64, w64 = conv_allocs(64)
+    f256, d256, w256 = conv_allocs(256)
+    @test f256 <= f64 + 64
+    @test d256 <= d64 + 64
+    @test w256 <= w64 + 64
+end
+
 @testset "conv_wrapper" begin
     x = rand(10, 10, 3, 10)
     w = rand(2, 2, 3, 16)

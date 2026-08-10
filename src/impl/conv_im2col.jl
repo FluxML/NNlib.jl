@@ -95,13 +95,13 @@ function conv_im2col!(
     # outermost spatial axis with extent > 1, which keeps each task's output
     # rows contiguous in `y`.
     out_w, out_h, out_d = output_size(cdims)
-    if out_d > 1
-        naxis, stride_ax, axis = out_d, out_w*out_h, :d
-    elseif out_h > 1
-        naxis, stride_ax, axis = out_h, out_w, :h
-    else
-        naxis, stride_ax, axis = out_w, 1, :w
-    end
+    # Single assignment site (not a multi-branch one) so `axis`/`stride_ax` are
+    # not boxed when captured by the `tile_task` closure below -- boxing here
+    # allocates on every call and is multiplied by the group count on the
+    # grouped/depthwise path.
+    naxis, stride_ax, axis = out_d > 1 ? (out_d, out_w*out_h, :d) :
+                             out_h > 1 ? (out_h, out_w, :h) :
+                                         (out_w, 1, :w)
 
     # Distribute ntasks spatial blocks across the nbatch images.
     base, extra = divrem(ntasks, nbatch)
