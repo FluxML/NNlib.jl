@@ -60,8 +60,8 @@ The output spatial size for each dimension is
 - `pad`: zero padding. An `Int` or tuple applies symmetric padding; a tuple of
   `2*ndims` entries gives `(left, right)` padding per spatial dimension.
 - `dilation`: spacing between filter elements (atrous convolution).
-- `flipped`: if `false` (default), perform cross-correlation (the usual deep-learning
-  convention); if `true`, perform a true mathematical convolution by flipping `w`.
+- `flipped`: if `false` (default), perform true mathematical convolution; if `true`, perform
+  cross-correlation (the usual deep-learning convention).
 - `groups`: number of groups for grouped convolution.
 
 # Examples
