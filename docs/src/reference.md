@@ -89,13 +89,13 @@ pad_zeros
 
 `NNlib.conv` supports complex datatypes on CPU and CUDA devices.
 
-!!! note "AMDGPU MIOpen supports only cross-correlation (`flipkernel=true`)."
+!!! note "AMDGPU MIOpen supports only cross-correlation (flipped=true)."
 
-    Therefore for every regular convolution (`flipkernel=false`)
-    kernel is flipped before calculation.
-    For better performance, use cross-correlation (`flipkernel=true`)
-    and manually flip the kernel before `NNlib.conv` call.
-    `Flux` handles this automatically, this is only required for direct calls.
+    Therefore, for every regular convolution (`flipped=false`), the kernel is flipped before
+    calculation.
+    For better performance, use cross-correlation (`flipped=true`) and manually flip the
+    kernel before the `NNlib.conv` call.
+    `Flux` handles this automatically; this is only required for direct calls.
 
 ```@docs
 conv
