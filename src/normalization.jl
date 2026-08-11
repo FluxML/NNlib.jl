@@ -180,6 +180,9 @@ computed over every `D_1×…×D_{N-2}×1×1` slice, so per channel **and** per 
 the batch. When tracked, the running statistics (length `size(x, N-1)`) accumulate
 the per-channel average across the batch.
 
+On the GPU (without running statistics) the standardisation is dispatched to the
+cuDNN `batchnorm` fast path; the running-statistics case uses the generic code.
+
 See also [`batchnorm`](@ref), [`groupnorm`](@ref), [`layernorm`](@ref).
 """
 function instancenorm(g, b, x::AbstractArray{T,N},
@@ -200,6 +203,8 @@ maps. For an input with `N > 2` dimensions the `N-1`th is the channel dimension;
 its `C = size(x, N-1)` channels are split into `G` groups (`G` must divide `C`) and
 statistics are computed over each group together with the spatial dimensions, per
 sample. `eps` is added to the variance.
+
+On the GPU the standardisation is dispatched to the cuDNN `batchnorm` fast path.
 
 See also [`batchnorm`](@ref), [`instancenorm`](@ref), [`layernorm`](@ref).
 """
@@ -234,6 +239,9 @@ dimensions `dims` (the leading dimension by default).
 
 `g` and `b`, when given, must broadcast against the normalised region, e.g. have
 size `size(x)[dims]` with singleton trailing dimensions.
+
+On the GPU, normalising over leading `dims` (`1:k`) dispatches the standardisation to
+the cuDNN `batchnorm` fast path; other `dims` use the generic code.
 
 See also [`normalise`](@ref), [`batchnorm`](@ref), [`instancenorm`](@ref),
 [`groupnorm`](@ref).
