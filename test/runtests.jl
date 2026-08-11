@@ -20,8 +20,7 @@ const NNLIB_TEST_ENZYME =   if haskey(ENV, "NNLIB_TEST_ENZYME")
                                 ENV["NNLIB_TEST_ENZYME"] == "true"
                             else
                                 VERSION <= v"1.13-" && # fails on nightly
-                                !NNLIB_TEST_AMDGPU && !NNLIB_TEST_METAL && !NNLIB_TEST_CUDA && # TODO fails on GPU backends
-                                !Sys.iswindows() # TODO fails on Windows
+                                !NNLIB_TEST_AMDGPU && !NNLIB_TEST_METAL && !NNLIB_TEST_CUDA # TODO fails on GPU backends
                             end
 
 # Tests that exercise NNlib's multithreaded code paths (`@spawn` / `@threads`).
