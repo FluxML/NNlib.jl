@@ -192,6 +192,12 @@ Calculate the gradient imposed upon `w` in the convolution `y = x * w`.
 function ∇conv_filter_direct!(dw::AbstractArray{wT,5}, x::AbstractArray{xT,5},
                               dy::AbstractArray{yT,5}, cdims::DenseConvDims;
                               alpha::wT=wT(1), beta=false) where {xT, yT, wT}
+    # Zero-sized batch: nothing to accumulate, so the result is `beta*dw`. Bail
+    # out before `transpose_swapbatch` moves the empty batch into the channel
+    # slot, where `DenseConvDims` would divide by it (0 % 0). See issue #760.
+    if size(x, 5) == 0
+        return iszero(beta) ? fill!(dw, zero(wT)) : (dw .*= beta)
+    end
     x = conj(transpose_swapbatch(x[end:-1:1, end:-1:1, end:-1:1, :, :]))
     dy = transpose_swapbatch(predilate(dy, stride(cdims)))
     ctdims = DenseConvDims(dy, x; padding=transpose_pad(cdims),

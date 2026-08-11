@@ -854,6 +854,36 @@ end
     @test size(depthwiseconv(x, w1; stride = (1, 2), pad = (2, 3), dilation = (2, 2), flipped = true)) == (10, 5, 9, 10)
 end
 
+# https://github.com/FluxML/NNlib.jl/issues/760
+@testset "conv with zero-sized batch dimension" begin
+    for rank in (1, 2, 3)
+        @testset "rank=$rank" begin
+            x = randn(Float32, ntuple(_ -> 6, rank)..., 2, 0)  # zero batch
+            w = randn(Float32, ntuple(_ -> 2, rank)..., 2, 3)
+            cdims = DenseConvDims(x, w)
+            y = randn(Float32, ntuple(_ -> 5, rank)..., 3, 0)  # matching empty output
+
+            y_shape = (ntuple(_ -> 5, rank)..., 3, 0)
+            for (fwd, ∇data, ∇filter) in (
+                    (NNlib.conv, NNlib.∇conv_data, NNlib.∇conv_filter),
+                    (NNlib.conv_im2col, NNlib.∇conv_data_im2col, NNlib.∇conv_filter_im2col),
+                    (NNlib.conv_direct, NNlib.∇conv_data_direct, NNlib.∇conv_filter_direct))
+                @test size(fwd(x, w, cdims)) == y_shape
+                @test size(∇data(y, w, cdims)) == size(x)
+                dw = ∇filter(x, y, cdims)
+                @test size(dw) == size(w)
+                # no batches to sum over ⇒ the filter gradient is exactly zero
+                @test all(iszero, dw)
+            end
+        end
+    end
+
+    # empty minibatch obtained by slicing an empty range (the motivating case)
+    x = randn(Float32, 10, 10, 3, 5)
+    w = randn(Float32, 3, 3, 3, 4)
+    @test size(conv(x[:, :, :, 3:2], w)) == (8, 8, 4, 0)
+end
+
 # https://github.com/FluxML/NNlib.jl/pull/171
 @testset "conv_direct! - Check Sizes" begin
     x_size = (6, 7, 8, 5, 3)
