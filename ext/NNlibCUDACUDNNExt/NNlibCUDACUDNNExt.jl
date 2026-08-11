@@ -25,5 +25,6 @@ include("pooling.jl")
 include("softmax.jl")
 include("activations.jl")
 include("batchnorm.jl")
+include("normalization.jl")
 
 end # module
