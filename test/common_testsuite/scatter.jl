@@ -175,9 +175,8 @@ function scatter_testsuite(Backend)
                 src_d = device(src); idx_d = device(idx)
                 @test test_gradients(x -> scatter!(op, copy(x), src, idx), dst;
                     test_gpu = Backend != CPU, reference = get_reference_ad(op),
-                    # Enzyme's `scatter!` rule errors here; Enzyme is covered by the
-                    # dedicated `EnzymeRules` testset below.
-                    compare = AutoZygote(),
+                    # Enzyme's `scatter!` rule does not cover `*`/`/` yet
+                    compare = op in (*, /) ? AutoZygote() : [AutoZygote(), AutoEnzyme()],
                     f_gpu = x -> scatter!(op, copy(x), src_d, idx_d))
             end
         end
@@ -189,7 +188,8 @@ function scatter_testsuite(Backend)
                 idx_d = device(idx)
                 @test test_gradients(xs -> scatter(op, xs, idx), src;
                     test_gpu = Backend != CPU, reference = get_reference_ad(op),
-                    compare = AutoZygote(),  # Enzyme `scatter!` rule errors; covered separately below
+                    # Enzyme's `scatter!` rule does not cover `*`/`/` yet
+                    compare = op in (*, /) ? AutoZygote() : [AutoZygote(), AutoEnzyme()],
                     f_gpu = xs -> scatter(op, xs, idx_d))
             end
         end
@@ -202,7 +202,7 @@ function scatter_testsuite(Backend)
             idx_d = device(idx)
             @test test_gradients(xs -> scatter(op, xs, idx), src;
                 test_gpu = Backend != CPU, reference = get_reference_ad(op),
-                compare = AutoZygote(),  # Enzyme `scatter!` rule errors; covered separately below
+                compare = AutoZygote(),  # Enzyme's `scatter!` rule does not cover `*`/`/` yet
                 f_gpu = xs -> scatter(op, xs, idx_d))
         end
 

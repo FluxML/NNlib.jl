@@ -168,6 +168,8 @@ end
 function EnzymeRules.augmented_primal(config, func::EnzymeCore.Const{typeof(NNlib.scatter!)}, ::Type{RT}, op::EnzymeCore.Const, dst::OutType, src, idx::EnzymeCore.Const) where {OutType, RT}
 
     @assert !(OutType <: EnzymeCore.Const)
+    # `max`/`min` need the pre-scatter dst to tell which entries survived
+    dst_old = op.val isa Union{typeof(max),typeof(min)} ? copy(dst.val) : nothing
     if OutType <: EnzymeCore.Duplicated || OutType <: EnzymeCore.BatchDuplicated
         func.val(op.val, dst.val, src.val, idx.val)
     end
@@ -189,16 +191,19 @@ function EnzymeRules.augmented_primal(config, func::EnzymeCore.Const{typeof(NNli
                     && !(typeof(dst) <: EnzymeCore.Const)
                     ) ? copy(idx.val) : nothing
 
-    return EnzymeRules.AugmentedReturn(primal, shadow, cache_idx)
+    return EnzymeRules.AugmentedReturn(primal, shadow, (cache_idx, dst_old))
 end
 
 function EnzymeRules.reverse(config,
 										func::EnzymeCore.Const{typeof(NNlib.scatter!)},
 										::Type{RT},
-										cache_idx,
-										op::Union{EnzymeCore.Const{typeof(+)},EnzymeCore.Const{typeof(-)}}, dst::OutType,
+										cache,
+										op::EnzymeCore.Const{<:Union{typeof(+),typeof(-),typeof(max),typeof(min),typeof(NNlib.mean)}},
+										dst::OutType,
 										src,
 										idx::EnzymeCore.Const) where {OutType, RT}
+
+    cache_idx, dst_old = cache
 
     # Don't cache idx if not overwritten
     if !(typeof(src) <: EnzymeCore.Const) && !(typeof(dst) <: EnzymeCore.Const)
@@ -219,13 +224,12 @@ function EnzymeRules.reverse(config,
         if !(typeof(dst) <: EnzymeCore.Const) && ddst !== dst.val
 
             if !(typeof(src) <: EnzymeCore.Const) && dsrc !== src.val
+                dsrc .+= NNlib.∇scatter!_src(op.val, ddst, dst.val, src.val, cache_idx)
+            end
 
-                if eltype(typeof(op)) == typeof(+)
-                    dsrc .+= NNlib.gather(ddst, cache_idx)
-                else
-                    @assert eltype(typeof(op)) == typeof(-)
-                    dsrc .-= NNlib.gather(ddst, cache_idx)
-                end
+            # after dsrc, which reads the same seed; only `max`/`min` need this
+            if dst_old !== nothing
+                ddst .= NNlib.∇scatter!_dst(op.val, ddst, dst_old, dst.val)
             end
 
         end
