@@ -167,7 +167,14 @@ end
 
 function EnzymeRules.augmented_primal(config, func::EnzymeCore.Const{typeof(NNlib.scatter!)}, ::Type{RT}, op::EnzymeCore.Const, dst::OutType, src, idx::EnzymeCore.Const) where {OutType, RT}
 
-    @assert !(OutType <: EnzymeCore.Const)
+    # a Const dst is still written, it just has no shadow and passes nothing back
+    if OutType <: EnzymeCore.Const
+        func.val(op.val, dst.val, src.val, idx.val)
+        primal = EnzymeRules.needs_primal(config) ? dst.val : nothing
+        shadow = EnzymeRules.needs_shadow(config) ? _enz_shadow(config, dst.val) : nothing
+        return EnzymeRules.AugmentedReturn(primal, shadow, nothing)
+    end
+
     # `max`/`min` need the pre-scatter dst to tell which entries survived
     dst_old = op.val isa Union{typeof(max),typeof(min)} ? copy(dst.val) : nothing
     if OutType <: EnzymeCore.Duplicated || OutType <: EnzymeCore.BatchDuplicated
@@ -202,6 +209,8 @@ function EnzymeRules.reverse(config,
 										dst::OutType,
 										src,
 										idx::EnzymeCore.Const) where {OutType, RT}
+
+    OutType <: EnzymeCore.Const && return (nothing, nothing, nothing, nothing)
 
     cache_idx, dst_old = cache
 

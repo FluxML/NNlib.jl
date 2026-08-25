@@ -231,6 +231,16 @@ function scatter_testsuite(Backend)
                     EnzymeTestUtils.test_reverse(scatter!, Tret, (op, EnzymeCore.Const), (dst, Tdst), (src, Tsrc), (idx, EnzymeCore.Const); atol=1e-4, rtol=1e-4)
                 end
             end
+
+            @testset "Const dst" begin
+                dst = device(zeros(T, 3, 4))
+                dsrc = device(zeros(T, 3, 5))
+                Enzyme.autodiff(Enzyme.Reverse, (d, s, i) -> sum(abs2, scatter!(+, d, s, i)),
+                                Active, Const(dst), Duplicated(copy(src), dsrc), Const(idx))
+                # the scatter still runs, but a Const dst passes no derivative to src
+                @test cpu(dst) == cpu(scatter(+, src, idx))
+                @test all(iszero, cpu(dsrc))
+            end
         end
 
         end
