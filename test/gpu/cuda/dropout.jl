@@ -28,4 +28,9 @@
         @test Zygote.gradient(x -> sum(dropout(rng, x, 0.3)), x1)[1] isa CuArray{Float32}
         @test Zygote.gradient(x -> sum(dropout(x, 0.3, dims=1)), x1)[1] isa CuArray{Float32}
     end
+
+    @testset "Mooncake" begin
+        # p == 0 must not touch `CUDA.default_rng()`, which Mooncake cannot trace.
+        test_rule(Random.MersenneTwister(42), x -> sum(dropout(x, 0)), x1; is_primitive=false, mode=Mooncake.ReverseMode)
+    end
 end

@@ -35,7 +35,10 @@ julia> mean(dropout(ones(10^4, 5), 0.3, dims=1), dims=1)
  1.00571  1.00571  1.00571  1.00571  1.00571
 ```
 """
-dropout(A::AbstractArray, p::Real; dims = :) = dropout(_rng_from_array(A), A, p; dims)
+# p == 0 drops nothing: skip the RNG lookup (Mooncake cannot trace `CUDA.default_rng()`).
+# Single expression on purpose: an early `return` breaks Zygote's reverse-over-reverse.
+dropout(A::AbstractArray, p::Real; dims = :) =
+    iszero(p) ? convert(AbstractArray{float(eltype(A))}, A) : dropout(_rng_from_array(A), A, p; dims)
 
 function dropout(rng::AbstractRNG, A::AbstractArray, p::Real; dims = :)
     _rng_compat_array(rng, A)
