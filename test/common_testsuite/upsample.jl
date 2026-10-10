@@ -1,5 +1,5 @@
-# Call shapes in which the scale / size reaches the Enzyme rule as a runtime value:
-# through a non-inlined caller, or computed from `size(x)` behind a guard.
+# Callers that return the result of `upsample_nearest`, non-inlined or guarded. Enzyme
+# handed the reverse rule a bogus shadow for `x` in these call shapes on Julia 1.13.
 @noinline _upsample_nearest_scale(x, scale) = upsample_nearest(x, scale)
 @noinline _upsample_nearest_size(x, size) = upsample_nearest(x; size)
 function _upsample_nearest_guarded(x, outsize)
@@ -29,8 +29,7 @@ function upsample_testsuite(Backend)
         @test test_gradients(
             x -> upsample_nearest(x, size=(4,6)),
             rand(T, 2,2,1,1); test_gpu = Backend != CPU, atol)
-        # The scale / size reaches the Enzyme rule as a runtime value. On Julia 1.13 the
-        # reverse rule was handed a bogus shadow for `x` in these call shapes.
+        # `upsample_nearest` reached through a function that returns its result.
         @test test_gradients(
             x -> _upsample_nearest_scale(x, (2,3)),
             rand(T, 2,2,1,1); test_gpu = Backend != CPU, atol)

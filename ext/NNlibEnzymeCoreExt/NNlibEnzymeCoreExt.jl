@@ -419,9 +419,9 @@ _enz_dval(a) = a.dval
 # are the shadows of the differentiable inputs `args`.
 #
 # The input shadows are captured here, not read back from the arguments of `reverse`:
-# Enzyme can hand the reverse rule a bogus shadow for an array argument when another
-# argument is an integer tuple only known at runtime (hit by `upsample_nearest` on
-# Julia 1.13), whereas the shadows seen by the augmented pass are not affected.
+# Enzyme can hand the reverse rule a bogus (empty) shadow for an array argument when the
+# rule'd call sits in a non-inlined function that returns its result (hit by
+# `upsample_nearest` on Julia 1.13), whereas the augmented pass gets the right one.
 @inline function _enz_alloc_augmented(config, y, args::Tuple, extra::Tuple)
     shadow = EnzymeRules.needs_shadow(config) ? _enz_shadow(config, y) : nothing
     primal = EnzymeRules.needs_primal(config) ? y : nothing
