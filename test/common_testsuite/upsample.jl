@@ -1,3 +1,13 @@
+# Call shapes in which the scale / size reaches the Enzyme rule as a runtime value:
+# through a non-inlined caller, or computed from `size(x)` behind a guard.
+@noinline _upsample_nearest_scale(x, scale) = upsample_nearest(x, scale)
+@noinline _upsample_nearest_size(x, size) = upsample_nearest(x; size)
+function _upsample_nearest_guarded(x, outsize)
+    xsize = size(x)[1:2]
+    all(outsize .% xsize .== 0) || throw(ArgumentError("expected output size divisible by input size"))
+    return upsample_nearest(x, outsize .÷ xsize)
+end
+
 function upsample_testsuite(Backend)
     device(x) = adapt(Backend(), x)
     T = Float32 # TODO test against all supported eltypes for each backend.
@@ -18,6 +28,17 @@ function upsample_testsuite(Backend)
             rand(T, 2,2,1,1); test_gpu = Backend != CPU, atol)
         @test test_gradients(
             x -> upsample_nearest(x, size=(4,6)),
+            rand(T, 2,2,1,1); test_gpu = Backend != CPU, atol)
+        # The scale / size reaches the Enzyme rule as a runtime value. On Julia 1.13 the
+        # reverse rule was handed a bogus shadow for `x` in these call shapes.
+        @test test_gradients(
+            x -> _upsample_nearest_scale(x, (2,3)),
+            rand(T, 2,2,1,1); test_gpu = Backend != CPU, atol)
+        @test test_gradients(
+            x -> _upsample_nearest_size(x, (4,6)),
+            rand(T, 2,2,1,1); test_gpu = Backend != CPU, atol)
+        @test test_gradients(
+            x -> _upsample_nearest_guarded(x, (4,6)),
             rand(T, 2,2,1,1); test_gpu = Backend != CPU, atol)
 
         @test_throws ArgumentError ∇upsample_nearest(y, (2,4))

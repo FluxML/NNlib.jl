@@ -410,33 +410,44 @@ _enz_slice(::Val{W}, s, i) where {W} = s[i]
 # the op's `∇` function and accumulates the result into each differentiable input.
 # These three helpers capture that plumbing so the rules stay a few lines each.
 
+# The shadow of a differentiable input (`nothing` for a `Const` one).
+_enz_dval(a::EnzymeCore.Const) = nothing
+_enz_dval(a) = a.dval
+
 # Standard augmented pass: expose primal/shadow per `config`, allocate the output
-# shadow, and stash `(shadow, extra...)` as the reverse-pass cache.
-@inline function _enz_alloc_augmented(config, y, extra::Tuple)
+# shadow, and stash `(shadow, dvals, extra...)` as the reverse-pass cache, where `dvals`
+# are the shadows of the differentiable inputs `args`.
+#
+# The input shadows are captured here, not read back from the arguments of `reverse`:
+# Enzyme can hand the reverse rule a bogus shadow for an array argument when another
+# argument is an integer tuple only known at runtime (hit by `upsample_nearest` on
+# Julia 1.13), whereas the shadows seen by the augmented pass are not affected.
+@inline function _enz_alloc_augmented(config, y, args::Tuple, extra::Tuple)
     shadow = EnzymeRules.needs_shadow(config) ? _enz_shadow(config, y) : nothing
     primal = EnzymeRules.needs_primal(config) ? y : nothing
-    return EnzymeRules.AugmentedReturn(primal, shadow, (shadow, extra...))
+    return EnzymeRules.AugmentedReturn(primal, shadow, (shadow, map(_enz_dval, args), extra...))
 end
 
-# Type-stable tuple unroll of the per-input accumulation (a `zip(args, grads)` loop
+# Type-stable tuple unroll of the per-input accumulation (a `zip(dvals, grads)` loop
 # over these heterogeneous tuples would be dynamically dispatched).
 @inline _enz_accum!(wv, i, ::Tuple{}, ::Tuple{}) = nothing
-@inline function _enz_accum!(wv, i, args::Tuple, grads::Tuple)
-    a, g = args[1], grads[1]
-    (a isa EnzymeCore.Const || g === nothing) || (_enz_slice(wv, a.dval, i) .+= g)
-    _enz_accum!(wv, i, Base.tail(args), Base.tail(grads))
+@inline function _enz_accum!(wv, i, dvals::Tuple, grads::Tuple)
+    d, g = dvals[1], grads[1]
+    (d === nothing || g === nothing) || (_enz_slice(wv, d, i) .+= g)
+    _enz_accum!(wv, i, Base.tail(dvals), Base.tail(grads))
 end
 
 # Reverse pass: for each batch slice, `backward(dy)` returns a tuple of cotangents
-# aligned 1:1 with `args`; accumulate each into its input shadow. `backward` must
-# return one cotangent per arg — a single-output `∇` has to be wrapped in a 1-tuple.
-@inline function _enz_alloc_reverse!(config, shadow, args::Tuple, backward)
-    any(a -> !(a isa EnzymeCore.Const), args) || return nothing
+# aligned 1:1 with the input shadows `dvals` cached by `_enz_alloc_augmented`;
+# accumulate each into its shadow. `backward` must return one cotangent per input —
+# a single-output `∇` has to be wrapped in a 1-tuple.
+@inline function _enz_alloc_reverse!(config, shadow, dvals::Tuple, backward)
+    all(isnothing, dvals) && return nothing
     wv = Val(EnzymeRules.width(config))
     for i in 1:EnzymeRules.width(config)
         grads = backward(_enz_slice(wv, shadow, i))
-        @assert length(grads) == length(args) "backward must return one cotangent per arg"
-        _enz_accum!(wv, i, args, grads)
+        @assert length(grads) == length(dvals) "backward must return one cotangent per input"
+        _enz_accum!(wv, i, dvals, grads)
     end
     return nothing
 end
@@ -459,13 +470,13 @@ function EnzymeRules.augmented_primal(config, func::EnzymeCore.Const{typeof(NNli
     y = func.val(arr.val, θ.val; method, rotation_center)
     # `∇imrotate` reads only `arr`'s shape/backend (the op is linear in `arr`), so
     # keeping `arr.val` — not a copy — is safe even if it is later overwritten.
-    return _enz_alloc_augmented(config, y, (arr.val, θ.val, method, rotation_center))
+    return _enz_alloc_augmented(config, y, (arr,), (arr.val, θ.val, method, rotation_center))
 end
 
 function EnzymeRules.reverse(config, func::EnzymeCore.Const{typeof(NNlib.imrotate)},
         ::Type{RT}, cache, arr, θ; kwargs...) where {RT}
-    shadow, arr_val, θ_val, method, rotation_center = cache
-    _enz_alloc_reverse!(config, shadow, (arr,),
+    shadow, dvals, arr_val, θ_val, method, rotation_center = cache
+    _enz_alloc_reverse!(config, shadow, dvals,
         dy -> (NNlib.∇imrotate(dy, arr_val, θ_val; method, rotation_center),))
     return (nothing, nothing)   # θ is `NoTangent` in the rrule
 end
@@ -473,30 +484,29 @@ end
 function EnzymeRules.augmented_primal(config, func::EnzymeCore.Const{typeof(NNlib.upsample_nearest)},
         ::Type{RT}, x, s) where {RT}
     y = func.val(x.val, s.val)
-    return _enz_alloc_augmented(config, y, (s.val,))
+    return _enz_alloc_augmented(config, y, (x,), (s.val,))
 end
 
 function EnzymeRules.reverse(config, func::EnzymeCore.Const{typeof(NNlib.upsample_nearest)},
         ::Type{RT}, cache, x, s) where {RT}
-    shadow, scales = cache
-    _enz_alloc_reverse!(config, shadow, (x,), dy -> (NNlib.∇upsample_nearest(dy, scales),))
+    shadow, dvals, scales = cache
+    _enz_alloc_reverse!(config, shadow, dvals, dy -> (NNlib.∇upsample_nearest(dy, scales),))
     return (nothing, nothing)
 end
 
-# Keyword form `upsample_nearest(x; size)`. Without this, Enzyme differentiates through
-# the forwarding method and applies the rule above to its inner call, where on Julia 1.13
-# the reverse pass receives an empty shadow for `x` (and throws a `DimensionMismatch`).
+# Keyword form `upsample_nearest(x; size)`, handled directly instead of differentiating
+# through the method that forwards it to the positional one.
 function EnzymeRules.augmented_primal(config, func::EnzymeCore.Const{typeof(NNlib.upsample_nearest)},
         ::Type{RT}, x; size) where {RT}
     y = func.val(x.val; size)
     scales = size .÷ Base.size(x.val)[1:length(size)]
-    return _enz_alloc_augmented(config, y, (scales,))
+    return _enz_alloc_augmented(config, y, (x,), (scales,))
 end
 
 function EnzymeRules.reverse(config, func::EnzymeCore.Const{typeof(NNlib.upsample_nearest)},
         ::Type{RT}, cache, x; kwargs...) where {RT}
-    shadow, scales = cache
-    _enz_alloc_reverse!(config, shadow, (x,), dy -> (NNlib.∇upsample_nearest(dy, scales),))
+    shadow, dvals, scales = cache
+    _enz_alloc_reverse!(config, shadow, dvals, dy -> (NNlib.∇upsample_nearest(dy, scales),))
     return (nothing,)
 end
 
@@ -505,13 +515,13 @@ function EnzymeRules.augmented_primal(config, func::EnzymeCore.Const{typeof(NNli
     y = func.val(x.val; size, align_corners)
     # `∇upsample_linear` needs the original spatial size of `x` (see the rrule).
     insize = Base.size(x.val)[1:ndims(x.val)-2]
-    return _enz_alloc_augmented(config, y, (insize, align_corners))
+    return _enz_alloc_augmented(config, y, (x,), (insize, align_corners))
 end
 
 function EnzymeRules.reverse(config, func::EnzymeCore.Const{typeof(NNlib.upsample_linear)},
         ::Type{RT}, cache, x; kwargs...) where {RT}
-    shadow, insize, align_corners = cache
-    _enz_alloc_reverse!(config, shadow, (x,),
+    shadow, dvals, insize, align_corners = cache
+    _enz_alloc_reverse!(config, shadow, dvals,
         dy -> (NNlib.∇upsample_linear(dy; size=insize, align_corners),))
     return (nothing,)
 end
@@ -522,14 +532,14 @@ end
 function EnzymeRules.augmented_primal(config, func::EnzymeCore.Const{typeof(NNlib.grid_sample)},
         ::Type{RT}, x, grid; padding_mode=:zeros) where {RT}
     y = func.val(x.val, grid.val; padding_mode)
-    return _enz_alloc_augmented(config, y, (copy(x.val), copy(grid.val), padding_mode))
+    return _enz_alloc_augmented(config, y, (x, grid), (copy(x.val), copy(grid.val), padding_mode))
 end
 
 function EnzymeRules.reverse(config, func::EnzymeCore.Const{typeof(NNlib.grid_sample)},
         ::Type{RT}, cache, x, grid; kwargs...) where {RT}
-    shadow, xval, gridval, padding_mode = cache
+    shadow, dvals, xval, gridval, padding_mode = cache
     # `∇grid_sample` already returns the `(∇x, ∇grid)` tuple aligned with `(x, grid)`.
-    _enz_alloc_reverse!(config, shadow, (x, grid),
+    _enz_alloc_reverse!(config, shadow, dvals,
         dy -> NNlib.∇grid_sample(dy, xval, gridval; padding_mode))
     return (nothing, nothing)
 end
@@ -561,17 +571,17 @@ function EnzymeRules.augmented_primal(config, func::EnzymeCore.Const{typeof(NNli
         ::Type{RT}, g, b, x::EnzymeCore.Annotation{<:AbstractGPUArray},
         running_mean, running_var, momentum; kwargs...) where {RT}
     y = func.val(g.val, b.val, x.val, running_mean.val, running_var.val, momentum.val; kwargs...)
-    return _enz_alloc_augmented(config, y, (copy(g.val), copy(b.val), copy(x.val),
-                                            running_mean.val, running_var.val, momentum.val))
+    return _enz_alloc_augmented(config, y, (g, b, x), (copy(g.val), copy(b.val), copy(x.val),
+                                                       running_mean.val, running_var.val, momentum.val))
 end
 
 function EnzymeRules.reverse(config, func::EnzymeCore.Const{typeof(NNlib.batchnorm)},
         ::Type{RT}, cache, g, b, x::EnzymeCore.Annotation{<:AbstractGPUArray},
         running_mean, running_var, momentum; kwargs...) where {RT}
-    shadow, gval, bval, xval, rm, rv, mom = cache
+    shadow, dvals, gval, bval, xval, rm, rv, mom = cache
     # `∇batchnorm` returns `(dg, db, dx)` aligned with `(g, b, x)`; `dg`/`db` may be
     # `nothing` (non-affine), which `_enz_accum!` skips.
-    _enz_alloc_reverse!(config, shadow, (g, b, x),
+    _enz_alloc_reverse!(config, shadow, dvals,
         dy -> NNlib.∇batchnorm(gval, bval, xval, dy, rm, rv, mom; kwargs...))
     return (nothing, nothing, nothing, nothing, nothing, nothing)
 end
@@ -585,26 +595,26 @@ end
 function EnzymeRules.augmented_primal(config, func::EnzymeCore.Const{typeof(NNlib.unfold)},
         ::Type{RT}, x, cdims::EnzymeCore.Const{<:NNlib.DenseConvDims}) where {RT}
     y = func.val(x.val, cdims.val)
-    return _enz_alloc_augmented(config, y, (Base.size(x.val), cdims.val))
+    return _enz_alloc_augmented(config, y, (x,), (Base.size(x.val), cdims.val))
 end
 
 function EnzymeRules.reverse(config, func::EnzymeCore.Const{typeof(NNlib.unfold)},
         ::Type{RT}, cache, x, cdims::EnzymeCore.Const{<:NNlib.DenseConvDims}) where {RT}
-    shadow, xsize, cd = cache
-    _enz_alloc_reverse!(config, shadow, (x,), dy -> (NNlib.fold(dy, xsize, cd),))
+    shadow, dvals, xsize, cd = cache
+    _enz_alloc_reverse!(config, shadow, dvals, dy -> (NNlib.fold(dy, xsize, cd),))
     return (nothing, nothing)
 end
 
 function EnzymeRules.augmented_primal(config, func::EnzymeCore.Const{typeof(NNlib.fold)},
         ::Type{RT}, x, output_size, cdims::EnzymeCore.Const{<:NNlib.DenseConvDims}) where {RT}
     y = func.val(x.val, output_size.val, cdims.val)
-    return _enz_alloc_augmented(config, y, (cdims.val,))
+    return _enz_alloc_augmented(config, y, (x,), (cdims.val,))
 end
 
 function EnzymeRules.reverse(config, func::EnzymeCore.Const{typeof(NNlib.fold)},
         ::Type{RT}, cache, x, output_size, cdims::EnzymeCore.Const{<:NNlib.DenseConvDims}) where {RT}
-    shadow, cd = cache
-    _enz_alloc_reverse!(config, shadow, (x,), dy -> (NNlib.unfold(dy, cd),))
+    shadow, dvals, cd = cache
+    _enz_alloc_reverse!(config, shadow, dvals, dy -> (NNlib.unfold(dy, cd),))
     return (nothing, nothing, nothing)
 end
 
