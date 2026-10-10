@@ -483,6 +483,23 @@ function EnzymeRules.reverse(config, func::EnzymeCore.Const{typeof(NNlib.upsampl
     return (nothing, nothing)
 end
 
+# Keyword form `upsample_nearest(x; size)`. Without this, Enzyme differentiates through
+# the forwarding method and applies the rule above to its inner call, where on Julia 1.13
+# the reverse pass receives an empty shadow for `x` (and throws a `DimensionMismatch`).
+function EnzymeRules.augmented_primal(config, func::EnzymeCore.Const{typeof(NNlib.upsample_nearest)},
+        ::Type{RT}, x; size) where {RT}
+    y = func.val(x.val; size)
+    scales = size .÷ Base.size(x.val)[1:length(size)]
+    return _enz_alloc_augmented(config, y, (scales,))
+end
+
+function EnzymeRules.reverse(config, func::EnzymeCore.Const{typeof(NNlib.upsample_nearest)},
+        ::Type{RT}, cache, x; kwargs...) where {RT}
+    shadow, scales = cache
+    _enz_alloc_reverse!(config, shadow, (x,), dy -> (NNlib.∇upsample_nearest(dy, scales),))
+    return (nothing,)
+end
+
 function EnzymeRules.augmented_primal(config, func::EnzymeCore.Const{typeof(NNlib.upsample_linear)},
         ::Type{RT}, x; size, align_corners::Bool=true) where {RT}
     y = func.val(x.val; size, align_corners)

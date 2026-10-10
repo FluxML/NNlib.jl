@@ -28,6 +28,10 @@ jobs:
   test:
     name: Julia ${{ matrix.version }} - ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
+    # The test environment depends on packages tied to compiler internals (Enzyme,
+    # Mooncake), which routinely fail to precompile on Julia nightly. Keep the job
+    # for information, but don't let it fail the workflow.
+    continue-on-error: ${{ matrix.version == 'nightly' }}
     strategy:
       fail-fast: false
       matrix:
