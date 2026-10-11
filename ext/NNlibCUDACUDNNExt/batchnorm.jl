@@ -1,11 +1,16 @@
-using cuDNN: batchnorm_gradient!, batchnorm_inference!, batchnorm_training!,
-             graph_unsupported
+using cuDNN: CUDNN_BN_MIN_EPSILON, cudnnBatchNormalizationBackward,
+             cudnnBatchNormalizationForwardInference, CUDNN_BATCHNORM_SPATIAL,
+             cudnnBatchNormalizationForwardTraining, CUDNN_TENSOR_NCHW,
+             cudnnDataType, cudnnTensorDescriptor, dim4, handle, scalingParameter
 using ChainRulesCore: ChainRulesCore, NoTangent, unthunk
 using NNlib: within_gradient
 import NNlib: batchnorm, ∇batchnorm
 
-# Batch statistics saved by the forward pass (`mean` and `ivar = 1/√(var + eps)`) for
-# the backward pass to consume, as in cuDNN's own interface.
+# These call cuDNN's fixed-function batch normalization. Its graph API
+# (`cuDNN.batchnorm_training!` and friends) is slower where it applies, and has no
+# engine for inference, `Float64`, or a number of channels that is not a multiple of 4
+# (cuDNN 9.26).
+
 mutable struct BNCache
   mean
   ivar
@@ -13,24 +18,15 @@ end
 
 BNCache() = BNCache(nothing, nothing)
 
-# cuDNN batchnorm handles 4D and 5D tensors; 2D and 3D inputs are reshaped to 4D.
-const BNArray{T} = Union{DenseCuArray{T,4},DenseCuArray{T,5}}
-const BNReshapedArray{T} = Union{DenseCuArray{T,2},DenseCuArray{T,3}}
-
-@inline batchnorm_param_size(x::AbstractArray{<:Any,N}) where {N} =
-  ntuple(i -> i == N-1 ? size(x, N-1) : 1, N)
-
-# Every dimension except the channel one.
-@inline batchnorm_reduce_dims(::AbstractArray{<:Any,N}) where {N} =
-  (ntuple(identity, N-2)..., N)
+@inline _wsize(x::AbstractArray{<:Any,N}) where N = ntuple(i -> i == N-1 ? size(x, N-1) : 1, N)
 
 # cuDNN requires the batchnorm affine and statistics tensors (scale `g`, bias `b`,
 # running mean/var, saved mean/ivar) to be Float32 when the feature maps `x` are
 # half precision (Float16/BFloat16), and to share the feature-map type otherwise.
 # We accept only the array-type combinations that satisfy this contract rather than
-# silently converting, so a type mismatch surfaces as a clear error here and no
-# hidden copies are made. `P == bnparam(T)` is the required parameter eltype for
-# feature-map eltype `T`.
+# silently converting, so a type mismatch surfaces as a clear error here instead of
+# an opaque CUDNN_STATUS_BAD_PARAM. `P == bnparam(T)` is the required parameter
+# eltype for feature-map eltype `T`.
 bnparam(::Type{Float16})  = Float32
 bnparam(::Type{BFloat16}) = Float32
 bnparam(::Type{T}) where {T<:CUDNNFloat} = T
@@ -46,37 +42,20 @@ bnparam(::Type{T}) where {T<:CUDNNFloat} = T
   return nothing
 end
 
-# The running statistics normalise the input only in inference mode, and are updated
-# only in training mode. Untracked statistics are neither read nor updated.
-function batchnorm_running_stats(running_mean, running_var, track_stats)
-  (running_mean === nothing) == (running_var === nothing) ||
-    throw(ArgumentError("both or neither of running_mean and running_var must be nothing"))
-  return track_stats ? (running_mean, running_var) : (nothing, nothing)
-end
-
-# Batch statistics in the form cuDNN's gradient expects, for when the forward pass did
-# not save them. Half-precision data accumulates in the parameter type `P`.
-function batchnorm_statistics(x::DenseCuArray{T}, ::Type{P}, eps) where {T,P}
-  dims = batchnorm_reduce_dims(x)
-  xP = P === T ? x : P.(x)
-  μ = mean(xP; dims)
-  σ² = var(xP; mean=μ, dims, corrected=false)
-  return μ, @. inv(sqrt(σ² + P(eps)))
-end
-
 # Restricted to cuDNN eltypes so that non-CUDNNFloat arrays (notably `ForwardDiff.Dual`
 # under forward-over-reverse) fall through to the generic differentiable `batchnorm`
 # rather than erroring in `bnparam`/cuDNN. See FluxML/Flux.jl#2154.
 function batchnorm(g::Nothing, b::Nothing, x::DenseCuArray{<:CUDNNFloat},
                    running_mean, running_var, momentum; kws...)
-  affine_sz = batchnorm_param_size(x)
+  affine_sz = _wsize(x)
   P = bnparam(eltype(x))
   g = fill!(similar(x, P, affine_sz), 1)
   b = fill!(similar(x, P, affine_sz), 0)
   return batchnorm(g, b, x, running_mean, running_var, momentum; kws...)
 end
 
-# Reshape a 2D (C, N) tensor into 4D (1, 1, C, N).
+# NOTE: CuDNN supports only 4D and 5D Tensors for BatchNorm Operations
+# so reshape a 2D Tensor into 4D
 function batchnorm(g::DenseCuArray{P}, b::DenseCuArray{P}, x::DenseCuArray{T,2},
                    running_mean, running_var, momentum; kws...) where {T<:CUDNNFloat, P}
   _check_bn_param_types(T, P, running_mean, running_var)
@@ -85,7 +64,7 @@ function batchnorm(g::DenseCuArray{P}, b::DenseCuArray{P}, x::DenseCuArray{T,2},
   return dropdims(y, dims = (1, 2))
 end
 
-# Likewise, reshape a 3D (W, C, N) tensor into 4D (1, W, C, N) so the feature
+# Likewise, reshape a 3D (W, C, N) Tensor into 4D (1, W, C, N) so the feature
 # (channel) dimension stays second-to-last, as cuDNN batchnorm requires.
 function batchnorm(g::DenseCuArray{P}, b::DenseCuArray{P}, x::DenseCuArray{T,3},
                    running_mean, running_var, momentum; kws...) where {T<:CUDNNFloat, P}
@@ -95,40 +74,68 @@ function batchnorm(g::DenseCuArray{P}, b::DenseCuArray{P}, x::DenseCuArray{T,3},
   return dropdims(y, dims = 1)
 end
 
-function batchnorm(g::DenseCuArray{P}, b::DenseCuArray{P}, x::BNArray{T},
+function batchnorm(g::DenseCuArray{P}, b::DenseCuArray{P}, x::Union{DenseCuArray{T,4},DenseCuArray{T,5}},
                    running_mean, running_var, momentum; kws...) where {T<:CUDNNFloat, P}
   _check_bn_param_types(T, P, running_mean, running_var)
   cudnnBNForward!(similar(x), g, b, x, running_mean, running_var, momentum; kws...)
 end
 
-# `alpha` and `beta` are forwarded to cuDNN, which only supports the defaults.
 function cudnnBNForward!(y::DenseCuArray{T}, g::DenseCuArray{P}, b::DenseCuArray{P}, x::DenseCuArray{T},
                         running_mean, running_var, momentum;
                         cache = nothing,
-                        alpha = 1, beta = 0,
+                        alpha = T(1), beta = T(0),
                         eps = T(1e-5),
                         training = true,
                         affine = true,
                         track_stats = true) where {T<:CUDNNFloat, P}
-  running_mean, running_var = batchnorm_running_stats(running_mean, running_var, track_stats)
-  try
-    if !training && running_mean !== nothing
-      batchnorm_inference!(y, x, g, b, running_mean, running_var; epsilon=eps, alpha, beta)
-    else
-      # Without running statistics to normalise with, inference uses the batch
-      # statistics too, as the generic `batchnorm` does.
-      μ, ivar = batchnorm_training!(y, x, g, b; running_mean, running_var, momentum,
-                                    epsilon=eps, alpha, beta)
-      if cache !== nothing
-        cache.mean = μ
-        cache.ivar = ivar
-      end
+  dims = _wsize(x)
+  if eps < CUDNN_BN_MIN_EPSILON
+    @warn "eps $eps is too small for CuDNN, setting to CUDNN_BN_MIN_EPSILON=$CUDNN_BN_MIN_EPSILON"
+    eps = CUDNN_BN_MIN_EPSILON
+  end
+
+  if running_mean === nothing || running_var === nothing
+    running_mean !== running_var && throw(ArgumentError("both or neither of running_mean and running_var must be nothing"))
+    if track_stats || !training
+      running_mean = fill!(similar(x, P, dims), 0)
+      running_var = fill!(similar(x, P, dims), 1)
     end
-  catch e
-    # cuDNN has no engine for this configuration: use the generic implementation.
-    graph_unsupported(e) || rethrow()
-    copyto!(y, _batchnorm_generic(g, b, x, running_mean, running_var, momentum;
-                                  eps, training, track_stats))
+  end
+
+  xd = cudnnTensorDescriptor(x)
+  yd = cudnnTensorDescriptor(y)
+  gd = cudnnTensorDescriptor(CUDNN_TENSOR_NCHW, cudnnDataType(P), Cint(length(dims)), dim4(dims,Val(CUDNN_TENSOR_NCHW)))
+
+  if training
+    if !track_stats
+      running_mean = CU_NULL
+      running_var = CU_NULL
+    end
+
+    if cache !== nothing
+      mean = fill!(similar(x, P, dims), 0)
+      ivar = fill!(similar(x, P, dims), 1)
+    else
+      mean = CU_NULL
+      ivar = CU_NULL
+    end
+
+    cudnnBatchNormalizationForwardTraining(handle(), CUDNN_BATCHNORM_SPATIAL, scalingParameter(T, alpha), scalingParameter(T, beta), xd, x, yd, y, gd, g, b, momentum, running_mean, running_var, eps, mean, ivar)
+
+    if cache !== nothing
+      cache.mean = mean
+      cache.ivar = ivar
+    end
+  else
+    if track_stats
+      cudnnBatchNormalizationForwardInference(handle(), CUDNN_BATCHNORM_SPATIAL, scalingParameter(T, alpha), scalingParameter(T, beta), xd, x, yd, y, gd, g, b, running_mean, running_var, eps)
+    else
+      # cudnnBatchNormalizationForwardInference does not accept CV_NULL for running_mean
+      # and running_var. We could calculate mean and var of `x` here, but instead use
+      # cudnnBatchNormalizationFowardTraining. cudnnBatchNormalizationForwardTraining does
+      # accept CV_NULL and will calculate mean and var itself.
+      cudnnBatchNormalizationForwardTraining(handle(), CUDNN_BATCHNORM_SPATIAL, scalingParameter(T, alpha), scalingParameter(T, beta), xd, x, yd, y, gd, g, b, momentum, CU_NULL, CU_NULL, eps, CU_NULL, CU_NULL)
+    end
   end
   return y
 end
@@ -141,7 +148,7 @@ function ∇batchnorm(g::Nothing, b::Nothing, x::DenseCuArray, dy::DenseCuArray,
   if within_gradient(x) || within_gradient(dy)
     return _∇batchnorm_generic(nothing, nothing, x, dy, running_mean, running_var; kws...)
   end
-  affine_sz = batchnorm_param_size(x)
+  affine_sz = _wsize(x)
   P = bnparam(eltype(x))
   g = fill!(similar(x, P, affine_sz), 1)
   b = fill!(similar(x, P, affine_sz), 0)
@@ -167,14 +174,15 @@ function ∇batchnorm(g::DenseCuArray{P}, b::DenseCuArray{P}, x::DenseCuArray{T,
   (dg, db, dropdims(dx, dims = 1))
 end
 
-function ∇batchnorm(g::DenseCuArray{P}, b::DenseCuArray{P}, x::BNArray{T}, dy::BNArray{T},
+
+function ∇batchnorm(g::DenseCuArray{P}, b::DenseCuArray{P}, x::DenseCuArray{T}, dy::DenseCuArray{T},
                     running_mean, running_var, momentum;
                     affine=true, kws...) where {T<:CUDNNFloat, P}
   _check_bn_param_types(T, P, running_mean, running_var)
-  # The cuDNN backward is a non-differentiable foreigncall, so when this VJP is itself
-  # being differentiated (second-order / nested AD, e.g. a Hessian-vector product)
-  # reverse-mode can't trace it. Route through the generic broadcast VJP in NNlib core,
-  # which is built from `mean`/`var`/broadcast and is itself differentiable.
+  # `cudnnBatchNormalizationBackward` is a non-differentiable foreigncall, so when this
+  # VJP is itself being differentiated (second-order / nested AD, e.g. a Hessian-vector
+  # product) reverse-mode can't trace it. Route through the generic broadcast VJP in
+  # NNlib core, which is built from `mean`/`var`/broadcast and is itself differentiable.
   # Mirrors the `within_gradient` fast/slow split in `∇softmax`. See FluxML/Flux.jl#2154.
   # (Forward-over-reverse already avoids cuDNN: `ForwardDiff.Dual` eltypes miss this
   # `T<:CUDNNFloat` method and dispatch straight to the generic `∇batchnorm`.)
@@ -185,7 +193,7 @@ function ∇batchnorm(g::DenseCuArray{P}, b::DenseCuArray{P}, x::BNArray{T}, dy:
   dg = similar(g)
   db = similar(b)
   dx = similar(x)
-  cudnnBNBackward!(dg, g, db, dx, x, dy, running_mean, running_var, momentum; kws...)
+  cudnnBNBackward!(dg, g, db, dx, x, dy, running_mean, running_var, T(momentum); kws...)
   if affine
     (dg, db, dx)
   else
@@ -194,87 +202,78 @@ function ∇batchnorm(g::DenseCuArray{P}, b::DenseCuArray{P}, x::BNArray{T}, dy:
   end
 end
 
-# Generic batchnorm (the `_norm_layer` engine in NNlib core), for the configurations
-# cuDNN has no engine for. The cuDNN `batchnorm` methods above shadow the generic
-# `batchnorm` for `CuArray`s, so call the engine directly.
-function _batchnorm_generic(g, b, x, running_mean, running_var, momentum;
-                            eps, training, track_stats)
-  # the engine updates the running statistics as vectors
-  running_mean === nothing || (running_mean = vec(running_mean); running_var = vec(running_var))
-  return NNlib._norm_layer(g, b, x, running_mean, running_var, batchnorm_reduce_dims(x);
-                           training, momentum, eps, track_stats)
-end
-
 # Generic, differentiable batchnorm VJP (the `_∇norm_channel` engine in NNlib core).
 # The cuDNN `∇batchnorm` methods above shadow the generic `∇batchnorm` for `CuArray`s,
 # so call the engine directly to reach the differentiable path for nested AD.
-function _∇batchnorm_generic(g, b, x, dy, running_mean, running_var;
-                             eps=1f-5, training::Bool=true, kws...)
-  return NNlib._∇norm_channel(g, b, x, dy, running_mean, running_var,
-                              batchnorm_reduce_dims(x); eps, training)
+function _∇batchnorm_generic(g, b, x::AbstractArray{<:Any,N}, dy, running_mean, running_var;
+                             eps=1f-5, training::Bool=true, kws...) where N
+  reduce_dims = (ntuple(identity, N-2)..., N)
+  return NNlib._∇norm_channel(g, b, x, dy, running_mean, running_var, reduce_dims; eps, training)
 end
 
-# `alpha`, `beta`, `dalpha` and `dbeta` are forwarded to cuDNN, which only supports the
-# defaults.
 function cudnnBNBackward!(dg::DenseCuArray{P}, g::DenseCuArray{P}, db::DenseCuArray{P},
                           dx::DenseCuArray{T}, x::DenseCuArray{T}, dy::DenseCuArray{T},
                           running_mean, running_var,
                           momentum; cache = nothing, eps = T(1e-5),
-                          alpha = 1, beta = 0,
-                          dalpha = 1, dbeta = 0, training = true,
+                          alpha = T(1), beta = T(0),
+                          dalpha = T(1), dbeta = T(0), training = true,
                           track_stats = true) where {T<:CUDNNFloat, P}
-  running_mean, running_var = batchnorm_running_stats(running_mean, running_var, track_stats)
+  if eps < CUDNN_BN_MIN_EPSILON
+    @warn "eps $eps is too small for CuDNN, setting to CUDNN_BN_MIN_EPSILON=$CUDNN_BN_MIN_EPSILON"
+    eps = CUDNN_BN_MIN_EPSILON
+  end
 
-  # cuDNN only implements the *training*-mode gradient, which differentiates through the
-  # per-batch mean/variance. In inference mode with tracked statistics, the forward pass
-  # instead normalises by the *fixed* running mean/variance, so its gradient is a plain
-  # per-channel affine rescaling. Calling the cuDNN backward here would yield silently
-  # wrong `dx`/`dg` (FluxML/Flux.jl#2179), so compute the inference gradient directly.
-  if !training && running_mean !== nothing
-    alpha == 1 && beta == 0 && dalpha == 1 && dbeta == 0 ||
-      throw(ArgumentError("the batchnorm gradient requires alpha=1, beta=0, dalpha=1, and dbeta=0"))
-    ws = batchnorm_param_size(x)                      # (1,…,1,C,1): channel dim is N-1
+  # `cudnnBatchNormalizationBackward` only implements the *training*-mode gradient: it
+  # differentiates through the per-batch mean/variance and ignores the running statistics.
+  # In inference mode with tracked statistics, the forward pass instead normalises by the
+  # *fixed* running mean/variance (`cudnnBatchNormalizationForwardInference`), so its
+  # gradient is a plain per-channel affine rescaling. Calling the cuDNN backward here yields
+  # silently wrong `dx`/`dg` (FluxML/Flux.jl#2179), so compute the inference gradient
+  # directly. This assumes the default scaling parameters (alpha=1, beta=0, dalpha=1,
+  # dbeta=0), which is the only combination Flux/NNlib exercise.
+  if !training && track_stats && running_mean isa DenseCuArray && running_var isa DenseCuArray
+    N = ndims(x)
+    ws = _wsize(x)                                    # (1,…,1,C,1): channel dim is N-1
     rstd = reshape(inv.(sqrt.(running_var .+ P(eps))), ws)
     dx .= dy .* reshape(g, ws) .* rstd
-    reddims = batchnorm_reduce_dims(x)
+    reddims = ntuple(i -> i < N-1 ? i : i+1, N-1)     # all dims except the channel dim
     x̂ = (x .- reshape(running_mean, ws)) .* rstd
-    # `dg`/`db` may arrive as length-C vectors (affine params) or as `ws`-shaped
+    # `dg`/`db` may arrive as length-C vectors (affine params) or as `_wsize`-shaped
     # arrays (the affine=false fill path), so reshape the reduction to their layout.
     dg .= reshape(sum(dy .* x̂; dims = reddims), size(dg))
     db .= reshape(sum(dy; dims = reddims), size(db))
-    return dg, db, dx
+    return
   end
 
-  # cuDNN's gradient consumes the batch statistics saved by the forward pass.
-  μ, ivar = cache === nothing ? (nothing, nothing) : (cache.mean, cache.ivar)
-  if μ === nothing || ivar === nothing
-    μ, ivar = batchnorm_statistics(x, P, eps)
+  if !track_stats
+    running_mean = CU_NULL
+    running_var = CU_NULL
   end
-  try
-    batchnorm_gradient!(dx, dg, db, dy, x, g, μ, ivar; epsilon=eps, alpha, beta, dalpha, dbeta)
-  catch e
-    # cuDNN has no engine for this configuration: use the generic implementation.
-    graph_unsupported(e) || rethrow()
-    # (only the shape of the bias matters, which `db` shares)
-    gdg, gdb, gdx = _∇batchnorm_generic(g, db, x, dy, nothing, nothing; eps, training=true)
-    copyto!(dg, gdg)
-    copyto!(db, gdb)
-    copyto!(dx, gdx)
+
+  xd = cudnnTensorDescriptor(x)
+  dyd = cudnnTensorDescriptor(dy)
+  dxd = cudnnTensorDescriptor(dx)
+  gd = cudnnTensorDescriptor(CUDNN_TENSOR_NCHW, cudnnDataType(P), Cint(length(_wsize(x))), dim4(_wsize(x),Val(CUDNN_TENSOR_NCHW)))
+  if cache !== nothing
+    @debug "fetching mean and ivar from the cache"
+    mean, ivar = cache.mean, cache.ivar
+  else
+    mean, ivar = CU_NULL, CU_NULL
   end
-  return dg, db, dx
+
+  cudnnBatchNormalizationBackward(handle(), CUDNN_BATCHNORM_SPATIAL,
+        scalingParameter(T, alpha), scalingParameter(T, beta), scalingParameter(T, dalpha), scalingParameter(T, dbeta),
+        xd, x, dyd, dy, dxd, dx, gd, g, dg, db, eps, mean, ivar)
 end
 
-# GPU differentiation of the cuDNN fast path. The forward pass saves the batch
-# statistics for the pullback, which cuDNN's gradient would otherwise have recomputed.
-function ChainRulesCore.rrule(::typeof(batchnorm),
-                              g::Union{Nothing,DenseCuArray}, b::Union{Nothing,DenseCuArray},
-                              x::Union{BNArray{T},BNReshapedArray{T}},
-                              running_mean, running_var, momentum;
-                              cache = nothing, kw...) where {T<:CUDNNFloat}
-  cache = something(cache, BNCache())
-  y = batchnorm(g, b, x, running_mean, running_var, momentum; cache, kw...)
+# GPU differentiation of the cuDNN fast path. The generic `batchnorm` in NNlib core
+# has no `rrule`, so on the CPU (and other array types) it is differentiated through
+# the standard AD path instead.
+function ChainRulesCore.rrule(::typeof(batchnorm), g, b, x::DenseCuArray,
+                              running_mean, running_var, momentum; kw...)
+  y = batchnorm(g, b, x, running_mean, running_var, momentum; kw...)
   function batchnorm_pullback(Δ)
-    grad = ∇batchnorm(g, b, x, unthunk(Δ), running_mean, running_var, momentum; cache, kw...)
+    grad = ∇batchnorm(g, b, x, unthunk(Δ), running_mean, running_var, momentum; kw...)
     (NoTangent(), grad..., NoTangent(), NoTangent(), NoTangent())
   end
   y, batchnorm_pullback

@@ -9,6 +9,7 @@ using Random, Statistics
 include("conv.jl")
 include("pooling.jl")
 include("softmax.jl")
+include("activations.jl")
 include("attention.jl")
 include("batchnorm.jl")
 include("normalization.jl")
