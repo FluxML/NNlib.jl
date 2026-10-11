@@ -2,8 +2,8 @@ using cuDNN: CUDNN_BN_MIN_EPSILON, cudnnBatchNormalizationBackward,
              cudnnBatchNormalizationForwardInference, CUDNN_BATCHNORM_SPATIAL,
              cudnnBatchNormalizationForwardTraining, CUDNN_TENSOR_NCHW,
              cudnnDataType, cudnnTensorDescriptor, dim4, handle, scalingParameter
-using ChainRulesCore: ChainRulesCore, NoTangent, unthunk
-using NNlib: within_gradient
+using ChainRulesCore: ChainRulesCore, HasReverseMode, NoTangent, RuleConfig,
+                       rrule_via_ad, unthunk
 import NNlib: batchnorm, ∇batchnorm
 
 # These call cuDNN's fixed-function batch normalization. Its graph API
@@ -140,16 +140,11 @@ function cudnnBNForward!(y::DenseCuArray{T}, g::DenseCuArray{P}, b::DenseCuArray
   return y
 end
 
-function ∇batchnorm(g::Nothing, b::Nothing, x::DenseCuArray, dy::DenseCuArray,
-                    running_mean, running_var, momentum; kws...)
-  # Under nested AD go straight to the differentiable generic VJP, which handles the
-  # affine-free case natively — bypassing both the non-differentiable cuDNN backward
-  # and the `fill!(similar(...))` allocation the outer AD can't trace (Flux.jl#2154).
-  if within_gradient(x) || within_gradient(dy)
-    return _∇batchnorm_generic(nothing, nothing, x, dy, running_mean, running_var; kws...)
-  end
+# Restricted to cuDNN eltypes, like the forward pass above.
+function ∇batchnorm(g::Nothing, b::Nothing, x::DenseCuArray{T}, dy::DenseCuArray{T},
+                    running_mean, running_var, momentum; kws...) where {T<:CUDNNFloat}
   affine_sz = _wsize(x)
-  P = bnparam(eltype(x))
+  P = bnparam(T)
   g = fill!(similar(x, P, affine_sz), 1)
   b = fill!(similar(x, P, affine_sz), 0)
   return ∇batchnorm(g, b, x, dy, running_mean, running_var, momentum; kws...)
@@ -179,17 +174,6 @@ function ∇batchnorm(g::DenseCuArray{P}, b::DenseCuArray{P}, x::DenseCuArray{T}
                     running_mean, running_var, momentum;
                     affine=true, kws...) where {T<:CUDNNFloat, P}
   _check_bn_param_types(T, P, running_mean, running_var)
-  # `cudnnBatchNormalizationBackward` is a non-differentiable foreigncall, so when this
-  # VJP is itself being differentiated (second-order / nested AD, e.g. a Hessian-vector
-  # product) reverse-mode can't trace it. Route through the generic broadcast VJP in
-  # NNlib core, which is built from `mean`/`var`/broadcast and is itself differentiable.
-  # Mirrors the `within_gradient` fast/slow split in `∇softmax`. See FluxML/Flux.jl#2154.
-  # (Forward-over-reverse already avoids cuDNN: `ForwardDiff.Dual` eltypes miss this
-  # `T<:CUDNNFloat` method and dispatch straight to the generic `∇batchnorm`.)
-  if within_gradient(x) || within_gradient(dy)
-    dg, db, dx = _∇batchnorm_generic(g, b, x, dy, running_mean, running_var; kws...)
-    return affine ? (dg, db, dx) : (nothing, nothing, dx)
-  end
   dg = similar(g)
   db = similar(b)
   dx = similar(x)
@@ -206,9 +190,25 @@ end
 # The cuDNN `∇batchnorm` methods above shadow the generic `∇batchnorm` for `CuArray`s,
 # so call the engine directly to reach the differentiable path for nested AD.
 function _∇batchnorm_generic(g, b, x::AbstractArray{<:Any,N}, dy, running_mean, running_var;
-                             eps=1f-5, training::Bool=true, kws...) where N
+                             eps=1f-5, training::Bool=true, affine=true, kws...) where N
   reduce_dims = (ntuple(identity, N-2)..., N)
-  return NNlib._∇norm_channel(g, b, x, dy, running_mean, running_var, reduce_dims; eps, training)
+  dg, db, dx = NNlib._∇norm_channel(g, b, x, dy, running_mean, running_var, reduce_dims; eps, training)
+  return affine ? (dg, db, dx) : (nothing, nothing, dx)
+end
+
+# `cudnnBatchNormalizationBackward` is a non-differentiable foreigncall, so when the VJP is
+# itself differentiated (nested reverse-mode AD, e.g. a Hessian-vector product) we
+# differentiate the generic one instead. See FluxML/Flux.jl#2154.
+# (Forward-over-reverse needs no rule: `ForwardDiff.Dual` eltypes miss the `T<:CUDNNFloat`
+# methods above and dispatch straight to the generic `∇batchnorm`.)
+function ChainRulesCore.rrule(cfg::RuleConfig{>:HasReverseMode}, ::typeof(∇batchnorm), g, b,
+                              x::DenseCuArray{T}, dy::DenseCuArray{T},
+                              running_mean, running_var, momentum; kws...) where {T<:CUDNNFloat}
+  generic = (g, b, x, dy, running_mean, running_var) ->
+    _∇batchnorm_generic(g, b, x, dy, running_mean, running_var; kws...)
+  grads, generic_pullback = rrule_via_ad(cfg, generic, g, b, x, dy, running_mean, running_var)
+  ∇batchnorm_pullback(Δ) = (NoTangent(), Base.tail(generic_pullback(Δ))..., NoTangent())
+  return grads, ∇batchnorm_pullback
 end
 
 function cudnnBNBackward!(dg::DenseCuArray{P}, g::DenseCuArray{P}, db::DenseCuArray{P},
