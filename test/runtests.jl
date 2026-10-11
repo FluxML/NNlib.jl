@@ -19,7 +19,7 @@ const NNLIB_TEST_THREADED = get(ENV, "NNLIB_TEST_THREADED", "false") == "true"
 const NNLIB_TEST_ENZYME =   if haskey(ENV, "NNLIB_TEST_ENZYME") 
                                 ENV["NNLIB_TEST_ENZYME"] == "true"
                             else
-                                VERSION <= v"1.13-" && # fails on nightly
+                                VERSION < v"1.14-" && # Enzyme does not precompile on nightly
                                 !NNLIB_TEST_AMDGPU && !NNLIB_TEST_METAL && !NNLIB_TEST_CUDA # TODO fails on GPU backends
                             end
 

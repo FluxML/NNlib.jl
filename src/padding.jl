@@ -215,12 +215,13 @@ function _pad_repeat(x::AbstractArray{F,N}, pad::NTuple{2,Int},
                      ::Val{dims}) where {F,N,dims}
   lpad, rpad = pad
 
-  xlborder = selectdim(x, dims, 1:1)
+  # The border slices are copied since Enzyme crashes on `repeat` of a view (Julia 1.13).
+  xlborder = copy(selectdim(x, dims, 1:1))
   nrepl = ntuple(i -> i == dims ? lpad : 1, Val(N))
   xl = repeat(xlborder, outer = nrepl)
 
   n = size(x, dims)
-  xrborder = selectdim(x, dims, n:n)
+  xrborder = copy(selectdim(x, dims, n:n))
   nrepr = ntuple(i -> i == dims ? rpad : 1, Val(N))
   xr = repeat(xrborder, outer = nrepr)
 
