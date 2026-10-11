@@ -1,0 +1,577 @@
+family	operator	eltype	size	impl	time_us
+batchnorm	batchnorm (training)	Float16	8x8x16x4	nnlib	7.6
+batchnorm	batchnorm (training)	Float16	8x8x16x4	generic	32.9
+batchnorm	batchnorm (training)	Float16	8x8x16x4	fixed	7.5
+batchnorm	batchnorm (training)	Float16	8x8x16x4	graph	22.1
+batchnorm	batchnorm (inference)	Float16	8x8x16x4	nnlib	6.2
+batchnorm	batchnorm (inference)	Float16	8x8x16x4	generic	18.8
+batchnorm	batchnorm (inference)	Float16	8x8x16x4	fixed	6.1
+batchnorm	batchnorm (inference)	Float16	8x8x16x4	graph	n/s
+batchnorm	∇batchnorm (training)	Float16	8x8x16x4	nnlib	9.3
+batchnorm	∇batchnorm (training)	Float16	8x8x16x4	generic	52.4
+batchnorm	∇batchnorm (training)	Float16	8x8x16x4	fixed	8.6
+batchnorm	∇batchnorm (training)	Float16	8x8x16x4	graph	22.3
+batchnorm	batchnorm (training)	Float16	32x32x64x16	nnlib	9.4
+batchnorm	batchnorm (training)	Float16	32x32x64x16	generic	79.5
+batchnorm	batchnorm (training)	Float16	32x32x64x16	fixed	9.1
+batchnorm	batchnorm (training)	Float16	32x32x64x16	graph	25.1
+batchnorm	batchnorm (inference)	Float16	32x32x64x16	nnlib	7.8
+batchnorm	batchnorm (inference)	Float16	32x32x64x16	generic	45.0
+batchnorm	batchnorm (inference)	Float16	32x32x64x16	fixed	7.6
+batchnorm	batchnorm (inference)	Float16	32x32x64x16	graph	n/s
+batchnorm	∇batchnorm (training)	Float16	32x32x64x16	nnlib	19.6
+batchnorm	∇batchnorm (training)	Float16	32x32x64x16	generic	148.1
+batchnorm	∇batchnorm (training)	Float16	32x32x64x16	fixed	11.2
+batchnorm	∇batchnorm (training)	Float16	32x32x64x16	graph	25.2
+batchnorm	batchnorm (training)	Float16	64x64x128x32	nnlib	57.7
+batchnorm	batchnorm (training)	Float16	64x64x128x32	generic	714.9
+batchnorm	batchnorm (training)	Float16	64x64x128x32	fixed	57.7
+batchnorm	batchnorm (training)	Float16	64x64x128x32	graph	94.5
+batchnorm	batchnorm (inference)	Float16	64x64x128x32	nnlib	23.1
+batchnorm	batchnorm (inference)	Float16	64x64x128x32	generic	480.6
+batchnorm	batchnorm (inference)	Float16	64x64x128x32	fixed	22.9
+batchnorm	batchnorm (inference)	Float16	64x64x128x32	graph	n/s
+batchnorm	∇batchnorm (training)	Float16	64x64x128x32	nnlib	105.8
+batchnorm	∇batchnorm (training)	Float16	64x64x128x32	generic	1462.8
+batchnorm	∇batchnorm (training)	Float16	64x64x128x32	fixed	86.3
+batchnorm	∇batchnorm (training)	Float16	64x64x128x32	graph	155.6
+batchnorm	batchnorm (training)	Float16	32x32x30x16	nnlib	9.2
+batchnorm	batchnorm (training)	Float16	32x32x30x16	generic	53.6
+batchnorm	batchnorm (training)	Float16	32x32x30x16	fixed	9.0
+batchnorm	batchnorm (training)	Float16	32x32x30x16	graph	n/s
+batchnorm	batchnorm (inference)	Float16	32x32x30x16	nnlib	6.8
+batchnorm	batchnorm (inference)	Float16	32x32x30x16	generic	27.6
+batchnorm	batchnorm (inference)	Float16	32x32x30x16	fixed	6.7
+batchnorm	batchnorm (inference)	Float16	32x32x30x16	graph	n/s
+batchnorm	∇batchnorm (training)	Float16	32x32x30x16	nnlib	20.6
+batchnorm	∇batchnorm (training)	Float16	32x32x30x16	generic	95.2
+batchnorm	∇batchnorm (training)	Float16	32x32x30x16	fixed	11.2
+batchnorm	∇batchnorm (training)	Float16	32x32x30x16	graph	n/s
+batchnorm	batchnorm (training)	Float32	8x8x16x4	nnlib	7.7
+batchnorm	batchnorm (training)	Float32	8x8x16x4	generic	25.3
+batchnorm	batchnorm (training)	Float32	8x8x16x4	fixed	7.3
+batchnorm	batchnorm (training)	Float32	8x8x16x4	graph	19.9
+batchnorm	batchnorm (inference)	Float32	8x8x16x4	nnlib	6.4
+batchnorm	batchnorm (inference)	Float32	8x8x16x4	generic	12.7
+batchnorm	batchnorm (inference)	Float32	8x8x16x4	fixed	5.9
+batchnorm	batchnorm (inference)	Float32	8x8x16x4	graph	n/s
+batchnorm	∇batchnorm (training)	Float32	8x8x16x4	nnlib	9.1
+batchnorm	∇batchnorm (training)	Float32	8x8x16x4	generic	46.2
+batchnorm	∇batchnorm (training)	Float32	8x8x16x4	fixed	8.4
+batchnorm	∇batchnorm (training)	Float32	8x8x16x4	graph	22.0
+batchnorm	batchnorm (training)	Float32	32x32x64x16	nnlib	12.3
+batchnorm	batchnorm (training)	Float32	32x32x64x16	generic	60.2
+batchnorm	batchnorm (training)	Float32	32x32x64x16	fixed	12.2
+batchnorm	batchnorm (training)	Float32	32x32x64x16	graph	26.9
+batchnorm	batchnorm (inference)	Float32	32x32x64x16	nnlib	8.6
+batchnorm	batchnorm (inference)	Float32	32x32x64x16	generic	25.8
+batchnorm	batchnorm (inference)	Float32	32x32x64x16	fixed	8.2
+batchnorm	batchnorm (inference)	Float32	32x32x64x16	graph	n/s
+batchnorm	∇batchnorm (training)	Float32	32x32x64x16	nnlib	19.5
+batchnorm	∇batchnorm (training)	Float32	32x32x64x16	generic	118.5
+batchnorm	∇batchnorm (training)	Float32	32x32x64x16	fixed	16.5
+batchnorm	∇batchnorm (training)	Float32	32x32x64x16	graph	28.3
+batchnorm	batchnorm (training)	Float32	64x64x128x32	nnlib	108.2
+batchnorm	batchnorm (training)	Float32	64x64x128x32	generic	468.9
+batchnorm	batchnorm (training)	Float32	64x64x128x32	fixed	108.2
+batchnorm	batchnorm (training)	Float32	64x64x128x32	graph	217.3
+batchnorm	batchnorm (inference)	Float32	64x64x128x32	nnlib	93.8
+batchnorm	batchnorm (inference)	Float32	64x64x128x32	generic	221.2
+batchnorm	batchnorm (inference)	Float32	64x64x128x32	fixed	92.9
+batchnorm	batchnorm (inference)	Float32	64x64x128x32	graph	n/s
+batchnorm	∇batchnorm (training)	Float32	64x64x128x32	nnlib	269.3
+batchnorm	∇batchnorm (training)	Float32	64x64x128x32	generic	1070.8
+batchnorm	∇batchnorm (training)	Float32	64x64x128x32	fixed	244.8
+batchnorm	∇batchnorm (training)	Float32	64x64x128x32	graph	355.9
+batchnorm	batchnorm (training)	Float32	32x32x30x16	nnlib	12.4
+batchnorm	batchnorm (training)	Float32	32x32x30x16	generic	45.6
+batchnorm	batchnorm (training)	Float32	32x32x30x16	fixed	12.2
+batchnorm	batchnorm (training)	Float32	32x32x30x16	graph	n/s
+batchnorm	batchnorm (inference)	Float32	32x32x30x16	nnlib	7.4
+batchnorm	batchnorm (inference)	Float32	32x32x30x16	generic	18.5
+batchnorm	batchnorm (inference)	Float32	32x32x30x16	fixed	7.1
+batchnorm	batchnorm (inference)	Float32	32x32x30x16	graph	n/s
+batchnorm	∇batchnorm (training)	Float32	32x32x30x16	nnlib	18.8
+batchnorm	∇batchnorm (training)	Float32	32x32x30x16	generic	82.2
+batchnorm	∇batchnorm (training)	Float32	32x32x30x16	fixed	16.6
+batchnorm	∇batchnorm (training)	Float32	32x32x30x16	graph	n/s
+pooling	maxpool	Float16	8x8x16x4	nnlib	7.6
+pooling	maxpool	Float16	8x8x16x4	generic	-
+pooling	maxpool	Float16	8x8x16x4	fixed	6.8
+pooling	maxpool	Float16	8x8x16x4	graph	7.7
+pooling	∇maxpool	Float16	8x8x16x4	nnlib	8.2
+pooling	∇maxpool	Float16	8x8x16x4	generic	-
+pooling	∇maxpool	Float16	8x8x16x4	fixed	6.8
+pooling	∇maxpool	Float16	8x8x16x4	graph	8.8
+pooling	meanpool	Float16	8x8x16x4	nnlib	7.6
+pooling	meanpool	Float16	8x8x16x4	generic	-
+pooling	meanpool	Float16	8x8x16x4	fixed	6.6
+pooling	meanpool	Float16	8x8x16x4	graph	7.8
+pooling	∇meanpool	Float16	8x8x16x4	nnlib	8.3
+pooling	∇meanpool	Float16	8x8x16x4	generic	-
+pooling	∇meanpool	Float16	8x8x16x4	fixed	6.9
+pooling	∇meanpool	Float16	8x8x16x4	graph	8.5
+pooling	maxpool	Float16	32x32x64x16	nnlib	8.6
+pooling	maxpool	Float16	32x32x64x16	generic	-
+pooling	maxpool	Float16	32x32x64x16	fixed	7.2
+pooling	maxpool	Float16	32x32x64x16	graph	8.2
+pooling	∇maxpool	Float16	32x32x64x16	nnlib	10.3
+pooling	∇maxpool	Float16	32x32x64x16	generic	-
+pooling	∇maxpool	Float16	32x32x64x16	fixed	9.0
+pooling	∇maxpool	Float16	32x32x64x16	graph	12.9
+pooling	meanpool	Float16	32x32x64x16	nnlib	8.5
+pooling	meanpool	Float16	32x32x64x16	generic	-
+pooling	meanpool	Float16	32x32x64x16	fixed	7.3
+pooling	meanpool	Float16	32x32x64x16	graph	8.3
+pooling	∇meanpool	Float16	32x32x64x16	nnlib	9.8
+pooling	∇meanpool	Float16	32x32x64x16	generic	-
+pooling	∇meanpool	Float16	32x32x64x16	fixed	8.5
+pooling	∇meanpool	Float16	32x32x64x16	graph	10.2
+pooling	maxpool	Float16	64x64x128x32	nnlib	19.3
+pooling	maxpool	Float16	64x64x128x32	generic	-
+pooling	maxpool	Float16	64x64x128x32	fixed	17.7
+pooling	maxpool	Float16	64x64x128x32	graph	19.5
+pooling	∇maxpool	Float16	64x64x128x32	nnlib	52.9
+pooling	∇maxpool	Float16	64x64x128x32	generic	-
+pooling	∇maxpool	Float16	64x64x128x32	fixed	34.1
+pooling	∇maxpool	Float16	64x64x128x32	graph	87.2
+pooling	meanpool	Float16	64x64x128x32	nnlib	20.9
+pooling	meanpool	Float16	64x64x128x32	generic	-
+pooling	meanpool	Float16	64x64x128x32	fixed	18.9
+pooling	meanpool	Float16	64x64x128x32	graph	20.2
+pooling	∇meanpool	Float16	64x64x128x32	nnlib	47.5
+pooling	∇meanpool	Float16	64x64x128x32	generic	-
+pooling	∇meanpool	Float16	64x64x128x32	fixed	37.0
+pooling	∇meanpool	Float16	64x64x128x32	graph	39.0
+pooling	maxpool	Float16	32x32x30x16	nnlib	8.6
+pooling	maxpool	Float16	32x32x30x16	generic	-
+pooling	maxpool	Float16	32x32x30x16	fixed	6.9
+pooling	maxpool	Float16	32x32x30x16	graph	8.1
+pooling	∇maxpool	Float16	32x32x30x16	nnlib	9.3
+pooling	∇maxpool	Float16	32x32x30x16	generic	-
+pooling	∇maxpool	Float16	32x32x30x16	fixed	8.1
+pooling	∇maxpool	Float16	32x32x30x16	graph	10.6
+pooling	meanpool	Float16	32x32x30x16	nnlib	8.6
+pooling	meanpool	Float16	32x32x30x16	generic	-
+pooling	meanpool	Float16	32x32x30x16	fixed	7.2
+pooling	meanpool	Float16	32x32x30x16	graph	8.2
+pooling	∇meanpool	Float16	32x32x30x16	nnlib	9.2
+pooling	∇meanpool	Float16	32x32x30x16	generic	-
+pooling	∇meanpool	Float16	32x32x30x16	fixed	7.7
+pooling	∇meanpool	Float16	32x32x30x16	graph	9.6
+pooling	maxpool	Float32	8x8x16x4	nnlib	7.6
+pooling	maxpool	Float32	8x8x16x4	generic	-
+pooling	maxpool	Float32	8x8x16x4	fixed	6.6
+pooling	maxpool	Float32	8x8x16x4	graph	7.6
+pooling	∇maxpool	Float32	8x8x16x4	nnlib	7.8
+pooling	∇maxpool	Float32	8x8x16x4	generic	-
+pooling	∇maxpool	Float32	8x8x16x4	fixed	6.6
+pooling	∇maxpool	Float32	8x8x16x4	graph	8.9
+pooling	meanpool	Float32	8x8x16x4	nnlib	7.4
+pooling	meanpool	Float32	8x8x16x4	generic	-
+pooling	meanpool	Float32	8x8x16x4	fixed	6.8
+pooling	meanpool	Float32	8x8x16x4	graph	8.3
+pooling	∇meanpool	Float32	8x8x16x4	nnlib	8.5
+pooling	∇meanpool	Float32	8x8x16x4	generic	-
+pooling	∇meanpool	Float32	8x8x16x4	fixed	7.2
+pooling	∇meanpool	Float32	8x8x16x4	graph	9.1
+pooling	maxpool	Float32	32x32x64x16	nnlib	9.1
+pooling	maxpool	Float32	32x32x64x16	generic	-
+pooling	maxpool	Float32	32x32x64x16	fixed	7.3
+pooling	maxpool	Float32	32x32x64x16	graph	8.5
+pooling	∇maxpool	Float32	32x32x64x16	nnlib	10.8
+pooling	∇maxpool	Float32	32x32x64x16	generic	-
+pooling	∇maxpool	Float32	32x32x64x16	fixed	9.6
+pooling	∇maxpool	Float32	32x32x64x16	graph	13.3
+pooling	meanpool	Float32	32x32x64x16	nnlib	8.5
+pooling	meanpool	Float32	32x32x64x16	generic	-
+pooling	meanpool	Float32	32x32x64x16	fixed	7.2
+pooling	meanpool	Float32	32x32x64x16	graph	8.5
+pooling	∇meanpool	Float32	32x32x64x16	nnlib	10.1
+pooling	∇meanpool	Float32	32x32x64x16	generic	-
+pooling	∇meanpool	Float32	32x32x64x16	fixed	8.4
+pooling	∇meanpool	Float32	32x32x64x16	graph	10.2
+pooling	maxpool	Float32	64x64x128x32	nnlib	51.4
+pooling	maxpool	Float32	64x64x128x32	generic	-
+pooling	maxpool	Float32	64x64x128x32	fixed	19.0
+pooling	maxpool	Float32	64x64x128x32	graph	20.7
+pooling	∇maxpool	Float32	64x64x128x32	nnlib	144.2
+pooling	∇maxpool	Float32	64x64x128x32	generic	-
+pooling	∇maxpool	Float32	64x64x128x32	fixed	118.4
+pooling	∇maxpool	Float32	64x64x128x32	graph	128.6
+pooling	meanpool	Float32	64x64x128x32	nnlib	51.0
+pooling	meanpool	Float32	64x64x128x32	generic	-
+pooling	meanpool	Float32	64x64x128x32	fixed	18.7
+pooling	meanpool	Float32	64x64x128x32	graph	19.9
+pooling	∇meanpool	Float32	64x64x128x32	nnlib	65.7
+pooling	∇meanpool	Float32	64x64x128x32	generic	-
+pooling	∇meanpool	Float32	64x64x128x32	fixed	39.0
+pooling	∇meanpool	Float32	64x64x128x32	graph	43.1
+pooling	maxpool	Float32	32x32x30x16	nnlib	8.2
+pooling	maxpool	Float32	32x32x30x16	generic	-
+pooling	maxpool	Float32	32x32x30x16	fixed	7.1
+pooling	maxpool	Float32	32x32x30x16	graph	8.3
+pooling	∇maxpool	Float32	32x32x30x16	nnlib	9.0
+pooling	∇maxpool	Float32	32x32x30x16	generic	-
+pooling	∇maxpool	Float32	32x32x30x16	fixed	7.7
+pooling	∇maxpool	Float32	32x32x30x16	graph	10.5
+pooling	meanpool	Float32	32x32x30x16	nnlib	8.2
+pooling	meanpool	Float32	32x32x30x16	generic	-
+pooling	meanpool	Float32	32x32x30x16	fixed	6.9
+pooling	meanpool	Float32	32x32x30x16	graph	8.1
+pooling	∇meanpool	Float32	32x32x30x16	nnlib	9.0
+pooling	∇meanpool	Float32	32x32x30x16	generic	-
+pooling	∇meanpool	Float32	32x32x30x16	fixed	7.9
+pooling	∇meanpool	Float32	32x32x30x16	graph	9.8
+activations	relu.(x)	Float16	8x8x16x4	nnlib	5.9
+activations	relu.(x)	Float16	8x8x16x4	generic	7.4
+activations	relu.(x)	Float16	8x8x16x4	fixed	6.0
+activations	relu.(x)	Float16	8x8x16x4	graph	n/s
+activations	tanh.(x)	Float16	8x8x16x4	nnlib	5.7
+activations	tanh.(x)	Float16	8x8x16x4	generic	7.1
+activations	tanh.(x)	Float16	8x8x16x4	fixed	5.8
+activations	tanh.(x)	Float16	8x8x16x4	graph	n/s
+activations	σ.(x)	Float16	8x8x16x4	nnlib	5.9
+activations	σ.(x)	Float16	8x8x16x4	generic	7.0
+activations	σ.(x)	Float16	8x8x16x4	fixed	5.9
+activations	σ.(x)	Float16	8x8x16x4	graph	n/s
+activations	elu.(x)	Float16	8x8x16x4	nnlib	5.7
+activations	elu.(x)	Float16	8x8x16x4	generic	7.1
+activations	elu.(x)	Float16	8x8x16x4	fixed	5.9
+activations	elu.(x)	Float16	8x8x16x4	graph	n/s
+activations	relu.(x)	Float16	32x32x64x16	nnlib	7.1
+activations	relu.(x)	Float16	32x32x64x16	generic	16.1
+activations	relu.(x)	Float16	32x32x64x16	fixed	7.6
+activations	relu.(x)	Float16	32x32x64x16	graph	n/s
+activations	tanh.(x)	Float16	32x32x64x16	nnlib	7.3
+activations	tanh.(x)	Float16	32x32x64x16	generic	16.8
+activations	tanh.(x)	Float16	32x32x64x16	fixed	7.5
+activations	tanh.(x)	Float16	32x32x64x16	graph	n/s
+activations	σ.(x)	Float16	32x32x64x16	nnlib	7.7
+activations	σ.(x)	Float16	32x32x64x16	generic	17.0
+activations	σ.(x)	Float16	32x32x64x16	fixed	7.6
+activations	σ.(x)	Float16	32x32x64x16	graph	n/s
+activations	elu.(x)	Float16	32x32x64x16	nnlib	7.5
+activations	elu.(x)	Float16	32x32x64x16	generic	16.8
+activations	elu.(x)	Float16	32x32x64x16	fixed	7.6
+activations	elu.(x)	Float16	32x32x64x16	graph	n/s
+activations	relu.(x)	Float16	64x64x128x32	nnlib	23.0
+activations	relu.(x)	Float16	64x64x128x32	generic	130.1
+activations	relu.(x)	Float16	64x64x128x32	fixed	22.9
+activations	relu.(x)	Float16	64x64x128x32	graph	n/s
+activations	tanh.(x)	Float16	64x64x128x32	nnlib	26.1
+activations	tanh.(x)	Float16	64x64x128x32	generic	136.0
+activations	tanh.(x)	Float16	64x64x128x32	fixed	26.3
+activations	tanh.(x)	Float16	64x64x128x32	graph	n/s
+activations	σ.(x)	Float16	64x64x128x32	nnlib	27.3
+activations	σ.(x)	Float16	64x64x128x32	generic	143.1
+activations	σ.(x)	Float16	64x64x128x32	fixed	27.5
+activations	σ.(x)	Float16	64x64x128x32	graph	n/s
+activations	elu.(x)	Float16	64x64x128x32	nnlib	25.9
+activations	elu.(x)	Float16	64x64x128x32	generic	138.4
+activations	elu.(x)	Float16	64x64x128x32	fixed	25.8
+activations	elu.(x)	Float16	64x64x128x32	graph	n/s
+activations	relu.(x)	Float16	32x32x30x16	nnlib	6.5
+activations	relu.(x)	Float16	32x32x30x16	generic	11.2
+activations	relu.(x)	Float16	32x32x30x16	fixed	6.7
+activations	relu.(x)	Float16	32x32x30x16	graph	n/s
+activations	tanh.(x)	Float16	32x32x30x16	nnlib	6.4
+activations	tanh.(x)	Float16	32x32x30x16	generic	11.1
+activations	tanh.(x)	Float16	32x32x30x16	fixed	6.5
+activations	tanh.(x)	Float16	32x32x30x16	graph	n/s
+activations	σ.(x)	Float16	32x32x30x16	nnlib	6.5
+activations	σ.(x)	Float16	32x32x30x16	generic	11.4
+activations	σ.(x)	Float16	32x32x30x16	fixed	6.7
+activations	σ.(x)	Float16	32x32x30x16	graph	n/s
+activations	elu.(x)	Float16	32x32x30x16	nnlib	6.7
+activations	elu.(x)	Float16	32x32x30x16	generic	11.1
+activations	elu.(x)	Float16	32x32x30x16	fixed	6.6
+activations	elu.(x)	Float16	32x32x30x16	graph	n/s
+activations	relu.(x)	Float32	8x8x16x4	nnlib	5.6
+activations	relu.(x)	Float32	8x8x16x4	generic	7.2
+activations	relu.(x)	Float32	8x8x16x4	fixed	5.9
+activations	relu.(x)	Float32	8x8x16x4	graph	n/s
+activations	tanh.(x)	Float32	8x8x16x4	nnlib	5.6
+activations	tanh.(x)	Float32	8x8x16x4	generic	7.4
+activations	tanh.(x)	Float32	8x8x16x4	fixed	5.9
+activations	tanh.(x)	Float32	8x8x16x4	graph	n/s
+activations	σ.(x)	Float32	8x8x16x4	nnlib	5.8
+activations	σ.(x)	Float32	8x8x16x4	generic	7.5
+activations	σ.(x)	Float32	8x8x16x4	fixed	6.0
+activations	σ.(x)	Float32	8x8x16x4	graph	n/s
+activations	elu.(x)	Float32	8x8x16x4	nnlib	5.8
+activations	elu.(x)	Float32	8x8x16x4	generic	7.3
+activations	elu.(x)	Float32	8x8x16x4	fixed	6.1
+activations	elu.(x)	Float32	8x8x16x4	graph	n/s
+activations	relu.(x)	Float32	32x32x64x16	nnlib	7.6
+activations	relu.(x)	Float32	32x32x64x16	generic	16.4
+activations	relu.(x)	Float32	32x32x64x16	fixed	8.1
+activations	relu.(x)	Float32	32x32x64x16	graph	n/s
+activations	tanh.(x)	Float32	32x32x64x16	nnlib	7.9
+activations	tanh.(x)	Float32	32x32x64x16	generic	16.7
+activations	tanh.(x)	Float32	32x32x64x16	fixed	7.9
+activations	tanh.(x)	Float32	32x32x64x16	graph	n/s
+activations	σ.(x)	Float32	32x32x64x16	nnlib	7.9
+activations	σ.(x)	Float32	32x32x64x16	generic	16.6
+activations	σ.(x)	Float32	32x32x64x16	fixed	8.0
+activations	σ.(x)	Float32	32x32x64x16	graph	n/s
+activations	elu.(x)	Float32	32x32x64x16	nnlib	7.8
+activations	elu.(x)	Float32	32x32x64x16	generic	16.1
+activations	elu.(x)	Float32	32x32x64x16	fixed	7.9
+activations	elu.(x)	Float32	32x32x64x16	graph	n/s
+activations	relu.(x)	Float32	64x64x128x32	nnlib	90.4
+activations	relu.(x)	Float32	64x64x128x32	generic	139.6
+activations	relu.(x)	Float32	64x64x128x32	fixed	91.1
+activations	relu.(x)	Float32	64x64x128x32	graph	n/s
+activations	tanh.(x)	Float32	64x64x128x32	nnlib	90.9
+activations	tanh.(x)	Float32	64x64x128x32	generic	144.0
+activations	tanh.(x)	Float32	64x64x128x32	fixed	91.0
+activations	tanh.(x)	Float32	64x64x128x32	graph	n/s
+activations	σ.(x)	Float32	64x64x128x32	nnlib	91.1
+activations	σ.(x)	Float32	64x64x128x32	generic	144.8
+activations	σ.(x)	Float32	64x64x128x32	fixed	90.6
+activations	σ.(x)	Float32	64x64x128x32	graph	n/s
+activations	elu.(x)	Float32	64x64x128x32	nnlib	92.1
+activations	elu.(x)	Float32	64x64x128x32	generic	143.8
+activations	elu.(x)	Float32	64x64x128x32	fixed	90.7
+activations	elu.(x)	Float32	64x64x128x32	graph	n/s
+activations	relu.(x)	Float32	32x32x30x16	nnlib	6.7
+activations	relu.(x)	Float32	32x32x30x16	generic	11.0
+activations	relu.(x)	Float32	32x32x30x16	fixed	6.7
+activations	relu.(x)	Float32	32x32x30x16	graph	n/s
+activations	tanh.(x)	Float32	32x32x30x16	nnlib	6.7
+activations	tanh.(x)	Float32	32x32x30x16	generic	11.3
+activations	tanh.(x)	Float32	32x32x30x16	fixed	6.8
+activations	tanh.(x)	Float32	32x32x30x16	graph	n/s
+activations	σ.(x)	Float32	32x32x30x16	nnlib	6.8
+activations	σ.(x)	Float32	32x32x30x16	generic	11.4
+activations	σ.(x)	Float32	32x32x30x16	fixed	7.0
+activations	σ.(x)	Float32	32x32x30x16	graph	n/s
+activations	elu.(x)	Float32	32x32x30x16	nnlib	6.8
+activations	elu.(x)	Float32	32x32x30x16	generic	11.1
+activations	elu.(x)	Float32	32x32x30x16	fixed	6.9
+activations	elu.(x)	Float32	32x32x30x16	graph	n/s
+softmax	softmax (dims=1)	Float16	8x8x16x4	nnlib	5.5
+softmax	softmax (dims=1)	Float16	8x8x16x4	generic	30.7
+softmax	softmax (dims=1)	Float16	8x8x16x4	fixed	5.5
+softmax	softmax (dims=1)	Float16	8x8x16x4	graph	-
+softmax	∇softmax (dims=1)	Float16	8x8x16x4	nnlib	5.5
+softmax	∇softmax (dims=1)	Float16	8x8x16x4	generic	15.4
+softmax	∇softmax (dims=1)	Float16	8x8x16x4	fixed	5.8
+softmax	∇softmax (dims=1)	Float16	8x8x16x4	graph	-
+softmax	softmax (dims=3)	Float16	8x8x16x4	nnlib	32.5
+softmax	softmax (dims=3)	Float16	8x8x16x4	generic	32.0
+softmax	softmax (dims=3)	Float16	8x8x16x4	fixed	7.0
+softmax	softmax (dims=3)	Float16	8x8x16x4	graph	-
+softmax	∇softmax (dims=3)	Float16	8x8x16x4	nnlib	15.4
+softmax	∇softmax (dims=3)	Float16	8x8x16x4	generic	14.5
+softmax	∇softmax (dims=3)	Float16	8x8x16x4	fixed	6.6
+softmax	∇softmax (dims=3)	Float16	8x8x16x4	graph	-
+softmax	softmax (dims=1)	Float16	32x32x64x16	nnlib	8.0
+softmax	softmax (dims=1)	Float16	32x32x64x16	generic	85.6
+softmax	softmax (dims=1)	Float16	32x32x64x16	fixed	7.7
+softmax	softmax (dims=1)	Float16	32x32x64x16	graph	-
+softmax	∇softmax (dims=1)	Float16	32x32x64x16	nnlib	7.8
+softmax	∇softmax (dims=1)	Float16	32x32x64x16	generic	49.6
+softmax	∇softmax (dims=1)	Float16	32x32x64x16	fixed	7.8
+softmax	∇softmax (dims=1)	Float16	32x32x64x16	graph	-
+softmax	softmax (dims=3)	Float16	32x32x64x16	nnlib	83.5
+softmax	softmax (dims=3)	Float16	32x32x64x16	generic	83.6
+softmax	softmax (dims=3)	Float16	32x32x64x16	fixed	10.8
+softmax	softmax (dims=3)	Float16	32x32x64x16	graph	-
+softmax	∇softmax (dims=3)	Float16	32x32x64x16	nnlib	49.1
+softmax	∇softmax (dims=3)	Float16	32x32x64x16	generic	49.2
+softmax	∇softmax (dims=3)	Float16	32x32x64x16	fixed	9.9
+softmax	∇softmax (dims=3)	Float16	32x32x64x16	graph	-
+softmax	softmax (dims=1)	Float16	64x64x128x32	nnlib	25.7
+softmax	softmax (dims=1)	Float16	64x64x128x32	generic	594.1
+softmax	softmax (dims=1)	Float16	64x64x128x32	fixed	25.6
+softmax	softmax (dims=1)	Float16	64x64x128x32	graph	-
+softmax	∇softmax (dims=1)	Float16	64x64x128x32	nnlib	54.4
+softmax	∇softmax (dims=1)	Float16	64x64x128x32	generic	459.0
+softmax	∇softmax (dims=1)	Float16	64x64x128x32	fixed	54.1
+softmax	∇softmax (dims=1)	Float16	64x64x128x32	graph	-
+softmax	softmax (dims=3)	Float16	64x64x128x32	nnlib	807.8
+softmax	softmax (dims=3)	Float16	64x64x128x32	generic	810.0
+softmax	softmax (dims=3)	Float16	64x64x128x32	fixed	53.0
+softmax	softmax (dims=3)	Float16	64x64x128x32	graph	-
+softmax	∇softmax (dims=3)	Float16	64x64x128x32	nnlib	562.5
+softmax	∇softmax (dims=3)	Float16	64x64x128x32	generic	563.6
+softmax	∇softmax (dims=3)	Float16	64x64x128x32	fixed	55.6
+softmax	∇softmax (dims=3)	Float16	64x64x128x32	graph	-
+softmax	softmax (dims=1)	Float16	32x32x30x16	nnlib	6.8
+softmax	softmax (dims=1)	Float16	32x32x30x16	generic	56.3
+softmax	softmax (dims=1)	Float16	32x32x30x16	fixed	6.5
+softmax	softmax (dims=1)	Float16	32x32x30x16	graph	-
+softmax	∇softmax (dims=1)	Float16	32x32x30x16	nnlib	6.6
+softmax	∇softmax (dims=1)	Float16	32x32x30x16	generic	29.0
+softmax	∇softmax (dims=1)	Float16	32x32x30x16	fixed	6.7
+softmax	∇softmax (dims=1)	Float16	32x32x30x16	graph	-
+softmax	softmax (dims=3)	Float16	32x32x30x16	nnlib	58.2
+softmax	softmax (dims=3)	Float16	32x32x30x16	generic	58.1
+softmax	softmax (dims=3)	Float16	32x32x30x16	fixed	8.6
+softmax	softmax (dims=3)	Float16	32x32x30x16	graph	-
+softmax	∇softmax (dims=3)	Float16	32x32x30x16	nnlib	30.1
+softmax	∇softmax (dims=3)	Float16	32x32x30x16	generic	30.0
+softmax	∇softmax (dims=3)	Float16	32x32x30x16	fixed	7.9
+softmax	∇softmax (dims=3)	Float16	32x32x30x16	graph	-
+softmax	softmax (dims=1)	Float32	8x8x16x4	nnlib	5.6
+softmax	softmax (dims=1)	Float32	8x8x16x4	generic	32.3
+softmax	softmax (dims=1)	Float32	8x8x16x4	fixed	5.5
+softmax	softmax (dims=1)	Float32	8x8x16x4	graph	-
+softmax	∇softmax (dims=1)	Float32	8x8x16x4	nnlib	5.6
+softmax	∇softmax (dims=1)	Float32	8x8x16x4	generic	15.1
+softmax	∇softmax (dims=1)	Float32	8x8x16x4	fixed	5.6
+softmax	∇softmax (dims=1)	Float32	8x8x16x4	graph	-
+softmax	softmax (dims=3)	Float32	8x8x16x4	nnlib	32.7
+softmax	softmax (dims=3)	Float32	8x8x16x4	generic	34.4
+softmax	softmax (dims=3)	Float32	8x8x16x4	fixed	6.7
+softmax	softmax (dims=3)	Float32	8x8x16x4	graph	-
+softmax	∇softmax (dims=3)	Float32	8x8x16x4	nnlib	14.7
+softmax	∇softmax (dims=3)	Float32	8x8x16x4	generic	14.3
+softmax	∇softmax (dims=3)	Float32	8x8x16x4	fixed	6.6
+softmax	∇softmax (dims=3)	Float32	8x8x16x4	graph	-
+softmax	softmax (dims=1)	Float32	32x32x64x16	nnlib	7.9
+softmax	softmax (dims=1)	Float32	32x32x64x16	generic	85.1
+softmax	softmax (dims=1)	Float32	32x32x64x16	fixed	8.0
+softmax	softmax (dims=1)	Float32	32x32x64x16	graph	-
+softmax	∇softmax (dims=1)	Float32	32x32x64x16	nnlib	8.1
+softmax	∇softmax (dims=1)	Float32	32x32x64x16	generic	49.7
+softmax	∇softmax (dims=1)	Float32	32x32x64x16	fixed	8.1
+softmax	∇softmax (dims=1)	Float32	32x32x64x16	graph	-
+softmax	softmax (dims=3)	Float32	32x32x64x16	nnlib	82.7
+softmax	softmax (dims=3)	Float32	32x32x64x16	generic	83.2
+softmax	softmax (dims=3)	Float32	32x32x64x16	fixed	19.8
+softmax	softmax (dims=3)	Float32	32x32x64x16	graph	-
+softmax	∇softmax (dims=3)	Float32	32x32x64x16	nnlib	48.3
+softmax	∇softmax (dims=3)	Float32	32x32x64x16	generic	48.3
+softmax	∇softmax (dims=3)	Float32	32x32x64x16	fixed	17.7
+softmax	∇softmax (dims=3)	Float32	32x32x64x16	graph	-
+softmax	softmax (dims=1)	Float32	64x64x128x32	nnlib	89.4
+softmax	softmax (dims=1)	Float32	64x64x128x32	generic	625.9
+softmax	softmax (dims=1)	Float32	64x64x128x32	fixed	75.7
+softmax	softmax (dims=1)	Float32	64x64x128x32	graph	-
+softmax	∇softmax (dims=1)	Float32	64x64x128x32	nnlib	131.1
+softmax	∇softmax (dims=1)	Float32	64x64x128x32	generic	483.7
+softmax	∇softmax (dims=1)	Float32	64x64x128x32	fixed	130.6
+softmax	∇softmax (dims=1)	Float32	64x64x128x32	graph	-
+softmax	softmax (dims=3)	Float32	64x64x128x32	nnlib	826.8
+softmax	softmax (dims=3)	Float32	64x64x128x32	generic	824.3
+softmax	softmax (dims=3)	Float32	64x64x128x32	fixed	171.7
+softmax	softmax (dims=3)	Float32	64x64x128x32	graph	-
+softmax	∇softmax (dims=3)	Float32	64x64x128x32	nnlib	585.6
+softmax	∇softmax (dims=3)	Float32	64x64x128x32	generic	587.6
+softmax	∇softmax (dims=3)	Float32	64x64x128x32	fixed	218.3
+softmax	∇softmax (dims=3)	Float32	64x64x128x32	graph	-
+softmax	softmax (dims=1)	Float32	32x32x30x16	nnlib	6.8
+softmax	softmax (dims=1)	Float32	32x32x30x16	generic	57.4
+softmax	softmax (dims=1)	Float32	32x32x30x16	fixed	6.7
+softmax	softmax (dims=1)	Float32	32x32x30x16	graph	-
+softmax	∇softmax (dims=1)	Float32	32x32x30x16	nnlib	7.0
+softmax	∇softmax (dims=1)	Float32	32x32x30x16	generic	29.2
+softmax	∇softmax (dims=1)	Float32	32x32x30x16	fixed	7.0
+softmax	∇softmax (dims=1)	Float32	32x32x30x16	graph	-
+softmax	softmax (dims=3)	Float32	32x32x30x16	nnlib	59.3
+softmax	softmax (dims=3)	Float32	32x32x30x16	generic	59.5
+softmax	softmax (dims=3)	Float32	32x32x30x16	fixed	8.7
+softmax	softmax (dims=3)	Float32	32x32x30x16	graph	-
+softmax	∇softmax (dims=3)	Float32	32x32x30x16	nnlib	29.9
+softmax	∇softmax (dims=3)	Float32	32x32x30x16	generic	29.7
+softmax	∇softmax (dims=3)	Float32	32x32x30x16	fixed	8.4
+softmax	∇softmax (dims=3)	Float32	32x32x30x16	graph	-
+conv	conv	Float16	8x8x16x4	nnlib	15.9
+conv	conv	Float16	8x8x16x4	generic	-
+conv	conv	Float16	8x8x16x4	fixed	28.7
+conv	conv	Float16	8x8x16x4	graph	15.6
+conv	∇conv_data	Float16	8x8x16x4	nnlib	17.5
+conv	∇conv_data	Float16	8x8x16x4	generic	-
+conv	∇conv_data	Float16	8x8x16x4	fixed	29.1
+conv	∇conv_data	Float16	8x8x16x4	graph	17.0
+conv	∇conv_filter	Float16	8x8x16x4	nnlib	8.3
+conv	∇conv_filter	Float16	8x8x16x4	generic	-
+conv	∇conv_filter	Float16	8x8x16x4	fixed	18.5
+conv	∇conv_filter	Float16	8x8x16x4	graph	8.3
+conv	conv	Float16	32x32x64x16	nnlib	25.0
+conv	conv	Float16	32x32x64x16	generic	-
+conv	conv	Float16	32x32x64x16	fixed	42.3
+conv	conv	Float16	32x32x64x16	graph	24.3
+conv	∇conv_data	Float16	32x32x64x16	nnlib	25.0
+conv	∇conv_data	Float16	32x32x64x16	generic	-
+conv	∇conv_data	Float16	32x32x64x16	fixed	41.7
+conv	∇conv_data	Float16	32x32x64x16	graph	24.4
+conv	∇conv_filter	Float16	32x32x64x16	nnlib	30.5
+conv	∇conv_filter	Float16	32x32x64x16	generic	-
+conv	∇conv_filter	Float16	32x32x64x16	fixed	44.9
+conv	∇conv_filter	Float16	32x32x64x16	graph	30.3
+conv	conv	Float16	64x64x128x32	nnlib	293.1
+conv	conv	Float16	64x64x128x32	generic	-
+conv	conv	Float16	64x64x128x32	fixed	317.1
+conv	conv	Float16	64x64x128x32	graph	293.9
+conv	∇conv_data	Float16	64x64x128x32	nnlib	262.2
+conv	∇conv_data	Float16	64x64x128x32	generic	-
+conv	∇conv_data	Float16	64x64x128x32	fixed	282.3
+conv	∇conv_data	Float16	64x64x128x32	graph	261.6
+conv	∇conv_filter	Float16	64x64x128x32	nnlib	394.3
+conv	∇conv_filter	Float16	64x64x128x32	generic	-
+conv	∇conv_filter	Float16	64x64x128x32	fixed	412.8
+conv	∇conv_filter	Float16	64x64x128x32	graph	392.3
+conv	conv	Float16	32x32x30x16	nnlib	25.7
+conv	conv	Float16	32x32x30x16	generic	-
+conv	conv	Float16	32x32x30x16	fixed	34.8
+conv	conv	Float16	32x32x30x16	graph	25.4
+conv	∇conv_data	Float16	32x32x30x16	nnlib	29.9
+conv	∇conv_data	Float16	32x32x30x16	generic	-
+conv	∇conv_data	Float16	32x32x30x16	fixed	35.8
+conv	∇conv_data	Float16	32x32x30x16	graph	29.7
+conv	∇conv_filter	Float16	32x32x30x16	nnlib	28.4
+conv	∇conv_filter	Float16	32x32x30x16	generic	-
+conv	∇conv_filter	Float16	32x32x30x16	fixed	59.3
+conv	∇conv_filter	Float16	32x32x30x16	graph	28.1
+conv	conv	Float32	8x8x16x4	nnlib	17.0
+conv	conv	Float32	8x8x16x4	generic	-
+conv	conv	Float32	8x8x16x4	fixed	21.9
+conv	conv	Float32	8x8x16x4	graph	17.5
+conv	∇conv_data	Float32	8x8x16x4	nnlib	12.3
+conv	∇conv_data	Float32	8x8x16x4	generic	-
+conv	∇conv_data	Float32	8x8x16x4	fixed	21.0
+conv	∇conv_data	Float32	8x8x16x4	graph	12.6
+conv	∇conv_filter	Float32	8x8x16x4	nnlib	12.4
+conv	∇conv_filter	Float32	8x8x16x4	generic	-
+conv	∇conv_filter	Float32	8x8x16x4	fixed	20.7
+conv	∇conv_filter	Float32	8x8x16x4	graph	12.0
+conv	conv	Float32	32x32x64x16	nnlib	32.6
+conv	conv	Float32	32x32x64x16	generic	-
+conv	conv	Float32	32x32x64x16	fixed	41.1
+conv	conv	Float32	32x32x64x16	graph	32.4
+conv	∇conv_data	Float32	32x32x64x16	nnlib	32.5
+conv	∇conv_data	Float32	32x32x64x16	generic	-
+conv	∇conv_data	Float32	32x32x64x16	fixed	42.2
+conv	∇conv_data	Float32	32x32x64x16	graph	32.7
+conv	∇conv_filter	Float32	32x32x64x16	nnlib	49.2
+conv	∇conv_filter	Float32	32x32x64x16	generic	-
+conv	∇conv_filter	Float32	32x32x64x16	fixed	62.3
+conv	∇conv_filter	Float32	32x32x64x16	graph	49.0
+conv	conv	Float32	64x64x128x32	nnlib	491.5
+conv	conv	Float32	64x64x128x32	generic	-
+conv	conv	Float32	64x64x128x32	fixed	511.6
+conv	conv	Float32	64x64x128x32	graph	491.2
+conv	∇conv_data	Float32	64x64x128x32	nnlib	547.8
+conv	∇conv_data	Float32	64x64x128x32	generic	-
+conv	∇conv_data	Float32	64x64x128x32	fixed	508.6
+conv	∇conv_data	Float32	64x64x128x32	graph	547.9
+conv	∇conv_filter	Float32	64x64x128x32	nnlib	675.0
+conv	∇conv_filter	Float32	64x64x128x32	generic	-
+conv	∇conv_filter	Float32	64x64x128x32	fixed	584.2
+conv	∇conv_filter	Float32	64x64x128x32	graph	677.8
+conv	conv	Float32	32x32x30x16	nnlib	31.1
+conv	conv	Float32	32x32x30x16	generic	-
+conv	conv	Float32	32x32x30x16	fixed	30.8
+conv	conv	Float32	32x32x30x16	graph	30.1
+conv	∇conv_data	Float32	32x32x30x16	nnlib	30.7
+conv	∇conv_data	Float32	32x32x30x16	generic	-
+conv	∇conv_data	Float32	32x32x30x16	fixed	33.0
+conv	∇conv_data	Float32	32x32x30x16	graph	30.2
+conv	∇conv_filter	Float32	32x32x30x16	nnlib	39.3
+conv	∇conv_filter	Float32	32x32x30x16	generic	-
+conv	∇conv_filter	Float32	32x32x30x16	fixed	36.8
+conv	∇conv_filter	Float32	32x32x30x16	graph	39.1

@@ -1,12 +1,15 @@
 using cuDNN: CUDNN_BN_MIN_EPSILON, cudnnBatchNormalizationBackward,
              cudnnBatchNormalizationForwardInference, CUDNN_BATCHNORM_SPATIAL,
-             cudnnBatchNormalizationForwardTraining
+             cudnnBatchNormalizationForwardTraining, CUDNN_TENSOR_NCHW,
+             cudnnDataType, cudnnTensorDescriptor, dim4, handle, scalingParameter
 using ChainRulesCore: ChainRulesCore, NoTangent, unthunk
 using NNlib: within_gradient
 import NNlib: batchnorm, ∇batchnorm
 
-# TODO: replace with new cudnn normalization interface
-# https://github.com/JuliaGPU/CUDA.jl/blob/master/lib/cudnn/normalization.jl
+# These call cuDNN's fixed-function batch normalization. Its graph API
+# (`cuDNN.batchnorm_training!` and friends) is slower where it applies, and has no
+# engine for inference, `Float64`, or a number of channels that is not a multiple of 4
+# (cuDNN 9.26).
 
 mutable struct BNCache
   mean

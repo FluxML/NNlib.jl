@@ -1,7 +1,8 @@
 using NNlib
 
 using cuDNN: CUDNN_SOFTMAX_LOG, CUDNN_SOFTMAX_MODE_INSTANCE,
-             CUDNN_SOFTMAX_ACCURATE, cudnnSoftmaxForward!, cudnnSoftmaxBackward
+             CUDNN_SOFTMAX_ACCURATE, cudnnSoftmaxForward!, cudnnSoftmaxBackward,
+             cudnnTensorDescriptor, handle, scalingParameter
 
 
 # We only route to cuDNN when the softmax dimensions form a *leading*, contiguous

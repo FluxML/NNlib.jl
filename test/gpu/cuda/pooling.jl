@@ -16,6 +16,14 @@
         @test test_gradients(x -> maxpool(x, pdims), x; test_gpu=true)
         gputest((dy, y, x) -> ∇maxpool(dy, y, x, pdims), dy, y, x, checkgrad=false)
 
+        # asymmetric padding, which only cuDNN's graph API supports
+        pdims_asym = PoolDims(x, 3; stride=2,
+                              padding=ntuple(i -> isodd(i) ? 1 : 0, 2num_spatial_dims))
+        gputest(x -> maxpool(x, pdims_asym), x)
+        for cip in (true, false)
+            gputest(x -> meanpool(x, pdims_asym; count_include_pad=cip), x)
+        end
+
         # meanpool count_include_pad (issue #218): with padding the two modes differ,
         # check both agree with cuDNN (forward and backward).
         pdims_pad = PoolDims(x, 2; padding=1, stride=2)

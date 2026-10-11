@@ -1,0 +1,203 @@
+GPU:       NVIDIA GeForce RTX 5090
+Julia:     1.13.1
+NNlib:     0.9.45
+CUDA.jl:   6.4.2
+cuDNN.jl:  6.4.2 (library 9.26.0)
+selection: ops=batchnorm,pooling,activations,softmax,conv  dtypes=Float16,Float32  sizes=small,medium,large,odd-C
+sanity on Float16 8x8x16x4: largest deviation from `nnlib`
+  batchnorm (training)     generic=4.8e-07  fixed=0.0e+00  graph=4.8e-07
+  batchnorm (inference)    generic=9.8e-04  fixed=0.0e+00  graph=n/s
+  ∇batchnorm (training)    generic=0.0e+00  fixed=0.0e+00  graph=0.0e+00
+  maxpool                  generic=-  fixed=0.0e+00  graph=0.0e+00
+  ∇maxpool                 generic=-  fixed=0.0e+00  graph=0.0e+00
+  meanpool                 generic=-  fixed=0.0e+00  graph=0.0e+00
+  ∇meanpool                generic=-  fixed=0.0e+00  graph=0.0e+00
+  relu.(x)                 generic=0.0e+00  fixed=0.0e+00  graph=n/s
+  tanh.(x)                 generic=0.0e+00  fixed=0.0e+00  graph=n/s
+  σ.(x)                    generic=4.9e-04  fixed=0.0e+00  graph=n/s
+  elu.(x)                  generic=4.9e-04  fixed=0.0e+00  graph=n/s
+  softmax (dims=1)         generic=4.9e-04  fixed=0.0e+00  graph=-
+  ∇softmax (dims=1)        generic=4.9e-04  fixed=0.0e+00  graph=-
+  softmax (dims=3)         generic=0.0e+00  fixed=4.9e-04  graph=-
+  ∇softmax (dims=3)        generic=0.0e+00  fixed=4.9e-04  graph=-
+  conv                     generic=-  fixed=0.0e+00  graph=0.0e+00
+  ∇conv_data               generic=-  fixed=9.8e-04  graph=0.0e+00
+  ∇conv_filter             generic=-  fixed=1.2e-04  graph=0.0e+00
+
+####################################################################################################
+### batchnorm   (μs)
+####################################################################################################
+operator                 eltype    size           |     nnlib   generic     fixed     graph | fastest
+batchnorm (training)     Float16   8x8x16x4       |       7.6      32.9       7.5      22.1 | fixed
+batchnorm (inference)    Float16   8x8x16x4       |       6.2      18.8       6.1       n/s | fixed
+∇batchnorm (training)    Float16   8x8x16x4       |       9.3      52.4       8.6      22.3 | fixed
+batchnorm (training)     Float16   32x32x64x16    |       9.4      79.5       9.1      25.1 | fixed
+batchnorm (inference)    Float16   32x32x64x16    |       7.8      45.0       7.6       n/s | fixed
+∇batchnorm (training)    Float16   32x32x64x16    |      19.6     148.1      11.2      25.2 | fixed
+batchnorm (training)     Float16   64x64x128x32   |      57.7     714.9      57.7      94.5 | fixed
+batchnorm (inference)    Float16   64x64x128x32   |      23.1     480.6      22.9       n/s | fixed
+∇batchnorm (training)    Float16   64x64x128x32   |     105.8    1462.8      86.3     155.6 | fixed
+batchnorm (training)     Float16   32x32x30x16    |       9.2      53.6       9.0       n/s | fixed
+batchnorm (inference)    Float16   32x32x30x16    |       6.8      27.6       6.7       n/s | fixed
+∇batchnorm (training)    Float16   32x32x30x16    |      20.6      95.2      11.2       n/s | fixed
+batchnorm (training)     Float32   8x8x16x4       |       7.7      25.3       7.3      19.9 | fixed
+batchnorm (inference)    Float32   8x8x16x4       |       6.4      12.7       5.9       n/s | fixed
+∇batchnorm (training)    Float32   8x8x16x4       |       9.1      46.2       8.4      22.0 | fixed
+batchnorm (training)     Float32   32x32x64x16    |      12.3      60.2      12.2      26.9 | fixed
+batchnorm (inference)    Float32   32x32x64x16    |       8.6      25.8       8.2       n/s | fixed
+∇batchnorm (training)    Float32   32x32x64x16    |      19.5     118.5      16.5      28.3 | fixed
+batchnorm (training)     Float32   64x64x128x32   |     108.2     468.9     108.2     217.3 | fixed
+batchnorm (inference)    Float32   64x64x128x32   |      93.8     221.2      92.9       n/s | fixed
+∇batchnorm (training)    Float32   64x64x128x32   |     269.3    1070.8     244.8     355.9 | fixed
+batchnorm (training)     Float32   32x32x30x16    |      12.4      45.6      12.2       n/s | fixed
+batchnorm (inference)    Float32   32x32x30x16    |       7.4      18.5       7.1       n/s | fixed
+∇batchnorm (training)    Float32   32x32x30x16    |      18.8      82.2      16.6       n/s | fixed
+
+####################################################################################################
+### pooling   (μs)
+####################################################################################################
+operator                 eltype    size           |     nnlib   generic     fixed     graph | fastest
+maxpool                  Float16   8x8x16x4       |       7.6         -       6.8       7.7 | fixed
+∇maxpool                 Float16   8x8x16x4       |       8.2         -       6.8       8.8 | fixed
+meanpool                 Float16   8x8x16x4       |       7.6         -       6.6       7.8 | fixed
+∇meanpool                Float16   8x8x16x4       |       8.3         -       6.9       8.5 | fixed
+maxpool                  Float16   32x32x64x16    |       8.6         -       7.2       8.2 | fixed
+∇maxpool                 Float16   32x32x64x16    |      10.3         -       9.0      12.9 | fixed
+meanpool                 Float16   32x32x64x16    |       8.5         -       7.3       8.3 | fixed
+∇meanpool                Float16   32x32x64x16    |       9.8         -       8.5      10.2 | fixed
+maxpool                  Float16   64x64x128x32   |      19.3         -      17.7      19.5 | fixed
+∇maxpool                 Float16   64x64x128x32   |      52.9         -      34.1      87.2 | fixed
+meanpool                 Float16   64x64x128x32   |      20.9         -      18.9      20.2 | fixed
+∇meanpool                Float16   64x64x128x32   |      47.5         -      37.0      39.0 | fixed
+maxpool                  Float16   32x32x30x16    |       8.6         -       6.9       8.1 | fixed
+∇maxpool                 Float16   32x32x30x16    |       9.3         -       8.1      10.6 | fixed
+meanpool                 Float16   32x32x30x16    |       8.6         -       7.2       8.2 | fixed
+∇meanpool                Float16   32x32x30x16    |       9.2         -       7.7       9.6 | fixed
+maxpool                  Float32   8x8x16x4       |       7.6         -       6.6       7.6 | fixed
+∇maxpool                 Float32   8x8x16x4       |       7.8         -       6.6       8.9 | fixed
+meanpool                 Float32   8x8x16x4       |       7.4         -       6.8       8.3 | fixed
+∇meanpool                Float32   8x8x16x4       |       8.5         -       7.2       9.1 | fixed
+maxpool                  Float32   32x32x64x16    |       9.1         -       7.3       8.5 | fixed
+∇maxpool                 Float32   32x32x64x16    |      10.8         -       9.6      13.3 | fixed
+meanpool                 Float32   32x32x64x16    |       8.5         -       7.2       8.5 | fixed
+∇meanpool                Float32   32x32x64x16    |      10.1         -       8.4      10.2 | fixed
+maxpool                  Float32   64x64x128x32   |      51.4         -      19.0      20.7 | fixed
+∇maxpool                 Float32   64x64x128x32   |     144.2         -     118.4     128.6 | fixed
+meanpool                 Float32   64x64x128x32   |      51.0         -      18.7      19.9 | fixed
+∇meanpool                Float32   64x64x128x32   |      65.7         -      39.0      43.1 | fixed
+maxpool                  Float32   32x32x30x16    |       8.2         -       7.1       8.3 | fixed
+∇maxpool                 Float32   32x32x30x16    |       9.0         -       7.7      10.5 | fixed
+meanpool                 Float32   32x32x30x16    |       8.2         -       6.9       8.1 | fixed
+∇meanpool                Float32   32x32x30x16    |       9.0         -       7.9       9.8 | fixed
+
+####################################################################################################
+### activations   (μs)
+####################################################################################################
+operator                 eltype    size           |     nnlib   generic     fixed     graph | fastest
+relu.(x)                 Float16   8x8x16x4       |       5.9       7.4       6.0       n/s | fixed
+tanh.(x)                 Float16   8x8x16x4       |       5.7       7.1       5.8       n/s | fixed
+σ.(x)                    Float16   8x8x16x4       |       5.9       7.0       5.9       n/s | fixed
+elu.(x)                  Float16   8x8x16x4       |       5.7       7.1       5.9       n/s | fixed
+relu.(x)                 Float16   32x32x64x16    |       7.1      16.1       7.6       n/s | fixed
+tanh.(x)                 Float16   32x32x64x16    |       7.3      16.8       7.5       n/s | fixed
+σ.(x)                    Float16   32x32x64x16    |       7.7      17.0       7.6       n/s | fixed
+elu.(x)                  Float16   32x32x64x16    |       7.5      16.8       7.6       n/s | fixed
+relu.(x)                 Float16   64x64x128x32   |      23.0     130.1      22.9       n/s | fixed
+tanh.(x)                 Float16   64x64x128x32   |      26.1     136.0      26.3       n/s | fixed
+σ.(x)                    Float16   64x64x128x32   |      27.3     143.1      27.5       n/s | fixed
+elu.(x)                  Float16   64x64x128x32   |      25.9     138.4      25.8       n/s | fixed
+relu.(x)                 Float16   32x32x30x16    |       6.5      11.2       6.7       n/s | fixed
+tanh.(x)                 Float16   32x32x30x16    |       6.4      11.1       6.5       n/s | fixed
+σ.(x)                    Float16   32x32x30x16    |       6.5      11.4       6.7       n/s | fixed
+elu.(x)                  Float16   32x32x30x16    |       6.7      11.1       6.6       n/s | fixed
+relu.(x)                 Float32   8x8x16x4       |       5.6       7.2       5.9       n/s | fixed
+tanh.(x)                 Float32   8x8x16x4       |       5.6       7.4       5.9       n/s | fixed
+σ.(x)                    Float32   8x8x16x4       |       5.8       7.5       6.0       n/s | fixed
+elu.(x)                  Float32   8x8x16x4       |       5.8       7.3       6.1       n/s | fixed
+relu.(x)                 Float32   32x32x64x16    |       7.6      16.4       8.1       n/s | fixed
+tanh.(x)                 Float32   32x32x64x16    |       7.9      16.7       7.9       n/s | fixed
+σ.(x)                    Float32   32x32x64x16    |       7.9      16.6       8.0       n/s | fixed
+elu.(x)                  Float32   32x32x64x16    |       7.8      16.1       7.9       n/s | fixed
+relu.(x)                 Float32   64x64x128x32   |      90.4     139.6      91.1       n/s | fixed
+tanh.(x)                 Float32   64x64x128x32   |      90.9     144.0      91.0       n/s | fixed
+σ.(x)                    Float32   64x64x128x32   |      91.1     144.8      90.6       n/s | fixed
+elu.(x)                  Float32   64x64x128x32   |      92.1     143.8      90.7       n/s | fixed
+relu.(x)                 Float32   32x32x30x16    |       6.7      11.0       6.7       n/s | fixed
+tanh.(x)                 Float32   32x32x30x16    |       6.7      11.3       6.8       n/s | fixed
+σ.(x)                    Float32   32x32x30x16    |       6.8      11.4       7.0       n/s | fixed
+elu.(x)                  Float32   32x32x30x16    |       6.8      11.1       6.9       n/s | fixed
+
+####################################################################################################
+### softmax   (μs)
+####################################################################################################
+operator                 eltype    size           |     nnlib   generic     fixed     graph | fastest
+softmax (dims=1)         Float16   8x8x16x4       |       5.5      30.7       5.5         - | fixed
+∇softmax (dims=1)        Float16   8x8x16x4       |       5.5      15.4       5.8         - | fixed
+softmax (dims=3)         Float16   8x8x16x4       |      32.5      32.0       7.0         - | fixed
+∇softmax (dims=3)        Float16   8x8x16x4       |      15.4      14.5       6.6         - | fixed
+softmax (dims=1)         Float16   32x32x64x16    |       8.0      85.6       7.7         - | fixed
+∇softmax (dims=1)        Float16   32x32x64x16    |       7.8      49.6       7.8         - | fixed
+softmax (dims=3)         Float16   32x32x64x16    |      83.5      83.6      10.8         - | fixed
+∇softmax (dims=3)        Float16   32x32x64x16    |      49.1      49.2       9.9         - | fixed
+softmax (dims=1)         Float16   64x64x128x32   |      25.7     594.1      25.6         - | fixed
+∇softmax (dims=1)        Float16   64x64x128x32   |      54.4     459.0      54.1         - | fixed
+softmax (dims=3)         Float16   64x64x128x32   |     807.8     810.0      53.0         - | fixed
+∇softmax (dims=3)        Float16   64x64x128x32   |     562.5     563.6      55.6         - | fixed
+softmax (dims=1)         Float16   32x32x30x16    |       6.8      56.3       6.5         - | fixed
+∇softmax (dims=1)        Float16   32x32x30x16    |       6.6      29.0       6.7         - | fixed
+softmax (dims=3)         Float16   32x32x30x16    |      58.2      58.1       8.6         - | fixed
+∇softmax (dims=3)        Float16   32x32x30x16    |      30.1      30.0       7.9         - | fixed
+softmax (dims=1)         Float32   8x8x16x4       |       5.6      32.3       5.5         - | fixed
+∇softmax (dims=1)        Float32   8x8x16x4       |       5.6      15.1       5.6         - | fixed
+softmax (dims=3)         Float32   8x8x16x4       |      32.7      34.4       6.7         - | fixed
+∇softmax (dims=3)        Float32   8x8x16x4       |      14.7      14.3       6.6         - | fixed
+softmax (dims=1)         Float32   32x32x64x16    |       7.9      85.1       8.0         - | fixed
+∇softmax (dims=1)        Float32   32x32x64x16    |       8.1      49.7       8.1         - | fixed
+softmax (dims=3)         Float32   32x32x64x16    |      82.7      83.2      19.8         - | fixed
+∇softmax (dims=3)        Float32   32x32x64x16    |      48.3      48.3      17.7         - | fixed
+softmax (dims=1)         Float32   64x64x128x32   |      89.4     625.9      75.7         - | fixed
+∇softmax (dims=1)        Float32   64x64x128x32   |     131.1     483.7     130.6         - | fixed
+softmax (dims=3)         Float32   64x64x128x32   |     826.8     824.3     171.7         - | fixed
+∇softmax (dims=3)        Float32   64x64x128x32   |     585.6     587.6     218.3         - | fixed
+softmax (dims=1)         Float32   32x32x30x16    |       6.8      57.4       6.7         - | fixed
+∇softmax (dims=1)        Float32   32x32x30x16    |       7.0      29.2       7.0         - | fixed
+softmax (dims=3)         Float32   32x32x30x16    |      59.3      59.5       8.7         - | fixed
+∇softmax (dims=3)        Float32   32x32x30x16    |      29.9      29.7       8.4         - | fixed
+
+####################################################################################################
+### conv   (μs)
+####################################################################################################
+operator                 eltype    size           |     nnlib   generic     fixed     graph | fastest
+conv                     Float16   8x8x16x4       |      15.9         -      28.7      15.6 | graph
+∇conv_data               Float16   8x8x16x4       |      17.5         -      29.1      17.0 | graph
+∇conv_filter             Float16   8x8x16x4       |       8.3         -      18.5       8.3 | graph
+conv                     Float16   32x32x64x16    |      25.0         -      42.3      24.3 | graph
+∇conv_data               Float16   32x32x64x16    |      25.0         -      41.7      24.4 | graph
+∇conv_filter             Float16   32x32x64x16    |      30.5         -      44.9      30.3 | graph
+conv                     Float16   64x64x128x32   |     293.1         -     317.1     293.9 | graph
+∇conv_data               Float16   64x64x128x32   |     262.2         -     282.3     261.6 | graph
+∇conv_filter             Float16   64x64x128x32   |     394.3         -     412.8     392.3 | graph
+conv                     Float16   32x32x30x16    |      25.7         -      34.8      25.4 | graph
+∇conv_data               Float16   32x32x30x16    |      29.9         -      35.8      29.7 | graph
+∇conv_filter             Float16   32x32x30x16    |      28.4         -      59.3      28.1 | graph
+conv                     Float32   8x8x16x4       |      17.0         -      21.9      17.5 | graph
+∇conv_data               Float32   8x8x16x4       |      12.3         -      21.0      12.6 | graph
+∇conv_filter             Float32   8x8x16x4       |      12.4         -      20.7      12.0 | graph
+conv                     Float32   32x32x64x16    |      32.6         -      41.1      32.4 | graph
+∇conv_data               Float32   32x32x64x16    |      32.5         -      42.2      32.7 | graph
+∇conv_filter             Float32   32x32x64x16    |      49.2         -      62.3      49.0 | graph
+conv                     Float32   64x64x128x32   |     491.5         -     511.6     491.2 | graph
+∇conv_data               Float32   64x64x128x32   |     547.8         -     508.6     547.9 | fixed
+∇conv_filter             Float32   64x64x128x32   |     675.0         -     584.2     677.8 | fixed
+conv                     Float32   32x32x30x16    |      31.1         -      30.8      30.1 | graph
+∇conv_data               Float32   32x32x30x16    |      30.7         -      33.0      30.2 | graph
+∇conv_filter             Float32   32x32x30x16    |      39.3         -      36.8      39.1 | fixed
+┌ Warning: unsupported path → n/s: cuDNN: cannot build graph NormFwdOp (CUDNN_STATUS_NOT_SUPPORTED)
+└ @ Main ~/claude-runs/nnlib-cudnn-revamp/NNlib/benchmark/cudnn/bench_cudnn.jl:412
+┌ Warning: unsupported path → n/s: cuDNN: no supported engine for graph NormFwdOp (0 candidate configs)
+└ @ Main ~/claude-runs/nnlib-cudnn-revamp/NNlib/benchmark/cudnn/bench_cudnn.jl:412
+┌ Warning: unsupported path → n/s: cuDNN: no supported engine for graph PointwiseOp (0 candidate configs)
+└ @ Main ~/claude-runs/nnlib-cudnn-revamp/NNlib/benchmark/cudnn/bench_cudnn.jl:412
+
+fastest = the fastest of generic, fixed and graph; `nnlib` is what NNlib runs.
+timings written to /home/lucibello/claude-runs/nnlib-cudnn-revamp/logs/cudnnbench.tsv

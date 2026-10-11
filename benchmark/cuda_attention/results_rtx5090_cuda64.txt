@@ -1,0 +1,145 @@
+┌ Warning: unsupported path → n/s: CUDNNError: CUDNN_STATUS_NOT_SUPPORTED (code 3000)
+└ @ Main ~/claude-runs/nnlib-cudnn-revamp/NNlib/benchmark/cuda_attention/bench_attention.jl:109
+GPU:        NVIDIA GeForce RTX 5090
+NNlib:      0.9.45
+LuxLib:     1.15.9
+CUDA.jl:    6.4.2
+cuDNN:      6.4.2 (library 9.26.0)
+selection:  dtypes=Float16,BFloat16,Float32  impls=nnlib,nnlib-mat,lux  causal=false,true  sizes=tiny,small,gpt2-ish,llama3 L=2k,llama3 L=4k,llama3 L=8k
+sanity Float16    (vs nnlib)  nnlib=0.00e+00  nnlib-mat=1.46e-03  lux=1.46e-03
+sanity BFloat16   (vs nnlib)  nnlib=0.00e+00  nnlib-mat=6.25e-02  lux=6.25e-02
+sanity Float32    (vs nnlib)  nnlib=0.00e+00  nnlib-mat=0.00e+00  lux=0.00e+00
+
+########################################################################################################
+### dtype=Float16  causal=false
+########################################################################################################
+
+-- FORWARD (ms) --
+config            L   H |      nnlib  nnlib-mat        lux |  nnlib-mat/nnlib        lux/nnlib
+tiny            128   4 |      0.013      0.750      0.741 |           57.09x           56.41x
+small           512   8 |      0.037      1.459      1.467 |           39.78x           40.00x
+gpt2-ish       1024  12 |      0.118      1.214      1.116 |           10.27x            9.44x
+llama3 L=2k    2048  32 |      0.410      1.532      1.537 |            3.74x            3.75x
+llama3 L=4k    4096  32 |      1.413      4.172      4.192 |            2.95x            2.97x
+llama3 L=8k    8192  32 |      5.188        n/s        n/s |                -                -
+
+-- FULL GRADIENT, fwd+bwd (ms) --
+config            L   H |      nnlib  nnlib-mat        lux |  nnlib-mat/nnlib        lux/nnlib
+tiny            128   4 |      0.133      2.576      3.321 |           19.35x           24.94x
+small           512   8 |      0.196      4.855      5.507 |           24.75x           28.07x
+gpt2-ish       1024  12 |      0.455      3.835      4.581 |            8.42x           10.06x
+llama3 L=2k    2048  32 |      1.565      4.516      4.629 |            2.89x            2.96x
+llama3 L=4k    4096  32 |      5.367     11.681     11.602 |            2.18x            2.16x
+llama3 L=8k    8192  32 |     19.485        n/s        n/s |                -                -
+
+########################################################################################################
+### dtype=Float16  causal=true
+########################################################################################################
+
+-- FORWARD (ms) --
+config            L   H |      nnlib  nnlib-mat        lux |  nnlib-mat/nnlib        lux/nnlib
+tiny            128   4 |      0.014      0.804      0.766 |           59.14x           56.32x
+small           512   8 |      0.038      1.631      1.630 |           42.74x           42.70x
+gpt2-ish       1024  12 |      0.081      1.580      1.579 |           19.61x           19.59x
+llama3 L=2k    2048  32 |      0.244      2.454      2.448 |           10.04x           10.02x
+llama3 L=4k    4096  32 |      0.800      7.858      7.845 |            9.83x            9.81x
+llama3 L=8k    8192  32 |      2.803        n/s        n/s |                -                -
+
+-- FULL GRADIENT, fwd+bwd (ms) --
+config            L   H |      nnlib  nnlib-mat        lux |  nnlib-mat/nnlib        lux/nnlib
+tiny            128   4 |      0.147      2.772      3.741 |           18.80x           25.38x
+small           512   8 |      0.180      6.047      6.225 |           33.68x           34.67x
+gpt2-ish       1024  12 |      0.328      7.451      7.996 |           22.69x           24.35x
+llama3 L=2k    2048  32 |      0.983     11.123     11.402 |           11.32x           11.60x
+llama3 L=4k    4096  32 |      3.157     38.008     38.341 |           12.04x           12.15x
+llama3 L=8k    8192  32 |     10.751        n/s        n/s |                -                -
+
+########################################################################################################
+### dtype=BFloat16  causal=false
+########################################################################################################
+
+-- FORWARD (ms) --
+config            L   H |      nnlib  nnlib-mat        lux |  nnlib-mat/nnlib        lux/nnlib
+tiny            128   4 |      0.013      0.764      0.782 |           60.23x           61.66x
+small           512   8 |      0.036      1.632      1.508 |           44.73x           41.36x
+gpt2-ish       1024  12 |      0.118      1.334      1.243 |           11.28x           10.51x
+llama3 L=2k    2048  32 |      0.408      1.707      1.706 |            4.19x            4.19x
+llama3 L=4k    4096  32 |      1.390      4.575      4.585 |            3.29x            3.30x
+llama3 L=8k    8192  32 |      5.202        n/s        n/s |                -                -
+
+-- FULL GRADIENT, fwd+bwd (ms) --
+config            L   H |      nnlib  nnlib-mat        lux |  nnlib-mat/nnlib        lux/nnlib
+tiny            128   4 |      0.143      2.639      3.275 |           18.40x           22.84x
+small           512   8 |      0.204      4.822      6.115 |           23.66x           30.01x
+gpt2-ish       1024  12 |      0.456      4.488      4.931 |            9.84x           10.81x
+llama3 L=2k    2048  32 |      1.568      4.892      4.854 |            3.12x            3.10x
+llama3 L=4k    4096  32 |      5.362     12.448     12.437 |            2.32x            2.32x
+llama3 L=8k    8192  32 |     19.452        n/s        n/s |                -                -
+
+########################################################################################################
+### dtype=BFloat16  causal=true
+########################################################################################################
+
+-- FORWARD (ms) --
+config            L   H |      nnlib  nnlib-mat        lux |  nnlib-mat/nnlib        lux/nnlib
+tiny            128   4 |      0.014      0.802      0.778 |           56.87x           55.10x
+small           512   8 |      0.037      1.517      1.502 |           40.63x           40.23x
+gpt2-ish       1024  12 |      0.080      1.656      1.619 |           20.65x           20.19x
+llama3 L=2k    2048  32 |      0.243      2.607      2.605 |           10.72x           10.72x
+llama3 L=4k    4096  32 |      0.795      8.255      8.217 |           10.38x           10.34x
+llama3 L=8k    8192  32 |      2.773        n/s        n/s |                -                -
+
+-- FULL GRADIENT, fwd+bwd (ms) --
+config            L   H |      nnlib  nnlib-mat        lux |  nnlib-mat/nnlib        lux/nnlib
+tiny            128   4 |      0.150      2.592      3.700 |           17.26x           24.63x
+small           512   8 |      0.182      5.631      6.625 |           30.97x           36.44x
+gpt2-ish       1024  12 |      0.331      7.580      8.085 |           22.91x           24.44x
+llama3 L=2k    2048  32 |      0.985     11.469     11.758 |           11.65x           11.94x
+llama3 L=4k    4096  32 |      3.156     38.808     38.718 |           12.29x           12.27x
+llama3 L=8k    8192  32 |     10.804        n/s        n/s |                -                -
+
+########################################################################################################
+### dtype=Float32  causal=false
+########################################################################################################
+
+-- FORWARD (ms) --
+config            L   H |      nnlib  nnlib-mat        lux |  nnlib-mat/nnlib        lux/nnlib
+tiny            128   4 |      0.042      0.042      0.043 |            0.99x            1.02x
+small           512   8 |      0.242      0.243      0.243 |            1.00x            1.00x
+gpt2-ish       1024  12 |      0.751      0.749      0.754 |            1.00x            1.00x
+llama3 L=2k    2048  32 |      2.350      2.349      2.364 |            1.00x            1.01x
+llama3 L=4k    4096  32 |      8.762      8.788      8.806 |            1.00x            1.01x
+llama3 L=8k    8192  32 |        n/s        n/s        n/s |                -                -
+
+-- FULL GRADIENT, fwd+bwd (ms) --
+config            L   H |      nnlib  nnlib-mat        lux |  nnlib-mat/nnlib        lux/nnlib
+tiny            128   4 |      0.270      0.285      0.907 |            1.05x            3.35x
+small           512   8 |      0.874      0.882      1.119 |            1.01x            1.28x
+gpt2-ish       1024  12 |      2.153      2.151      2.141 |            1.00x            0.99x
+llama3 L=2k    2048  32 |      6.725      6.750      6.674 |            1.00x            0.99x
+llama3 L=4k    4096  32 |     24.874     24.754     24.826 |            1.00x            1.00x
+llama3 L=8k    8192  32 |        n/s        n/s        n/s |                -                -
+
+########################################################################################################
+### dtype=Float32  causal=true
+########################################################################################################
+
+-- FORWARD (ms) --
+config            L   H |      nnlib  nnlib-mat        lux |  nnlib-mat/nnlib        lux/nnlib
+tiny            128   4 |      0.057      0.056      0.051 |            0.99x            0.90x
+small           512   8 |      0.379      0.379      0.373 |            1.00x            0.98x
+gpt2-ish       1024  12 |      1.228      1.232      1.227 |            1.00x            1.00x
+llama3 L=2k    2048  32 |      3.327      3.308      3.335 |            0.99x            1.00x
+llama3 L=4k    4096  32 |     12.658     12.656     12.586 |            1.00x            0.99x
+llama3 L=8k    8192  32 |        n/s        n/s        n/s |                -                -
+
+-- FULL GRADIENT, fwd+bwd (ms) --
+config            L   H |      nnlib  nnlib-mat        lux |  nnlib-mat/nnlib        lux/nnlib
+tiny            128   4 |      0.392      0.369      1.156 |            0.94x            2.95x
+small           512   8 |      2.272      2.262      2.601 |            1.00x            1.14x
+gpt2-ish       1024  12 |      6.180      6.261      6.233 |            1.01x            1.01x
+llama3 L=2k    2048  32 |     17.269     17.391     17.247 |            1.01x            1.00x
+llama3 L=4k    4096  32 |     72.847     69.649     67.975 |            0.96x            0.93x
+llama3 L=8k    8192  32 |        OOM        OOM        OOM |                -                -
+
+<impl>/nnlib = time relative to nnlib (>1 → nnlib faster).
