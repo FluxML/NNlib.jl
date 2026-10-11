@@ -1,21 +1,16 @@
-# GPU multi-head attention benchmark: NNlib vs LuxLib vs NNkernels (Flash Attention).
+# GPU multi-head attention benchmark: NNlib (cuDNN fused / materialized) vs LuxLib.
 #
-# Three implementations of the SAME scaled dot-product (multi-head) attention
-# (scale 1/√E):
+# Implementations of the SAME scaled dot-product (multi-head) attention (scale 1/√E):
 #
-#   * NNlib  `dot_product_attention`         — materialized path: forms the full
+#   * nnlib      NNlib `scaled_dot_product_attention`. For Float16/BFloat16 it runs
+#       cuDNN's fused kernel, which never materializes the scores: memory is O(seq).
+#       Other eltypes take the materialized path below.
+#   * nnlib-mat  the same function kept on its generic path: forms the full
 #       (kv_len, q_len, nheads, batch) score tensor, `softmax`, second batched_mul.
 #       Memory is O(seq²).
-#   * LuxLib `scaled_dot_product_attention`  — also a materialized softmax path,
-#       with its own (E, H, L, B) layout and KV-grouping support.
-#   * NNkernels `flash_attention`            — fused FlashAttention kernel; never
-#       materializes the scores, so memory is O(seq).
+#   * lux        LuxLib `scaled_dot_product_attention`, also a materialized softmax path.
 #
-# Each library wants a different layout for the SAME data, so we build all three
-# from one source tensor:
-#   * NNkernels: q,k,v = (head_dim, seq, nheads, batch)         = (E, L, H, B)
-#   * NNlib:     q,k,v = (head_dim*nheads, seq, batch), nheads=H  = (E*H, L, B)
-#   * LuxLib:    q,k,v = (head_dim, nheads, seq, batch)          = (E, H, L, B)
+# All of them take q,k,v = (head_dim, nheads, seq, batch) = (E, H, L, B).
 #
 # Reports forward and full Zygote-gradient (forward+backward) wall time in ms,
 # GPU-synchronized. "OOM" = ran out of GPU memory; "n/s" = that path can't run
@@ -24,17 +19,15 @@
 # Run (whole suite):
 #     julia --project=. bench_attention.jl
 # Benchmark a single dtype/impl combination without rerunning everything:
-#     julia --project=. bench_attention.jl --dtypes f32 --impls flash --causal false
+#     julia --project=. bench_attention.jl --dtypes f16 --impls nnlib,nnlib-mat --causal false
 #     julia --project=. bench_attention.jl --dtypes f16,bf16 --impls nnlib,lux --sizes tiny,small
 # Pin a GPU:
 #     CUDA_VISIBLE_DEVICES=GPU-<uuid> julia --project=. bench_attention.jl ...
 # See all options:
 #     julia --project=. bench_attention.jl --help
 
-using CUDA, cuDNN, NNlib, NNkernels, LuxLib, Zygote, BenchmarkTools, Printf, ArgParse
+using CUDA, cuDNN, NNlib, LuxLib, Zygote, BenchmarkTools, Printf, ArgParse
 using BFloat16s: BFloat16
-using NNlib: make_causal_mask
-using LuxLib: scaled_dot_product_attention
 
 # ---------------------------------------------------------------------------
 # registries: configs, dtypes, implementations
@@ -58,42 +51,35 @@ const DTYPE_ALIASES = Dict(
 )
 const DTYPE_ORDER = (Float16, BFloat16, Float32)   # canonical print order
 
-# An implementation: how to build its inputs from the source (E,L,H,B) tensors,
-# and how to run forward / full-gradient on those inputs.
+# An implementation: how to run forward / full-gradient on the inputs (q, k, v, causal).
 struct Impl
     name::String
-    prep::Function   # (qf,kf,vf,causal) -> inputs tuple in this impl's layout
-    fwd::Function    # (inputs)          -> output
-    grad::Function   # (inputs)          -> gradient w.r.t. q,k,v
+    fwd::Function    # (inputs) -> output
+    grad::Function   # (inputs) -> gradient w.r.t. q,k,v
 end
 
-# (E,L,H,B) -> (E*H, L, B)
-_tonn(x) = reshape(permutedims(x, (1, 3, 2, 4)), size(x, 1) * size(x, 3), size(x, 2), size(x, 4))
-# (E,L,H,B) -> (E,H,L,B)
-_tolux(x) = permutedims(x, (1, 3, 2, 4))
+# NNlib only takes the fused kernel without dropout: a no-op `fdrop` other than
+# `identity` keeps it on the generic path, at no extra cost.
+nofuse(x) = x
 
+# TODO: add CuTile.jl to the comparison.
 const IMPLS = Dict(
     "nnlib" => Impl("nnlib",
-        (qf, kf, vf, causal) -> begin
-            qn, kn, vn = _tonn(qf), _tonn(kf), _tonn(vf)
-            mask = causal ? make_causal_mask(qn) : nothing
-            (qn, kn, vn, mask, size(qf, 3))
-        end,
-        I -> dot_product_attention(I[1], I[2], I[3]; nheads=I[5], mask=I[4])[1],
+        I -> NNlib.scaled_dot_product_attention(I[1], I[2], I[3]; is_causal=I[4]),
         I -> Zygote.gradient((q, k, v) ->
-                sum(dot_product_attention(q, k, v; nheads=I[5], mask=I[4])[1]), I[1], I[2], I[3])),
+                sum(NNlib.scaled_dot_product_attention(q, k, v; is_causal=I[4])), I[1], I[2], I[3])),
+    "nnlib-mat" => Impl("nnlib-mat",
+        I -> NNlib.scaled_dot_product_attention(I[1], I[2], I[3]; is_causal=I[4], fdrop=nofuse),
+        I -> Zygote.gradient((q, k, v) ->
+                sum(NNlib.scaled_dot_product_attention(q, k, v; is_causal=I[4], fdrop=nofuse)),
+                I[1], I[2], I[3])),
     "lux" => Impl("lux",
-        (qf, kf, vf, causal) -> (_tolux(qf), _tolux(kf), _tolux(vf), causal),
-        I -> scaled_dot_product_attention(I[1], I[2], I[3]; is_causal=I[4])[1],
+        I -> LuxLib.scaled_dot_product_attention(I[1], I[2], I[3]; is_causal=I[4])[1],
         I -> Zygote.gradient((q, k, v) ->
-                sum(scaled_dot_product_attention(q, k, v; is_causal=I[4])[1]), I[1], I[2], I[3])),
-    "flash" => Impl("flash",
-        (qf, kf, vf, causal) -> (qf, kf, vf, causal),
-        I -> NNkernels.flash_attention(I[1], I[2], I[3]; causal=I[4]),
-        I -> Zygote.gradient((q, k, v) ->
-                sum(NNkernels.flash_attention(q, k, v; causal=I[4])), I[1], I[2], I[3])),
+                sum(LuxLib.scaled_dot_product_attention(q, k, v; is_causal=I[4])[1]), I[1], I[2], I[3])),
 )
-const IMPL_ORDER = ["nnlib", "lux", "flash"]   # canonical column order
+# canonical column order; the first selected one is the reference for the ratios
+const IMPL_ORDER = ["nnlib", "nnlib-mat", "lux"]
 
 # ---------------------------------------------------------------------------
 # timing
@@ -132,19 +118,14 @@ end
 # sanity check (only over the selected implementations)
 # ---------------------------------------------------------------------------
 
-# bring each impl's forward output to a common (E,H,L,B) layout for comparison
-to_common(::Val{:nnlib}, y, E, L, H, B) = reshape(y, E, H, L, B)
-to_common(::Val{:lux},   y, E, L, H, B) = y
-to_common(::Val{:flash}, y, E, L, H, B) = permutedims(y, (1, 3, 2, 4))
-
 function sanity(T, impls)
     E, L, H, B = 32, 64, 4, 2
-    qf = CUDA.randn(T, E, L, H, B); kf = CUDA.randn(T, E, L, H, B); vf = CUDA.randn(T, E, L, H, B)
+    q = CUDA.randn(T, E, H, L, B); k = CUDA.randn(T, E, H, L, B); v = CUDA.randn(T, E, H, L, B)
     outs = Dict{String,Any}()
     for name in impls
         im = IMPLS[name]
         outs[name] = try
-            Array(to_common(Val(Symbol(name)), im.fwd(im.prep(qf, kf, vf, false)), E, L, H, B))
+            Float32.(Array(im.fwd((q, k, v, false))))
         catch
             nothing
         end
@@ -169,19 +150,18 @@ ok(x) = !isnan(x) && x > 0
 spd(num, den) = (ok(num) && ok(den)) ? @sprintf("%.2fx", num / den) : "-"
 
 function print_table(title, impls, rows, key)
-    haveflash = "flash" in impls && length(impls) > 1
-    others = filter(!=("flash"), impls)
+    ref, others = first(impls), impls[2:end]
     header = rpad("config", 13) * lpad("L", 6) * lpad("H", 4) * " |"
-    for name in impls; header *= lpad(name, 10); end
-    haveflash && (header *= " |"; for name in others; header *= lpad(name * "/fl", 9); end)
+    for name in impls; header *= lpad(name, 11); end
+    isempty(others) || (header *= " |"; for name in others; header *= lpad(name * "/" * ref, 17); end)
     println("\n-- $title --")
     println(header)
     for r in rows
         line = rpad(r.name, 13) * lpad(string(r.L), 6) * lpad(string(r.H), 4) * " |"
-        for name in impls; line *= lpad(fmt(r.t[name][key]), 10); end
-        if haveflash
+        for name in impls; line *= lpad(fmt(r.t[name][key]), 11); end
+        if !isempty(others)
             line *= " |"
-            for name in others; line *= lpad(spd(r.t[name][key], r.t["flash"][key]), 9); end
+            for name in others; line *= lpad(spd(r.t[name][key], r.t[ref][key]), 17); end
         end
         println(line)
     end
@@ -190,23 +170,20 @@ end
 function run(T, causal, impls, configs, seconds)
     @printf("\n%s\n### dtype=%s  causal=%s\n%s\n", "#"^104, string(T), causal, "#"^104)
     rows = map(configs) do (name, E, L, H, B)
-        qf = CUDA.randn(T, E, L, H, B); kf = CUDA.randn(T, E, L, H, B); vf = CUDA.randn(T, E, L, H, B)
+        q = CUDA.randn(T, E, H, L, B); k = CUDA.randn(T, E, H, L, B); v = CUDA.randn(T, E, H, L, B)
         t = Dict{String,Any}()
         for nm in impls
             im = IMPLS[nm]
-            I = try im.prep(qf, kf, vf, causal) catch; nothing end
-            if I === nothing
-                t[nm] = (; fwd = -1.0, grad = -1.0)
-            else
-                t[nm] = (; fwd  = timed(() -> im.fwd(I), seconds),
-                          grad = timed(() -> im.grad(I), seconds))
-            end
+            I = (q, k, v, causal)
+            t[nm] = (; fwd  = timed(() -> im.fwd(I), seconds),
+                      grad = timed(() -> im.grad(I), seconds))
         end
-        qf = kf = vf = nothing; CUDA.reclaim()
+        q = k = v = nothing; CUDA.reclaim()
         (; name, L, H, t)
     end
     print_table("FORWARD (ms)", impls, rows, :fwd)
     print_table("FULL GRADIENT, fwd+bwd (ms)", impls, rows, :grad)
+    flush(stdout)   # show each block as it completes, also when writing to a file
 end
 
 # ---------------------------------------------------------------------------
@@ -214,14 +191,14 @@ end
 # ---------------------------------------------------------------------------
 
 function parse_cli(argv)
-    s = ArgParseSettings(description="GPU multi-head attention benchmark: NNlib vs LuxLib vs NNkernels.")
+    s = ArgParseSettings(description="GPU multi-head attention benchmark: NNlib (cuDNN fused / materialized) vs LuxLib.")
     @add_arg_table! s begin
         "--dtypes"
             help = "comma list of dtypes: f16,bf16,f32 (aliases ok). Default: all."
             default = "f16,bf16,f32"
         "--impls"
-            help = "comma list of implementations: nnlib,lux,flash. Default: all."
-            default = "nnlib,lux,flash"
+            help = "comma list of implementations: $(join(IMPL_ORDER, ',')). Default: all."
+            default = join(IMPL_ORDER, ',')
         "--causal"
             help = "comma list of causal modes: false,true (or 'both'). Default: both."
             default = "false,true"
@@ -249,7 +226,7 @@ function resolve(opts)
     dtypes = filter(in(unique(dtypes)), collect(DTYPE_ORDER))   # canonical order, dedup
 
     impls = map(lowercase, splitcsv(opts["impls"]))
-    for im in impls; im in IMPL_ORDER || error("unknown impl '$im' (try nnlib,lux,flash)"); end
+    for im in impls; im in IMPL_ORDER || error("unknown impl '$im' (try $(join(IMPL_ORDER, ',')))"); end
     impls = filter(in(impls), IMPL_ORDER)
 
     cstr = lowercase(strip(opts["causal"]))
@@ -278,8 +255,8 @@ function main(argv)
     println("GPU:        ", CUDA.name(CUDA.device()))
     println("NNlib:      ", pkgversion(NNlib))
     println("LuxLib:     ", pkgversion(LuxLib))
-    println("NNkernels:  ", pkgversion(NNkernels))
     println("CUDA.jl:    ", pkgversion(CUDA))
+    println("cuDNN:      ", pkgversion(cuDNN), " (library ", cuDNN.version(), ")")
     println("selection:  dtypes=", join(string.(dtypes), ","),
             "  impls=", join(impls, ","),
             "  causal=", join(string.(causals), ","),
@@ -289,8 +266,9 @@ function main(argv)
     for T in dtypes, causal in causals
         run(T, causal, impls, configs, seconds)
     end
-    if "flash" in impls && length(impls) > 1
-        println("\n<impl>/fl = time relative to flash (>1 → flash faster).")
+    if length(impls) > 1
+        ref = first(impls)
+        println("\n<impl>/$ref = time relative to $ref (>1 → $ref faster).")
     end
 end
 
