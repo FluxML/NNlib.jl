@@ -41,18 +41,23 @@ function main()
             kwargs...
         )
 
+    pkgdir = dirname(dirname(@__DIR__))
+    script = joinpath(@__DIR__, "benchmarks.jl")
+
     target = parsed_args["target"]
     group_target = benchmarkpkg(
-        dirname(@__DIR__),
+        pkgdir,
         mkconfig(id = target),
+        script = script,
         resultfile = joinpath(@__DIR__, "result-$(target).json"),
         retune = parsed_args["retune"],
     )
 
     baseline = parsed_args["baseline"]
     group_baseline = benchmarkpkg(
-        dirname(@__DIR__),
+        pkgdir,
         mkconfig(id = baseline),
+        script = script,
         resultfile = joinpath(@__DIR__, "result-$(baseline).json"),
     )
 

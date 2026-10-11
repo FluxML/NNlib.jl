@@ -31,7 +31,7 @@
 # inside functions, so that one whose API has gone shows up as "n/s" rather than
 # breaking the script.
 
-using CUDA, cuDNN, NNlib, BenchmarkTools, Printf, ArgParse
+using CUDA, cuDNN, NNlib, Zygote, BenchmarkTools, Printf, ArgParse
 using BFloat16s: BFloat16
 using NNlib: batchnorm, ∇batchnorm
 
@@ -58,6 +58,15 @@ const SIZES = [
     ("large",  (64, 64, 128, 32)),
     ("odd-C",  (32, 32, 30, 16)),   # a number of channels that is not a multiple of 4
 ]
+
+# For softmax alone: matrices, as (rows, 1, columns, 1), with a long softmax axis (#513).
+const SOFTMAX_SIZES = [
+    ("long-W",  (10000, 1, 100, 1)),
+    ("long-C",  (100, 1, 10000, 1)),
+    ("long-WC", (1000, 1, 1000, 1)),
+]
+
+family_sizes(family) = family == "softmax" ? [SIZES; SOFTMAX_SIZES] : SIZES
 
 const DTYPE_ALIASES = Dict(
     "f16" => Float16,  "float16" => Float16,  "fp16" => Float16,  "half" => Float16,
@@ -271,45 +280,50 @@ function activation_ops(T, sz)
 end
 
 # ---------------------------------------------------------------------------
-# softmax, along the first dimension and along the channels
+# softmax and logsoftmax, along the first dimension and along the channels
 # ---------------------------------------------------------------------------
 
 function softmax_ops(T, sz)
     x, dy = gpurandn(T, sz...), gpurandn(T, sz...)
-    algo() = cuDNN.CUDNN_SOFTMAX_ACCURATE
     # cuDNN reduces over all of (W, H, C) per sample ("instance" mode), or over the
     # channels alone: for the first dimension, fold the others into the batch.
     instance_size = (1, 1, sz[1], length(x) ÷ sz[1])
     fixed_view(a, dims) = dims == 1 ? reshape(a, instance_size) : a
     fixed_mode(dims) = dims == 1 ? cuDNN.CUDNN_SOFTMAX_MODE_INSTANCE :
                                    cuDNN.CUDNN_SOFTMAX_MODE_CHANNEL
-    function fixed_fwd(dims)
+    function fixed_fwd(algo, dims)
         y = similar(x)
         cuDNN.cudnnSoftmaxForward!(fixed_view(y, dims), fixed_view(x, dims);
-                                   mode=fixed_mode(dims), algo=algo())
+                                   mode=fixed_mode(dims), algo=getfield(cuDNN, algo))
         return y
     end
-    function fixed_bwd(y, dims)
+    function fixed_bwd(algo, y, dims)
         dx = similar(x)
         yv = fixed_view(y, dims)
         d = cuDNN.cudnnTensorDescriptor(yv)
-        cuDNN.cudnnSoftmaxBackward(cuDNN.handle(), algo(), fixed_mode(dims),
+        cuDNN.cudnnSoftmaxBackward(cuDNN.handle(), getfield(cuDNN, algo), fixed_mode(dims),
                                    fixed_scale(T, 1), d, yv, d, fixed_view(dy, dims),
                                    fixed_scale(T, 0), d, fixed_view(dx, dims))
         return dx
     end
 
     ops = Op[]
-    for dims in (1, 3)
-        y = softmax(x; dims)
-        push!(ops, Op("softmax (dims=$dims)";
-                      nnlib   = () -> softmax(x; dims),
-                      generic = () -> NNlib._softmax!(similar(x), x; dims),
-                      fixed   = () -> fixed_fwd(dims)))
-        push!(ops, Op("∇softmax (dims=$dims)";
-                      nnlib   = () -> ∇softmax(dy, y; dims),
-                      generic = () -> NNlib._∇softmax!(similar(y), dy, y; dims),
-                      fixed   = () -> fixed_bwd(y, dims)))
+    for dims in (1, 3), (name, f, ∇f, generic!, ∇generic!, algo) in (
+            ("softmax", softmax, ∇softmax, NNlib._softmax!, NNlib._∇softmax!,
+             :CUDNN_SOFTMAX_ACCURATE),
+            ("logsoftmax", logsoftmax, ∇logsoftmax, NNlib._logsoftmax!, NNlib._∇logsoftmax!,
+             :CUDNN_SOFTMAX_LOG))
+        y, back = Zygote.pullback(z -> f(z; dims), x)
+        push!(ops, Op("$name (dims=$dims)";
+                      nnlib   = () -> f(x; dims),
+                      generic = () -> generic!(similar(x), x; dims),
+                      fixed   = () -> fixed_fwd(algo, dims)))
+        push!(ops, Op("∇$name (dims=$dims)";
+                      nnlib   = () -> ∇f(dy, y; dims),
+                      generic = () -> ∇generic!(similar(y), dy, y; dims),
+                      fixed   = () -> fixed_bwd(algo, y, dims)))
+        # the same gradient as Zygote reaches it, through NNlib's `rrule`
+        push!(ops, Op("Zygote ∇$name (dims=$dims)"; nnlib = () -> only(back(dy))))
     end
     return ops
 end
@@ -440,7 +454,7 @@ function sanity(families, T)
             end
             "$name=$d"
         end
-        @printf("  %-24s %s\n", op.name, join(parts, "  "))
+        @printf("  %-28s %s\n", op.name, join(parts, "  "))
     end
     flush(stdout)
 end
@@ -450,10 +464,10 @@ end
 # ---------------------------------------------------------------------------
 
 tableline(op, T, sz, cells, fastest) =
-    rpad(op, 25) * rpad(T, 10) * rpad(sz, 15) * "|" * join(lpad.(cells, 10)) * " | " * fastest
+    rpad(op, 29) * rpad(T, 10) * rpad(sz, 15) * "|" * join(lpad.(cells, 10)) * " | " * fastest
 
 function run_family(family, makeops, dtypes, sizes, seconds, rows)
-    println("\n", "#"^100, "\n### ", family, "   (μs)\n", "#"^100)
+    println("\n", "#"^104, "\n### ", family, "   (μs)\n", "#"^104)
     println(tableline("operator", "eltype", "size", IMPLS, "fastest"))
     for T in dtypes, (_, sz) in sizes
         ops = try
@@ -491,7 +505,8 @@ function parse_cli(argv)
             help = "comma list of dtypes: f16,bf16,f32,f64 (aliases ok)."
             default = "f32,f16"
         "--sizes"
-            help = "comma list of input sizes: $(join(first.(SIZES), ',')). Default: all."
+            help = "comma list of input sizes: $(join(first.(SIZES), ',')), and for " *
+                   "softmax alone $(join(first.(SOFTMAX_SIZES), ',')). Default: all."
             default = "all"
         "--seconds"
             help = "per-measurement time budget."
@@ -527,12 +542,15 @@ function main(argv)
     if opts["list"]
         println("operator families: ", join(first.(FAMILIES), ", "))
         println("sizes:             ", join(("$n=$(sizestr(sz))" for (n, sz) in SIZES), ", "))
+        println("  softmax alone:   ",
+                join(("$n=$(sizestr(sz))" for (n, sz) in SOFTMAX_SIZES), ", "))
         println("dtypes:            f16, bf16, f32, f64")
         return
     end
     @assert CUDA.functional() "CUDA is not functional"
     families = select(opts["ops"], FAMILIES, "operator family")
-    sizes = select(opts["sizes"], SIZES, "size")
+    sizes = select(opts["sizes"], unique(reduce(vcat, family_sizes.(first.(families)))),
+                   "size")
     dtypes = map(splitcsv(opts["dtypes"])) do d
         haskey(DTYPE_ALIASES, lowercase(d)) || error("unknown dtype '$d' (try f16,bf16,f32,f64)")
         DTYPE_ALIASES[lowercase(d)]
@@ -552,7 +570,8 @@ function main(argv)
 
     rows = NTuple{6,String}[]
     for (family, makeops) in families
-        run_family(family, makeops, dtypes, sizes, opts["seconds"], rows)
+        run_family(family, makeops, dtypes, filter(in(family_sizes(family)), sizes),
+                   opts["seconds"], rows)
     end
     println("\nfastest = the fastest of generic, fixed and graph; `nnlib` is what NNlib runs.")
 
