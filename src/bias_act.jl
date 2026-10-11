@@ -42,7 +42,7 @@ function bias_act!(::typeof(identity), x::StridedArray{<:AbstractFloat}, b::Bool
     x  # pass-through
 end
 
-function bias_act!(σ::Function, x::AbstractArray, b)
+@inline function bias_act!(σ::Function, x::AbstractArray, b)
     b === true && error("bias=true is not accepted; layer constructors shoud guarantee this")
     fast_act(σ, x).(x .+ b)  # fallback
 end

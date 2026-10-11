@@ -124,14 +124,13 @@ function predilate(x::AbstractArray{T,N}, dilation::NTuple{M}) where {T, N, M}
     return x_dil
 end
 
+# For any array with ndims <= 3 it makes no sense to flip the weights so simply return the
+# original array
 """
     flipweight(w::AbstractArray)
 
 Reorders the weight tensor for supporting both convolution and cross-correlation operations.
 """
-
-# For any array with ndims <= 3 it makes no sense to flip the weights so simply return the
-# original array
 @inline flipweight(w::AbstractArray) = w
 
 @inline flipweight(w::AbstractArray{T, 4}) where {T} = w[end:-1:1, end:-1:1, :, :]

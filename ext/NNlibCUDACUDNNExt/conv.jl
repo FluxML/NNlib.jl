@@ -5,10 +5,20 @@ import NNlib: conv!, ∇conv_filter!, ∇conv_data!, conv_bias_act!
 using cuDNN: CUDNN_CONVOLUTION, CUDNN_CROSS_CORRELATION, convolution!,
              convolution_data_gradient!, convolution_filter_gradient!
 
-const CUDNNFloat = Union{Float16,Float32,Float64}
+const CUDNNFloat = Union{Float16,BFloat16,Float32,Float64}
 const CUDNNComplexFloat = Union{ComplexF16,ComplexF32,ComplexF64}
 
+# Compute (accumulation) type for the convolution. cuDNN's TRUE_HALF_CONFIG (compute
+# in Float16) is only supported for a narrow set of 2D shapes; in particular it is
+# unsupported for 3D convolutions and for many backward-filter shapes, surfacing as
+# CUDNN_STATUS_NOT_SUPPORTED/BAD_PARAM. PSEUDO_HALF_CONFIG (Float16 data, Float32
+# compute) is broadly supported and is the standard choice (matching e.g. PyTorch),
+# so Float16 convolutions always compute in Float32.
+# Fixes https://github.com/FluxML/NNlib.jl/issues/505 and #515.
+# BFloat16 has no native cuDNN accumulation config at all, so it likewise computes
+# in Float32.
 conv_compute_type(::Type{Float16}) = Float32
+conv_compute_type(::Type{BFloat16}) = Float32
 conv_compute_type(::Type{T}) where T = T
 
 conv_mode(cdims::DenseConvDims) =

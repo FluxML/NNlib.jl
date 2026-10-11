@@ -65,7 +65,17 @@ function rrule!!(
     prv = primal(running_var)
     pm = primal(momentum)
 
-    fwd_cache = _BNFwdCache()
+    # cudnnBNForward! only populates a passed-in cache when training=true; in eval mode
+    # it's left unset, and cudnnBNBackward! reads it anyway, crashing on the stale
+    # `nothing`. Only build a live cache when training is actually on, and respect a
+    # caller-supplied cache (e.g. via Flux.BatchNorm's own `cache` argument) instead of
+    # silently replacing it with our own.
+    fwd_cache = if get(pkw, :training, true)
+        caller_cache = get(pkw, :cache, nothing)
+        caller_cache === nothing ? _BNFwdCache() : caller_cache
+    else
+        nothing
+    end
     y = batchnorm(pg, pb, px, prm, prv, pm; pkw..., cache=fwd_cache)
     dy_out = zero(y)
     zero_kw = zero_rdata(pkw)

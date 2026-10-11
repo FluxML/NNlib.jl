@@ -789,6 +789,38 @@ end
    @test test_gradients((x, w) -> sum(conv(x, w, csdims)), xs, ws)
 end
 
+# https://github.com/FluxML/Flux.jl/issues/2508: grouped/depthwise convs used to
+# allocate O(groups) workspaces/closures, so a depthwise conv over many channels
+# produced tens of thousands of allocations. The im2col workspace is now shared
+# and the per-group inner loop no longer boxes, so forward/backward allocations
+# are flat in the group count (bounded by the thread count, not the groups).
+# The remaining per-group allocations (the channel-slice `SubArray` views and the
+# worker closure) are only elided by the compiler on Julia >= 1.12; on older
+# versions grouped convs still allocate O(groups), so the flatness is only
+# asserted where the compiler delivers it.
+@static if VERSION >= v"1.12"
+    @testset "grouped conv allocation count is flat in group count" begin
+        xg = rand(Float32, 16, 16, 256, 2)
+        function conv_allocs(G)
+            w = rand(Float32, 3, 3, 256 ÷ G, 256)
+            cd = DenseConvDims(xg, w; padding=1, groups=G)
+            y = conv(xg, w, cd)                       # warmup / compile
+            NNlib.∇conv_data(y, w, cd); NNlib.∇conv_filter(xg, y, cd)
+            fwd = @allocations conv(xg, w, cd)
+            gd  = @allocations NNlib.∇conv_data(y, w, cd)
+            gf  = @allocations NNlib.∇conv_filter(xg, y, cd)
+            return fwd, gd, gf
+        end
+        # Quadrupling the group count must not scale allocations with it (old code
+        # would grow ~4x). Allow a generous additive slack for scheduling noise.
+        f64, d64, w64 = conv_allocs(64)
+        f256, d256, w256 = conv_allocs(256)
+        @test f256 <= f64 + 64
+        @test d256 <= d64 + 64
+        @test w256 <= w64 + 64
+    end
+end
+
 @testset "conv_wrapper" begin
     x = rand(10, 10, 3, 10)
     w = rand(2, 2, 3, 16)
@@ -820,6 +852,36 @@ end
     @test size(depthwiseconv(x, w1; stride = (1, 2), pad = (2, 3))) == (12, 7, 9, 10)
     @test size(depthwiseconv(x, w1; stride = (1, 2), pad = (2, 3), dilation = (2, 2))) == (10, 5, 9, 10)
     @test size(depthwiseconv(x, w1; stride = (1, 2), pad = (2, 3), dilation = (2, 2), flipped = true)) == (10, 5, 9, 10)
+end
+
+# https://github.com/FluxML/NNlib.jl/issues/760
+@testset "conv with zero-sized batch dimension" begin
+    for rank in (1, 2, 3)
+        @testset "rank=$rank" begin
+            x = randn(Float32, ntuple(_ -> 6, rank)..., 2, 0)  # zero batch
+            w = randn(Float32, ntuple(_ -> 2, rank)..., 2, 3)
+            cdims = DenseConvDims(x, w)
+            y = randn(Float32, ntuple(_ -> 5, rank)..., 3, 0)  # matching empty output
+
+            y_shape = (ntuple(_ -> 5, rank)..., 3, 0)
+            for (fwd, ∇data, ∇filter) in (
+                    (NNlib.conv, NNlib.∇conv_data, NNlib.∇conv_filter),
+                    (NNlib.conv_im2col, NNlib.∇conv_data_im2col, NNlib.∇conv_filter_im2col),
+                    (NNlib.conv_direct, NNlib.∇conv_data_direct, NNlib.∇conv_filter_direct))
+                @test size(fwd(x, w, cdims)) == y_shape
+                @test size(∇data(y, w, cdims)) == size(x)
+                dw = ∇filter(x, y, cdims)
+                @test size(dw) == size(w)
+                # no batches to sum over ⇒ the filter gradient is exactly zero
+                @test all(iszero, dw)
+            end
+        end
+    end
+
+    # empty minibatch obtained by slicing an empty range (the motivating case)
+    x = randn(Float32, 10, 10, 3, 5)
+    w = randn(Float32, 3, 3, 3, 4)
+    @test size(conv(x[:, :, :, 3:2], w)) == (8, 8, 4, 0)
 end
 
 # https://github.com/FluxML/NNlib.jl/pull/171

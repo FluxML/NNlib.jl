@@ -19,4 +19,7 @@ makedocs(modules = [NNlib],
 
 deploydocs(repo = "github.com/FluxML/NNlib.jl.git",
            target = "build",
-           push_preview = true)
+           # PR previews are pushed with the `DOCUMENTER_KEY` deploy key. Dependabot PRs
+           # cannot read that secret and their `GITHUB_TOKEN` is read-only, so pushing a
+           # preview from them fails with a 403: only build the docs there.
+           push_preview = !isempty(get(ENV, "DOCUMENTER_KEY", "")))

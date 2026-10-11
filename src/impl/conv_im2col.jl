@@ -46,6 +46,10 @@ function conv_im2col!(
     K = prod(kernel_size(cdims))*channels_in(cdims)
 
     nbatch = size(x, 5)
+    # Zero-sized batch: `y` already has the correct (…, 0) shape and no elements
+    # to write, so return before the partitioning below (which chokes on nbatch==0,
+    # via `divrem(ntasks, 0)` or `partition(1:0, 0)`). See issue #760.
+    nbatch == 0 && return y
     ntasks = min(ntasks, size(col, 3))
 
     # Multiply a contiguous block of `m_len` output-spatial rows, starting at
@@ -95,13 +99,13 @@ function conv_im2col!(
     # outermost spatial axis with extent > 1, which keeps each task's output
     # rows contiguous in `y`.
     out_w, out_h, out_d = output_size(cdims)
-    if out_d > 1
-        naxis, stride_ax, axis = out_d, out_w*out_h, :d
-    elseif out_h > 1
-        naxis, stride_ax, axis = out_h, out_w, :h
-    else
-        naxis, stride_ax, axis = out_w, 1, :w
-    end
+    # Single assignment site (not a multi-branch one) so `axis`/`stride_ax` are
+    # not boxed when captured by the `tile_task` closure below -- boxing here
+    # allocates on every call and is multiplied by the group count on the
+    # grouped/depthwise path.
+    naxis, stride_ax, axis = out_d > 1 ? (out_d, out_w*out_h, :d) :
+                             out_h > 1 ? (out_h, out_w, :h) :
+                                         (out_w, 1, :w)
 
     # Distribute ntasks spatial blocks across the nbatch images.
     base, extra = divrem(ntasks, nbatch)
@@ -173,6 +177,14 @@ function ∇conv_filter_im2col!(
     N = channels_out(cdims)
     K = prod(output_size(cdims))
 
+    # Zero-sized batch: nothing to accumulate, so the result is just `beta*dw`.
+    # Unlike the forward/data paths, `dw` is not empty here, and the loop below
+    # would otherwise leave it untouched (uninitialized when beta==0). Mirror
+    # GEMM's write-only semantics for beta==0 by zeroing it outright. See #760.
+    if size(x, 5) == 0
+        return iszero(beta) ? fill!(dw, zero(T)) : (dw .*= beta)
+    end
+
     for batch_idx in 1:size(x,5)
         col_slice = view(col, :, :, 1)
 
@@ -223,6 +235,10 @@ function ∇conv_data_im2col!(
     M = prod(output_size(cdims))
     N = prod(kernel_size(cdims))*channels_in(cdims)
     K = channels_out(cdims)
+
+    # Zero-sized batch: `dx` already has the correct (…, 0) shape and no elements
+    # to write, so return before partitioning (`partition(1:0, 0)` errors). See #760.
+    size(dx, 5) == 0 && return dx
 
     parts = Iterators.partition(axes(dx, 5), ceil(Int, size(dx, 5) / ntasks))
 
