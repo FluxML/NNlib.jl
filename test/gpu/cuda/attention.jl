@@ -5,6 +5,11 @@ const SDPA_EXT = Base.get_extension(NNlib, :NNlibCUDACUDNNExt)
 sdpa_fused(q, k, v, bias=nothing; fdrop=identity, mask=nothing, is_causal=false) =
     SDPA_EXT.cudnn_sdpa_output(q, k, v, bias, fdrop, mask, is_causal) !== nothing
 
+# Whether cuDNN has a fused engine for these inputs on this device: NNlib takes the fused
+# kernel exactly then. Where it has none, the comparisons below check the generic path.
+sdpa_supported(q, k, v; is_causal=false) =
+    cuDNN.attention_supported(similar(q), q, k, v; causal=is_causal)
+
 half(T, x) = T.(CuArray(x))    # round on the device (JuliaMath/BFloat16s.jl#107)
 
 @testset "scaled dot-product attention ($T)" for T in (Float16, BFloat16)
@@ -14,7 +19,7 @@ half(T, x) = T.(CuArray(x))    # round on the device (JuliaMath/BFloat16s.jl#107
     v = rand(Float32, 32, 2, 12, 3) ./ 4
     qd, kd, vd = half(T, q), half(T, k), half(T, v)
 
-    @test sdpa_fused(qd, kd, vd)
+    @test sdpa_fused(qd, kd, vd) == sdpa_supported(qd, kd, vd)
     y = scaled_dot_product_attention(qd, kd, vd)
     @test y isa CuArray{T,4}
     @test Float32.(Array(y)) ≈ scaled_dot_product_attention(q, k, v) rtol=2f-2
@@ -22,7 +27,8 @@ half(T, x) = T.(CuArray(x))    # round on the device (JuliaMath/BFloat16s.jl#107
           scaled_dot_product_attention(q, k, v; scale=0.25f0) rtol=2f-2
 
     @testset "causal" begin
-        @test sdpa_fused(qd, qd, qd; is_causal=true)
+        @test sdpa_fused(qd, qd, qd; is_causal=true) ==
+              sdpa_supported(qd, qd, qd; is_causal=true)
         @test Float32.(Array(scaled_dot_product_attention(qd, qd, qd; is_causal=true))) ≈
               scaled_dot_product_attention(q, q, q; is_causal=true) rtol=2f-2
         @test Float32.(Array(scaled_dot_product_attention(qd, kd, vd; is_causal=true))) ≈
@@ -32,7 +38,7 @@ half(T, x) = T.(CuArray(x))    # round on the device (JuliaMath/BFloat16s.jl#107
     @testset "grouped-query attention" begin
         qg = rand(Float32, 32, 4, 16, 3) ./ 4
         qgd = half(T, qg)
-        @test sdpa_fused(qgd, kd, vd)
+        @test sdpa_fused(qgd, kd, vd) == sdpa_supported(qgd, kd, vd)
         @test Float32.(Array(scaled_dot_product_attention(qgd, kd, vd))) ≈
               scaled_dot_product_attention(qg, k, v) rtol=2f-2
     end
