@@ -42,6 +42,8 @@ trelu
 scaled_dot_product_attention
 scaled_dot_product_attention_scores
 make_causal_mask
+dot_product_attention
+dot_product_attention_scores
 ```
 
 ## Softmax

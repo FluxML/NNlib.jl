@@ -38,8 +38,23 @@ of size `(kv_len, q_len, nheads, batch_size...)`.
 - `scale`: The multiplier used to scale the `queryᵀ * key` dot products before
           the softmax. Default `nothing`, meaning `1 / √(qk_head_dim)`.
 - `is_causal`: If `true`, a causal mask is applied so that each query position can
-          only attend to key positions up to and including its own. Convenience for
-          `mask = make_causal_mask(...)`; cannot be combined with `mask`. Default `false`.
+          only attend to key positions up to and including its own. Equivalent to
+          `mask = make_causal_mask(query; dims=3)` for equal query and key lengths, but
+          a fused implementation does not have to materialize the mask. Cannot be
+          combined with `mask`. Default `false`.
+
+# Fused GPU implementation
+
+With CUDA.jl and cuDNN.jl loaded, `Float16` and `BFloat16` `CuArray`s are handled by
+cuDNN's fused kernel, which computes the output without materializing the attention
+scores, so that memory grows linearly rather than quadratically with the sequence
+length. It supports `scale`, `is_causal` and grouped-query attention, and requires:
+
+- no `bias`, `fdrop` or `mask` (that is `nothing`, `identity` and `nothing`);
+- a head dimension that is a multiple of 8 and at most 256;
+- a `value` with the same head dimension as `query`.
+
+Any other call takes the generic implementation, which materializes the scores.
 
 # Examples
 
@@ -57,17 +72,25 @@ y = scaled_dot_product_attention(q, k, v)
 ```
 """
 function scaled_dot_product_attention(q::AA{N}, k::AA{N}, v::AA{N}, bias=nothing;
-            kws...) where N
-    x, _ = _scaled_dot_product_attention(q, k, v, bias; kws...)
+            fdrop=identity, mask=nothing, scale=nothing, is_causal::Bool=false) where N
+    check_attention_inputs(q, k, v, mask, is_causal)
+    batch_size = size(q)[4:end]
+    q, k, v = map(collapse_batch_dims, (q, k, v))
+    x = _scaled_dot_product_attention(q, k, v, bias; fdrop, mask, scale, is_causal)
+    return reshape(x, size(x, 1), size(x, 2), size(x, 3), batch_size...)
+end
+
+# Attention on `(head_dim, nheads, seq_len, batch_size)` arrays. This is the method for
+# backends to overload: it receives the arguments as the user gave them, before the
+# generic implementation materializes the causal mask, the repeated key/value heads of
+# grouped-query attention and the attention scores, none of which a fused kernel needs.
+function _scaled_dot_product_attention(q::AA4, k::AA4, v::AA4, bias;
+            fdrop, mask, scale, is_causal)
+    x, _ = _attention(q, k, v, bias; fdrop, mask, scale, is_causal)
     return x
 end
 
-# Shared implementation returning both the attention output and the scores `α`,
-# so the (deprecated) `dot_product_attention` can return a consistent `(x, α)` pair
-# without applying a stochastic `fdrop` twice.
-function _scaled_dot_product_attention(q::AA{N}, k::AA{N}, v::AA{N}, bias=nothing;
-            fdrop=identity, mask=nothing, scale=nothing, is_causal::Bool=false) where N
-
+function check_attention_inputs(q::AA{N}, k::AA{N}, v::AA{N}, mask, is_causal) where N
     N >= 3 || throw(ArgumentError(
         "Inputs must have at least 3 dimensions (head_dim, nheads, seq_len). Got $(N)."))
 
@@ -101,14 +124,25 @@ function _scaled_dot_product_attention(q::AA{N}, k::AA{N}, v::AA{N}, bias=nothin
     """))
     (is_causal && mask !== nothing) && throw(ArgumentError(
         "`mask` and `is_causal=true` cannot be specified at the same time."))
+    return nothing
+end
 
+@non_differentiable check_attention_inputs(::Any...)
+
+# collapse the batch dimensions into a single one
+collapse_batch_dims(x) = reshape(x, size(x, 1), size(x, 2), size(x, 3), :)
+
+# Generic implementation, returning both the attention output and the scores `α`,
+# so the (deprecated) `dot_product_attention` can return a consistent `(x, α)` pair
+# without applying a stochastic `fdrop` twice.
+function _attention(q::AA4, k::AA4, v::AA4, bias; fdrop, mask, scale, is_causal)
+    # [q] = [qk_head_dim, nheads, q_len, batch_size]
+    # [k] = [qk_head_dim, nkvheads, kv_len, batch_size]
+    # [v] = [v_head_dim,  nkvheads, kv_len, batch_size]
     if is_causal
         mask = make_causal_mask(q, size(k, 3), size(q, 3))
     end
-
-    batch_size = size(q)[4:end]
-    # collapse the batch dimensions into a single one
-    q, k, v = map(x -> reshape(x, size(x, 1), size(x, 2), size(x, 3), :), (q, k, v))
+    nheads, nkvheads = size(q, 2), size(k, 2)
     if nkvheads != nheads
         # Grouped-query attention: expand the kv heads so each group of
         # `nheads ÷ nkvheads` query heads shares one key/value head.
@@ -116,18 +150,6 @@ function _scaled_dot_product_attention(q::AA{N}, k::AA{N}, v::AA{N}, bias=nothin
         k = repeat_kv_heads(k, r)
         v = repeat_kv_heads(v, r)
     end
-
-    x, α = _attention(q, k, v, bias, fdrop, mask, scale)
-
-    x = reshape(x, size(x, 1), size(x, 2), size(x, 3), batch_size...)
-    α = reshape(α, size(α)[1:3]..., batch_size...)
-    return x, α
-end
-
-function _attention(q::AA4, k::AA4, v::AA4, bias, fdrop, mask, scale)
-    # [q] = [qk_head_dim, nheads, q_len, batch_size]
-    # [k] = [qk_head_dim, nheads, kv_len, batch_size]
-    # [v] = [v_head_dim,  nheads, kv_len, batch_size]
 
     α = _attention_scores(q, k, bias, fdrop, mask, scale)
     # [α] = [kv_len, q_len, nheads, batch_size]
@@ -174,7 +196,7 @@ function scaled_dot_product_attention_scores(q::AA{N}, k::AA{N}, bias=nothing;
     end
 
     batch_size = size(q)[4:end]
-    q, k = map(x -> reshape(x, size(x, 1), size(x, 2), size(x, 3), :), (q, k))
+    q, k = map(collapse_batch_dims, (q, k))
     if nkvheads != nheads
         k = repeat_kv_heads(k, nheads ÷ nkvheads)
     end
@@ -212,15 +234,27 @@ end
 
 
 """
-    make_causal_mask(x, dims=3)
+    make_causal_mask(x; dims)
 
 Return a boolean square matrix `m` of the same type as `x` and of side `size(x, dims)`.
 Its elements are set such that `m[i, j] == i ≤ j`.
 
 Can be used to mask the attention scores in [`scaled_dot_product_attention`](@ref),
-whose inputs have the sequence-length along `dims=3`.
+whose inputs have the sequence length along `dims=3`. For a plain causal mask, prefer
+the `is_causal=true` keyword there, which lets backends with a fused implementation
+avoid materializing the mask.
+
+Calling `make_causal_mask(x)` without `dims` is deprecated. It keeps returning the mask
+for `dims=2`, the sequence dimension of the deprecated `dot_product_attention`.
 """
-function make_causal_mask(x::AbstractArray; dims::Int=3)
+function make_causal_mask(x::AbstractArray; dims::Union{Int,Nothing}=nothing)
+  if dims === nothing
+    Base.depwarn("`make_causal_mask(x)` without the `dims` keyword is deprecated. \
+        Pass `dims=3` for the inputs of `scaled_dot_product_attention` (or use its \
+        `is_causal=true` keyword), `dims=2` for the deprecated `dot_product_attention`.",
+        :make_causal_mask)
+    dims = 2
+  end
   len = size(x, dims)
   mask = triu(trues_like(x, (len, len)))
   return mask

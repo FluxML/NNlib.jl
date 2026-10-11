@@ -13,24 +13,48 @@ function ∇logsoftmax_data(dy::AbstractArray, y::AbstractArray; dims = 1)
 end
 
 
-# Old interface: heads are packed into the feature dimension and split via `nheads`,
-# inputs are `(features, seq_len, batch...)`, and the output heads are joined back.
-# The new `scaled_dot_product_attention` takes an explicit head axis instead.
+### Deprecated in v0.9.46
+
+"""
+    dot_product_attention(query, key, value, [bias]; [nheads, fdrop, mask])
+
+Deprecated: use [`scaled_dot_product_attention`](@ref), which takes inputs with an
+explicit head axis `(head_dim, nheads, seq_len, batch_size...)` and returns only the
+attention output, and [`scaled_dot_product_attention_scores`](@ref) for the scores.
+
+Multihead dot product attention on inputs of size `(features, seq_len, batch_size...)`,
+whose heads are packed into the feature dimension and split according to `nheads`.
+Returns the attention output of size `(v_dim, q_len, batch_size...)` and the attention
+scores of size `(kv_len, q_len, nheads, batch_size...)`.
+"""
 function dot_product_attention(q, k, v, bias=nothing;
-            nheads=1, nkvheads=nheads, kws...)
+            nheads=1, nkvheads=nheads, fdrop=identity, mask=nothing, scale=nothing,
+            is_causal::Bool=false)
     Base.depwarn("`dot_product_attention(q, k, v; nheads)` is deprecated, use \
         `scaled_dot_product_attention(q, k, v)` with an explicit head axis \
         `(head_dim, nheads, seq_len, batch...)` instead.", :dot_product_attention)
-    qh = split_heads(q, nheads)
-    kh = split_heads(k, nkvheads)
-    vh = split_heads(v, nkvheads)
-    x, α = _scaled_dot_product_attention(qh, kh, vh, bias; kws...)
+    q = split_heads(q, nheads)
+    k = split_heads(k, nkvheads)
+    v = split_heads(v, nkvheads)
+    check_attention_inputs(q, k, v, mask, is_causal)
+    batch_size = size(q)[4:end]
+    q, k, v = map(collapse_batch_dims, (q, k, v))
+    # the generic implementation, as this interface also returns the scores
+    x, α = _attention(q, k, v, bias; fdrop, mask, scale, is_causal)
+    x = reshape(x, size(x, 1), size(x, 2), size(x, 3), batch_size...)
+    α = reshape(α, size(α)[1:3]..., batch_size...)
     return join_heads(x), α
 end
 
-# Old `dot_product_attention_scores` already used the explicit-head 4D convention.
+"""
+    dot_product_attention_scores(query, key, [bias]; [fdrop, mask])
+
+Deprecated: use [`scaled_dot_product_attention_scores`](@ref).
+"""
 function dot_product_attention_scores(q, k, bias=nothing; kws...)
     Base.depwarn("`dot_product_attention_scores` is deprecated, use \
         `scaled_dot_product_attention_scores` instead.", :dot_product_attention_scores)
     scaled_dot_product_attention_scores(q, k, bias; kws...)
 end
+
+export dot_product_attention, dot_product_attention_scores
