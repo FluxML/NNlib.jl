@@ -27,7 +27,7 @@ From the run below (RTX 5090, cuDNN 9.26), slowdowns relative to the fastest can
 | `relu`, `tanh`, `σ`, `elu` broadcasts | `fixed` | `generic` is 1.2–5.7× slower. cuDNN has no engine for a graph made of one pointwise operation |
 | `softmax` over leading dimensions | `fixed` (instance mode) | `generic` is 2.7–23× slower |
 | `softmax` over other dimensions | `generic` | **worth revisiting**: `fixed` (channel mode) is 4–15× faster forward and 2–10× in the gradient on these inputs. See the note below |
-| `conv` and its gradients | `graph` | `fixed` is up to 2.2× slower below the largest size and 4–8% slower at the largest. The exceptions are in `Float32`: at the largest size `fixed` is 7% faster for `∇conv_data` and 14% for `∇conv_filter`, and 6% for `∇conv_filter` with 30 channels. `graph` also takes asymmetric padding natively |
+| `conv` and its gradients | `graph` | `fixed` is up to 2.2× slower below the largest size and 4–8% slower at the largest. The exceptions are in `Float32`: at the largest size `fixed` is 7% faster for `∇conv_data` and 14% for `∇conv_filter`, and 6% for `∇conv_filter` with 30 channels. `graph` also takes asymmetric padding natively, though NNlib still pads the input for `∇conv_filter`, whose graph version returns wrong values there with some engines |
 
 ## Run
 

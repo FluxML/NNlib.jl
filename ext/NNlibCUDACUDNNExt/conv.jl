@@ -35,6 +35,22 @@ conv_kwargs(cdims::DenseConvDims, ::Type{T}) where {T} =
 conv_bias_activation(::typeof(NNlib.relu)) = :relu
 conv_bias_activation(::Any) = nothing
 
+# Zero-pad `x` by the asymmetric part of the padding of `cdims`. Returns the padded array
+# and the symmetric padding that remains, or `x` itself if the padding is symmetric.
+function symmetric_padded_input(x::DenseCuArray, cdims::DenseConvDims)
+    pad = NNlib.padding(cdims)
+    nd = NNlib.spatial_dims(cdims)
+    lo = ntuple(i -> pad[2i-1], nd)
+    hi = ntuple(i -> pad[2i], nd)
+    lo == hi && return x, lo
+    sym = min.(lo, hi)
+    sz = ntuple(i -> i <= nd ? size(x, i) + abs(lo[i] - hi[i]) : size(x, i), ndims(x))
+    inner = ntuple(i -> i <= nd ? (1:size(x, i)) .+ (lo[i] - sym[i]) : axes(x, i), ndims(x))
+    xp = fill!(similar(x, sz), 0)
+    xp[inner...] = x
+    return xp, sym
+end
+
 @inline function combine_complex!(y::DenseCuArray{T1}, yr::DenseCuArray{T2},
                                   yi::DenseCuArray{T2}; bias=zero(T1), alpha=one(T1),
                                   beta=zero(T1), σ=identity,
@@ -152,7 +168,11 @@ function ∇conv_filter!(dw::DenseCuArray{T}, x::DenseCuArray{T}, dy::DenseCuArr
     if algo != -1
         @warn "The algo option has been deprecated, the fastest algo is computed automatically" maxlog=1
     end
-    convolution_filter_gradient!(dw, x, dy; conv_kwargs(cdims, T)..., alpha, beta)
+    # With asymmetric padding, cuDNN's filter gradient silently returns wrong values for
+    # some engines (3D convolutions on an A100 with cuDNN 9.26; cuDNN.jl works around
+    # the same in 1D), unlike the forward pass and the data gradient: pad the input.
+    x, padding = symmetric_padded_input(x, cdims)
+    convolution_filter_gradient!(dw, x, dy; conv_kwargs(cdims, T)..., padding, alpha, beta)
 end
 
 function ∇conv_filter!(dw::DenseCuArray{T}, x::DenseCuArray{T}, dy::DenseCuArray{T},
