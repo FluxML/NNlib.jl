@@ -250,10 +250,10 @@ for name in (:max, :mean, :lpnorm)
             # Grab the output at this index for future use
             y_idx = y[w, h, d, c, batch_idx]
             dy_idx = dy[w, h, d, c, batch_idx]
-            # For max pooling: the largest element of the window so far, and where it
-            # is (zero as long as there is none).
+            # For max pooling: the largest element of the window so far, and which one
+            # it is, numbering them in scan order (zero as long as there is none).
             m = m_init
-            max_kw, max_kh, max_kd = 0, 0, 0
+            kmax = 0
 
             for kd in 1:kernel_d,
                 kh in 1:kernel_h,
@@ -268,12 +268,14 @@ for name in (:max, :mean, :lpnorm)
                 # x_idxs = (input_kw, input_kh, input_kd, c, batch_idx)
                 if $(name == :max)
                     # Same comparison as in the forward pass, so that among equal
-                    # elements we pick the first one too.
+                    # elements we pick the first one too. Which element is the largest
+                    # is hard to predict, so we avoid branching on it: with `if`, most
+                    # of the time spent here goes into mispredicted branches. For the
+                    # same reason we keep track of a single number, not of three indices.
                     xv = x[input_kw, input_kh, input_kd, c, batch_idx]
-                    if xv > m
-                        m = xv
-                        max_kw, max_kh, max_kd = input_kw, input_kh, input_kd
-                    end
+                    is_max = xv > m
+                    m = ifelse(is_max, xv, m)
+                    kmax = ifelse(is_max, kw + kernel_w * ((kh - 1) + kernel_h * (kd - 1)), kmax)
                 elseif $(name == :mean)
                     # Either does meanpool :(
                     dx[input_kw, input_kh, input_kd, c, batch_idx] += dy_idx * _alpha
@@ -288,8 +290,11 @@ for name in (:max, :mean, :lpnorm)
 
             # We only choose one element per kernel window, all other elements of dx
             # must be zero. Maxpooling does not support `beta` right now.  :(
-            if $(name == :max) && max_kw > 0
-                dx[max_kw, max_kh, max_kd, c, batch_idx] += dy_idx * _alpha #+ _beta * dx[x_idxs...]
+            if $(name == :max) && kmax > 0
+                # Back from the element's number to its position in the kernel
+                max_kd, max_khw = divrem(kmax - 1, kernel_w * kernel_h)
+                max_kh, max_kw = divrem(max_khw, kernel_w)
+                dx[pw + max_kw * dil_w, ph + max_kh * dil_h, pd + max_kd * dil_d, c, batch_idx] += dy_idx * _alpha #+ _beta * dx[x_idxs...]
             end
             end
             end
@@ -310,7 +315,7 @@ for name in (:max, :mean, :lpnorm)
                 y_idx = y[w, h, d, c, batch_idx]
                 dy_idx = dy[w, h, d, c, batch_idx]
                 m = m_init
-                max_kw, max_kh, max_kd = 0, 0, 0
+                kmax = 0
 
                 # For mean pooling with `count_include_pad=false` the divisor is the
                 # number of non-padding elements in this window, so we count them up front
@@ -358,10 +363,9 @@ for name in (:max, :mean, :lpnorm)
                             # x_idxs = (input_kw, input_kh, input_kd, c, batch_idx)
                             if $(name == :max)
                                 xv = x[input_kw, input_kh, input_kd, c, batch_idx]
-                                if xv > m
-                                    m = xv
-                                    max_kw, max_kh, max_kd = input_kw, input_kh, input_kd
-                                end
+                                is_max = xv > m
+                                m = ifelse(is_max, xv, m)
+                                kmax = ifelse(is_max, kw + kernel_w * ((kh - 1) + kernel_h * (kd - 1)), kmax)
                             elseif $(name == :mean)
                                 dx[input_kw, input_kh, input_kd, c, batch_idx] += dy_idx * win_alpha #+ _beta * dx[x_idxs...]
                             elseif $(name == :lpnorm)
@@ -374,8 +378,10 @@ for name in (:max, :mean, :lpnorm)
                     end
                 end
 
-                if $(name == :max) && max_kw > 0
-                    dx[max_kw, max_kh, max_kd, c, batch_idx] += dy_idx * _alpha #+ _beta * dx[x_idxs...]
+                if $(name == :max) && kmax > 0
+                    max_kd, max_khw = divrem(kmax - 1, kernel_w * kernel_h)
+                    max_kh, max_kw = divrem(max_khw, kernel_w)
+                    dx[pw + max_kw * dil_w, ph + max_kh * dil_h, pd + max_kd * dil_d, c, batch_idx] += dy_idx * _alpha #+ _beta * dx[x_idxs...]
                 end
             end
             end
