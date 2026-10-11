@@ -225,6 +225,18 @@ for name in (:max, :mean, :lpnorm)
             kwargs[:p]
         end
 
+        # For max pooling we find the element that gets a window's gradient by redoing
+        # the forward pass' scan of that window, which starts from this value (`y` has
+        # the eltype the forward pass was targeting). We don't look for the element
+        # matching `y` instead: `y` may not be bit-identical to it (e.g. if it has a
+        # different eltype than `x`), and with a tolerance an element that merely comes
+        # close to the maximum can take the gradient (issue #771).
+        m_init = if $(name == :max)
+            eltype(y) <: AbstractFloat ? nextfloat(typemin(eltype(y))) : typemin(eltype(y))
+        else
+            nothing
+        end
+
         # Start with the central region
         w_region, h_region, d_region = central_region
         @inbounds for batch_idx in 1:size(x, 5), c in 1:out_c
@@ -238,7 +250,10 @@ for name in (:max, :mean, :lpnorm)
             # Grab the output at this index for future use
             y_idx = y[w, h, d, c, batch_idx]
             dy_idx = dy[w, h, d, c, batch_idx]
-            maxpool_already_chose = false
+            # For max pooling: the largest element of the window so far, and where it
+            # is (zero as long as there is none).
+            m = m_init
+            max_kw, max_kh, max_kd = 0, 0, 0
 
             for kd in 1:kernel_d,
                 kh in 1:kernel_h,
@@ -252,19 +267,12 @@ for name in (:max, :mean, :lpnorm)
                 # or my name isn't shengdan jingyu
                 # x_idxs = (input_kw, input_kh, input_kd, c, batch_idx)
                 if $(name == :max)
-                    if maxpool_already_chose
-                        break
-                    end
-                    # If it's equal; this is the one we chose. We only choose one per
-                    # kernel window, all other elements of dx must be zero.
-                    # Uncomment line below if using with non-precise output (e.g. by NNPACK)
-                    # if abs(y_idx - x[x_idxs...]) < 1e-5 && !maxpool_already_chose
-                    if y_idx ≈ x[input_kw, input_kh, input_kd, c, batch_idx]
-                        dx[input_kw, input_kh, input_kd, c, batch_idx] += dy_idx * _alpha #+ _beta * dx[x_idxs...]
-                        maxpool_already_chose = true
-                    # Maxpooling does not support `beta` right now.  :(
-                    # else
-                    #    dx[x_idxs...] = T(0) + beta*dx[x_idxs...]
+                    # Same comparison as in the forward pass, so that among equal
+                    # elements we pick the first one too.
+                    xv = x[input_kw, input_kh, input_kd, c, batch_idx]
+                    if xv > m
+                        m = xv
+                        max_kw, max_kh, max_kd = input_kw, input_kh, input_kd
                     end
                 elseif $(name == :mean)
                     # Either does meanpool :(
@@ -276,6 +284,12 @@ for name in (:max, :mean, :lpnorm)
                 else
                     error("Unimplemented codegen path")
                 end
+            end
+
+            # We only choose one element per kernel window, all other elements of dx
+            # must be zero. Maxpooling does not support `beta` right now.  :(
+            if $(name == :max) && max_kw > 0
+                dx[max_kw, max_kh, max_kd, c, batch_idx] += dy_idx * _alpha #+ _beta * dx[x_idxs...]
             end
             end
             end
@@ -295,7 +309,8 @@ for name in (:max, :mean, :lpnorm)
                 # Grab the incoming gradient at this index for future use
                 y_idx = y[w, h, d, c, batch_idx]
                 dy_idx = dy[w, h, d, c, batch_idx]
-                maxpool_already_chose = false
+                m = m_init
+                max_kw, max_kh, max_kd = 0, 0, 0
 
                 # For mean pooling with `count_include_pad=false` the divisor is the
                 # number of non-padding elements in this window, so we count them up front
@@ -342,16 +357,10 @@ for name in (:max, :mean, :lpnorm)
                             # Same as above
                             # x_idxs = (input_kw, input_kh, input_kd, c, batch_idx)
                             if $(name == :max)
-                                if maxpool_already_chose
-                                    break
-                                end
-                                # Uncomment line below if using with non-precise output
-                                # if abs(y_idx - x[x_idxs...]) < 1e-5 && !maxpool_already_chose
-                                if y_idx ≈ x[input_kw, input_kh, input_kd, c, batch_idx]
-                                    dx[input_kw, input_kh, input_kd, c, batch_idx] += dy_idx * _alpha #+ _beta * dx[x_idxs...]
-                                    maxpool_already_chose = true
-                                # else
-                                #    dx[x_idxs...] = T(0) + beta*dx[x_idxs...]
+                                xv = x[input_kw, input_kh, input_kd, c, batch_idx]
+                                if xv > m
+                                    m = xv
+                                    max_kw, max_kh, max_kd = input_kw, input_kh, input_kd
                                 end
                             elseif $(name == :mean)
                                 dx[input_kw, input_kh, input_kd, c, batch_idx] += dy_idx * win_alpha #+ _beta * dx[x_idxs...]
@@ -363,6 +372,10 @@ for name in (:max, :mean, :lpnorm)
                             end
                         end
                     end
+                end
+
+                if $(name == :max) && max_kw > 0
+                    dx[max_kw, max_kh, max_kd, c, batch_idx] += dy_idx * _alpha #+ _beta * dx[x_idxs...]
                 end
             end
             end

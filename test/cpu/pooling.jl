@@ -932,6 +932,67 @@ maxpool_answer_nature = Dict(
     @test all(==(0.25), RD.gradient(_x -> only(meanpool(_x,(2,2))), x))
 end
 
+@testset "∇maxpool picks the exact argmax (issue #771)" begin
+    # Brute-force reference: all of a window's gradient goes to its first largest
+    # element, scanning the first spatial dimension fastest.
+    function ref_∇maxpool(dy, x, pdims)
+        N = ndims(x) - 2
+        K, S, D = NNlib.kernel_size(pdims), NNlib.stride(pdims), NNlib.dilation(pdims)
+        P = NNlib.padding(pdims)        # (w_lo, w_hi, h_lo, h_hi, d_lo, d_hi)
+        dx = zero(x)
+        for oidx in CartesianIndices(dy)
+            c, batch = oidx[N+1], oidx[N+2]
+            m, imax = nothing, nothing
+            for kidx in CartesianIndices(K)
+                iin = ntuple(d -> (oidx[d] - 1) * S[d] - P[2d-1] + 1 + (kidx[d] - 1) * D[d], N)
+                all(d -> 1 <= iin[d] <= size(x, d), 1:N) || continue
+                if m === nothing || x[iin..., c, batch] > m
+                    m, imax = x[iin..., c, batch], iin
+                end
+            end
+            dx[imax..., c, batch] += dy[oidx]
+        end
+        return dx
+    end
+
+    # The first element is within `≈` of the last one, which is the maximum
+    x = reshape(Float32[0.95492, 0.15382, 0.03295, 0.95500], 2, 2, 1, 1)
+    pdims = PoolDims(x, 2)
+    y = maxpool(x, pdims)
+    @test ∇maxpool(one.(y), y, x, pdims)[:,:,1,1] == [0 0; 0 1]
+    # Same with padding, where each of the four windows holds all of `x`
+    pdims = PoolDims(x, 3; padding=1, stride=1)
+    y = maxpool(x, pdims)
+    @test ∇maxpool(one.(y), y, x, pdims)[:,:,1,1] == [0 0; 0 4]
+
+    # Among equal elements, the first one takes the gradient
+    x = ones(Float32, 2, 2, 1, 1)
+    pdims = PoolDims(x, 2)
+    y = maxpool(x, pdims)
+    @test ∇maxpool(one.(y), y, x, pdims)[:,:,1,1] == [1 0; 0 0]
+
+    # Match the brute-force reference across spatial ranks and configs, on inputs whose
+    # elements are all within `≈` of each other (and a few of them equal).
+    for T in (Float32, Float64), nsd in (1, 2, 3)
+        x = 1 .+ rand(rng, T, fill(9, nsd)..., 2, 2) .* sqrt(eps(T)) ./ 4
+        for (k, pad, stride, dilation) in ((2, 0, 2, 1), (2, 1, 1, 1), (3, 1, 2, 1), (3, 2, 1, 2))
+            pdims = PoolDims(x, k; padding=pad, stride=stride, dilation=dilation)
+            y = maxpool(x, pdims)
+            # Integer-valued, so that the sums in `dx` are exact whatever their order
+            dy = T.(rand(rng, 1:8, size(y)))
+            @test ∇maxpool(dy, y, x, pdims) == ref_∇maxpool(dy, x, pdims)
+        end
+    end
+
+    # `y` may have a different eltype than `x` (issue #484), and so not hold the maxima
+    # of `x` exactly
+    x = randn(rng, Float64, 8, 8, 2, 2)
+    pdims = PoolDims(x, 2)
+    y = maxpool!(zeros(Float32, 4, 4, 2, 2), x, pdims)
+    dy = ones(4, 4, 2, 2)
+    @test ∇maxpool!(zero(x), dy, y, x, pdims) == ref_∇maxpool(dy, x, pdims)
+end
+
 @testset "meanpool count_include_pad (issue #218)" begin
     # Brute-force reference: average over the window, optionally excluding padding.
     function ref_meanpool(x, k; pad, stride, count_include_pad)
