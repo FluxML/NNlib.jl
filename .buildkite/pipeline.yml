@@ -84,9 +84,9 @@ steps:
     env:
       JULIA_NUM_THREADS: 4
     command:
-      - julia --project=benchmark -e 'using Pkg; Pkg.develop(PackageSpec(path=pwd())); Pkg.instantiate()'
-      - julia --project=benchmark benchmark/runbenchmarks.jl
-      - printf '%b\n' "$(cat benchmark/report.md)" | buildkite-agent annotate --style 'info'
+      - julia --project=benchmark/others -e 'using Pkg; Pkg.develop(PackageSpec(path=pwd())); Pkg.instantiate()'
+      - julia --project=benchmark/others benchmark/others/runbenchmarks.jl
+      - printf '%b\n' "$(cat benchmark/others/report.md)" | buildkite-agent annotate --style 'info'
     agents:
       queue: "cuda"
     if: build.pull_request.labels includes "benchmark"

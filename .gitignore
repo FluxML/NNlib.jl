@@ -13,7 +13,8 @@ deps.jl
 .vscode/
 Manifest.toml
 benchmark/*.json
-benchmark/report.md
+benchmark/others/*.json
+benchmark/others/report.md
 uv.lock
 .python-version
 
