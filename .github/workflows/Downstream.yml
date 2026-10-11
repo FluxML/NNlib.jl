@@ -29,7 +29,6 @@ jobs:
         os: [ubuntu-latest]
         package:
           - {user: FluxML, repo: Flux.jl, group: All}
-          - {user: FluxML, repo: Tracker.jl, group: All}
           - {user: LuxDL, repo: Lux.jl, group: All}
     steps:
       - uses: actions/checkout@v7
