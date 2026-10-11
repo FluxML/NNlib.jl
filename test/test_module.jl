@@ -61,8 +61,8 @@ function withgradient(f::F, adtype::AutoFiniteDifferences, x::Vararg{Any,N}) whe
 end
 
 
-function withgradient(f::F, adtype::AutoEnzyme, x::Vararg{Any,N}; zero::Bool=true) where {F,N}
-    return _enzyme_withgradient(f, map(_trymake_duplicated, x)...; zero)
+function withgradient(f::F, adtype::AutoEnzyme, x::Vararg{Any,N}) where {F,N}
+    return _enzyme_withgradient(f, map(_trymake_duplicated, x)...)
 end
 
 _trymake_duplicated(x::Duplicated) = x
@@ -73,11 +73,10 @@ _trymake_duplicated(x::Active) = x
 _trymake_duplicated(x::Number) = Active(x)
 _trymake_duplicated(x) = Duplicated(x, EnzymeCore.make_zero(x))
 
-function _enzyme_withgradient(f, args::Union{Const, Active, Duplicated}...; zero::Bool=true)
-    for x in args
-        zero && x isa Duplicated && EnzymeCore.remake_zero!(x.dval)
-    end
-
+# Shadows are used as given, so a caller-supplied `Duplicated` must carry a zeroed one.
+# Re-zeroing them with `remake_zero!` corrupts a `CuArray` shadow when Enzyme is loaded
+# before CUDA, as it is here (https://github.com/EnzymeAD/Enzyme.jl/issues/3806).
+function _enzyme_withgradient(f, args::Union{Const, Active, Duplicated}...)
     ad = Enzyme.set_runtime_activity(ReverseWithPrimal)
     # `autodiff` returns `((active_grads...,), primal)`; `Duplicated` grads land in
     # their shadow, `Active` grads come back positionally in the first tuple.
