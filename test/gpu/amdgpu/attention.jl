@@ -7,7 +7,7 @@
         k = AMDGPU.rand(Float32, head_dim, nheads, lenkv, batch_size...)
         v = AMDGPU.rand(Float32, head_dim, nheads, lenkv, batch_size...)
         y = @inferred scaled_dot_product_attention(q, k, v)
-        α = scaled_dot_product_attention_scores(q, k)
+        α = last(scaled_dot_product_attention_with_weights(q, k, v))
 
         @test y isa ROCArray{Float32}
         @test size(y) == (head_dim, nheads, lenq, batch_size...)
@@ -27,7 +27,7 @@ end
     x = AMDGPU.rand(Float32, 4, 2, 3, 1)
     mask = make_causal_mask(x, dims=3)
     @test mask isa ROCArray{Bool}
-    α = scaled_dot_product_attention_scores(x, x; mask)
+    α = last(scaled_dot_product_attention_with_weights(x, x, x; mask))
 
     α_host, mask_host = Array.((α, mask))
     @test all((α_host[:, :, 1, 1] .> 0) .== mask_host)
@@ -37,7 +37,7 @@ end
 @testset "Dropout" begin
     q = k = AMDGPU.rand(Float32, 5, 2, 10)
     fdrop(x, p) = (Random.rand!(similar(x)) .> p) .* x ./ (1-p)
-    α = scaled_dot_product_attention_scores(
-        q, k; fdrop=x -> dropout(x, 0.5))
+    α = last(scaled_dot_product_attention_with_weights(
+        q, k, k; fdrop=x -> dropout(x, 0.5)))
     @test 0.6 > mean(>(0), α) > 0.4
 end
