@@ -58,6 +58,14 @@
         @test Zygote.hessian_reverse(f1, [1.0,2.0,3.0]) == zeros(3, 3)
     end
 
+    @testset "Mooncake" begin
+        # Given the mask, dropout is linear in x, so the value is `sum(x .* grad)`.
+        for f in (x -> sum(dropout(x, 0.3)), x -> sum(dropout(rng, x, 0.3, dims=1)))
+            y, (dx,) = withgradient(f, AutoMooncake(), x1)
+            @test y ≈ sum(x1 .* dx)
+        end
+    end
+
     # Bang
     y1 = fill!(similar(x1), NaN)
     @test dropout!(y1, x1, 0.0) == x1
