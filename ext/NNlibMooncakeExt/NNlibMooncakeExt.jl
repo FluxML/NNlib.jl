@@ -15,4 +15,13 @@ using NNlib: NNlib
 # Mooncake has no predicate to query, so `within_gradient` is replaced in the code it differentiates.
 Mooncake.@mooncake_overlay NNlib.within_gradient(x) = true
 
+# The rules in `rules.jl` come from Mooncake's own `MooncakeNNlibExt`, still shipped as of
+# Mooncake 0.5.63. Its methods have the same signatures, so defining both would overwrite
+# one with the other: ours are loaded only by a later Mooncake that no longer declares that
+# extension.
+const MOONCAKE_SHIPS_RULES = pkgversion(Mooncake) <= v"0.5.63" ||
+    occursin(r"^MooncakeNNlibExt\b"m, read(joinpath(pkgdir(Mooncake), "Project.toml"), String))
+
+MOONCAKE_SHIPS_RULES || include("rules.jl")
+
 end
