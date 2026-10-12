@@ -54,21 +54,3 @@ function dot_product_attention_scores(q, k, bias=nothing; kws...)
 end
 
 export dot_product_attention, dot_product_attention_scores
-
-
-### Deprecated in v0.9.47
-
-"""
-    scaled_dot_product_attention_scores(query, key, [bias]; kws...)
-
-Deprecated: use [`scaled_dot_product_attention_with_weights`](@ref), which returns the
-attention weights together with the attention output.
-"""
-function scaled_dot_product_attention_scores(q, k, bias=nothing; kws...)
-    Base.depwarn("`scaled_dot_product_attention_scores(q, k)` is deprecated, use \
-        `scaled_dot_product_attention_with_weights(q, k, v)`, which returns the attention \
-        output and the weights.", :scaled_dot_product_attention_scores)
-    return last(scaled_dot_product_attention_with_weights(q, k, k, bias; kws...))
-end
-
-export scaled_dot_product_attention_scores

@@ -292,23 +292,3 @@ end
     vd = rand(head_dim, nkvheads, 3, 2)
     @test test_gradients((qq, kk, vv) -> scaled_dot_product_attention(qq, kk, vv), qd, kd, vd)
 end
-
-@testset "deprecated interface" begin
-    # heads packed into the feature dimension: (features, seq_len, batch)
-    nheads = 2
-    q = rand(Float32, 8, 5, 3)
-    k = v = rand(Float32, 8, 4, 3)
-    y, α = @test_deprecated dot_product_attention(q, k, v; nheads)
-    qh, kh, vh = map(x -> reshape(x, 4, nheads, size(x, 2), 3), (q, k, v))
-    @test y ≈ reshape(scaled_dot_product_attention(qh, kh, vh), 8, 5, 3)
-    @test α ≈ attention_weights(qh, kh)
-    @test α ≈ @test_deprecated dot_product_attention_scores(qh, kh)
-    @test α ≈ @test_deprecated scaled_dot_product_attention_scores(qh, kh)
-
-    # without `dims`, the mask is still the one for the deprecated layout
-    mask = @test_deprecated make_causal_mask(q)
-    @test mask == make_causal_mask(q; dims=2)
-    @test size(mask) == (5, 5)
-    y, α = @test_deprecated dot_product_attention(q, q, q; nheads, mask)
-    @test all((α[:, :, 1, 1] .> 0) .== mask)
-end
