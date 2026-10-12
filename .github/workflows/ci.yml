@@ -30,7 +30,10 @@ jobs:
     runs-on: ${{ matrix.os }}
     # The test environment depends on packages tied to compiler internals (Enzyme,
     # Mooncake), which routinely fail to precompile on Julia nightly. Keep the job
-    # for information, but don't let it fail the workflow.
+    # for information, but soft-fail it: the job-level `continue-on-error` only keeps
+    # the workflow green (the job's own check still shows as failed), so the build and
+    # test steps are also marked `continue-on-error` and a failure is reported as a
+    # warning annotation instead.
     continue-on-error: ${{ matrix.version == 'nightly' }}
     strategy:
       fail-fast: false
@@ -57,12 +60,20 @@ jobs:
           version: ${{ matrix.version }}
       - uses: julia-actions/cache@v3
       - uses: julia-actions/julia-buildpkg@v1
+        id: build
+        continue-on-error: ${{ matrix.version == 'nightly' }}
 
       - name: "Run test without coverage"
+        id: test
         uses: julia-actions/julia-runtest@v1
         if: ${{ !contains(fromJson('["1"]'), matrix.version) || matrix.os != 'ubuntu-latest' }}
+        continue-on-error: ${{ matrix.version == 'nightly' }}
         with:
           coverage: false
+
+      - name: "Report soft failure"
+        if: ${{ matrix.version == 'nightly' && (steps.build.outcome == 'failure' || steps.test.outcome == 'failure') }}
+        run: echo "::warning title=Julia nightly::Build or tests failed on Julia nightly (soft fail)."
 
       - name: "Run test with coverage"
         uses: julia-actions/julia-runtest@v1
