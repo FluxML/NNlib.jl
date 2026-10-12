@@ -12,6 +12,8 @@
 # the channel dimension. On the GPU, `batchnorm` on 2D/4D/5D `CuArray`s is handled
 # by the cuDNN methods in `NNlibCUDACUDNNExt`; every other case uses the generic
 # code below.
+#
+# `rmsnorm` has a scale but no bias, so its layout is `(g, x)`.
 
 # `eps` converted to the (real) float eltype of `x`, avoiding Float64 promotion of
 # Float16/Float32 data.
@@ -258,6 +260,46 @@ function layernorm(g, b, x::AbstractArray{T}; dims=1, eps=1f-5) where {T}
     return Tc === T ? y : T.(y)
 end
 
+"""
+    rmsnorm(g, x; dims=1, eps=1f-5)
+
+Functional [root mean square normalization](https://arxiv.org/abs/1910.07467).
+`x` is divided by its root mean square over the dimensions `dims` (the leading
+dimension by default) and multiplied by the scale `g` (`nothing` for no scaling):
+
+    y = g .* x ./ sqrt.(mean(abs2, x; dims) .+ eps)
+
+Unlike [`layernorm`](@ref), the mean is not subtracted and there is no bias.
+
+`g`, when given, must broadcast against the normalised region, e.g. have size
+`size(x)[dims]` with singleton trailing dimensions. `eps` is added to the mean
+square for numerical stability.
+
+For half-precision (`Float16`/`BFloat16`) inputs the mean square is computed in
+`Float32` and the result is cast back; `g` must then be `Float32`.
+
+See also [`layernorm`](@ref), [`normalise`](@ref).
+
+# Examples
+```jldoctest
+julia> x = Float32[3 0; 4 2];
+
+julia> NNlib.rmsnorm(nothing, x) ≈ x ./ sqrt.(Float32[12.5 2])
+true
+
+julia> NNlib.rmsnorm(Float32[2, 1], x) ≈ Float32[2, 1] .* NNlib.rmsnorm(nothing, x)
+true
+```
+"""
+function rmsnorm(g, x::AbstractArray{T}; dims=1, eps=1f-5) where {T}
+    _check_norm_types(T, g, nothing, nothing, nothing)
+    Tc = _stats_type(T)
+    xc = Tc === T ? x : Tc.(x)
+    rms = sqrt.(mean(abs2, xc; dims) .+ _epsof(xc, eps))
+    y = g === nothing ? xc ./ rms : @. g / rms * xc
+    return Tc === T ? y : T.(y)
+end
+
 # --- Gradient operators (VJPs) -----------------------------------------------
 # Each `∇op(g, b, x, dy, ...)` returns `(dg, db, dx)`, the vector-Jacobian product
 # of `op` at `x` contracted with `dy` (`dg`/`db` are `nothing` when the matching
@@ -402,6 +444,23 @@ function ∇layernorm(g, b, x::AbstractArray{T,N}, dy; dims=1, eps=1f-5) where {
     return dg, db, Tc === T ? dx : T.(dx)
 end
 
+"""
+    ∇rmsnorm(g, x, dy; dims=1, eps=1f-5)
+
+Gradient of [`rmsnorm`](@ref), returning `(dg, dx)`.
+"""
+function ∇rmsnorm(g, x::AbstractArray{T}, dy; dims=1, eps=1f-5) where {T}
+    Tc = _stats_type(T)
+    xc = Tc === T ? x : Tc.(x)
+    dyc = Tc === T ? dy : Tc.(dy)
+    rms = sqrt.(mean(abs2, xc; dims) .+ _epsof(xc, eps))
+    x̂ = xc ./ rms
+    dg = g === nothing ? nothing : _unbroadcast(dyc .* x̂, g)
+    dx̂ = g === nothing ? dyc : dyc .* g
+    dx = (dx̂ .- x̂ .* mean(dx̂ .* x̂; dims)) ./ rms
+    return dg, Tc === T ? dx : T.(dx)
+end
+
 # --- rrules ------------------------------------------------------------------
 # Route reverse-mode AD through the explicit gradient operators above. Because
 # those are differentiable, the pullbacks are too, so nested AD yields correct
@@ -450,4 +509,13 @@ function ChainRulesCore.rrule(::typeof(layernorm), g, b, x::AbstractArray; dims=
         (NoTangent(), _tangent(dg), _tangent(db), dx)
     end
     return y, layernorm_pullback
+end
+
+function ChainRulesCore.rrule(::typeof(rmsnorm), g, x::AbstractArray; dims=1, eps=1f-5)
+    y = rmsnorm(g, x; dims, eps)
+    function rmsnorm_pullback(Δ)
+        dg, dx = ∇rmsnorm(g, x, unthunk(Δ); dims, eps)
+        (NoTangent(), _tangent(dg), dx)
+    end
+    return y, rmsnorm_pullback
 end

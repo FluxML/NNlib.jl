@@ -129,8 +129,8 @@ export stft, istft, hann_window, hamming_window, spectrogram, melscale_filterban
 @static if VERSION >= v"1.11.0-DEV.469"
     eval(Meta.parse("public gather, gather!, scatter, scatter!, fold, unfold, glu, within_gradient, " *
                     "is_fused_attention, " *
-                    "normalise, batchnorm, instancenorm, groupnorm, layernorm, " *
-                    "∇batchnorm, ∇instancenorm, ∇groupnorm, ∇layernorm"))
+                    "normalise, batchnorm, instancenorm, groupnorm, layernorm, rmsnorm" *
+                    "∇batchnorm, ∇instancenorm, ∇groupnorm, ∇layernorm, ∇rmsnorm"))
 end
 
 end # module NNlib
