@@ -36,9 +36,9 @@ function dot_product_attention(q, k, v, bias=nothing;
     q = split_heads(q, nheads)
     k = split_heads(k, nkvheads)
     v = split_heads(v, nkvheads)
-    check_attention_inputs(q, k, v, mask, is_causal)
+    check_attention_inputs(q, k, v)
     batch_size = size(q)[4:end]
-    q, k, v = map(collapse_batch_dims, (q, k, v))
+    q, k, v, bias, mask, _, _ = collapse_attention_inputs(q, k, v, bias, mask, nothing, nothing)
     # the generic implementation, as this interface also returns the scores
     x, α = _attention(q, k, v, bias; fdrop, mask, scale, is_causal)
     x = reshape(x, size(x, 1), size(x, 2), size(x, 3), batch_size...)

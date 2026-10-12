@@ -110,8 +110,126 @@ end
     # output path agrees
     @test scaled_dot_product_attention(x, x, x; is_causal=true) ≈
           scaled_dot_product_attention(x, x, x; mask)
-    # `mask` and `is_causal` are mutually exclusive
-    @test_throws ArgumentError scaled_dot_product_attention(x, x, x; mask, is_causal=true)
+    # `mask` and `is_causal` combine: a key is attended to where both allow it
+    mask2 = rand(Bool, 4, 4)
+    mask2[1, :] .= true
+    αboth = scaled_dot_product_attention_scores(x, x; mask=mask2, is_causal=true)
+    @test all((αboth[:, :, h, 1] .> 0) == (mask2 .& mask) for h in 1:nheads)
+    @test scaled_dot_product_attention(x, x, x; mask=mask2, is_causal=true) ≈
+          scaled_dot_product_attention(x, x, x; mask=mask2 .& mask)
+end
+
+@testset "sequence lengths" begin
+    head_dim, nheads, lenq, lenkv, bs = 4, 2, 5, 6, 3
+    q = rand(Float32, head_dim, nheads, lenq, bs)
+    k = rand(Float32, head_dim, nheads, lenkv, bs)
+    v = rand(Float32, head_dim, nheads, lenkv, bs)
+    q_lengths, kv_lengths = [5, 3, 1], [6, 2, 4]
+    kvmask = reshape([j <= n for j in 1:lenkv, n in kv_lengths], lenkv, 1, 1, bs)
+    qmask = reshape([i <= n for i in 1:lenq, n in q_lengths], 1, 1, lenq, bs)
+
+    # the keys past `kv_lengths` are not attended to
+    @test scaled_dot_product_attention(q, k, v; kv_lengths) ≈
+          scaled_dot_product_attention(q, k, v; mask=kvmask)
+    α = scaled_dot_product_attention_scores(q, k; kv_lengths)
+    @test (α .> 0) == (kvmask .& trues(lenkv, lenq, nheads, bs))
+
+    # the output and the scores are zero at the queries past `q_lengths`
+    y = scaled_dot_product_attention(q, k, v; q_lengths)
+    @test y ≈ scaled_dot_product_attention(q, k, v) .* qmask
+    @test all(iszero, y[:, :, 4:5, 2])
+    @test scaled_dot_product_attention_scores(q, k; q_lengths) ≈
+          scaled_dot_product_attention_scores(q, k) .* reshape(qmask, 1, lenq, 1, bs)
+
+    # combined with each other, with `is_causal` and with a `mask`
+    causal = NNlib.make_causal_mask(q, lenkv, lenq)
+    @test scaled_dot_product_attention(q, k, v; q_lengths, kv_lengths, is_causal=true) ≈
+          scaled_dot_product_attention(q, k, v; mask=causal .& kvmask) .* qmask
+    mask = rand(Bool, lenkv, lenq)
+    mask[1, :] .= true
+    @test scaled_dot_product_attention(q, k, v; kv_lengths, mask) ≈
+          scaled_dot_product_attention(q, k, v; mask=mask .& kvmask)
+
+    # an integer is the length of every sequence, and any integer array is accepted
+    @test scaled_dot_product_attention(q, k, v; kv_lengths=4) ≈
+          scaled_dot_product_attention(q, k, v; kv_lengths=[4, 4, 4])
+    @test scaled_dot_product_attention(q, k, v; kv_lengths=Int32.(kv_lengths)) ==
+          scaled_dot_product_attention(q, k, v; kv_lengths)
+    # lengths reaching the end of the sequences mean no padding
+    @test scaled_dot_product_attention(q, k, v; q_lengths=lenq, kv_lengths=fill(lenkv + 2, bs)) ≈
+          scaled_dot_product_attention(q, k, v)
+
+    # one length for each batch element, whatever the batch dimensions
+    qb, kb, vb = map(x -> reshape(x, size(x)[1:3]..., bs, 1), (q, k, v))
+    yb = scaled_dot_product_attention(qb, kb, vb; q_lengths=reshape(q_lengths, bs, 1), kv_lengths)
+    @test yb == reshape(scaled_dot_product_attention(q, k, v; q_lengths, kv_lengths), size(yb))
+    @test scaled_dot_product_attention(q[:, :, :, 2], k[:, :, :, 2], v[:, :, :, 2]; kv_lengths=2) ≈
+          scaled_dot_product_attention(q, k, v; kv_lengths=2)[:, :, :, 2]
+    @test_throws ArgumentError scaled_dot_product_attention(q, k, v; kv_lengths=[6, 2])
+
+    @inferred scaled_dot_product_attention(q, k, v; q_lengths, kv_lengths, is_causal=true)
+
+    qd, kd, vd = map(x -> Float64.(x), (q, k, v))
+    @test test_gradients((x...) -> scaled_dot_product_attention(x...; q_lengths, kv_lengths, is_causal=true),
+                         qd, kd, vd)
+end
+
+@testset "bias and mask with several batch dimensions" begin
+    head_dim, nheads, lenq, lenkv = 4, 2, 3, 5
+    batch_size = (2, 3)
+    q = rand(Float32, head_dim, nheads, lenq, batch_size...)
+    k = rand(Float32, head_dim, nheads, lenkv, batch_size...)
+    v = rand(Float32, head_dim, nheads, lenkv, batch_size...)
+    flat(x) = reshape(x, size(x)[1:3]..., :)
+    yref(; kws...) = reshape(scaled_dot_product_attention(flat(q), flat(k), flat(v); kws...), size(q))
+
+    # trailing dimensions equal to the batch ones, a prefix of them, with singletons,
+    # or already collapsed
+    @testset "trailing dimensions $sz" for sz in ((2, 3), (2,), (2, 1), (1, 3), (1, 1), (6,))
+        full(x) = sz == (6,) ? x : flat(x .+ zeros(Bool, 1, 1, 1, batch_size...))
+
+        mask = rand(Bool, lenkv, lenq, 1, sz...)
+        selectdim(mask, 1, 1) .= true
+        @test scaled_dot_product_attention(q, k, v; mask) ≈ yref(mask=Bool.(full(mask)))
+        α = scaled_dot_product_attention_scores(q, k; mask)
+        @test flat(α .> 0) == (full(mask) .> 0) .& trues(lenkv, lenq, nheads, 6)
+
+        bias = randn(Float32, lenkv, lenq, 1, sz...)
+        @test scaled_dot_product_attention(q, k, v, bias) ≈
+              reshape(scaled_dot_product_attention(flat(q), flat(k), flat(v), full(bias)), size(q))
+    end
+
+    @test_throws DimensionMismatch scaled_dot_product_attention(q, k, v; mask=trues(lenkv, lenq, 1, 3, 2))
+    @test_throws DimensionMismatch scaled_dot_product_attention(q, k, v, zeros(Float32, lenkv, lenq, 1, 4))
+    @test_throws DimensionMismatch scaled_dot_product_attention(q, k, v; mask=trues(lenkv, lenq, 1, 2, 3, 1, 2))
+
+    @inferred scaled_dot_product_attention(q, k, v, zeros(Float32, lenkv, lenq, 1, 2, 3); mask=trues(lenkv, lenq, 1, 2, 1))
+
+    qd, kd, vd = map(x -> Float64.(x), (q, k, v))
+    for sz in ((2, 3), (2, 1))
+        @test test_gradients((x...) -> scaled_dot_product_attention(x...), qd, kd, vd, randn(lenkv, lenq, 1, sz...))
+    end
+end
+
+@testset "input validation" begin
+    q = rand(Float32, 4, 2, 3, 2)
+    k = v = rand(Float32, 4, 2, 5, 2)
+    # arrays with different numbers of dimensions
+    @test_throws ArgumentError scaled_dot_product_attention(q, k[:, :, :, 1], v)
+    @test_throws ArgumentError scaled_dot_product_attention(q, k, v[:, :, :, 1])
+    @test_throws ArgumentError scaled_dot_product_attention_scores(q, k[:, :, :, 1])
+    @test_throws ArgumentError scaled_dot_product_attention(q[:, :, 1, 1], k[:, :, 1, 1], v[:, :, 1, 1])
+    # head and batch dimensions
+    @test_throws ArgumentError scaled_dot_product_attention(q, k[1:2, :, :, :], v)
+    @test_throws ArgumentError scaled_dot_product_attention(q, k, v[:, :, :, 1:1])
+    @test_throws ArgumentError scaled_dot_product_attention_scores(q, k[:, :, :, 1:1])
+end
+
+@testset "is_fused_attention" begin
+    q = rand(Float32, 8, 2, 3, 2)
+    @test !NNlib.is_fused_attention(q, q, q)
+    @test !NNlib.is_fused_attention(q, q, q; is_causal=true, kv_lengths=[3, 2])
+    @test_throws ArgumentError NNlib.is_fused_attention(q, q[:, :, :, 1], q)
 end
 
 @testset "grouped-query attention" begin
