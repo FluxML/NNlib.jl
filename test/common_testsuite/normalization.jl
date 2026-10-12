@@ -58,6 +58,35 @@ function normalization_testsuite(Backend)
         @test cpu(rm2) == zeros(T, 3) && cpu(rv2) == ones(T, 3)
     end
 
+    # A gradient call that evaluates the function once must leave the running statistics
+    # updated exactly as one plain call does. Mooncake undoes in-place writes on its
+    # reverse pass unless the update is a primitive (`NNlibMooncakeExt`).
+    Backend == CPU && @testset "running stats under AD" begin
+        x = randn(T, 4, 5, 3, 8); g = randn(T, 3); b = randn(T, 3); mom = 0.1f0
+        w = randn(T, size(x))  # keeps the loss from being invariant to the normalisation
+        adtypes = AbstractADType[AutoZygote(), AutoMooncake()]
+        NNLIB_TEST_ENZYME && push!(adtypes, AutoEnzyme())
+        grad_once(loss, adtype, args...) = withgradient(loss, adtype, args...).grad
+        # `withgradient` prepares a Mooncake cache, and preparing one evaluates the function
+        # a further time, which updates the statistics twice. A bare rule evaluates it once.
+        grad_once(loss, ::AutoMooncake, args...) = Base.tail(Mooncake.value_and_gradient!!(
+            Mooncake.build_rrule(loss, args...), loss, args...)[2])
+        @testset "$norm" for norm in (batchnorm, instancenorm)
+            loss(g, b, x, rm, rv) = sum(abs2, w .* norm(g, b, x, rm, rv, mom; training=true, track_stats=true))
+            rm0 = zeros(T, 3); rv0 = ones(T, 3)
+            loss(g, b, x, rm0, rv0)
+            @test rm0 != zeros(T, 3) && rv0 != ones(T, 3)
+            ref = Zygote.gradient(loss, g, b, x, zeros(T, 3), ones(T, 3))
+            @testset "$(nameof(typeof(adtype)))" for adtype in adtypes
+                rm = zeros(T, 3); rv = ones(T, 3)
+                grad = grad_once(loss, adtype, g, b, x, rm, rv)
+                @test rm ≈ rm0
+                @test rv ≈ rv0
+                @test all(i -> isapprox(grad[i], ref[i]; rtol=1e-3, atol), 1:3)
+            end
+        end
+    end
+
     @testset "instancenorm" begin
         x = randn(T, 4, 5, 3, 8); g = randn(T, 3); b = randn(T, 3)
         @test cpu(instancenorm(device(g), device(b), device(x))) ≈ ref_norm(g, b, x, (1,2)) atol=atol
