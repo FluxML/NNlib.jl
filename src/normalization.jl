@@ -93,7 +93,8 @@ end
 # In-place moving-average update of the running statistics, mirroring
 # `Flux._track_stats!`. `reduce_dims` are the dimensions the batch statistics were
 # computed over; the batch dimension `N` is averaged out when it is not among them
-# (InstanceNorm). Non-differentiable: never traced by reverse-mode AD.
+# (InstanceNorm). Non-differentiable: never traced by reverse-mode AD (Mooncake does not
+# read ChainRules declarations, so `NNlibMooncakeExt` declares it separately).
 function _update_running_stats!(running_mean, running_var, μ, σ², momentum, reduce_dims, sz)
     V = eltype(running_var)
     mtm = V(momentum)
