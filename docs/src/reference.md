@@ -40,10 +40,9 @@ trelu
 
 ```@docs
 scaled_dot_product_attention
-scaled_dot_product_attention_scores
+scaled_dot_product_attention_with_weights
 make_causal_mask
-dot_product_attention
-dot_product_attention_scores
+NNlib.is_fused_attention
 ```
 
 ## Softmax

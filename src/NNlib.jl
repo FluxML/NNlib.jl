@@ -45,7 +45,8 @@ end
 export sigmoid, hardsigmoid, logsigmoid, thresholdrelu, gelu # Aliases
 
 include("attention.jl")
-export scaled_dot_product_attention, scaled_dot_product_attention_scores, make_causal_mask
+export scaled_dot_product_attention, scaled_dot_product_attention_with_weights,
+       sdpa, sdpa_with_weights, make_causal_mask
 
 include("dropout.jl")
 export dropout, dropout!
@@ -127,6 +128,7 @@ export stft, istft, hann_window, hamming_window, spectrogram, melscale_filterban
 # `public` is only valid syntax on Julia 1.11+, so parse it lazily.
 @static if VERSION >= v"1.11.0-DEV.469"
     eval(Meta.parse("public gather, gather!, scatter, scatter!, fold, unfold, glu, within_gradient, " *
+                    "is_fused_attention, " *
                     "normalise, batchnorm, instancenorm, groupnorm, layernorm, " *
                     "∇batchnorm, ∇instancenorm, ∇groupnorm, ∇layernorm"))
 end
