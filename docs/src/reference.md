@@ -175,10 +175,12 @@ NNlib.batchnorm
 NNlib.instancenorm
 NNlib.groupnorm
 NNlib.layernorm
+NNlib.rmsnorm
 NNlib.∇batchnorm
 NNlib.∇instancenorm
 NNlib.∇groupnorm
 NNlib.∇layernorm
+NNlib.∇rmsnorm
 ```
 
 ## Losses

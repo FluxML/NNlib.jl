@@ -1,4 +1,4 @@
-using NNlib: batchnorm, instancenorm, groupnorm, layernorm, normalise
+using NNlib: batchnorm, instancenorm, groupnorm, layernorm, rmsnorm, normalise
 
 function normalization_testsuite(Backend)
     device(x) = adapt(Backend(), x)
@@ -132,6 +132,34 @@ function normalization_testsuite(Backend)
         @test all(isapprox.(vec(Statistics.std(z; dims=1, corrected=false)), 1; atol=1e-3))
     end
 
+    @testset "rmsnorm" begin
+        x = randn(T, 6, 4)
+        rms = sqrt.(mean(abs2, x; dims=1) .+ 1f-5)
+        @test cpu(rmsnorm(nothing, device(x))) ≈ x ./ rms atol=atol
+        g = randn(T, 6)
+        @test cpu(rmsnorm(device(g), device(x))) ≈ g .* x ./ rms atol=atol
+        @test test_gradients(rmsnorm, g, x; test_gpu=gpu, atol, compare=cmp)
+        @test test_gradients(x -> rmsnorm(nothing, x), x; test_gpu=gpu, atol, compare=cmp)
+
+        # several `dims`, with a scale that broadcasts against them
+        x4 = randn(T, 4, 5, 3, 8); g4 = randn(T, 4, 5)
+        rms4 = sqrt.(mean(abs2, x4; dims=(1,2)) .+ 1f-5)
+        @test cpu(rmsnorm(device(g4), device(x4); dims=(1,2))) ≈ g4 .* x4 ./ rms4 atol=atol
+        @test test_gradients((g,x) -> rmsnorm(g, x; dims=(1,2)), g4, x4; test_gpu=gpu, atol, compare=cmp)
+
+        # the mean is not subtracted, so a shift of the input is not normalised away
+        @test cpu(rmsnorm(nothing, device(x .+ 10))) ≉ cpu(rmsnorm(nothing, device(x)))
+        # `eps` keeps an all-zero input finite
+        @test all(iszero, cpu(rmsnorm(nothing, device(zeros(T, 6, 4)))))
+
+        # half precision: the mean square accumulates in Float32, so the scale must be Float32
+        xh = device(Float16.(x))
+        yh = rmsnorm(device(g), xh)
+        @test eltype(yh) == Float16
+        @test Float32.(cpu(yh)) ≈ g .* x ./ rms rtol=1e-2 atol=1e-2
+        @test_throws ArgumentError rmsnorm(device(Float16.(g)), xh)
+    end
+
     @testset "gradient operators (∇)" begin
         # The explicit VJPs must agree with the pullback returned by the rrule
         # (which is what `test_gradients` above checks against finite differences).
@@ -154,6 +182,14 @@ function normalization_testsuite(Backend)
         dgz, dbz, dxz = back(dyd)
         @test cpu(dg) ≈ cpu(dgz) atol=atol
         @test cpu(dx) ≈ cpu(dxz) atol=atol
+
+        gl = randn(T, 4, 5); gld = device(gl)
+        dg, dx = NNlib.∇rmsnorm(gld, xd, dyd; dims=(1,2))
+        _, back = Zygote.pullback((g,x) -> rmsnorm(g, x; dims=(1,2)), gld, xd)
+        dgz, dxz = back(dyd)
+        @test cpu(dg) ≈ cpu(dgz) atol=atol
+        @test cpu(dx) ≈ cpu(dxz) atol=atol
+        @test NNlib.∇rmsnorm(nothing, xd, dyd)[1] === nothing
     end
 
     # Second-order differentiation. The reference HVP below builds a full Jacobian with
@@ -172,6 +208,7 @@ function normalization_testsuite(Backend)
             return isapprox(zz, ref; rtol=1e-2, atol=1e-3)
         end
         @test hvp_match(x -> sum(abs2, layernorm(gl, bl, x; dims=(1,2))), x)
+        @test hvp_match(x -> sum(abs2, rmsnorm(gl, x; dims=(1,2))), x)
         @test hvp_match(x -> sum(abs2, groupnorm(g, b, x, 3)), x)
         @test hvp_match(x -> sum(abs2, batchnorm(g, b, x, nothing, nothing, 0.1f0)), x)
         @test hvp_match(x -> sum(abs2, instancenorm(g, b, x, nothing, nothing, 0.1f0)), x)
