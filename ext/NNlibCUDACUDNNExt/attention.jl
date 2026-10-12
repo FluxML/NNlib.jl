@@ -4,7 +4,7 @@ using ChainRulesCore: ChainRulesCore, HasReverseMode, NoTangent, RuleConfig,
 
 # cuDNN's fused scaled dot-product attention takes half-precision arrays in NNlib's
 # `(head_dim, nheads, seq_len, batch_size)` layout, and never materializes the attention
-# scores, the causal and padding masks or the repeated key/value heads of grouped-query
+# weights, the causal and padding masks or the repeated key/value heads of grouped-query
 # attention.
 const CUDNNSDPAFloat = Union{Float16,BFloat16}
 

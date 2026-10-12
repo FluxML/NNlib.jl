@@ -1,3 +1,7 @@
+# the attention weights alone
+attention_weights(q, k, args...; kws...) =
+    last(scaled_dot_product_attention_with_weights(q, k, k, args...; kws...))
+
 @testset "different batchsizes" begin
     head_dim = 5
     lenq = 3
@@ -7,7 +11,7 @@
         k = rand(Float32, head_dim, nheads, lenkv, batch_size...)
         v = rand(Float32, head_dim, nheads, lenkv, batch_size...)
         y = scaled_dot_product_attention(q, k, v)
-        α = scaled_dot_product_attention_scores(q, k)
+        α = attention_weights(q, k)
         @test y isa Array{Float32}
         @test size(y) == (head_dim, nheads, lenq, batch_size...)
         @test size(α) == (lenkv, lenq, nheads, batch_size...)
@@ -15,11 +19,39 @@
     end
 end
 
-@testset "scores ↔ output consistency" begin
+@testset "output and weights in one pass" begin
+    q = rand(Float32, 4, 2, 3, 1)
+    k = rand(Float32, 4, 2, 5, 1)
+    v = rand(Float32, 6, 2, 5, 1)
+    y, α = @inferred scaled_dot_product_attention_with_weights(q, k, v)
+    @test y == scaled_dot_product_attention(q, k, v)
+    @test size(α) == (5, 3, 2, 1)
+
+    # the output is computed from the returned weights, also with a stochastic `fdrop`
+    fdrop(α) = α .* (rand(Float32, size(α)) .> 0.5f0)
+    y, α = scaled_dot_product_attention_with_weights(q, k, v; fdrop)
+    @test any(iszero, α)
+    @test y ≈ [sum(α[j, i, h, b] * v[d, h, j, b] for j in 1:5) for d in 1:6, h in 1:2, i in 1:3, b in 1:1]
+
+    # batch dimensions are restored in both
+    qb, kb, vb = map(x -> repeat(x; outer=(1, 1, 1, 2, 3)), (q, k, v))
+    y, α = @inferred scaled_dot_product_attention_with_weights(qb, kb, vb)
+    @test size(y) == (6, 2, 3, 2, 3)
+    @test size(α) == (5, 3, 2, 2, 3)
+
+    @test sdpa === scaled_dot_product_attention
+    @test sdpa_with_weights === scaled_dot_product_attention_with_weights
+
+    qd, kd, vd = map(x -> Float64.(x), (q, k, v))
+    # a loss on both the output and the weights
+    @test test_gradients((x...) -> scaled_dot_product_attention_with_weights(x...), qd, kd, vd;
+                         loss = (f, xs...) -> sum(x -> mean(abs2, x), f(xs...)))
+end
+
+@testset "weights ↔ output consistency" begin
     q = rand(Float32, 4, 2, 3, 1)
     k = v = rand(Float32, 4, 2, 5, 1)
-    α = scaled_dot_product_attention_scores(q, k)
-    y = scaled_dot_product_attention(q, k, v)
+    y, α = scaled_dot_product_attention_with_weights(q, k, v)
     # y[:, h, i, b] = Σ_j α[j, i, h, b] * v[:, h, j, b]
     yref = similar(y)
     for b in 1:1, h in 1:2, i in 1:3
@@ -32,7 +64,7 @@ end
     # (head_dim, nheads, seq_len, batch) = (2, 2, 3, 1)
     q = k = v = reshape([1:12;] ./ 12, 2, 2, 3, 1)
     y = scaled_dot_product_attention(q, k, v)
-    α = scaled_dot_product_attention_scores(q, k)
+    α = attention_weights(q, k)
     ytrue = [0.429754, 0.513087, 0.613791, 0.697125, 0.46431, 0.547644, 0.647876, 0.73121, 0.49773, 0.581064, 0.680455, 0.763788]
     ytrue = reshape(ytrue, 4, 3, 1)
     αtrue = [0.313896, 0.332948, 0.353157, 0.264431, 0.328206, 0.407362, 0.219215, 0.31838, 0.462405, 0.288691, 0.331243, 0.380066, 0.241239, 0.323893, 0.434868, 0.198438, 0.311761, 0.489801]
@@ -46,14 +78,14 @@ end
     k = rand(4, 2, 5, 1)
 
     mask = rand(Bool, (5, 3))
-    α = scaled_dot_product_attention_scores(q, k; mask)
+    α = attention_weights(q, k; mask)
     @test all((α[:,:,1,1].> 0) .== mask)
     @test all((α[:,:,2,1].> 0) .== mask)
 
     @testset "causal" begin
         x = rand(4, 2, 3, 1)
         mask = make_causal_mask(x, dims=3)
-        α = scaled_dot_product_attention_scores(x, x; mask)
+        α = attention_weights(x, x; mask)
         @test all((α[:,:,1,1].> 0) .== mask)
         @test all((α[:,:,2,1].> 0) .== mask)
     end
@@ -62,7 +94,7 @@ end
 @testset "dropout" begin
     q = k = rand(5, 2, 10)
     fdrop(x, p) = (Random.rand!(similar(x)) .> p) .* x ./ (1-p)
-    α = scaled_dot_product_attention_scores(q, k; fdrop = x -> fdrop(x, 0.5))
+    α = attention_weights(q, k; fdrop = x -> fdrop(x, 0.5))
     @test 0.6 > mean(>(0), α) > 0.4
 end
 
@@ -71,7 +103,7 @@ end
     k = v = rand(2, 2, 3, 1)
     bias = randn(3, 5)
     y = scaled_dot_product_attention(q, k, v, bias)
-    α = scaled_dot_product_attention_scores(q, k, bias)
+    α = attention_weights(q, k, bias)
     @test size(α) == (3, 5, 2, 1)
     @test size(y) == (2, 2, 5, 1)
 end
@@ -88,11 +120,11 @@ end
     q = rand(Float32, head_dim, nheads, 5, 1)
     k = v = rand(Float32, head_dim, nheads, 3, 1)
     # passing the default scale explicitly reproduces the default
-    α0 = scaled_dot_product_attention_scores(q, k)
-    α1 = scaled_dot_product_attention_scores(q, k; scale=inv(sqrt(Float32(head_dim))))
+    α0 = attention_weights(q, k)
+    α1 = attention_weights(q, k; scale=inv(sqrt(Float32(head_dim))))
     @test α1 ≈ α0
     # a different scale changes the result
-    α2 = scaled_dot_product_attention_scores(q, k; scale=1f0)
+    α2 = attention_weights(q, k; scale=1f0)
     @test !(α2 ≈ α0)
     # the output path accepts `scale` too
     @test size(scaled_dot_product_attention(q, k, v; scale=2f0)) == (head_dim, nheads, 5, 1)
@@ -101,9 +133,9 @@ end
 @testset "is_causal" begin
     head_dim, nheads = 4, 2
     x = rand(Float32, head_dim, nheads, 4, 1)
-    αcausal = scaled_dot_product_attention_scores(x, x; is_causal=true)
+    αcausal = attention_weights(x, x; is_causal=true)
     mask = make_causal_mask(x, dims=3)
-    αmask = scaled_dot_product_attention_scores(x, x; mask)
+    αmask = attention_weights(x, x; mask)
     @test αcausal ≈ αmask
     # lower triangle (key index > query index) must be masked out
     @test all(all(αcausal[j, i, :, 1] .== 0) for j in 1:4, i in 1:4 if j > i)
@@ -113,7 +145,7 @@ end
     # `mask` and `is_causal` combine: a key is attended to where both allow it
     mask2 = rand(Bool, 4, 4)
     mask2[1, :] .= true
-    αboth = scaled_dot_product_attention_scores(x, x; mask=mask2, is_causal=true)
+    αboth = attention_weights(x, x; mask=mask2, is_causal=true)
     @test all((αboth[:, :, h, 1] .> 0) == (mask2 .& mask) for h in 1:nheads)
     @test scaled_dot_product_attention(x, x, x; mask=mask2, is_causal=true) ≈
           scaled_dot_product_attention(x, x, x; mask=mask2 .& mask)
@@ -131,15 +163,15 @@ end
     # the keys past `kv_lengths` are not attended to
     @test scaled_dot_product_attention(q, k, v; kv_lengths) ≈
           scaled_dot_product_attention(q, k, v; mask=kvmask)
-    α = scaled_dot_product_attention_scores(q, k; kv_lengths)
+    α = attention_weights(q, k; kv_lengths)
     @test (α .> 0) == (kvmask .& trues(lenkv, lenq, nheads, bs))
 
-    # the output and the scores are zero at the queries past `q_lengths`
+    # the output and the weights are zero at the queries past `q_lengths`
     y = scaled_dot_product_attention(q, k, v; q_lengths)
     @test y ≈ scaled_dot_product_attention(q, k, v) .* qmask
     @test all(iszero, y[:, :, 4:5, 2])
-    @test scaled_dot_product_attention_scores(q, k; q_lengths) ≈
-          scaled_dot_product_attention_scores(q, k) .* reshape(qmask, 1, lenq, 1, bs)
+    @test attention_weights(q, k; q_lengths) ≈
+          attention_weights(q, k) .* reshape(qmask, 1, lenq, 1, bs)
 
     # combined with each other, with `is_causal` and with a `mask`
     causal = NNlib.make_causal_mask(q, lenkv, lenq)
@@ -191,7 +223,7 @@ end
         mask = rand(Bool, lenkv, lenq, 1, sz...)
         selectdim(mask, 1, 1) .= true
         @test scaled_dot_product_attention(q, k, v; mask) ≈ yref(mask=Bool.(full(mask)))
-        α = scaled_dot_product_attention_scores(q, k; mask)
+        α = attention_weights(q, k; mask)
         @test flat(α .> 0) == (full(mask) .> 0) .& trues(lenkv, lenq, nheads, 6)
 
         bias = randn(Float32, lenkv, lenq, 1, sz...)
@@ -217,12 +249,12 @@ end
     # arrays with different numbers of dimensions
     @test_throws ArgumentError scaled_dot_product_attention(q, k[:, :, :, 1], v)
     @test_throws ArgumentError scaled_dot_product_attention(q, k, v[:, :, :, 1])
-    @test_throws ArgumentError scaled_dot_product_attention_scores(q, k[:, :, :, 1])
+    @test_throws ArgumentError scaled_dot_product_attention_with_weights(q, k[:, :, :, 1], v)
     @test_throws ArgumentError scaled_dot_product_attention(q[:, :, 1, 1], k[:, :, 1, 1], v[:, :, 1, 1])
     # head and batch dimensions
     @test_throws ArgumentError scaled_dot_product_attention(q, k[1:2, :, :, :], v)
     @test_throws ArgumentError scaled_dot_product_attention(q, k, v[:, :, :, 1:1])
-    @test_throws ArgumentError scaled_dot_product_attention_scores(q, k[:, :, :, 1:1])
+    @test_throws ArgumentError scaled_dot_product_attention_with_weights(q, k[:, :, :, 1:1], v)
 end
 
 @testset "is_fused_attention" begin
@@ -239,7 +271,7 @@ end
     v = rand(Float32, head_dim, nkvheads, 3, 2)
 
     y = scaled_dot_product_attention(q, k, v)
-    α = scaled_dot_product_attention_scores(q, k)
+    α = attention_weights(q, k)
     @test size(y) == (head_dim, nheads, 5, 2)
     @test size(α) == (3, 5, nheads, 2)
     @test sum(α, dims=1) ≈ ones(Float32, 1, 5, nheads, 2)
@@ -249,7 +281,7 @@ end
     kf = repeat(k; inner=(1, r, 1, 1))
     vf = repeat(v; inner=(1, r, 1, 1))
     @test y ≈ scaled_dot_product_attention(q, kf, vf)
-    @test α ≈ scaled_dot_product_attention_scores(q, kf)
+    @test α ≈ attention_weights(q, kf)
 
     # number of query heads must be divisible by the number of kv heads
     badk = rand(Float32, head_dim, 4, 3, 2)   # 6 % 4 != 0
@@ -269,8 +301,9 @@ end
     y, α = @test_deprecated dot_product_attention(q, k, v; nheads)
     qh, kh, vh = map(x -> reshape(x, 4, nheads, size(x, 2), 3), (q, k, v))
     @test y ≈ reshape(scaled_dot_product_attention(qh, kh, vh), 8, 5, 3)
-    @test α ≈ scaled_dot_product_attention_scores(qh, kh)
+    @test α ≈ attention_weights(qh, kh)
     @test α ≈ @test_deprecated dot_product_attention_scores(qh, kh)
+    @test α ≈ @test_deprecated scaled_dot_product_attention_scores(qh, kh)
 
     # without `dims`, the mask is still the one for the deprecated layout
     mask = @test_deprecated make_causal_mask(q)

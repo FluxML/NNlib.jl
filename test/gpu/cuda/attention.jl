@@ -48,6 +48,16 @@ collapse(x) = reshape(x, size(x)[1:3]..., :)
               scaled_dot_product_attention(qg, k, v) rtol=2f-2
     end
 
+    @testset "with weights" begin
+        # the weights are never computed by the fused kernel
+        y, α = scaled_dot_product_attention_with_weights(qd, kd, vd)
+        yref, αref = scaled_dot_product_attention_with_weights(q, k, v)
+        @test y isa CuArray{T,4}
+        @test α isa CuArray{T,4}
+        @test Float32.(Array(y)) ≈ yref rtol=2f-2
+        @test Float32.(Array(α)) ≈ αref rtol=2f-2 atol=1f-3
+    end
+
     @testset "sequence lengths" begin
         q_lengths, kv_lengths = [16, 9, 1], [12, 5, 7]
         @testset "$(keys(kws))" for kws in ((; kv_lengths), (; q_lengths),
@@ -173,7 +183,8 @@ end
     gputest(scaled_dot_product_attention, q, k, v; rtol=1f-4, atol=1f-5)
     gputest((q, k, v) -> scaled_dot_product_attention(q, k, v; is_causal=true), q, k, v;
             rtol=1f-4, atol=1f-5)
-    gputest(scaled_dot_product_attention_scores, q, k; rtol=1f-4, atol=1f-5)
+    gputest(first ∘ scaled_dot_product_attention_with_weights, q, k, v; rtol=1f-4, atol=1f-5)
+    gputest(last ∘ scaled_dot_product_attention_with_weights, q, k, v; rtol=1f-4, atol=1f-5)
 
     @test !NNlib.is_fused_attention(CuArray(q), CuArray(k), CuArray(v))
 
@@ -183,8 +194,8 @@ end
             rtol=1f-4, atol=1f-5)
     gputest((q, k, v) -> scaled_dot_product_attention(q, k, v; lengths..., is_causal=true),
             q, k, v; rtol=1f-4, atol=1f-5)
-    gputest((q, k) -> scaled_dot_product_attention_scores(q, k; lengths...), q, k;
-            rtol=1f-4, atol=1f-5)
+    gputest((q, k, v) -> last(scaled_dot_product_attention_with_weights(q, k, v; lengths...)),
+            q, k, v; rtol=1f-4, atol=1f-5)
 
     # a bias and a mask following the batch dimensions of the inputs
     q2, k2, v2 = map(x -> repeat(x; outer=(1, 1, 1, 1, 2)), (q, k, v))
@@ -198,7 +209,7 @@ end
             rtol=1f-4, atol=1f-5)
 end
 
-@testset "deprecated dot_product_attention" begin
+@testset "deprecated interface" begin
     q = rand(Float32, 64, 16, 3) ./ 4
     qd = CuArray(Float16.(q))
     y, α = @test_deprecated dot_product_attention(q, q, q; nheads=2)

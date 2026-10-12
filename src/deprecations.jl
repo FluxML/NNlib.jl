@@ -20,12 +20,13 @@ end
 
 Deprecated: use [`scaled_dot_product_attention`](@ref), which takes inputs with an
 explicit head axis `(head_dim, nheads, seq_len, batch_size...)` and returns only the
-attention output, and [`scaled_dot_product_attention_scores`](@ref) for the scores.
+attention output, or [`scaled_dot_product_attention_with_weights`](@ref) for the
+attention weights too.
 
 Multihead dot product attention on inputs of size `(features, seq_len, batch_size...)`,
 whose heads are packed into the feature dimension and split according to `nheads`.
 Returns the attention output of size `(v_dim, q_len, batch_size...)` and the attention
-scores of size `(kv_len, q_len, nheads, batch_size...)`.
+weights of size `(kv_len, q_len, nheads, batch_size...)`.
 """
 function dot_product_attention(q, k, v, bias=nothing;
             nheads=1, nkvheads=nheads, fdrop=identity, mask=nothing, scale=nothing,
@@ -36,25 +37,38 @@ function dot_product_attention(q, k, v, bias=nothing;
     q = split_heads(q, nheads)
     k = split_heads(k, nkvheads)
     v = split_heads(v, nkvheads)
-    check_attention_inputs(q, k, v)
-    batch_size = size(q)[4:end]
-    q, k, v, bias, mask, _, _ = collapse_attention_inputs(q, k, v, bias, mask, nothing, nothing)
-    # the generic implementation, as this interface also returns the scores
-    x, α = _attention(q, k, v, bias; fdrop, mask, scale, is_causal)
-    x = reshape(x, size(x, 1), size(x, 2), size(x, 3), batch_size...)
-    α = reshape(α, size(α)[1:3]..., batch_size...)
+    x, α = scaled_dot_product_attention_with_weights(q, k, v, bias;
+                fdrop, mask, scale, is_causal)
     return join_heads(x), α
 end
 
 """
     dot_product_attention_scores(query, key, [bias]; [fdrop, mask])
 
-Deprecated: use [`scaled_dot_product_attention_scores`](@ref).
+Deprecated: use [`scaled_dot_product_attention_with_weights`](@ref).
 """
 function dot_product_attention_scores(q, k, bias=nothing; kws...)
     Base.depwarn("`dot_product_attention_scores` is deprecated, use \
-        `scaled_dot_product_attention_scores` instead.", :dot_product_attention_scores)
-    scaled_dot_product_attention_scores(q, k, bias; kws...)
+        `scaled_dot_product_attention_with_weights` instead.", :dot_product_attention_scores)
+    return last(scaled_dot_product_attention_with_weights(q, k, k, bias; kws...))
 end
 
 export dot_product_attention, dot_product_attention_scores
+
+
+### Deprecated in v0.9.47
+
+"""
+    scaled_dot_product_attention_scores(query, key, [bias]; kws...)
+
+Deprecated: use [`scaled_dot_product_attention_with_weights`](@ref), which returns the
+attention weights together with the attention output.
+"""
+function scaled_dot_product_attention_scores(q, k, bias=nothing; kws...)
+    Base.depwarn("`scaled_dot_product_attention_scores(q, k)` is deprecated, use \
+        `scaled_dot_product_attention_with_weights(q, k, v)`, which returns the attention \
+        output and the weights.", :scaled_dot_product_attention_scores)
+    return last(scaled_dot_product_attention_with_weights(q, k, k, bias; kws...))
+end
+
+export scaled_dot_product_attention_scores

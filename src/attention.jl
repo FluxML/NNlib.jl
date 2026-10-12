@@ -4,6 +4,7 @@ const AA{N,T} = AbstractArray{T,N}
 
 """
     scaled_dot_product_attention(query, key, value, [bias]; [fdrop, mask, scale, is_causal, q_lengths, kv_lengths])
+    sdpa(query, key, value, [bias]; kws...)
 
 Multihead dot product attention used in transformer architectures, with an explicit
 head axis.
@@ -26,8 +27,8 @@ divisible by the number of key/value heads.
 
 Returns the attention output array of size `(v_head_dim, nheads, q_len, batch_size...)`.
 
-See also [`scaled_dot_product_attention_scores`](@ref) if you need the attention scores
-of size `(kv_len, q_len, nheads, batch_size...)`.
+See also [`scaled_dot_product_attention_with_weights`](@ref) if you need the attention
+weights too.
 
 # Arguments
 
@@ -35,11 +36,11 @@ of size `(kv_len, q_len, nheads, batch_size...)`.
 - `key`: Key array of size `(qk_head_dim, nkvheads, kv_len, batch_size...)`.
 - `value`: Value array of size `(v_head_dim, nkvheads, kv_len, batch_size...)`.
 - `bias`: Either `nothing` or an array broadcastable to size `(kv_len, q_len, nheads, batch_size...)`.
-          It will be added to the attention scores before applying the softmax. Default `nothing`.
-- `fdrop`: A dropout function or layer to be applied on the attention scores right after the softmax.
+          It will be added to the attention logits before applying the softmax. Default `nothing`.
+- `fdrop`: A dropout function or layer to be applied on the attention weights right after the softmax.
            Default `identity` (no dropout).
 - `mask`: Either `nothing` or a boolean array broadcastable to size `(kv_len, q_len, nheads, batch_size...)`.
-          The mask is applied to the attention scores just before the softmax.
+          The mask is applied to the attention logits just before the softmax.
           See [`make_causal_mask`](@ref) for creating causal masks. Default `nothing`.
 - `scale`: The multiplier used to scale the `queryᵀ * key` dot products before
           the softmax. Default `nothing`, meaning `1 / √(qk_head_dim)`.
@@ -61,7 +62,7 @@ where all of them allow it.
 
 With CUDA.jl and cuDNN.jl loaded, `Float16` and `BFloat16` `CuArray`s are handled by
 cuDNN's fused kernel, which computes the output without materializing the attention
-scores, so that memory grows linearly rather than quadratically with the sequence
+weights, so that memory grows linearly rather than quadratically with the sequence
 length. It supports `scale`, `is_causal`, `q_lengths`, `kv_lengths` and grouped-query
 attention, and requires:
 
@@ -69,7 +70,7 @@ attention, and requires:
 - a head dimension that is a multiple of 8 and at most 256;
 - a `value` with the same head dimension as `query`.
 
-Any other call silently takes the generic implementation, which materializes the scores.
+Any other call silently takes the generic implementation, which materializes the weights.
 [`NNlib.is_fused_attention`](@ref) tells which of the two a call takes.
 
 # Examples
@@ -102,11 +103,13 @@ function scaled_dot_product_attention(q::AbstractArray, k::AbstractArray, v::Abs
     return reshape(x, size(x, 1), size(x, 2), size(x, 3), batch_size...)
 end
 
+const sdpa = scaled_dot_product_attention
+
 # Attention on `(head_dim, nheads, seq_len, batch_size)` arrays, with `q_lengths` and
 # `kv_lengths` as `(1, 1, 1, batch_size)` arrays or `nothing`. This is the method for
 # backends to overload: it receives the arguments as the user gave them, before the
 # generic implementation materializes the causal and padding masks, the repeated
-# key/value heads of grouped-query attention and the attention scores, none of which a
+# key/value heads of grouped-query attention and the attention weights, none of which a
 # fused kernel needs.
 function _scaled_dot_product_attention(q::AA4, k::AA4, v::AA4, bias;
             fdrop, mask, scale, is_causal, q_lengths, kv_lengths)
@@ -115,11 +118,51 @@ function _scaled_dot_product_attention(q::AA4, k::AA4, v::AA4, bias;
 end
 
 """
+    scaled_dot_product_attention_with_weights(query, key, value, [bias]; kws...)
+    sdpa_with_weights(query, key, value, [bias]; kws...)
+
+Return the output of [`scaled_dot_product_attention`](@ref) together with the attention
+weights it is computed from, in a single pass.
+
+The arguments are those of [`scaled_dot_product_attention`](@ref). The weights have size
+`(kv_len, q_len, nheads, batch_size...)`, with `α[j, i, h, b]` the weight of the key `j`
+for the query `i` in the head `h`: the softmax over the keys of the attention logits,
+after `fdrop`. They are zero at the queries past `q_lengths`.
+
+Returning the weights means materializing them, so this function never takes a fused
+implementation: prefer [`scaled_dot_product_attention`](@ref) when they are not needed.
+
+# Examples
+
+```julia
+q = rand(Float32, 16, 8, 20, 4)
+k = v = rand(Float32, 16, 8, 30, 4)
+y, α = scaled_dot_product_attention_with_weights(q, k, v)
+# size(y) == (16, 8, 20, 4)
+# size(α) == (30, 20, 8, 4)
+```
+"""
+function scaled_dot_product_attention_with_weights(q::AbstractArray, k::AbstractArray,
+            v::AbstractArray, bias=nothing; fdrop=identity, mask=nothing, scale=nothing,
+            is_causal::Bool=false, q_lengths=nothing, kv_lengths=nothing)
+    check_attention_inputs(q, k, v)
+    batch_size = size(q)[4:end]
+    q, k, v, bias, mask, q_lengths, kv_lengths =
+        collapse_attention_inputs(q, k, v, bias, mask, q_lengths, kv_lengths)
+    x, α = _attention(q, k, v, bias; fdrop, mask, scale, is_causal, q_lengths, kv_lengths)
+    x = reshape(x, size(x, 1), size(x, 2), size(x, 3), batch_size...)
+    α = reshape(α, size(α, 1), size(α, 2), size(α, 3), batch_size...)
+    return x, α
+end
+
+const sdpa_with_weights = scaled_dot_product_attention_with_weights
+
+"""
     NNlib.is_fused_attention(query, key, value, [bias]; kws...)
 
 Return `true` if [`scaled_dot_product_attention`](@ref) called with the same arguments
 is computed by the fused kernel of a backend, which does not materialize the attention
-scores, and `false` if it takes the generic implementation.
+weights, and `false` if it takes the generic implementation.
 
 This is about the forward pass: a backend may have no fused kernel for the gradient of
 a call whose output it computes with one, and then differentiates the generic
@@ -138,11 +181,12 @@ end
 # To be overloaded together with `_scaled_dot_product_attention`.
 _is_fused_attention(q::AA4, k::AA4, v::AA4, bias; kws...) = false
 
-function check_attention_inputs(q::AbstractArray, k::AbstractArray)
-    ndims(q) == ndims(k) || throw(ArgumentError("""
-    Query and key must have the same number of dimensions. Instead:
+function check_attention_inputs(q::AbstractArray, k::AbstractArray, v::AbstractArray)
+    ndims(q) == ndims(k) == ndims(v) || throw(ArgumentError("""
+    Query, key and value must have the same number of dimensions. Instead:
     - size(q): $(size(q))
     - size(k): $(size(k))
+    - size(v): $(size(v))
     """))
     ndims(q) >= 3 || throw(ArgumentError(
         "Inputs must have at least 3 dimensions (head_dim, nheads, seq_len). Got $(ndims(q))."))
@@ -151,28 +195,6 @@ function check_attention_inputs(q::AbstractArray, k::AbstractArray)
     Head dimension (first dimension) of query and key has to be the same. Instead:
     - size(q): $(size(q))
     - size(k): $(size(k))
-    """))
-    size(q)[4:end] == size(k)[4:end] || throw(ArgumentError("""
-    Batch dimensions of query and key have to be the same. Instead:
-    - size(q): $(size(q))
-    - size(k): $(size(k))
-    """))
-    nheads, nkvheads = size(q, 2), size(k, 2)
-    (nheads % nkvheads == 0) || throw(ArgumentError("""
-    Number of query heads must be divisible by the number of key/value heads
-    (grouped-query attention). Instead:
-    - nheads (size(q, 2)): $nheads
-    - nkvheads (size(k, 2)): $nkvheads
-    """))
-    return nothing
-end
-
-function check_attention_inputs(q::AbstractArray, k::AbstractArray, v::AbstractArray)
-    check_attention_inputs(q, k)
-    ndims(k) == ndims(v) || throw(ArgumentError("""
-    Key and value must have the same number of dimensions. Instead:
-    - size(k): $(size(k))
-    - size(v): $(size(v))
     """))
     size(k, 2) == size(v, 2) || throw(ArgumentError("""
     Number of heads (second dimension) of key and value has to be the same. Instead:
@@ -184,10 +206,18 @@ function check_attention_inputs(q::AbstractArray, k::AbstractArray, v::AbstractA
     - size(k): $(size(k))
     - size(v): $(size(v))
     """))
-    size(k)[4:end] == size(v)[4:end] || throw(ArgumentError("""
-    Batch dimensions of key and value have to be the same. Instead:
+    size(q)[4:end] == size(k)[4:end] == size(v)[4:end] || throw(ArgumentError("""
+    Batch dimensions have to be the same. Instead:
+    - size(q): $(size(q))
     - size(k): $(size(k))
     - size(v): $(size(v))
+    """))
+    nheads, nkvheads = size(q, 2), size(k, 2)
+    (nheads % nkvheads == 0) || throw(ArgumentError("""
+    Number of query heads must be divisible by the number of key/value heads
+    (grouped-query attention). Instead:
+    - nheads (size(q, 2)): $nheads
+    - nkvheads (size(k, 2)): $nkvheads
     """))
     return nothing
 end
@@ -197,7 +227,6 @@ end
 # Bring the arguments of the public functions to the layout of the implementations:
 # `q`, `k` and `v` with a single batch dimension, `bias` and `mask` broadcastable against
 # it, the lengths as `(1, 1, 1, batch_size)` arrays on the device of the inputs.
-# `v` is `nothing` when only the scores are computed.
 function collapse_attention_inputs(q, k, v, bias, mask, q_lengths, kv_lengths)
     batch_size = size(q)[4:end]
     q, k, v = map(collapse_batch_dims, (q, k, v))
@@ -210,7 +239,6 @@ end
 
 # collapse the batch dimensions into a single one
 collapse_batch_dims(x) = reshape(x, size(x, 1), size(x, 2), size(x, 3), :)
-collapse_batch_dims(x::Nothing) = nothing
 
 # The same for a `bias` or a `mask`, which is only broadcastable to
 # `(kv_len, q_len, nheads, batch_size...)`.
@@ -258,9 +286,7 @@ end
 
 @non_differentiable attention_lengths(::Any...)
 
-# Generic implementation, returning both the attention output and the scores `α`,
-# so the (deprecated) `dot_product_attention` can return a consistent `(x, α)` pair
-# without applying a stochastic `fdrop` twice.
+# Generic implementation, returning both the attention output and the weights `α`.
 function _attention(q::AA4, k::AA4, v::AA4, bias; fdrop, mask, scale, is_causal,
                     q_lengths=nothing, kv_lengths=nothing)
     # [q] = [qk_head_dim, nheads, q_len, batch_size]
@@ -276,7 +302,7 @@ function _attention(q::AA4, k::AA4, v::AA4, bias; fdrop, mask, scale, is_causal,
         v = repeat_kv_heads(v, r)
     end
 
-    α = _attention_scores(q, k, bias, fdrop, mask, scale, q_lengths)
+    α = _attention_weights(q, k, bias, fdrop, mask, scale, q_lengths)
     # [α] = [kv_len, q_len, nheads, batch_size]
 
     # The following permutedims and batched_mul are equivalent to
@@ -288,37 +314,7 @@ function _attention(q::AA4, k::AA4, v::AA4, bias; fdrop, mask, scale, is_causal,
     return x, α
 end
 
-"""
-    scaled_dot_product_attention_scores(query, key, [bias]; [fdrop, mask, scale, is_causal, q_lengths, kv_lengths])
-
-Return the attention scores for [`scaled_dot_product_attention`](@ref).
-Input arrays must have dimensions `(head_dim, nheads, seq_len, batch_size...)`.
-
-The `scale` keyword sets the multiplier scaling the `queryᵀ * key` dot products;
-it defaults to `1 / √(head_dim)`.
-
-The scores of the queries past `q_lengths` are zero.
-
-See [`scaled_dot_product_attention`](@ref) for more details.
-"""
-function scaled_dot_product_attention_scores(q::AbstractArray, k::AbstractArray, bias=nothing;
-            fdrop=identity, mask=nothing, scale=nothing, is_causal::Bool=false,
-            q_lengths=nothing, kv_lengths=nothing)
-    check_attention_inputs(q, k)
-    batch_size = size(q)[4:end]
-    q, k, _, bias, mask, q_lengths, kv_lengths =
-        collapse_attention_inputs(q, k, nothing, bias, mask, q_lengths, kv_lengths)
-    mask = attention_mask(q, k, mask, is_causal, kv_lengths)
-    nheads, nkvheads = size(q, 2), size(k, 2)
-    if nkvheads != nheads
-        k = repeat_kv_heads(k, nheads ÷ nkvheads)
-    end
-
-    α = _attention_scores(q, k, bias, fdrop, mask, scale, q_lengths)
-    return reshape(α, size(α)[1:3]..., batch_size...)
-end
-
-function _attention_scores(q::AA4{T}, k::AA4, bias, fdrop, mask, scale, q_lengths=nothing) where T
+function _attention_weights(q::AA4{T}, k::AA4, bias, fdrop, mask, scale, q_lengths=nothing) where T
     s = scale === nothing ? inv(√T(size(q, 1))) : T(scale)
     # The following permutedims and batched_mul are equivalent to
     # @tullio logits[j, i, h, b] := s * q[d, h, i, b] * k[d, h, j, b]
@@ -346,7 +342,7 @@ function apply_attn_mask(logits, mask)
     ifelse.(mask, logits, neginf)
 end
 
-# Zeroing the scores of the padded queries zeroes the attention output there too.
+# Zeroing the weights of the padded queries zeroes the attention output there too.
 apply_query_lengths(α, q_lengths::Nothing) = α
 
 apply_query_lengths(α, q_lengths) = α .* padding_mask(size(α, 2), q_lengths; dims=2)
@@ -380,7 +376,7 @@ padding_mask(len::Int, lengths; dims::Int) = (dims == 1 ? (1:len) : (1:len)') .<
 Return a boolean square matrix `m` of the same type as `x` and of side `size(x, dims)`.
 Its elements are set such that `m[i, j] == i ≤ j`.
 
-Can be used to mask the attention scores in [`scaled_dot_product_attention`](@ref),
+Can be used as the `mask` of [`scaled_dot_product_attention`](@ref),
 whose inputs have the sequence length along `dims=3`. For a plain causal mask, prefer
 the `is_causal=true` keyword there, which lets backends with a fused implementation
 avoid materializing the mask.
