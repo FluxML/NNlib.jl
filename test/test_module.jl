@@ -57,7 +57,8 @@ using Mooncake: Mooncake
 let ours = Base.get_extension(NNlib, :NNlibMooncakeExt),
     theirs = Base.get_extension(Mooncake, :MooncakeNNlibExt)
 
-    if ours.MOONCAKE_SHIPS_RULES && theirs !== nothing
+    # A worker loads this file once per test file it runs, and must swap only once.
+    if theirs !== nothing && !isempty(methods(Mooncake.rrule!!, theirs))
         for f in (Mooncake.rrule!!, Mooncake.frule!!, Mooncake._is_primitive,
                   NNlib.logsumexp, NNlib.σ, NNlib.sigmoid_fast)
             foreach(Base.delete_method, methods(f, theirs))
