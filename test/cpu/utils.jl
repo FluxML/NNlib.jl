@@ -2,6 +2,15 @@
     @test NNlib.within_gradient([1.0]) === false
     @test gradient(x -> NNlib.within_gradient(x) * x, 2.0) == (1.0,)
     @test NNlib.within_gradient([ForwardDiff.Dual(1.0, 2)]) === true
+
+    f(x) = NNlib.within_gradient(x) ? 2 * sum(x) : sum(x)
+    x = [1.0, 2.0]
+    @test withgradient(f, AutoMooncake(), x).grad[1] == [2.0, 2.0]
+    if NNLIB_TEST_ENZYME
+        @test Enzyme.gradient(Enzyme.Reverse, f, x)[1] == [2.0, 2.0]
+        @test Enzyme.gradient(Enzyme.Forward, f, x)[1] == [2.0, 2.0]
+    end
+    @test f(x) == 3.0
 end
 
 @testset "maximum_dims" begin

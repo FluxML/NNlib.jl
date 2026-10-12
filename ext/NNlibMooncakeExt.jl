@@ -12,4 +12,7 @@ using NNlib: NNlib
 # and `prepare_pullback_cache` evaluate it once themselves, so they update them as well.
 @zero_adjoint MinimalCtx Tuple{typeof(NNlib._update_running_stats!),Vararg}
 
+# Mooncake has no predicate to query, so `within_gradient` is replaced in the code it differentiates.
+Mooncake.@mooncake_overlay NNlib.within_gradient(x) = true
+
 end

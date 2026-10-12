@@ -7,6 +7,9 @@ using GPUArraysCore: AbstractGPUArray
 
 using EnzymeCore.EnzymeRules
 
+# Enzyme rewrites `within_autodiff()` to `true` in the code it differentiates.
+NNlib._within_autodiff(::Val{:Enzyme}) = EnzymeCore.within_autodiff()
+
 for (name, dataname, filtername) in (
                                      (typeof(NNlib.conv!), NNlib.∇conv_data!, NNlib.∇conv_filter!),
                                      (typeof(NNlib.depthwiseconv!), NNlib.∇depthwiseconv_data!, NNlib.∇depthwiseconv_filter!),
