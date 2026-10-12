@@ -51,6 +51,21 @@ using EnzymeCore: EnzymeCore, Active, Const, Duplicated, ReverseWithPrimal, Reve
 end
 using Mooncake: Mooncake
 
+# While Mooncake ships its own copy of the rules for NNlib functions, NNlib's extension does
+# not load its own (see `ext/NNlibMooncakeExt`). Swap them in, so that the copy under test
+# is NNlib's. Mooncake's are deleted first: a rule missing from ours must not fall back to it.
+let ours = Base.get_extension(NNlib, :NNlibMooncakeExt),
+    theirs = Base.get_extension(Mooncake, :MooncakeNNlibExt)
+
+    if ours.MOONCAKE_SHIPS_RULES && theirs !== nothing
+        for f in (Mooncake.rrule!!, Mooncake.frule!!, Mooncake._is_primitive,
+                  NNlib.logsumexp, NNlib.σ, NNlib.sigmoid_fast)
+            foreach(Base.delete_method, methods(f, theirs))
+        end
+        Base.include(ours, joinpath(pkgdir(NNlib), "ext", "NNlibMooncakeExt", "rules.jl"))
+    end
+end
+
 const rng = StableRNG(123)
 
 cpu(x) = cpu_device()(x)

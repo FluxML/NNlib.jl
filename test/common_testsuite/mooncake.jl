@@ -1,5 +1,5 @@
-# Mooncake rules for NNlib functions. Ported from `test/ext/nnlib/nnlib.jl` in Mooncake.jl,
-# without the cases that belong to its LuxLib extension.
+# Tests for `ext/NNlibMooncakeExt/rules.jl`. Ported from `test/ext/nnlib/nnlib.jl` in
+# Mooncake.jl, without the cases that belong to its LuxLib extension.
 
 using Mooncake.TestUtils: test_rule
 using Mooncake.Nfwd: NDual, ndual_partial, ndual_value
