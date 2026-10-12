@@ -5,9 +5,10 @@ Returns `false` except when used inside a `gradient` call, when it returns `true
 Useful for Flux regularisation layers which behave differently during training and inference.
 
 This should work with any ChainRules-based differentiation package, in which case `x` is ignored.
-But Tracker.jl overloads `with_gradient(x::TrackedArray)`, thus for widest use you should
+But Tracker.jl overloads `within_gradient(x::TrackedArray)`, thus for widest use you should
 pass it an array whose gradient is of interest.
 There is also an overload for ForwardDiff.jl's `Dual` types (and arrays of them).
+Enzyme.jl and Mooncake.jl are supported through package extensions, and ignore `x` too.
 
 # Examples
 ```julia-repl
@@ -45,7 +46,11 @@ What goes wrong in `f_bad` is that Zygote knows `any` to be non-differentiable,
 and thus completely ignores its contents. This is not a perfect mechanism,
 and the only style recommended is precisely that of `f_good` above.
 """
-within_gradient(x) = false
+within_gradient(x) = _within_autodiff(Val(:Enzyme))
+
+# An AD package with a predicate of its own plugs it in from an extension,
+# by adding a method for its `Val`.
+_within_autodiff(::Val) = false
 
 ChainRulesCore.rrule(::typeof(within_gradient), x) = true, _ -> (NoTangent(), NoTangent())
 
