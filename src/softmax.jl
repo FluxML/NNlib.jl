@@ -85,16 +85,9 @@ Gradient of [`softmax`](@ref) with respect to its input, given the output `y = s
 and the upstream cotangent `dy`. Does not depend on `x`.
 """
 function ∇softmax(dy::AbstractArray{T}, y::AbstractArray{S}; dims = 1) where {T,S}
-    if within_gradient(y)
-        dx = dy .* y
-        dx = dx .- y .* sum(dx; dims)
-        return dx
-    else
-        # This path is faster, only safe for 1st derivatives though.
-        dx = similar(y, promote_type(T,S))  # sure to be mutable
-        ∇softmax!(dx, dy, y; dims)
-        return dx
-    end
+    dx = similar(y, promote_type(T,S))  # sure to be mutable
+    ∇softmax!(dx, dy, y; dims)
+    return dx
 end
 
 """
@@ -113,6 +106,19 @@ function rrule(::typeof(softmax), x; dims = 1)
     y = softmax(x; dims)
     softmax_pullback(dy) = (NoTangent(), ∇softmax(unthunk(dy), y; dims))
     return y, softmax_pullback
+end
+
+# `∇softmax` mutates, and may call a backend kernel, so nested reverse-mode AD
+# differentiates it with this rule. It is linear and self-adjoint in `dy`.
+function rrule(::typeof(∇softmax), dy, y; dims = 1)
+    dx = ∇softmax(dy, y; dims)
+    function ∇softmax_pullback(Δ)
+        Δ = unthunk(Δ)
+        ∂dy = ∇softmax(Δ, y; dims)
+        ∂y = Δ .* (dy .- sum(dy .* y; dims)) .- dy .* sum(Δ .* y; dims)
+        return (NoTangent(), ∂dy, ∂y)
+    end
+    return dx, ∇softmax_pullback
 end
 
 fast_maximum(x::AbstractArray{T}; dims) where {T} = @fastmath reduce(max, x; dims, init = float(T)(-Inf))
@@ -161,16 +167,10 @@ Gradient of [`logsoftmax`](@ref) with respect to its input, given the output `y 
 and the upstream cotangent `dy`. Does not depend on `x`.
 """
 function ∇logsoftmax(dy::AbstractArray{T}, y::AbstractArray{S}; dims = 1) where {T,S}
-    if within_gradient(y)
-        dx = dy .- sum(dy; dims) .* exp.(y)
-        return dx
-    else
-        # This path is faster, only safe for 1st derivatives though.
-        dx = similar(y, promote_type(T,S))  # sure to be mutable
-        ∇logsoftmax!(dx, dy, y; dims)
-        return dx
-    end
-end    
+    dx = similar(y, promote_type(T,S))  # sure to be mutable
+    ∇logsoftmax!(dx, dy, y; dims)
+    return dx
+end
 
 """
     ∇logsoftmax!(dx, dy, y; dims = 1)
@@ -187,6 +187,19 @@ function rrule(::typeof(logsoftmax), x; dims = 1)
     y = logsoftmax(x; dims)
     logsoftmax_pullback(dy) = (NoTangent(), ∇logsoftmax(unthunk(dy), y; dims))
     return y, logsoftmax_pullback
+end
+
+# Second-order rule, as for `∇softmax`.
+function rrule(::typeof(∇logsoftmax), dy, y; dims = 1)
+    dx = ∇logsoftmax(dy, y; dims)
+    function ∇logsoftmax_pullback(Δ)
+        Δ = unthunk(Δ)
+        p = exp.(y)
+        ∂dy = Δ .- sum(Δ .* p; dims)
+        ∂y = .-sum(dy; dims) .* p .* Δ
+        return (NoTangent(), ∂dy, ∂y)
+    end
+    return dx, ∇logsoftmax_pullback
 end
 
 """

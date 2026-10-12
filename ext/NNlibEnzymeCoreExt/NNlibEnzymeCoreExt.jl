@@ -335,8 +335,7 @@ end
 # GPU that is a cuDNN `ccall` it cannot handle (Enzyme recurses/hangs), and even on
 # the CPU a hand-off to `∇softmax!` matches the ChainRules `rrule`. The rule caches
 # `y` in the augmented pass and accumulates `∇softmax!` into the input shadow on
-# reverse. These are first-order rules (they use the fast, non-`within_gradient`
-# `∇softmax!`), matching what `test_gradients` compares.
+# reverse. These are first-order rules, matching what `test_gradients` compares.
 for (fwd!, bwd!) in ((:(NNlib.softmax!),    :(NNlib.∇softmax!)),
                      (:(NNlib.logsoftmax!), :(NNlib.∇logsoftmax!)))
     @eval begin

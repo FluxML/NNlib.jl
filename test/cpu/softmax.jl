@@ -134,4 +134,11 @@ end
 
     H3 = Zygote.hessian_dual(x -> sum(sin, logsumexp(x)), x)
     @test H3 ≈ Zygote.hessian_reverse(x -> sum(sin, logsumexp(x)), x)
+
+    # Reverse-over-reverse goes through the rules for the gradients themselves.
+    for d in (:, 1, 2, (1, 2))
+        y, dy = softmax(randn(rng, 3, 4); dims = d), randn(rng, 3, 4)
+        ChainRulesTestUtils.test_rrule(NNlib.∇softmax, dy, y; fkwargs = (; dims = d))
+        ChainRulesTestUtils.test_rrule(NNlib.∇logsoftmax, dy, log.(y); fkwargs = (; dims = d))
+    end
 end

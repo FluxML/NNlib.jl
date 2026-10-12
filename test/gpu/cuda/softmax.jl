@@ -17,8 +17,8 @@
 end
 
 @testset "Second derivatives" begin
-    # On the GPU the second-derivative path goes through the generic broadcast
-    # (the `NNlib.within_gradient(y)` branch of ∇softmax/∇logsoftmax), not cuDNN.
+    # Reverse-over-reverse differentiates ∇softmax/∇logsoftmax through their own rules;
+    # forward-over-reverse sends `Dual` arrays to the generic kernels rather than cuDNN.
     # We use a polynomial loss rather than `sum(sin, ...)` as in the CPU test:
     # Zygote's forward-over-reverse `Dual` broadcast for `sin` does not compile
     # to a GPU kernel, which is a limitation unrelated to softmax.
@@ -28,6 +28,10 @@ end
         gcpu = Zygote.gradient(loss, x)[1]
         ggpu = Zygote.gradient(loss, CuArray(x))[1]
         @test Array(ggpu) ≈ gcpu rtol=1e-5
+
+        v = randn(Float64, 4, 3)
+        hvp(X, V) = ForwardDiff.derivative(ε -> Zygote.gradient(w -> sum(abs2, f(w; dims=1)), X .+ ε .* V)[1], 0.0)
+        @test Array(hvp(CuArray(x), CuArray(v))) ≈ hvp(x, v) rtol=1e-5
     end
 end
 

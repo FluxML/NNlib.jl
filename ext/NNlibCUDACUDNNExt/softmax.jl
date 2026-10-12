@@ -33,14 +33,16 @@ end
 
 softmaxalgo() = CUDNN_SOFTMAX_ACCURATE
 
-function NNlib.softmax!(y::T, x::T; dims=1) where {T<:DenseCuArray}
+# Restricted to cuDNN eltypes: others, notably `ForwardDiff.Dual` under
+# forward-over-reverse AD, use the generic kernels.
+function NNlib.softmax!(y::T, x::T; dims=1) where {T<:DenseCuArray{<:CUDNNFloat}}
     s = softmaxdims(x, dims)
     s === nothing && return NNlib._softmax!(y, x; dims)
     cudnnSoftmaxForward!(reshape(y,s), reshape(x,s); mode = CUDNN_SOFTMAX_MODE_INSTANCE, algo = softmaxalgo())
     return y
 end
 
-function NNlib.∇softmax!(dx::T, dy::T, y::T; dims=1) where {R,T<:DenseCuArray{R}}
+function NNlib.∇softmax!(dx::T, dy::T, y::T; dims=1) where {R<:CUDNNFloat,T<:DenseCuArray{R}}
     s = softmaxdims(y, dims)
     s === nothing && return NNlib._∇softmax!(dx, dy, y; dims)
     xDesc = cudnnTensorDescriptor(reshape(y,s))
@@ -50,14 +52,14 @@ function NNlib.∇softmax!(dx::T, dy::T, y::T; dims=1) where {R,T<:DenseCuArray{
     return dx
 end
 
-function NNlib.logsoftmax!(y::T, x::T; dims=1) where {T<:DenseCuArray}
+function NNlib.logsoftmax!(y::T, x::T; dims=1) where {T<:DenseCuArray{<:CUDNNFloat}}
     s = softmaxdims(x, dims)
     s === nothing && return NNlib._logsoftmax!(y, x; dims)
     cudnnSoftmaxForward!(reshape(y,s), reshape(x,s); mode = CUDNN_SOFTMAX_MODE_INSTANCE, algo = CUDNN_SOFTMAX_LOG)
     return y
 end
 
-function NNlib.∇logsoftmax!(dx::T, dy::T, y::T; dims=1) where {R,T<:DenseCuArray{R}}
+function NNlib.∇logsoftmax!(dx::T, dy::T, y::T; dims=1) where {R<:CUDNNFloat,T<:DenseCuArray{R}}
     s = softmaxdims(y, dims)
     s === nothing && return NNlib._∇logsoftmax!(dx, dy, y; dims)
     xDesc = cudnnTensorDescriptor(reshape(y,s))
