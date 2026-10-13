@@ -1,21 +1,13 @@
 # cuDNN's fused kernel handles half-precision inputs whose head dimension is a multiple
-# of 8, with no bias, dropout or arbitrary mask. Everything else, and every `Float32`
-# input, takes the generic implementation.
+# of 8, with no bias, dropout or arbitrary mask. NNlib's own fused kernel takes the rest,
+# in every precision, except under dropout: the materialized implementation forms the
+# weights dropout acts on.
 const sdpa_fused = NNlib.is_fused_attention
 
-# Whether cuDNN has a fused engine for these inputs on this device: NNlib takes the fused
-# kernel exactly then. Where it has none, the comparisons below check the generic path.
-function sdpa_supported(q, k, v; is_causal=false, q_lengths=nothing, kv_lengths=nothing)
-    padded = q_lengths !== nothing || kv_lengths !== nothing
-    # cuDNN takes the lengths of both the queries and the keys, or of neither
-    seqlens(x, lengths) = !padded ? nothing :
-        CuArray(reshape(Int32.(something(lengths, fill(size(x, 3), size(x, 4)))), 1, 1, 1, :))
-    return cuDNN.attention_supported(similar(q), q, k, v; causal=is_causal,
-        seq_len_q=seqlens(q, q_lengths), seq_len_kv=seqlens(k, kv_lengths))
-end
+# The materialized implementation: an `fdrop` other than `identity` keeps a call on it.
+materialized_attention(args...; kws...) = scaled_dot_product_attention(args...; fdrop = x -> x, kws...)
 
 half(T, x) = T.(CuArray(x))    # round on the device (JuliaMath/BFloat16s.jl#107)
-collapse(x) = reshape(x, size(x)[1:3]..., :)
 
 @testset "scaled dot-product attention ($T)" for T in (Float16, BFloat16)
     T == BFloat16 && CUDA.capability(CUDA.device()) < v"8.0" && continue
@@ -24,7 +16,7 @@ collapse(x) = reshape(x, size(x)[1:3]..., :)
     v = rand(Float32, 32, 2, 12, 3) ./ 4
     qd, kd, vd = half(T, q), half(T, k), half(T, v)
 
-    @test sdpa_fused(qd, kd, vd) == sdpa_supported(qd, kd, vd)
+    @test sdpa_fused(qd, kd, vd)
     y = scaled_dot_product_attention(qd, kd, vd)
     @test y isa CuArray{T,4}
     @test Float32.(Array(y)) ≈ scaled_dot_product_attention(q, k, v) rtol=2f-2
@@ -32,8 +24,7 @@ collapse(x) = reshape(x, size(x)[1:3]..., :)
           scaled_dot_product_attention(q, k, v; scale=0.25f0) rtol=2f-2
 
     @testset "causal" begin
-        @test sdpa_fused(qd, qd, qd; is_causal=true) ==
-              sdpa_supported(qd, qd, qd; is_causal=true)
+        @test sdpa_fused(qd, qd, qd; is_causal=true)
         @test Float32.(Array(scaled_dot_product_attention(qd, qd, qd; is_causal=true))) ≈
               scaled_dot_product_attention(q, q, q; is_causal=true) rtol=2f-2
         @test Float32.(Array(scaled_dot_product_attention(qd, kd, vd; is_causal=true))) ≈
@@ -43,7 +34,7 @@ collapse(x) = reshape(x, size(x)[1:3]..., :)
     @testset "grouped-query attention" begin
         qg = rand(Float32, 32, 4, 16, 3) ./ 4
         qgd = half(T, qg)
-        @test sdpa_fused(qgd, kd, vd) == sdpa_supported(qgd, kd, vd)
+        @test sdpa_fused(qgd, kd, vd)
         @test Float32.(Array(scaled_dot_product_attention(qgd, kd, vd))) ≈
               scaled_dot_product_attention(qg, k, v) rtol=2f-2
     end
@@ -62,7 +53,7 @@ collapse(x) = reshape(x, size(x)[1:3]..., :)
         q_lengths, kv_lengths = [16, 9, 1], [12, 5, 7]
         @testset "$(keys(kws))" for kws in ((; kv_lengths), (; q_lengths),
                 (; q_lengths, kv_lengths), (; q_lengths, kv_lengths, is_causal=true))
-            @test sdpa_fused(qd, kd, vd; kws...) == sdpa_supported(qd, kd, vd; kws...)
+            @test sdpa_fused(qd, kd, vd; kws...)
             @test Float32.(Array(scaled_dot_product_attention(qd, kd, vd; kws...))) ≈
                   scaled_dot_product_attention(q, k, v; kws...) rtol=2f-2
         end
@@ -74,9 +65,9 @@ collapse(x) = reshape(x, size(x)[1:3]..., :)
               Array(scaled_dot_product_attention(qd, kd, vd; kv_lengths))
         @test Array(scaled_dot_product_attention(qd, kd, vd; kv_lengths=5)) ==
               Array(scaled_dot_product_attention(qd, kd, vd; kv_lengths=[5, 5, 5]))
-        # together with a mask they take the generic implementation
+        # together with a mask they take NNlib's kernel
         mask = CUDA.ones(Bool, 12, 16)
-        @test !sdpa_fused(qd, kd, vd; mask, q_lengths, kv_lengths)
+        @test sdpa_fused(qd, kd, vd; mask, q_lengths, kv_lengths)
         @test Float32.(Array(scaled_dot_product_attention(qd, kd, vd; mask, q_lengths, kv_lengths))) ≈
               scaled_dot_product_attention(q, k, v; q_lengths, kv_lengths) rtol=2f-2
     end
@@ -89,21 +80,21 @@ collapse(x) = reshape(x, size(x)[1:3]..., :)
         @test Float32.(Array(y)) ≈ scaled_dot_product_attention(qb, qb, qb) rtol=2f-2
         lengths = rand(1:16, max(1, prod(bs)))
         bs == () || (lengths = reshape(lengths, bs))
-        @test sdpa_fused(qbd, qbd, qbd; kv_lengths=lengths) ==
-              sdpa_supported(collapse(qbd), collapse(qbd), collapse(qbd); kv_lengths=vec(lengths))
+        @test sdpa_fused(qbd, qbd, qbd; kv_lengths=lengths)
         @test Float32.(Array(scaled_dot_product_attention(qbd, qbd, qbd; kv_lengths=lengths))) ≈
               scaled_dot_product_attention(qb, qb, qb; kv_lengths=lengths) rtol=2f-2
     end
 
-    @testset "generic fallback" begin
+    # what cuDNN has no engine for
+    @testset "NNlib's kernel" begin
         mask = make_causal_mask(qd; dims=3)
-        @test !sdpa_fused(qd, qd, qd; mask)
+        @test sdpa_fused(qd, qd, qd; mask)
         @test Float32.(Array(scaled_dot_product_attention(qd, qd, qd; mask))) ≈
               scaled_dot_product_attention(q, q, q; mask=Array(mask)) rtol=2f-2
 
         bias = randn(Float32, 12, 16)
         biasd = half(T, bias)
-        @test !sdpa_fused(qd, kd, vd, biasd)
+        @test sdpa_fused(qd, kd, vd, biasd)
         @test Float32.(Array(scaled_dot_product_attention(qd, kd, vd, biasd))) ≈
               scaled_dot_product_attention(q, k, v, bias) rtol=2f-2
 
@@ -114,14 +105,14 @@ collapse(x) = reshape(x, size(x)[1:3]..., :)
         # a value head dimension different from the query's
         v8 = rand(Float32, 8, 2, 12, 3) ./ 4
         v8d = half(T, v8)
-        @test !sdpa_fused(qd, kd, v8d)
+        @test sdpa_fused(qd, kd, v8d)
         @test Float32.(Array(scaled_dot_product_attention(qd, kd, v8d))) ≈
               scaled_dot_product_attention(q, k, v8) rtol=2f-2
 
         # a head dimension that is not a multiple of 8
         q60 = rand(Float32, 60, 2, 16, 1) ./ 4
         q60d = half(T, q60)
-        @test !sdpa_fused(q60d, q60d, q60d)
+        @test sdpa_fused(q60d, q60d, q60d)
         @test Float32.(Array(scaled_dot_product_attention(q60d, q60d, q60d))) ≈
               scaled_dot_product_attention(q60, q60, q60) rtol=2f-2
     end
@@ -186,7 +177,7 @@ end
     gputest(first ∘ scaled_dot_product_attention_with_weights, q, k, v; rtol=1f-4, atol=1f-5)
     gputest(last ∘ scaled_dot_product_attention_with_weights, q, k, v; rtol=1f-4, atol=1f-5)
 
-    @test !NNlib.is_fused_attention(CuArray(q), CuArray(k), CuArray(v))
+    @test NNlib.is_fused_attention(CuArray(q), CuArray(k), CuArray(v))
 
     # lengths given on the CPU are moved to the device of the inputs
     lengths = (; q_lengths=[16, 9, 1], kv_lengths=[12, 5, 7])
@@ -207,6 +198,69 @@ end
             rtol=1f-4, atol=1f-5)
     gputest(scaled_dot_product_attention, q2, k2, v2, randn(Float32, 12, 16, 1, 1, 2);
             rtol=1f-4, atol=1f-5)
+end
+
+@testset "fused kernel ($T)" for T in (Float32, Float64)
+    rtol = sqrt(eps(T))
+    # a ragged problem: sequence lengths that are not multiples of the tiles
+    head_dim, v_head_dim, nheads, lenq, lenkv, bs = 12, 44, 6, 100, 77, 3
+    q = CUDA.randn(T, head_dim, nheads, lenq, bs) ./ 2
+    k = CUDA.randn(T, head_dim, nheads, lenkv, bs) ./ 2
+    v = CUDA.randn(T, v_head_dim, nheads, lenkv, bs)
+    @test NNlib.is_fused_attention(q, k, v)
+    @test !NNlib.is_fused_attention(q, k, v; fdrop = x -> x)
+
+    y = @inferred scaled_dot_product_attention(q, k, v)
+    @test y isa CuArray{T,4}
+    @test size(y) == (v_head_dim, nheads, lenq, bs)
+    @test Array(y) ≈ Array(materialized_attention(q, k, v)) rtol=rtol
+    @test Array(scaled_dot_product_attention(q, k, v; is_causal=true, scale=0.3)) ≈
+          Array(materialized_attention(q, k, v; is_causal=true, scale=0.3)) rtol=rtol
+
+    lengths = (; q_lengths=[100, 37, 1], kv_lengths=[77, 12, 70])
+    mask = CUDA.rand(Bool, lenkv, lenq, 1, bs)
+    mask[1, :, :, :] .= true
+    bias = CUDA.randn(T, lenkv, lenq)
+    yl = Array(scaled_dot_product_attention(q, k, v, bias; mask, is_causal=true, lengths...))
+    @test yl ≈ Array(materialized_attention(q, k, v, bias; mask, is_causal=true, lengths...)) rtol=rtol
+    @test all(iszero, yl[:, :, 38:end, 2])
+    # grouped-query attention
+    kg, vg = k[:, 1:2, :, :], v[:, 1:2, :, :]
+    @test Array(scaled_dot_product_attention(q, kg, vg)) ≈ Array(materialized_attention(q, kg, vg)) rtol=rtol
+
+    # a query attending to no key gives NaN, as in the materialized implementation
+    m0 = CUDA.ones(Bool, lenkv, lenq)
+    m0[:, 2] .= false
+    y0 = Array(scaled_dot_product_attention(q, k, v; mask=m0))
+    @test all(isnan, y0[:, :, 2, :])
+    @test y0[:, :, 3:end, :] ≈ Array(y)[:, :, 3:end, :] rtol=rtol
+
+    # a sequence without a valid key
+    ye = Array(scaled_dot_product_attention(q, k, v; kv_lengths=[0, 12, 70]))
+    @test all(isnan, ye[:, :, :, 1])
+    @test ye[:, :, :, 2:3] ≈ Array(materialized_attention(q, k, v; kv_lengths=[77, 12, 70]))[:, :, :, 2:3] rtol=rtol
+
+    # a bias or a mask on another device is left to the materialized implementation
+    @test !NNlib.is_fused_attention(q, k, v; mask=Array(mask))
+end
+
+# The value head dimension sets the threads of a block and the tiles in their registers,
+# and a small problem takes smaller tiles of queries.
+@testset "fused kernel tilings" begin
+    @testset "value head dimension $v_head_dim, $nheads heads" for (v_head_dim, nheads) in
+            ((5, 2), (64, 2), (64, 40), (128, 2), (128, 40), (256, 2), (600, 2), (2048, 1))
+        q = CUDA.randn(Float32, 16, nheads, 150, 2)
+        k = CUDA.randn(Float32, 16, nheads, 131, 2)
+        v = CUDA.randn(Float32, v_head_dim, nheads, 131, 2)
+        @test NNlib.is_fused_attention(q, k, v)
+        @test Array(scaled_dot_product_attention(q, k, v; is_causal=true)) ≈
+              Array(materialized_attention(q, k, v; is_causal=true)) rtol=1f-4
+    end
+    # beyond the head dimensions the kernel has a tiling for
+    q = CUDA.randn(Float32, 16, 1, 4, 1)
+    v = CUDA.randn(Float32, 4096, 1, 4, 1)
+    @test !NNlib.is_fused_attention(q, q, v)
+    @test size(scaled_dot_product_attention(q, q, v)) == (4096, 1, 4, 1)
 end
 
 @testset "deprecated interface" begin

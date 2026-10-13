@@ -28,6 +28,7 @@ const NNLIB_TEST_ENZYME =   if haskey(ENV, "NNLIB_TEST_ENZYME")
 # workers. Add or remove thread-sensitive tests here (paths as shown by `--list`).
 const THREADED_TESTS = [
     "cpu/threading",
+    "cpu/attention",
     "cpu/conv",
     "cpu/conv_bias_act",
     "cpu/batchedmul",

@@ -2,6 +2,9 @@
 attention_weights(q, k, args...; kws...) =
     last(scaled_dot_product_attention_with_weights(q, k, k, args...; kws...))
 
+# The materialized implementation: an `fdrop` other than `identity` keeps a call on it.
+materialized_attention(args...; kws...) = scaled_dot_product_attention(args...; fdrop = x -> x, kws...)
+
 @testset "different batchsizes" begin
     head_dim = 5
     lenq = 3
@@ -24,7 +27,7 @@ end
     k = rand(Float32, 4, 2, 5, 1)
     v = rand(Float32, 6, 2, 5, 1)
     y, α = @inferred scaled_dot_product_attention_with_weights(q, k, v)
-    @test y == scaled_dot_product_attention(q, k, v)
+    @test y ≈ scaled_dot_product_attention(q, k, v)
     @test size(α) == (5, 3, 2, 1)
 
     # the output is computed from the returned weights, also with a stochastic `fdrop`
@@ -259,9 +262,87 @@ end
 
 @testset "is_fused_attention" begin
     q = rand(Float32, 8, 2, 3, 2)
-    @test !NNlib.is_fused_attention(q, q, q)
-    @test !NNlib.is_fused_attention(q, q, q; is_causal=true, kv_lengths=[3, 2])
+    @test NNlib.is_fused_attention(q, q, q)
+    @test NNlib.is_fused_attention(q, q, q; is_causal=true, kv_lengths=[3, 2])
+    @test NNlib.is_fused_attention(q, q, q, rand(Float32, 3, 3); mask=trues(3, 3))
+    @test NNlib.is_fused_attention(Float64.(q), Float64.(q), Float64.(q), rand(3, 3))
+    # dropout acts on the weights, which are not formed
+    @test !NNlib.is_fused_attention(q, q, q; fdrop = x -> x)
+    # mixed element types, a bias that promotes the output, arrays that are not dense
+    @test !NNlib.is_fused_attention(q, q, Float64.(q))
+    @test !NNlib.is_fused_attention(q, q, q, rand(3, 3))
+    @test !NNlib.is_fused_attention(view(q, :, :, :, 1:2), q, q)
+    @test !NNlib.is_fused_attention(q, q, q; mask=view(trues(3, 3), :, :))
     @test_throws ArgumentError NNlib.is_fused_attention(q, q[:, :, :, 1], q)
+end
+
+@testset "fused implementation" begin
+    @testset "$T" for T in (Float32, Float64, Float16)
+        # the half-precision reference accumulates in `Float16`
+        rtol = T == Float16 ? 2f-2 : sqrt(eps(T))
+        # more keys than a tile holds, an odd number of queries
+        head_dim, v_head_dim, nheads, lenq, lenkv, bs = 10, 7, 4, 37, 301, 2
+        q = randn(T, head_dim, nheads, lenq, bs) ./ 2
+        k = randn(T, head_dim, nheads, lenkv, bs) ./ 2
+        v = randn(T, v_head_dim, nheads, lenkv, bs)
+        @test NNlib.is_fused_attention(q, k, v)
+
+        y = @inferred scaled_dot_product_attention(q, k, v)
+        @test y isa Array{T,4}
+        @test size(y) == (v_head_dim, nheads, lenq, bs)
+        @test y ≈ materialized_attention(q, k, v) rtol=rtol
+        @test y ≈ first(scaled_dot_product_attention_with_weights(q, k, v)) rtol=rtol
+        @test scaled_dot_product_attention(q, k, v; scale=0.3) ≈ materialized_attention(q, k, v; scale=0.3) rtol=rtol
+        @test scaled_dot_product_attention(q, k, v; is_causal=true) ≈
+              materialized_attention(q, k, v; is_causal=true) rtol=rtol
+        @test NNlib.@disallow_spawns(scaled_dot_product_attention(q, k, v)) ≈ y
+
+        lengths = (; q_lengths=[37, 12], kv_lengths=[150, 301])
+        yl = scaled_dot_product_attention(q, k, v; lengths...)
+        @test yl ≈ materialized_attention(q, k, v; lengths...) rtol=rtol
+        @test all(iszero, yl[:, :, 13:end, 2])
+
+        mask = rand(Bool, lenkv, lenq, 1, bs)
+        mask[1, :, :, :] .= true
+        bias = randn(T, lenkv, lenq)
+        @test scaled_dot_product_attention(q, k, v; mask) ≈ materialized_attention(q, k, v; mask) rtol=rtol
+        @test scaled_dot_product_attention(q, k, v; mask=BitArray(mask)) ≈
+              materialized_attention(q, k, v; mask) rtol=rtol
+        @test scaled_dot_product_attention(q, k, v, bias) ≈ materialized_attention(q, k, v, bias) rtol=rtol
+        @test scaled_dot_product_attention(q, k, v, bias; mask, is_causal=true, lengths...) ≈
+              materialized_attention(q, k, v, bias; mask, is_causal=true, lengths...) rtol=rtol
+
+        # grouped-query attention
+        kg, vg = k[:, 1:2, :, :], v[:, 1:2, :, :]
+        @test scaled_dot_product_attention(q, kg, vg; is_causal=true) ≈
+              materialized_attention(q, kg, vg; is_causal=true) rtol=rtol
+    end
+
+    # self-attention over several tiles of keys, where the causal mask ends inside them
+    x = randn(Float32, 6, 2, 300, 1)
+    @test scaled_dot_product_attention(x, x, x; is_causal=true) ≈
+          materialized_attention(x, x, x; is_causal=true)
+
+    # a query attending to no key gives NaN, as in the materialized implementation
+    q = rand(Float32, 4, 2, 3, 1)
+    k = rand(Float32, 4, 2, 5, 1)
+    mask = trues(5, 3)
+    mask[:, 2] .= false
+    y = scaled_dot_product_attention(q, k, k; mask)
+    @test all(isnan, y[:, :, 2, :])
+    @test y[:, :, [1, 3], :] ≈ materialized_attention(q, k, k; mask)[:, :, [1, 3], :]
+
+    # ... and so does a sequence without a valid key
+    k2 = rand(Float32, 4, 2, 5, 2)
+    q2 = rand(Float32, 4, 2, 3, 2)
+    y = scaled_dot_product_attention(q2, k2, k2; kv_lengths=[0, 4])
+    @test all(isnan, y[:, :, :, 1])
+    @test y[:, :, :, 2] ≈ materialized_attention(q2, k2, k2; kv_lengths=[5, 4])[:, :, :, 2]
+
+    @testset "attention_exp ($T)" for T in (Float32, Float64)
+        xs = range(NNlib.attention_exp_floor(T), zero(T); length=10_001)
+        @test all(x -> isapprox(NNlib.attention_exp(x), exp(x); rtol=4eps(T)), xs)
+    end
 end
 
 @testset "grouped-query attention" begin
