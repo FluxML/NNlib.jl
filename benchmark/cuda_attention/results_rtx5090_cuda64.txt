@@ -1,145 +1,197 @@
-┌ Warning: unsupported path → n/s: CUDNNError: CUDNN_STATUS_NOT_SUPPORTED (code 3000)
-└ @ Main ~/claude-runs/nnlib-cudnn-revamp/NNlib/benchmark/cuda_attention/bench_attention.jl:109
 GPU:        NVIDIA GeForce RTX 5090
-NNlib:      0.9.45
+NNlib:      0.9.47
 LuxLib:     1.15.9
 CUDA.jl:    6.4.2
 cuDNN:      6.4.2 (library 9.26.0)
-selection:  dtypes=Float16,BFloat16,Float32  impls=nnlib,nnlib-mat,lux  causal=false,true  sizes=tiny,small,gpt2-ish,llama3 L=2k,llama3 L=4k,llama3 L=8k
-sanity Float16    (vs nnlib)  nnlib=0.00e+00  nnlib-mat=1.46e-03  lux=1.46e-03
-sanity BFloat16   (vs nnlib)  nnlib=0.00e+00  nnlib-mat=6.25e-02  lux=6.25e-02
-sanity Float32    (vs nnlib)  nnlib=0.00e+00  nnlib-mat=0.00e+00  lux=0.00e+00
+selection:  dtypes=Float16,BFloat16,Float32  impls=nnlib,nnlib-ka,nnlib-mat,lux  causal=false,true  sizes=tiny,small,gpt2-ish,llama3 L=2k,llama3 L=4k,llama3 L=8k
+sanity Float16    (vs nnlib)  nnlib=0.00e+00  nnlib-ka=4.88e-04  nnlib-mat=1.95e-03  lux=1.95e-03
+sanity BFloat16   (vs nnlib)  nnlib=0.00e+00  nnlib-ka=1.56e-02  nnlib-mat=3.12e-02  lux=3.12e-02
+sanity Float32    (vs nnlib)  nnlib=0.00e+00  nnlib-ka=0.00e+00  nnlib-mat=4.77e-07  lux=4.77e-07
 
 ########################################################################################################
 ### dtype=Float16  causal=false
 ########################################################################################################
 
 -- FORWARD (ms) --
-config            L   H |      nnlib  nnlib-mat        lux |  nnlib-mat/nnlib        lux/nnlib
-tiny            128   4 |      0.013      0.750      0.741 |           57.09x           56.41x
-small           512   8 |      0.037      1.459      1.467 |           39.78x           40.00x
-gpt2-ish       1024  12 |      0.118      1.214      1.116 |           10.27x            9.44x
-llama3 L=2k    2048  32 |      0.410      1.532      1.537 |            3.74x            3.75x
-llama3 L=4k    4096  32 |      1.413      4.172      4.192 |            2.95x            2.97x
-llama3 L=8k    8192  32 |      5.188        n/s        n/s |                -                -
+config            L   H |      nnlib   nnlib-ka  nnlib-mat        lux |   nnlib-ka/nnlib  nnlib-mat/nnlib        lux/nnlib
+tiny            128   4 |      0.012      0.031      0.747      0.752 |            2.46x           59.85x           60.30x
+small           512   8 |      0.036      0.217      1.451      1.454 |            6.00x           40.17x           40.25x
+gpt2-ish       1024  12 |      0.117      0.533      1.210      1.216 |            4.55x           10.32x           10.37x
+llama3 L=2k    2048  32 |      0.408      2.333      1.527      1.533 |            5.72x            3.74x            3.76x
+llama3 L=4k    4096  32 |      1.376      8.432      4.162      4.179 |            6.13x            3.02x            3.04x
+llama3 L=8k    8192  32 |      5.086     31.549        n/s        n/s |            6.20x                -                -
 
 -- FULL GRADIENT, fwd+bwd (ms) --
-config            L   H |      nnlib  nnlib-mat        lux |  nnlib-mat/nnlib        lux/nnlib
-tiny            128   4 |      0.133      2.576      3.321 |           19.35x           24.94x
-small           512   8 |      0.196      4.855      5.507 |           24.75x           28.07x
-gpt2-ish       1024  12 |      0.455      3.835      4.581 |            8.42x           10.06x
-llama3 L=2k    2048  32 |      1.565      4.516      4.629 |            2.89x            2.96x
-llama3 L=4k    4096  32 |      5.367     11.681     11.602 |            2.18x            2.16x
-llama3 L=8k    8192  32 |     19.485        n/s        n/s |                -                -
+config            L   H |      nnlib   nnlib-ka  nnlib-mat        lux |   nnlib-ka/nnlib  nnlib-mat/nnlib        lux/nnlib
+tiny            128   4 |      0.168        n/s      2.693      3.242 |                -           16.01x           19.27x
+small           512   8 |      0.198        n/s      4.907      5.433 |                -           24.75x           27.41x
+gpt2-ish       1024  12 |      0.455        n/s      3.958      4.612 |                -            8.69x           10.13x
+llama3 L=2k    2048  32 |      1.558        n/s      4.660      4.667 |                -            2.99x            3.00x
+llama3 L=4k    4096  32 |      5.306        n/s     11.802     11.588 |                -            2.22x            2.18x
+llama3 L=8k    8192  32 |     19.210        n/s        n/s        n/s |                -                -                -
+
+-- FORWARD, GPU memory allocated (MiB) --
+config            L   H |      nnlib   nnlib-ka  nnlib-mat        lux |   nnlib-ka/nnlib  nnlib-mat/nnlib        lux/nnlib
+tiny            128   4 |      0.500      0.500      5.000      5.000 |            1.00x           10.00x           10.00x
+small           512   8 |      4.000      4.000     88.000     88.000 |            1.00x           22.00x           22.00x
+gpt2-ish       1024  12 |      6.000      6.000    228.000    228.000 |            1.00x           38.00x           38.00x
+llama3 L=2k    2048  32 |     16.000     16.000    608.000    608.000 |            1.00x           38.00x           38.00x
+llama3 L=4k    4096  32 |     32.000     32.000   2240.000   2240.000 |            1.00x           70.00x           70.00x
+llama3 L=8k    8192  32 |     64.000     64.000        n/s        n/s |            1.00x                -                -
 
 ########################################################################################################
 ### dtype=Float16  causal=true
 ########################################################################################################
 
 -- FORWARD (ms) --
-config            L   H |      nnlib  nnlib-mat        lux |  nnlib-mat/nnlib        lux/nnlib
-tiny            128   4 |      0.014      0.804      0.766 |           59.14x           56.32x
-small           512   8 |      0.038      1.631      1.630 |           42.74x           42.70x
-gpt2-ish       1024  12 |      0.081      1.580      1.579 |           19.61x           19.59x
-llama3 L=2k    2048  32 |      0.244      2.454      2.448 |           10.04x           10.02x
-llama3 L=4k    4096  32 |      0.800      7.858      7.845 |            9.83x            9.81x
-llama3 L=8k    8192  32 |      2.803        n/s        n/s |                -                -
+config            L   H |      nnlib   nnlib-ka  nnlib-mat        lux |   nnlib-ka/nnlib  nnlib-mat/nnlib        lux/nnlib
+tiny            128   4 |      0.014      0.031      0.760      0.753 |            2.25x           55.62x           55.10x
+small           512   8 |      0.038      0.159      1.474      1.470 |            4.21x           39.08x           38.97x
+gpt2-ish       1024  12 |      0.080      0.367      1.512      1.510 |            4.59x           18.89x           18.87x
+llama3 L=2k    2048  32 |      0.244      1.367      2.445      2.443 |            5.60x           10.01x           10.00x
+llama3 L=4k    4096  32 |      0.791      4.664      7.822      7.802 |            5.89x            9.88x            9.86x
+llama3 L=8k    8192  32 |      2.769     16.750        n/s        n/s |            6.05x                -                -
 
 -- FULL GRADIENT, fwd+bwd (ms) --
-config            L   H |      nnlib  nnlib-mat        lux |  nnlib-mat/nnlib        lux/nnlib
-tiny            128   4 |      0.147      2.772      3.741 |           18.80x           25.38x
-small           512   8 |      0.180      6.047      6.225 |           33.68x           34.67x
-gpt2-ish       1024  12 |      0.328      7.451      7.996 |           22.69x           24.35x
-llama3 L=2k    2048  32 |      0.983     11.123     11.402 |           11.32x           11.60x
-llama3 L=4k    4096  32 |      3.157     38.008     38.341 |           12.04x           12.15x
-llama3 L=8k    8192  32 |     10.751        n/s        n/s |                -                -
+config            L   H |      nnlib   nnlib-ka  nnlib-mat        lux |   nnlib-ka/nnlib  nnlib-mat/nnlib        lux/nnlib
+tiny            128   4 |      0.177        n/s      2.780      3.363 |                -           15.74x           19.05x
+small           512   8 |      0.198        n/s      5.585      6.149 |                -           28.23x           31.07x
+gpt2-ish       1024  12 |      0.328        n/s      7.380      8.002 |                -           22.53x           24.43x
+llama3 L=2k    2048  32 |      0.987        n/s     11.403     11.431 |                -           11.56x           11.59x
+llama3 L=4k    4096  32 |      3.137        n/s     38.206     37.860 |                -           12.18x           12.07x
+llama3 L=8k    8192  32 |     10.713        n/s        n/s        n/s |                -                -                -
+
+-- FORWARD, GPU memory allocated (MiB) --
+config            L   H |      nnlib   nnlib-ka  nnlib-mat        lux |   nnlib-ka/nnlib  nnlib-mat/nnlib        lux/nnlib
+tiny            128   4 |      0.500      0.500      6.031      6.016 |            1.00x           12.06x           12.03x
+small           512   8 |      4.000      4.000    120.500    120.250 |            1.00x           30.13x           30.06x
+gpt2-ish       1024  12 |      6.000      6.000    326.000    325.000 |            1.00x           54.33x           54.17x
+llama3 L=2k    2048  32 |     16.000     16.000    872.000    868.000 |            1.00x           54.50x           54.25x
+llama3 L=4k    4096  32 |     32.000     32.000   3296.000   3280.000 |            1.00x          103.00x          102.50x
+llama3 L=8k    8192  32 |     64.000     64.000        n/s        n/s |            1.00x                -                -
 
 ########################################################################################################
 ### dtype=BFloat16  causal=false
 ########################################################################################################
 
 -- FORWARD (ms) --
-config            L   H |      nnlib  nnlib-mat        lux |  nnlib-mat/nnlib        lux/nnlib
-tiny            128   4 |      0.013      0.764      0.782 |           60.23x           61.66x
-small           512   8 |      0.036      1.632      1.508 |           44.73x           41.36x
-gpt2-ish       1024  12 |      0.118      1.334      1.243 |           11.28x           10.51x
-llama3 L=2k    2048  32 |      0.408      1.707      1.706 |            4.19x            4.19x
-llama3 L=4k    4096  32 |      1.390      4.575      4.585 |            3.29x            3.30x
-llama3 L=8k    8192  32 |      5.202        n/s        n/s |                -                -
+config            L   H |      nnlib   nnlib-ka  nnlib-mat        lux |   nnlib-ka/nnlib  nnlib-mat/nnlib        lux/nnlib
+tiny            128   4 |      0.013      0.031      0.763      0.768 |            2.45x           60.33x           60.73x
+small           512   8 |      0.036      0.218      1.498      1.495 |            6.01x           41.33x           41.26x
+gpt2-ish       1024  12 |      0.118      0.536      1.215      1.219 |            4.56x           10.33x           10.37x
+llama3 L=2k    2048  32 |      0.406      2.348      1.717      1.718 |            5.78x            4.23x            4.23x
+llama3 L=4k    4096  32 |      1.386      8.500      4.564      4.580 |            6.13x            3.29x            3.31x
+llama3 L=8k    8192  32 |      5.126     31.830        n/s        n/s |            6.21x                -                -
 
 -- FULL GRADIENT, fwd+bwd (ms) --
-config            L   H |      nnlib  nnlib-mat        lux |  nnlib-mat/nnlib        lux/nnlib
-tiny            128   4 |      0.143      2.639      3.275 |           18.40x           22.84x
-small           512   8 |      0.204      4.822      6.115 |           23.66x           30.01x
-gpt2-ish       1024  12 |      0.456      4.488      4.931 |            9.84x           10.81x
-llama3 L=2k    2048  32 |      1.568      4.892      4.854 |            3.12x            3.10x
-llama3 L=4k    4096  32 |      5.362     12.448     12.437 |            2.32x            2.32x
-llama3 L=8k    8192  32 |     19.452        n/s        n/s |                -                -
+config            L   H |      nnlib   nnlib-ka  nnlib-mat        lux |   nnlib-ka/nnlib  nnlib-mat/nnlib        lux/nnlib
+tiny            128   4 |      0.173        n/s      2.943      3.241 |                -           17.01x           18.74x
+small           512   8 |      0.203        n/s      4.962      5.448 |                -           24.44x           26.84x
+gpt2-ish       1024  12 |      0.455        n/s      4.222      4.702 |                -            9.27x           10.33x
+llama3 L=2k    2048  32 |      1.566        n/s      5.058      4.940 |                -            3.23x            3.15x
+llama3 L=4k    4096  32 |      5.361        n/s     12.631     12.439 |                -            2.36x            2.32x
+llama3 L=8k    8192  32 |     19.338        n/s        n/s        n/s |                -                -                -
+
+-- FORWARD, GPU memory allocated (MiB) --
+config            L   H |      nnlib   nnlib-ka  nnlib-mat        lux |   nnlib-ka/nnlib  nnlib-mat/nnlib        lux/nnlib
+tiny            128   4 |      0.500      0.500      5.000      5.000 |            1.00x           10.00x           10.00x
+small           512   8 |      4.000      4.000     88.001     88.001 |            1.00x           22.00x           22.00x
+gpt2-ish       1024  12 |      6.000      6.000    228.001    228.001 |            1.00x           38.00x           38.00x
+llama3 L=2k    2048  32 |     16.000     16.000    608.000    608.000 |            1.00x           38.00x           38.00x
+llama3 L=4k    4096  32 |     32.000     32.000   2240.000   2240.000 |            1.00x           70.00x           70.00x
+llama3 L=8k    8192  32 |     64.000     64.000        n/s        n/s |            1.00x                -                -
 
 ########################################################################################################
 ### dtype=BFloat16  causal=true
 ########################################################################################################
 
 -- FORWARD (ms) --
-config            L   H |      nnlib  nnlib-mat        lux |  nnlib-mat/nnlib        lux/nnlib
-tiny            128   4 |      0.014      0.802      0.778 |           56.87x           55.10x
-small           512   8 |      0.037      1.517      1.502 |           40.63x           40.23x
-gpt2-ish       1024  12 |      0.080      1.656      1.619 |           20.65x           20.19x
-llama3 L=2k    2048  32 |      0.243      2.607      2.605 |           10.72x           10.72x
-llama3 L=4k    4096  32 |      0.795      8.255      8.217 |           10.38x           10.34x
-llama3 L=8k    8192  32 |      2.773        n/s        n/s |                -                -
+config            L   H |      nnlib   nnlib-ka  nnlib-mat        lux |   nnlib-ka/nnlib  nnlib-mat/nnlib        lux/nnlib
+tiny            128   4 |      0.014      0.031      0.784      0.773 |            2.23x           56.99x           56.17x
+small           512   8 |      0.037      0.161      1.509      1.501 |            4.31x           40.46x           40.26x
+gpt2-ish       1024  12 |      0.080      0.368      1.597      1.595 |            4.61x           20.00x           19.97x
+llama3 L=2k    2048  32 |      0.243      1.371      2.607      2.598 |            5.65x           10.75x           10.71x
+llama3 L=4k    4096  32 |      0.788      4.663      8.242      8.211 |            5.92x           10.46x           10.42x
+llama3 L=8k    8192  32 |      2.771     16.898        n/s        n/s |            6.10x                -                -
 
 -- FULL GRADIENT, fwd+bwd (ms) --
-config            L   H |      nnlib  nnlib-mat        lux |  nnlib-mat/nnlib        lux/nnlib
-tiny            128   4 |      0.150      2.592      3.700 |           17.26x           24.63x
-small           512   8 |      0.182      5.631      6.625 |           30.97x           36.44x
-gpt2-ish       1024  12 |      0.331      7.580      8.085 |           22.91x           24.44x
-llama3 L=2k    2048  32 |      0.985     11.469     11.758 |           11.65x           11.94x
-llama3 L=4k    4096  32 |      3.156     38.808     38.718 |           12.29x           12.27x
-llama3 L=8k    8192  32 |     10.804        n/s        n/s |                -                -
+config            L   H |      nnlib   nnlib-ka  nnlib-mat        lux |   nnlib-ka/nnlib  nnlib-mat/nnlib        lux/nnlib
+tiny            128   4 |      0.195        n/s      3.042      3.331 |                -           15.62x           17.11x
+small           512   8 |      0.200        n/s      6.120      6.126 |                -           30.54x           30.57x
+gpt2-ish       1024  12 |      0.331        n/s      7.555      8.232 |                -           22.85x           24.89x
+llama3 L=2k    2048  32 |      0.988        n/s     11.597     11.597 |                -           11.74x           11.74x
+llama3 L=4k    4096  32 |      3.145        n/s     38.818     38.677 |                -           12.34x           12.30x
+llama3 L=8k    8192  32 |     10.729        n/s        n/s        n/s |                -                -                -
+
+-- FORWARD, GPU memory allocated (MiB) --
+config            L   H |      nnlib   nnlib-ka  nnlib-mat        lux |   nnlib-ka/nnlib  nnlib-mat/nnlib        lux/nnlib
+tiny            128   4 |      0.500      0.500      6.032      6.016 |            1.00x           12.06x           12.03x
+small           512   8 |      4.000      4.000    120.501    120.251 |            1.00x           30.13x           30.06x
+gpt2-ish       1024  12 |      6.000      6.000    326.001    325.001 |            1.00x           54.33x           54.17x
+llama3 L=2k    2048  32 |     16.000     16.000    872.000    868.000 |            1.00x           54.50x           54.25x
+llama3 L=4k    4096  32 |     32.000     32.000   3296.000   3280.000 |            1.00x          103.00x          102.50x
+llama3 L=8k    8192  32 |     64.000     64.000        n/s        n/s |            1.00x                -                -
 
 ########################################################################################################
 ### dtype=Float32  causal=false
 ########################################################################################################
 
 -- FORWARD (ms) --
-config            L   H |      nnlib  nnlib-mat        lux |  nnlib-mat/nnlib        lux/nnlib
-tiny            128   4 |      0.042      0.042      0.043 |            0.99x            1.02x
-small           512   8 |      0.242      0.243      0.243 |            1.00x            1.00x
-gpt2-ish       1024  12 |      0.751      0.749      0.754 |            1.00x            1.00x
-llama3 L=2k    2048  32 |      2.350      2.349      2.364 |            1.00x            1.01x
-llama3 L=4k    4096  32 |      8.762      8.788      8.806 |            1.00x            1.01x
-llama3 L=8k    8192  32 |        n/s        n/s        n/s |                -                -
+config            L   H |      nnlib   nnlib-ka  nnlib-mat        lux |   nnlib-ka/nnlib  nnlib-mat/nnlib        lux/nnlib
+tiny            128   4 |      0.032      0.032      0.041      0.042 |            0.98x            1.28x            1.31x
+small           512   8 |      0.220      0.219      0.245      0.246 |            1.00x            1.11x            1.12x
+gpt2-ish       1024  12 |      0.540      0.539      0.748      0.753 |            1.00x            1.39x            1.39x
+llama3 L=2k    2048  32 |      2.352      2.361      2.353      2.359 |            1.00x            1.00x            1.00x
+llama3 L=4k    4096  32 |      8.288      8.322      8.770      8.773 |            1.00x            1.06x            1.06x
+llama3 L=8k    8192  32 |     31.168     31.179        n/s        n/s |            1.00x                -                -
 
 -- FULL GRADIENT, fwd+bwd (ms) --
-config            L   H |      nnlib  nnlib-mat        lux |  nnlib-mat/nnlib        lux/nnlib
-tiny            128   4 |      0.270      0.285      0.907 |            1.05x            3.35x
-small           512   8 |      0.874      0.882      1.119 |            1.01x            1.28x
-gpt2-ish       1024  12 |      2.153      2.151      2.141 |            1.00x            0.99x
-llama3 L=2k    2048  32 |      6.725      6.750      6.674 |            1.00x            0.99x
-llama3 L=4k    4096  32 |     24.874     24.754     24.826 |            1.00x            1.00x
-llama3 L=8k    8192  32 |        n/s        n/s        n/s |                -                -
+config            L   H |      nnlib   nnlib-ka  nnlib-mat        lux |   nnlib-ka/nnlib  nnlib-mat/nnlib        lux/nnlib
+tiny            128   4 |      0.376        n/s      0.338      0.932 |                -            0.90x            2.48x
+small           512   8 |      0.951        n/s      0.952      1.085 |                -            1.00x            1.14x
+gpt2-ish       1024  12 |      2.224        n/s      2.204      2.118 |                -            0.99x            0.95x
+llama3 L=2k    2048  32 |      6.789        n/s      6.780      6.705 |                -            1.00x            0.99x
+llama3 L=4k    4096  32 |     24.791        n/s     24.758     24.597 |                -            1.00x            0.99x
+llama3 L=8k    8192  32 |        n/s        n/s        n/s        n/s |                -                -                -
+
+-- FORWARD, GPU memory allocated (MiB) --
+config            L   H |      nnlib   nnlib-ka  nnlib-mat        lux |   nnlib-ka/nnlib  nnlib-mat/nnlib        lux/nnlib
+tiny            128   4 |      1.000      1.000     10.000     10.000 |            1.00x           10.00x           10.00x
+small           512   8 |      8.000      8.000    176.000    176.000 |            1.00x           22.00x           22.00x
+gpt2-ish       1024  12 |     12.000     12.000    456.000    456.000 |            1.00x           38.00x           38.00x
+llama3 L=2k    2048  32 |     32.000     32.000   1216.000   1216.000 |            1.00x           38.00x           38.00x
+llama3 L=4k    4096  32 |     64.000     64.000   4480.000   4480.000 |            1.00x           70.00x           70.00x
+llama3 L=8k    8192  32 |    128.000    128.000        n/s        n/s |            1.00x                -                -
 
 ########################################################################################################
 ### dtype=Float32  causal=true
 ########################################################################################################
 
 -- FORWARD (ms) --
-config            L   H |      nnlib  nnlib-mat        lux |  nnlib-mat/nnlib        lux/nnlib
-tiny            128   4 |      0.057      0.056      0.051 |            0.99x            0.90x
-small           512   8 |      0.379      0.379      0.373 |            1.00x            0.98x
-gpt2-ish       1024  12 |      1.228      1.232      1.227 |            1.00x            1.00x
-llama3 L=2k    2048  32 |      3.327      3.308      3.335 |            0.99x            1.00x
-llama3 L=4k    4096  32 |     12.658     12.656     12.586 |            1.00x            0.99x
-llama3 L=8k    8192  32 |        n/s        n/s        n/s |                -                -
+config            L   H |      nnlib   nnlib-ka  nnlib-mat        lux |   nnlib-ka/nnlib  nnlib-mat/nnlib        lux/nnlib
+tiny            128   4 |      0.032      0.031      0.057      0.051 |            0.99x            1.80x            1.61x
+small           512   8 |      0.159      0.159      0.374      0.373 |            1.00x            2.36x            2.35x
+gpt2-ish       1024  12 |      0.366      0.366      1.222      1.222 |            1.00x            3.34x            3.34x
+llama3 L=2k    2048  32 |      1.435      1.438      3.302      3.296 |            1.00x            2.30x            2.30x
+llama3 L=4k    4096  32 |      4.703      4.689     12.555     12.538 |            1.00x            2.67x            2.67x
+llama3 L=8k    8192  32 |     16.666     16.713        n/s        n/s |            1.00x                -                -
 
 -- FULL GRADIENT, fwd+bwd (ms) --
-config            L   H |      nnlib  nnlib-mat        lux |  nnlib-mat/nnlib        lux/nnlib
-tiny            128   4 |      0.392      0.369      1.156 |            0.94x            2.95x
-small           512   8 |      2.272      2.262      2.601 |            1.00x            1.14x
-gpt2-ish       1024  12 |      6.180      6.261      6.233 |            1.01x            1.01x
-llama3 L=2k    2048  32 |     17.269     17.391     17.247 |            1.01x            1.00x
-llama3 L=4k    4096  32 |     72.847     69.649     67.975 |            0.96x            0.93x
-llama3 L=8k    8192  32 |        OOM        OOM        OOM |                -                -
+config            L   H |      nnlib   nnlib-ka  nnlib-mat        lux |   nnlib-ka/nnlib  nnlib-mat/nnlib        lux/nnlib
+tiny            128   4 |      0.465        n/s      0.476      1.025 |                -            1.02x            2.20x
+small           512   8 |      2.342        n/s      2.346      2.695 |                -            1.00x            1.15x
+gpt2-ish       1024  12 |      6.253        n/s      6.266      6.332 |                -            1.00x            1.01x
+llama3 L=2k    2048  32 |     17.259        n/s     17.342     17.278 |                -            1.00x            1.00x
+llama3 L=4k    4096  32 |     69.160        n/s     69.388     67.563 |                -            1.00x            0.98x
+llama3 L=8k    8192  32 |        OOM        n/s        OOM        OOM |                -                -                -
+
+-- FORWARD, GPU memory allocated (MiB) --
+config            L   H |      nnlib   nnlib-ka  nnlib-mat        lux |   nnlib-ka/nnlib  nnlib-mat/nnlib        lux/nnlib
+tiny            128   4 |      1.000      1.000     12.031     12.016 |            1.00x           12.03x           12.02x
+small           512   8 |      8.000      8.000    240.500    240.250 |            1.00x           30.06x           30.03x
+gpt2-ish       1024  12 |     12.000     12.000    650.000    649.000 |            1.00x           54.17x           54.08x
+llama3 L=2k    2048  32 |     32.000     32.000   1736.000   1732.000 |            1.00x           54.25x           54.13x
+llama3 L=4k    4096  32 |     64.000     64.000   6560.000   6544.000 |            1.00x          102.50x          102.25x
+llama3 L=8k    8192  32 |    128.000    128.000        n/s        n/s |            1.00x                -                -
 
 <impl>/nnlib = time relative to nnlib (>1 → nnlib faster).
