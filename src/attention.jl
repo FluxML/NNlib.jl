@@ -67,9 +67,16 @@ and GPU arrays of `Float16`, `Float32` and `Float64` take, and on the GPU those 
 `BFloat16`, with any of the arguments above. The `bias` and the `mask`, if any, have to
 be on the device of the inputs.
 
-Any other call takes the materialized implementation, which forms the weights. So does
-every call under automatic differentiation, since the fused implementation has no
-gradient yet. [`NNlib.is_fused_attention`](@ref) tells which of the two a call takes.
+Any other call takes the materialized implementation, which forms the weights.
+[`NNlib.is_fused_attention`](@ref) tells which of the two a call takes.
+
+The fused implementation has a gradient with respect to `query`, `key`, `value` and
+`scale`, which recomputes the weights tile by tile and does not materialize them either.
+It is what automatic differentiation based on ChainRules (as that of Zygote) and the
+reverse mode of Enzyme use. Under them a call with a `bias` takes the materialized
+implementation, which gives the gradient with respect to the bias too, and so does every
+call under the other automatic differentiation packages. A query that attends to no key,
+whose output is `NaN`, takes no part in the fused gradient.
 
 With CUDA.jl and cuDNN.jl loaded, the `Float16` and `BFloat16` `CuArray`s that cuDNN's
 own fused kernel has an engine for are handed to it: it runs on tensor cores, and has a
@@ -124,11 +131,11 @@ _scaled_dot_product_attention(q::AA4, k::AA4, v::AA4, bias; kws...) =
 
 # The implementation for every backend, which those with a kernel of their own fall back
 # to for the calls it does not take: the fused one where it applies, else the
-# materialized one. The fused implementation has no gradient yet, so that under
-# automatic differentiation the materialized one is taken, and differentiated.
+# materialized one. Under automatic differentiation the latter is also taken, and
+# differentiated, where the fused one has no rule.
 function generic_attention(q::AA4, k::AA4, v::AA4, bias;
             fdrop, mask, scale, is_causal, q_lengths, kv_lengths)
-    if !within_gradient(q) && fused_attention_applies(q, k, v, bias, fdrop, mask)
+    if fused_attention_applies(q, k, v, bias, fdrop, mask) && fused_attention_differentiable(q, bias)
         return fused_attention(q, k, v, bias, mask, scale, is_causal, q_lengths, kv_lengths)
     end
     x, _ = _attention(q, k, v, bias; fdrop, mask, scale, is_causal, q_lengths, kv_lengths)
@@ -182,8 +189,8 @@ Return `true` if [`scaled_dot_product_attention`](@ref) called with the same arg
 is computed by a fused implementation, which does not materialize the attention weights,
 and `false` if it takes the materialized one.
 
-This is about the forward pass outside of automatic differentiation: where a fused
-implementation has no gradient, the materialized one is differentiated.
+This is about a call outside of automatic differentiation: under it, the materialized
+implementation is differentiated where the fused one has no gradient, as with a `bias`.
 """
 function is_fused_attention(q::AbstractArray, k::AbstractArray, v::AbstractArray,
             bias=nothing; fdrop=identity, mask=nothing, scale=nothing,

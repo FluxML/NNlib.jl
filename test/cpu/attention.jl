@@ -363,6 +363,146 @@ end
     end
 end
 
+# The gradients of `sum(w .* f(xs...; kws...))` with respect to the `xs`.
+attention_gradients(f, w, xs...; kws...) = gradient((xs...) -> sum(w .* f(xs...; kws...)), xs...)
+
+@testset "fused gradient" begin
+    # Under Zygote the fused implementation takes its rule, and the materialized one is
+    # differentiated through.
+    function same_gradients(w, xs...; rtol, kws...)
+        g = attention_gradients(scaled_dot_product_attention, w, xs...; kws...)
+        gm = attention_gradients(materialized_attention, w, xs...; kws...)
+        return all(isapprox.(g, gm; rtol))
+    end
+
+    @testset "$T" for T in (Float32, Float64)
+        rtol = T == Float32 ? 1f-3 : 1e-8
+        # more keys than a tile holds, a number of queries that is not a multiple of four
+        head_dim, v_head_dim, nheads, lenq, lenkv, bs = 10, 7, 4, 37, 301, 2
+        q = randn(T, head_dim, nheads, lenq, bs) ./ 2
+        k = randn(T, head_dim, nheads, lenkv, bs) ./ 2
+        v = randn(T, v_head_dim, nheads, lenkv, bs)
+        w = randn(T, v_head_dim, nheads, lenq, bs)
+        mask = rand(Bool, lenkv, lenq, 1, bs)
+        mask[1, :, :, :] .= true
+        lengths = (; q_lengths=[37, 12], kv_lengths=[150, 301])
+
+        @test same_gradients(w, q, k, v; rtol)
+        @test same_gradients(w, q, k, v; rtol, is_causal=true)
+        @test same_gradients(w, q, k, v; rtol, scale=0.3)
+        @test same_gradients(w, q, k, v; rtol, lengths...)
+        @test same_gradients(w, q, k, v; rtol, mask)
+        @test same_gradients(w, q, k, v; rtol, mask=BitArray(mask), is_causal=true, lengths...)
+        @test same_gradients(w, q, k[:, 1:2, :, :], v[:, 1:2, :, :]; rtol, is_causal=true)
+        @test NNlib.@disallow_spawns same_gradients(w, q, k, v; rtol, is_causal=true)
+
+        dq, dk, dv = attention_gradients(scaled_dot_product_attention, w, q, k, v; lengths...)
+        @test dq isa Array{T,4} && dk isa Array{T,4} && dv isa Array{T,4}
+        # no gradient reaches the padding
+        @test all(iszero, dq[:, :, 13:end, 2])
+        @test all(iszero, dk[:, :, 151:end, 1]) && all(iszero, dv[:, :, 151:end, 1])
+
+        # with respect to the scale, which can be zero
+        for scale in (T(0.3), zero(T))
+            ds = gradient(s -> sum(w .* scaled_dot_product_attention(q, k, v; scale=s)), scale)[1]
+            @test ds ≈ gradient(s -> sum(w .* materialized_attention(q, k, v; scale=s)), scale)[1] rtol=rtol
+        end
+    end
+
+    # Every pair of a range of queries and a range of keys is taken once, and the pairs of
+    # a round share no range.
+    for (nrq, nrk) in ((1, 1), (3, 3), (2, 5), (5, 2))
+        pairs = [NNlib.attention_pair(x, round, nrq, nrk)
+                 for round in 0:(max(nrq, nrk) - 1), x in 0:(min(nrq, nrk) - 1)]
+        @test sort(vec(pairs)) == sort(vec([(t, u) for t in 0:(nrq - 1), u in 0:(nrk - 1)]))
+        @test all(row -> allunique(first.(row)) && allunique(last.(row)), eachrow(pairs))
+    end
+
+    # Several ranges of queries and of keys, when there are threads to pair them in rounds.
+    @testset "$lenq queries, $lenkv keys" for (lenq, lenkv) in ((700, 700), (300, 1100), (1100, 300), (128, 1100))
+        q = randn(Float32, 8, 1, lenq, 1) ./ 2
+        k = randn(Float32, 8, 1, lenkv, 1) ./ 2
+        v = randn(Float32, 5, 1, lenkv, 1)
+        w = randn(Float32, 5, 1, lenq, 1)
+        @test same_gradients(w, q, k, v; rtol=1f-3)
+        @test same_gradients(w, q, k, v; rtol=1f-3, is_causal=true, q_lengths=[lenq - 5], kv_lengths=[lenkv - 9])
+    end
+
+    # the same array as query, key and value
+    x = randn(Float32, 6, 2, 300, 1)
+    w = randn(Float32, 6, 2, 300, 1)
+    @test gradient(x -> sum(w .* scaled_dot_product_attention(x, x, x; is_causal=true)), x)[1] ≈
+          gradient(x -> sum(w .* materialized_attention(x, x, x; is_causal=true)), x)[1] rtol=1f-3
+
+    q = randn(Float32, 8, 2, 20, 2) ./ 2
+    k = randn(Float32, 8, 2, 30, 2) ./ 2
+    v = randn(Float32, 6, 2, 30, 2)
+    w = randn(Float32, 6, 2, 20, 2)
+
+    # half precision is accumulated in single precision
+    half = map(x -> Float16.(x), (w, q, k, v))
+    g16 = attention_gradients(scaled_dot_product_attention, half...; is_causal=true)
+    g32 = attention_gradients(scaled_dot_product_attention, w, q, k, v; is_causal=true)
+    @test all(x -> x isa Array{Float16,4}, g16)
+    @test all(isapprox.(g16, g32; rtol=2f-2))
+
+    # a cotangent that is not an `Array`
+    @test gradient(q -> sum(scaled_dot_product_attention(q, k, v)), q)[1] ≈
+          gradient(q -> sum(materialized_attention(q, k, v)), q)[1] rtol=1f-3
+
+    # A query attending to no key has a NaN output, and takes no part in the gradients:
+    # those of the other queries are what they are without it.
+    mask = trues(30, 20)
+    mask[:, 2] .= false
+    dq, dk, dv = attention_gradients(scaled_dot_product_attention, w, q, k, v; mask)
+    rest = setdiff(1:20, 2)
+    dqr, dkr, dvr = attention_gradients(scaled_dot_product_attention, w[:, :, rest, :], q[:, :, rest, :], k, v)
+    @test all(iszero, dq[:, :, 2, :])
+    @test dq[:, :, rest, :] ≈ dqr
+    @test dk ≈ dkr && dv ≈ dvr
+
+    # With a bias the materialized implementation is the one differentiated: the fused
+    # one has no gradient with respect to it.
+    bias = randn(Float32, 30, 20)
+    @test NNlib.is_fused_attention(q, k, v, bias)
+    @test gradient(b -> sum(w .* scaled_dot_product_attention(q, k, v, b)), bias)[1] ≈
+          gradient(b -> sum(w .* materialized_attention(q, k, v, b)), bias)[1]
+    @test_throws ArgumentError gradient(b -> sum(NNlib.fused_attention(q, k, v, b, nothing, nothing, false, nothing, nothing)), bias)
+end
+
+if NNLIB_TEST_ENZYME
+
+# Enzyme has rules of its own for the fused implementation: reverse mode calls its
+# gradient, and forward mode differentiates the materialized implementation.
+@testset "fused gradient: EnzymeRules" begin
+    q = randn(3, 2, 4, 2) ./ 2
+    k = randn(3, 2, 5, 2) ./ 2
+    v = randn(2, 2, 5, 2)
+    rest(Tscale) = ((nothing, EnzymeCore.Const), (nothing, EnzymeCore.Const), (0.3, Tscale),
+                    (true, EnzymeCore.Const), (nothing, EnzymeCore.Const), ([4, 2], EnzymeCore.Const))
+    D, BD, C = EnzymeCore.Duplicated, EnzymeCore.BatchDuplicated, EnzymeCore.Const
+
+    for (Tret, Tq, Tk, Tv, Tscale) in ((D, D, D, D, EnzymeCore.Active), (D, C, D, D, C), (D, D, C, C, EnzymeCore.Active),
+                                       (BD, BD, BD, BD, C), (C, D, D, D, C))
+        EnzymeTestUtils.test_reverse(NNlib.fused_attention, Tret, (q, Tq), (k, Tk), (v, Tv), rest(Tscale)...;
+                                     atol=1e-6, rtol=1e-6)
+    end
+    for (Tret, Tq, Tk, Tv) in ((D, D, D, D), (D, D, C, D), (BD, BD, BD, BD), (C, D, D, D))
+        EnzymeTestUtils.test_forward(NNlib.fused_attention, Tret, (q, Tq), (k, Tk), (v, Tv), rest(C)...;
+                                     atol=1e-6, rtol=1e-6)
+    end
+
+    # through the public function, the three arguments being the same array
+    x = randn(3, 2, 4, 2)
+    w = randn(3, 2, 4, 2)
+    dx = zero(x)
+    Enzyme.autodiff(Enzyme.Reverse, Const(x -> sum(w .* scaled_dot_product_attention(x, x, x; is_causal=true))),
+                    Active, Duplicated(x, dx))
+    @test dx ≈ gradient(x -> sum(w .* materialized_attention(x, x, x; is_causal=true)), x)[1]
+end
+
+end # NNLIB_TEST_ENZYME
+
 @testset "grouped-query attention" begin
     head_dim, nheads, nkvheads = 4, 6, 2
     q = rand(Float32, head_dim, nheads, 5, 2)

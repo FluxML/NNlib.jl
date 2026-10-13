@@ -36,8 +36,9 @@ fused_attention_arrays(q::Array{T}, k::Array, v::Array, bias::MaybeArray{Real},
 function fused_attention_arrays(q::AbstractGPUArray, k::AbstractGPUArray, v::AbstractGPUArray,
                                 bias::MaybeGPUArray{Real}, mask::MaybeGPUArray{Bool})
     backend = get_backend(q)
+    # the output has the head dimension of the values, the gradients that of the queries too
     return all(x -> x === nothing || get_backend(x) == backend, (k, v, bias, mask)) &&
-           attention_tiling(backend, q, v) !== nothing
+           attention_tiling(backend, q, v) !== nothing && attention_tiling(backend, q, q) !== nothing
 end
 
 fused_attention_arrays(q, k, v, bias, mask) = false
@@ -48,16 +49,20 @@ attention_broadcasts(x::AbstractArray, sz) =
     ndims(x) <= 4 && all(d -> size(x, d) == 1 || size(x, d) == sz[d], 1:4)
 
 # The output of `scaled_dot_product_attention` for inputs satisfying
-# `fused_attention_applies`, in the layout of `_scaled_dot_product_attention`.
+# `fused_attention_applies`, in the layout of `_scaled_dot_product_attention`. An array
+# `lse` receives what the gradient needs of the softmax: the logarithm of the sum of the
+# exponentials of the logits of each query, as `lse[h, i, b]`.
 function fused_attention(q::AA4{T}, k::AA4{T}, v::AA4{T}, bias, mask, scale, is_causal::Bool,
-                         q_lengths, kv_lengths) where {T}
-    A = attention_compute_type(T)
-    s = scale === nothing ? inv(sqrt(A(size(q, 1)))) : A(scale)
+                         q_lengths, kv_lengths; lse=nothing) where {T}
     o = similar(q, size(v, 1), size(q, 2), size(q, 3), size(q, 4))
-    fused_attention!(get_backend(q), o, q, k, v, attention_pad4(bias), attention_pad4(mask),
-                     attention_vec(q_lengths), attention_vec(kv_lengths), s, is_causal)
+    fused_attention!(get_backend(q), o, lse, q, k, v, attention_pad4(bias), attention_pad4(mask),
+                     attention_vec(q_lengths), attention_vec(kv_lengths),
+                     attention_scale(attention_compute_type(T), q, scale), is_causal)
     return o
 end
+
+attention_scale(::Type{A}, q, scale::Nothing) where {A} = inv(sqrt(A(size(q, 1))))
+attention_scale(::Type{A}, q, scale) where {A} = A(scale)
 
 attention_pad4(x::Nothing) = nothing
 attention_pad4(x::AbstractArray) = reshape(x, size(x, 1), size(x, 2), size(x, 3), size(x, 4))
@@ -272,7 +277,7 @@ function attention_workspace(::Type{A}, D::Int, Dv::Int, nq::Int) where {A}
 end
 
 # The queries `i0:i1` of the head `h` of the batch element `b`.
-function attention_item!(o::AbstractArray{T,4}, q, k, v, bias, mask, q_lengths, kv_lengths,
+function attention_item!(o::AbstractArray{T,4}, lse, q, k, v, bias, mask, q_lengths, kv_lengths,
                          scale::A, is_causal::Bool, h, b, i0, i1, ws) where {T,A}
     (; kt, vt, buf, s1, s2, oacc, m, l) = ws
     hk = (h - 1) ÷ (size(q, 2) ÷ size(k, 2)) + 1
@@ -314,11 +319,12 @@ function attention_item!(o::AbstractArray{T,4}, q, k, v, bias, mask, q_lengths, 
                 o[d, h, i, b] = zero(T)
             end
         end
+        lse === nothing || (lse[h, i, b] = m[ii] + log(l[ii]))
     end
     return nothing
 end
 
-function fused_attention!(::CPU, o, q, k, v, bias, mask, q_lengths, kv_lengths, scale::A,
+function fused_attention!(::CPU, o, lse, q, k, v, bias, mask, q_lengths, kv_lengths, scale::A,
                           is_causal::Bool) where {A}
     H, Lq, B = size(q, 2), size(q, 3), size(q, 4)
     # a task for every 2^16 multiply-adds at least: spawning one costs a few microseconds
@@ -338,7 +344,7 @@ function fused_attention!(::CPU, o, q, k, v, bias, mask, q_lengths, kv_lengths, 
             i0 = ((item - 1) % nqt) * nq + 1
             h = ((item - 1) ÷ nqt) % H + 1
             b = (item - 1) ÷ (nqt * H) + 1
-            attention_item!(o, q, k, v, bias, mask, q_lengths, kv_lengths, scale, is_causal,
+            attention_item!(o, lse, q, k, v, bias, mask, q_lengths, kv_lengths, scale, is_causal,
                             h, b, i0, min(i0 + nq - 1, Lq), ws)
         end
         return nothing
@@ -596,10 +602,12 @@ end
 @inline function attention_write!(o, oacc::NTuple{MN,A}, p_shm, ud, uq, i0, h, b, qlen, ::Val{c}) where {MN,A,c}
     Dv, Lq = size(o, 1), size(o, 3)
     ntuple(Val(c.TQ)) do m
+        @inline
         r = uq + c.NQ * (m - 1)
         i = i0 + r
         il = i < qlen ? inv(attention_row_sum(p_shm, r, A, Val(c))) : zero(A)
         ntuple(Val(c.TD)) do e
+            @inline
             d = ud + c.ND * (e - 1)
             if (d < Dv) & (i < Lq)
                 @inbounds o[d + 1, h, i + 1, b] = i < qlen ? oacc[(m - 1) * c.TD + e] * il : zero(A)
@@ -611,8 +619,21 @@ end
     return nothing
 end
 
+@inline attention_write_lse!(lse::Nothing, mx::NTuple, p_shm, tr, i0, h, b, ::Val) = nothing
+@inline function attention_write_lse!(lse, mx::NTuple{TM,A}, p_shm, tr, i0, h, b, ::Val{c}) where {TM,A,c}
+    ntuple(Val(TM)) do m
+        @inline
+        r = tr + c.NR * (m - 1)
+        if i0 + r < size(lse, 2)
+            @inbounds lse[h, i0 + r + 1, b] = mx[m] + log(attention_row_sum(p_shm, r, A, Val(c)))
+        end
+        nothing
+    end
+    return nothing
+end
+
 @kernel inbounds=true cpu=false unsafe_indices=true function attention_kernel!(
-        o, @Const(q), @Const(k), @Const(v), bias, mask, q_lengths, kv_lengths,
+        o, lse, @Const(q), @Const(k), @Const(v), bias, mask, q_lengths, kv_lengths,
         scale::A, causal::Val, til::Val{c}) where {A,c}
     p_shm = @localmem A (c.PP * c.BK,)
     slab = @localmem A (c.SLAB,)
@@ -694,13 +715,14 @@ end
     attention_put_rowstat!(p_shm, ls, tr, tc, til)
     @synchronize()
     attention_write!(o, oacc, p_shm, ud, uq, i0, h, b, qlen, til)
+    tc == 0 && attention_write_lse!(lse, mx, p_shm, tr, i0, h, b, til)
 end
 
-function fused_attention!(backend::GPU, o, q, k, v, bias, mask, q_lengths, kv_lengths, scale::A,
+function fused_attention!(backend::GPU, o, lse, q, k, v, bias, mask, q_lengths, kv_lengths, scale::A,
                           is_causal::Bool) where {A}
     H, Lq, B = size(q, 2), size(q, 3), size(q, 4)
     c = attention_tiling(backend, q, v)
-    attention_kernel!(backend, (c.T, 1, 1))(o, q, k, v, bias, mask, q_lengths, kv_lengths,
+    attention_kernel!(backend, (c.T, 1, 1))(o, lse, q, k, v, bias, mask, q_lengths, kv_lengths,
         scale, Val(is_causal), Val(c); ndrange=(c.T * cld(Lq, c.BQ), H, B))
     return o
 end

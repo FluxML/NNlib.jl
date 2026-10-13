@@ -46,6 +46,7 @@ export sigmoid, hardsigmoid, logsigmoid, thresholdrelu, gelu # Aliases
 
 include("attention.jl")
 include("attention_fused.jl")
+include("attention_fused_grad.jl")
 export scaled_dot_product_attention, scaled_dot_product_attention_with_weights,
        sdpa, sdpa_with_weights, make_causal_mask
 

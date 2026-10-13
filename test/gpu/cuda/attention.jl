@@ -263,6 +263,100 @@ end
     @test size(scaled_dot_product_attention(q, q, v)) == (4096, 1, 4, 1)
 end
 
+# The gradient of NNlib's kernel, against that of the materialized implementation on the CPU.
+@testset "fused gradient ($T)" for T in (Float32, Float64)
+    rtol = T == Float32 ? 1f-3 : 1e-8
+    head_dim, v_head_dim, nheads, lenq, lenkv, bs = 12, 44, 6, 100, 77, 3
+    q = randn(T, head_dim, nheads, lenq, bs) ./ 2
+    k = randn(T, head_dim, nheads, lenkv, bs) ./ 2
+    v = randn(T, v_head_dim, nheads, lenkv, bs)
+    w = randn(T, v_head_dim, nheads, lenq, bs)
+    wd = CuArray(w)
+    loss(f, w; kws...) = (x...) -> sum(w .* f(x...; kws...))
+
+    function same_gradients(xs...; kws...)
+        gm = gradient(loss(materialized_attention, w; kws...), xs...)
+        kwsd = map(x -> x isa AbstractArray{Bool} ? CuArray(x) : x, values(kws))
+        g = gradient(loss(scaled_dot_product_attention, wd; kwsd...), map(CuArray, xs)...)
+        return all(x -> x isa CuArray{T,4}, g) && all(isapprox.(map(Array, g), gm; rtol))
+    end
+
+    mask = rand(Bool, lenkv, lenq, 1, bs)
+    mask[1, :, :, :] .= true
+    lengths = (; q_lengths=[100, 37, 1], kv_lengths=[77, 12, 70])
+    @test same_gradients(q, k, v)
+    @test same_gradients(q, k, v; is_causal=true)
+    @test same_gradients(q, k, v; scale=0.3)
+    @test same_gradients(q, k, v; lengths...)
+    @test same_gradients(q, k, v; mask)
+    @test same_gradients(q, k, v; mask, is_causal=true, lengths...)
+    # grouped-query attention
+    @test same_gradients(q, k[:, 1:2, :, :], v[:, 1:2, :, :])
+    @test same_gradients(q, k[:, 1:2, :, :], v[:, 1:2, :, :]; is_causal=true, lengths...)
+
+    qd, kd, vd = CuArray(q), CuArray(k), CuArray(v)
+    # the same array as query, key and value
+    x = randn(T, head_dim, nheads, lenq, bs) ./ 2
+    wx = randn(T, head_dim, nheads, lenq, bs)
+    wxd = CuArray(wx)
+    @test Array(gradient(x -> sum(wxd .* scaled_dot_product_attention(x, x, x; is_causal=true)), CuArray(x))[1]) ≈
+          gradient(x -> sum(wx .* materialized_attention(x, x, x; is_causal=true)), x)[1] rtol=rtol
+
+    # with respect to the scale
+    ds = gradient(s -> sum(wd .* scaled_dot_product_attention(qd, kd, vd; scale=s)), T(0.3))[1]
+    @test ds ≈ gradient(s -> sum(w .* materialized_attention(q, k, v; scale=s)), T(0.3))[1] rtol=rtol
+
+    # no gradient reaches the padding, and a query attending to no key takes no part
+    dq, dk, dv = map(Array, gradient(loss(scaled_dot_product_attention, wd; lengths...), qd, kd, vd))
+    @test all(iszero, dq[:, :, 38:end, 2])
+    @test all(iszero, dk[:, :, 13:end, 2]) && all(iszero, dv[:, :, 13:end, 2])
+    m0 = CUDA.ones(Bool, lenkv, lenq)
+    m0[:, 2] .= false
+    dq, dk, dv = map(Array, gradient(loss(scaled_dot_product_attention, wd; mask=m0), qd, kd, vd))
+    @test all(iszero, dq[:, :, 2, :])
+    @test all(isfinite, dk) && all(isfinite, dv)
+
+    # with a bias the materialized implementation is differentiated
+    bias = randn(T, lenkv, lenq)
+    @test Array(gradient(b -> sum(wd .* scaled_dot_product_attention(qd, kd, vd, b)), CuArray(bias))[1]) ≈
+          gradient(b -> sum(w .* materialized_attention(q, k, v, b)), bias)[1] rtol=rtol
+end
+
+# Each gradient has a tiling of its own, set by the head dimension it has.
+@testset "fused gradient tilings" begin
+    @testset "head dimensions $head_dim and $v_head_dim, $nheads heads" for (head_dim, v_head_dim, nheads) in
+            ((5, 3, 2), (64, 64, 2), (64, 64, 40), (128, 128, 2), (128, 16, 40), (16, 256, 2), (600, 16, 2),
+             (16, 2048, 1), (2048, 16, 1))
+        q = randn(Float32, head_dim, nheads, 150, 2) ./ 2
+        k = randn(Float32, head_dim, nheads, 131, 2) ./ 2
+        v = randn(Float32, v_head_dim, nheads, 131, 2)
+        w = randn(Float32, v_head_dim, nheads, 150, 2)
+        wd = CuArray(w)
+        @test NNlib.is_fused_attention(CuArray(q), CuArray(k), CuArray(v))
+        g = gradient((x...) -> sum(wd .* scaled_dot_product_attention(x...; is_causal=true)), CuArray(q), CuArray(k), CuArray(v))
+        gm = gradient((x...) -> sum(w .* materialized_attention(x...; is_causal=true)), q, k, v)
+        @test all(isapprox.(map(Array, g), gm; rtol=1f-3))
+    end
+    # beyond the head dimensions the kernel has a tiling for
+    q = CUDA.randn(Float32, 4096, 1, 4, 1)
+    v = CUDA.randn(Float32, 16, 1, 4, 1)
+    @test !NNlib.is_fused_attention(q, q, v)
+end
+
+# Half precision takes NNlib's kernel where cuDNN has no engine, here for the head
+# dimension, and its gradient is accumulated in single precision.
+@testset "fused gradient ($T)" for T in (Float16, BFloat16)
+    q = randn(Float32, 12, 4, 50, 2) ./ 2
+    k = randn(Float32, 12, 4, 70, 2) ./ 2
+    v = randn(Float32, 12, 4, 70, 2)
+    w = randn(Float32, 12, 4, 50, 2)
+    qd, kd, vd, wd = map(x -> CuArray{T}(x), (q, k, v, w))
+    g = gradient((x...) -> sum(wd .* scaled_dot_product_attention(x...; is_causal=true)), qd, kd, vd)
+    gm = gradient((x...) -> sum(w .* materialized_attention(x...; is_causal=true)), q, k, v)
+    @test all(x -> x isa CuArray{T,4}, g)
+    @test all(isapprox.(map(x -> Float32.(Array(x)), g), gm; rtol=T == Float16 ? 2f-2 : 5f-2))
+end
+
 @testset "deprecated interface" begin
     q = rand(Float32, 64, 16, 3) ./ 4
     qd = CuArray(Float16.(q))
