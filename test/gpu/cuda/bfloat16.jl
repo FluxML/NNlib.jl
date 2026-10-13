@@ -104,6 +104,17 @@ BF16_CUDNN && @testset "activations" begin
         x = rand(rng, Float32, 8, 4) .- 0.5f0    # host Float32 arithmetic is safe
         bf16_matches_f32(y -> f.(y), x)
     end
+
+    # The generic broadcast computes these in Float32 and rounds once, so the result is
+    # the Float32 one for the same (already rounded) inputs, up to an ulp of BFloat16.
+    @testset "$f" for f in (hardσ, logσ, leakyrelu, gelu_tanh, gelu_sigmoid, gelu_erf, swish,
+                            hardswish, lisht, selu, celu, softsign, softplus, logcosh, mish,
+                            tanhshrink, tanh_fast, sigmoid_fast)
+        xb = tobf(8 .* rand(rng, Float32, 64) .- 4)
+        out = f.(xb)
+        @test eltype(out) == BFloat16
+        @test all(isapprox.(Float32.(collect(out)), f.(Float32.(collect(xb))); rtol=8f-3, atol=1f-5))
+    end
 end
 
 BF16_CUDNN && @testset "batchnorm" begin

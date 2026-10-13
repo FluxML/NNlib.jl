@@ -6,6 +6,8 @@ The API reference of `NNlib`.
 
 Non-linearities that go between layers of your model. Note that, unless otherwise stated, activation functions operate on scalars. To apply them to an array you can call `σ.(xs)`, `relu.(xs)` and so on.
 
+For `Float16` and `BFloat16` inputs, the activations that involve arithmetic are computed in `Float32` and the result is rounded back to the input type, as PyTorch does. This is faster and more accurate than half precision arithmetic.
+
 ```@docs
 celu
 elu

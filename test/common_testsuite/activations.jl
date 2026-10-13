@@ -2,9 +2,23 @@
 const COMPLEX_ACTS = [σ, swish, softplus, logσ, mish, logcosh,
                       tanh_fast, sigmoid_fast, lisht, tanhshrink]
 
+# Activations that are computed in Float32 for half precision inputs.
+const HALF_ACTS = [σ, hardσ, logσ, leakyrelu, elu, gelu_tanh, gelu_sigmoid, gelu_erf, swish,
+                   hardswish, lisht, selu, celu, softsign, softplus, logcosh, mish, tanhshrink,
+                   tanh_fast, sigmoid_fast]
+
 function activations_testsuite(Backend)
     cpu(x) = adapt(CPU(), x)
     device(x) = adapt(Backend(), x)
+
+    # The device result must stay Float16 and be the Float32 one up to its rounding.
+    # A few of these are computed by a vendor library, hence more than one ulp of slack.
+    @testset "Float16 $f" for f in HALF_ACTS
+        x16 = Float16.(range(-4f0, 4f0, length=33))
+        y = f.(device(x16))
+        @test y isa AbstractArray{Float16}
+        @test all(isapprox.(Float32.(cpu(y)), f.(Float32.(x16)); rtol=4f-3, atol=1f-4))
+    end
 
     # A spread of points in ℂ: both signs of the real part exercise the
     # overflow-safe branches in σ/softplus, and nonzero imaginary parts make
