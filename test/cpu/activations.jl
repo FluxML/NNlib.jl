@@ -311,6 +311,131 @@ end
     end
 end
 
+## Vectorizable kernels
+
+@testset "_exp, _expm1 & _log1p_unit: $T" for T in [Float32, Float64]
+    _exp, _expm1, _log1p_unit = NNlib._exp, NNlib._expm1, NNlib._log1p_unit
+
+    @testset "_exp" begin
+        xs = T.(-40:0.0137:40)
+        @test worst_eps(_exp, exp, xs) <= 1  # 1, as for Base's exp
+        @test mean_eps(_exp, exp, xs) < 0.2  # 0.061 for Float32, 0.099 for Float64
+
+        # Subnormal results, down to where they round to zero
+        xsub = T.(range(log(nextfloat(zero(T))) - 2, log(floatmin(T)), length=2001))
+        @test worst_eps(_exp, exp, xsub) <= 1
+        @test issubnormal(_exp(log(floatmin(T)) - 3))
+
+        # Across the overflow threshold
+        xtop = T.(range(log(floatmax(T)) - 2, log(floatmax(T)) + 2, length=2001))
+        @test worst_eps(_exp, exp, xtop) <= 1
+
+        @test _exp(zero(T)) === one(T)
+        @test _exp(T(Inf)) === T(Inf)
+        @test _exp(floatmax(T)) === T(Inf)
+        @test _exp(T(-Inf)) === zero(T)
+        @test _exp(-floatmax(T)) === zero(T)
+        @test isnan(_exp(T(NaN)))
+    end
+
+    @testset "_expm1" begin
+        # Down to 4e-18, where `exp(x) - 1` is zero
+        xs = vcat(T.(-30:0.0137:0), -T.(exp.(-(0:0.01:40))))
+        @test worst_eps(_expm1, expm1, xs) <= 1   # 1, as for Base's expm1
+        @test worst_eps(_expm1, expm1, -xs) <= 2  # 1, but 2 for some x in 0.35..0.7
+
+        xtop = T.(range(log(floatmax(T)) - 2, log(floatmax(T)) + 2, length=2001))
+        @test worst_eps(_expm1, expm1, xtop) <= 1
+
+        @test _expm1(zero(T)) === zero(T)
+        @test _expm1(nextfloat(zero(T))) === nextfloat(zero(T))
+        @test _expm1(T(Inf)) === T(Inf)
+        @test _expm1(floatmax(T)) === T(Inf)
+        @test _expm1(T(-Inf)) === -one(T)
+        @test _expm1(-floatmax(T)) === -one(T)
+        @test isnan(_expm1(T(NaN)))
+    end
+
+    @testset "_log1p_unit" begin
+        ts = vcat(T.(0:1e-4:1), T.(exp.(-(0:0.01:40))))
+        @test worst_eps(_log1p_unit, log1p, ts) <= 1  # 1, as for Base's log1p
+        @test mean_eps(_log1p_unit, log1p, ts) < 0.2  # 0.059
+
+        @test _log1p_unit(zero(T)) === zero(T)
+        @test _log1p_unit(one(T)) === log(T(2))
+        @test isnan(_log1p_unit(T(NaN)))
+    end
+
+    @testset "activations" begin
+        xs = T.(-30:0.0173:30)
+        @test worst_eps(softplus, softplus, xs) <= 2  # 1
+        @test mean_eps(softplus, softplus, xs) < 0.3  # 0.097 for Float32, 0.143 for Float64
+        @test worst_eps(mish, mish, xs) <= 4          # 3
+        @test mean_eps(mish, mish, xs) < 0.6          # 0.284 for Float32, 0.448 for Float64
+
+        # Small negative inputs, for which `exp(x) - 1` has no correct digit
+        xs = vcat(T.(-30:0.0173:0), -T.(exp.(-(0:0.01:40))))
+        @test worst_eps(elu, elu, xs) <= 1    # 1
+        @test worst_eps(celu, celu, xs) <= 1  # 1
+        @test worst_eps(selu, selu, xs) <= 3  # 2
+        @test elu(-eps(T) / 4) === -eps(T) / 4  # was zero
+    end
+end
+
+@testset "kernels fall back to Base" begin
+    @test NNlib._exp(1) === exp(1)
+    @test NNlib._exp(Float16(1)) === exp(Float16(1))
+    @test NNlib._exp(big(1.0)) == exp(big(1.0))
+    @test NNlib._exp(1.0 + 2.0im) === exp(1.0 + 2.0im)
+    @test NNlib._expm1(1) === expm1(1)
+    @test NNlib._expm1(Float16(1)) === expm1(Float16(1))
+    @test NNlib._expm1(big(1.0)) == expm1(big(1.0))
+end
+
+# A loop over `f` is compiled to SIMD code only if `f` is inlined and free of branches.
+# Pointers keep bounds checks out of the loop, whatever `--check-bounds` says.
+function simd_loop!(f::F, y::Ptr{T}, x::Ptr{T}, n::Int) where {F,T}
+    @simd for i in 1:n
+        unsafe_store!(y, f(unsafe_load(x, i)), i)
+    end
+end
+
+function is_vectorized(f, T)
+    ir = sprint() do io
+        InteractiveUtils.code_llvm(io, simd_loop!, Tuple{typeof(f),Ptr{T},Ptr{T},Int}; debuginfo=:none)
+    end
+    return occursin(Regex("<\\d+ x $(T === Float32 ? "float" : "double")>"), ir)
+end
+
+@testset "SIMD" begin
+    # The counters of code coverage sit in the loop, which is then not vectorized.
+    if Sys.ARCH in (:x86_64, :aarch64) && Base.JLOptions().code_coverage == 0
+        @testset "$f" for f in [σ, sigmoid_fast, tanh_fast, elu, selu, celu, gelu_tanh, gelu_sigmoid,
+                                swish, softplus, logσ, logcosh, mish, lisht, tanhshrink]
+            @test is_vectorized(f, Float32)
+            @test is_vectorized(f, Float64)
+        end
+        @test !is_vectorized(exp, Float32)  # the reason for `_exp`
+    end
+end
+
+# `act ∘ +` is what `bias_act!` broadcasts. A call to it that is not inlined boxes its arguments.
+composed_allocs(f, y, xs...) = (broadcast!(f, y, xs...); @allocated broadcast!(f, y, xs...))
+
+@testset "composition with ∘" begin
+    x, b = randn(Float32, 100), randn(Float32, 100)
+    y = similar(x)
+    @testset "$f" for f in ACTIVATION_FUNCTIONS
+        @test composed_allocs(f ∘ +, y, x, b) < 100  # a box per element would be 1600 bytes or more
+        f == rrelu || @test y == f.(x .+ b)
+        @test composed_allocs(abs ∘ f, y, x) < 100
+        f == rrelu || @test y == abs.(f.(x))
+    end
+    @test (σ ∘ relu)(1.0) === σ(1.0)
+    @test (σ ∘ +)(1, 2) === σ(3)
+    @test (σ ∘ (x -> sum(x; dims=1)))([1.0 2.0; 3.0 4.0]) == σ.([4.0 6.0])  # not only numbers
+end
+
 ## Autodiff tests
 
 WITH_UNARY_RULE = [@eval($a) for (a, _) in NNlib.UNARY_ACTS]
@@ -327,6 +452,32 @@ has_rule(a) = rrule(a, 1f0) === nothing ? "(no rule)" : ""
                 @test typeof(grad[1]) == T
             end
         end
+    end
+end
+
+@testset "AD through the vectorizable kernels: $T" for T in [Float32, Float64]
+    # Enzyme and Mooncake have no rules for the activations: they differentiate their code,
+    # and so the kernels for `Float32` and `Float64`. ForwardDiff takes the generic methods.
+    adtypes = AbstractADType[AutoZygote(), AutoMooncake()]
+    NNLIB_TEST_ENZYME && push!(adtypes, AutoEnzyme())
+    rtol = T == Float32 ? 1e-3 : 1e-6
+
+    @testset "$f with $(nameof(typeof(ad)))" for ad in adtypes,
+            f in [σ, sigmoid_fast, tanh_fast, elu, selu, celu, gelu_tanh, gelu_sigmoid,
+                  swish, softplus, logσ, logcosh, mish, lisht, tanhshrink]
+        for x in T[-3, -0.5, 0.5, 3]
+            @test withgradient(f, ad, x).grad[1] ≈ ForwardDiff.derivative(f, x) rtol=rtol
+        end
+        xs = T[-3, -0.5, 0.5, 3]
+        @test withgradient(x -> sum(f.(x)), ad, xs).grad[1] ≈ ForwardDiff.derivative.(f, xs) rtol=rtol
+    end
+
+    # `softplus` and `mish` are assembled from two pieces that meet at zero
+    @testset "at zero with $(nameof(typeof(ad)))" for ad in adtypes
+        @test withgradient(softplus, ad, zero(T)).grad[1] ≈ 0.5
+        @test withgradient(softplus, ad, -zero(T)).grad[1] ≈ 0.5
+        @test withgradient(logσ, ad, zero(T)).grad[1] ≈ 0.5
+        @test withgradient(mish, ad, zero(T)).grad[1] ≈ 0.6
     end
 end
 

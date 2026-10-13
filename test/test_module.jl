@@ -21,6 +21,7 @@ using Statistics: Statistics, mean
 using Random: Random
 using LinearAlgebra: LinearAlgebra
 using Logging: Logging
+using InteractiveUtils: InteractiveUtils
 using ChainRulesCore: rrule
 using ChainRulesTestUtils: ChainRulesTestUtils
 using Base.Broadcast: broadcasted
