@@ -1,12 +1,10 @@
 module NNlibMetalExt
 
 
-using Metal: Metal, MtlArray, MtlDeviceArray, method_table, @device_override
+using Metal: Metal, MtlArray, MtlDeviceArray
 using NNlib: NNlib, BatchedAdjoint, BatchedTranspose, BatchedAdjOrTrans,
              batched_transpose, batched_adjoint, batched_mul_generic!
 using Adapt: adapt, WrappedArray
-
-@device_override NNlib.tanh_fast(x) = Base.FastMath.tanh_fast(x)
 
 # Atomix's Metal atomics only support a subset of reduction ops: they raise a
 # compile-time error for float `max`/`min` and silently no-op for `*`/`/`. Route
