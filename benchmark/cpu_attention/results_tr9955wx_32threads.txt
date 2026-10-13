@@ -2,29 +2,49 @@ CPU:           AMD Ryzen Threadripper PRO 9955WX 16-Cores (32 hardware threads)
 Julia:         1.13.1, 32 threads
 BLAS:          libopenblas64_.so, 16 threads
 NNlib:         0.9.47
-selection:     dtypes=Float32  impls=nnlib,nnlib-mat  causal=false,true  sizes=tiny,small,gpt2-ish,llama3 L=2k,llama3 L=4k,llama3 L=8k
-sanity Float32  (vs nnlib, fused: true)  nnlib=0.00e+00  nnlib-mat=2.38e-07
+selection:     dtypes=Float32  impls=nnlib  causal=false,true  sizes=tiny,small,gpt2-ish,llama3 L=2k,llama3 L=4k,llama3 L=8k
+sanity Float32  (vs nnlib, fused: true)  nnlib=0.00e+00
 
 ############################################################################################
 ### dtype=Float32  causal=false
 ############################################################################################
-config            L   H |       nnlib ms   nnlib-mat ms |      nnlib MiB  nnlib-mat MiB |   nnlib-mat/nnlib
-tiny            128   4 |          0.150          3.500 |          3.326         10.047 |             23.3x
-small           512   8 |          2.872        114.978 |         11.100        176.164 |             40.0x
-gpt2-ish       1024  12 |          7.532        306.718 |         15.616        456.220 |             40.7x
-llama3 L=2k    2048  32 |         42.567        856.697 |         40.145       1216.312 |             20.1x
-llama3 L=4k    4096  32 |        150.857       2991.501 |         76.210       4480.562 |             19.8x
-llama3 L=8k    8192  32 |        593.437      11021.571 |        140.210      17153.062 |             18.6x
+
+-- FORWARD --
+config            L   H |       nnlib ms |      nnlib MiB
+tiny            128   4 |          0.138 |          4.329
+small           512   8 |          2.533 |         12.102
+gpt2-ish       1024  12 |          7.212 |         16.619
+llama3 L=2k    2048  32 |         37.161 |         42.147
+llama3 L=4k    4096  32 |        140.053 |         78.212
+llama3 L=8k    8192  32 |        547.539 |        142.212
+
+-- FULL GRADIENT, fwd+bwd --
+config            L   H |       nnlib ms |      nnlib MiB
+tiny            128   4 |          0.988 |         14.730
+small           512   8 |         10.350 |         51.649
+gpt2-ish       1024  12 |         27.307 |         72.931
+llama3 L=2k    2048  32 |        133.841 |        188.980
+llama3 L=4k    4096  32 |        502.155 |        353.303
+llama3 L=8k    8192  32 |       1885.120 |        673.803
 
 ############################################################################################
 ### dtype=Float32  causal=true
 ############################################################################################
-config            L   H |       nnlib ms   nnlib-mat ms |      nnlib MiB  nnlib-mat MiB |   nnlib-mat/nnlib
-tiny            128   4 |          0.124          3.150 |          3.326         12.079 |             25.4x
-small           512   8 |          1.801        119.045 |         11.100        240.668 |             66.1x
-gpt2-ish       1024  12 |          4.343        313.143 |         15.616        650.224 |             72.1x
-llama3 L=2k    2048  32 |         23.266        846.393 |         40.145       1736.316 |             36.4x
-llama3 L=4k    4096  32 |         79.626       3216.609 |         76.210       6560.566 |             40.4x
-llama3 L=8k    8192  32 |        307.123      11571.392 |        140.210      25473.074 |             37.7x
 
-nnlib-mat/nnlib = time relative to nnlib (>1 → nnlib faster).
+-- FORWARD --
+config            L   H |       nnlib ms |      nnlib MiB
+tiny            128   4 |          0.117 |          4.329
+small           512   8 |          1.583 |         12.102
+gpt2-ish       1024  12 |          4.195 |         16.619
+llama3 L=2k    2048  32 |         20.199 |         42.147
+llama3 L=4k    4096  32 |         74.509 |         78.208
+llama3 L=8k    8192  32 |        286.639 |        142.212
+
+-- FULL GRADIENT, fwd+bwd --
+config            L   H |       nnlib ms |      nnlib MiB
+tiny            128   4 |          0.900 |         14.730
+small           512   8 |          7.133 |         51.649
+gpt2-ish       1024  12 |         17.108 |         72.931
+llama3 L=2k    2048  32 |         78.288 |        188.980
+llama3 L=4k    4096  32 |        276.717 |        353.299
+llama3 L=8k    8192  32 |       1003.890 |        673.803

@@ -3,12 +3,12 @@
 Compares implementations of the same scaled dot-product (multi-head) attention on the
 GPU, across input sizes from tiny up to a single Llama3-8B attention layer: the time of
 the forward pass and of the full **Zygote** gradient (forward + backward), and the GPU
-memory a forward call allocates.
+memory each of the two allocates.
 
 | Name | Function | Approach | Memory |
 |---|---|---|---|
-| `nnlib` | NNlib `scaled_dot_product_attention`, as it dispatches | cuDNN's fused kernel for `Float16`/`BFloat16`, NNlib's own fused kernel for the other eltypes: the weights are never materialized | O(L) |
-| `nnlib-ka` | NNlib's own fused kernel, for every eltype | a KernelAbstractions kernel, which also takes the calls cuDNN has no engine for. No gradient yet | O(L) |
+| `nnlib` | NNlib `scaled_dot_product_attention`, as it dispatches | cuDNN's fused kernel for `Float16`/`BFloat16`, NNlib's own fused kernel for the other eltypes: the weights are never materialized, in the forward pass or in the gradient | O(L) |
+| `nnlib-ka` | NNlib's own fused kernel, for every eltype | a KernelAbstractions kernel, which also takes the calls cuDNN has no engine for | O(L) |
 | `nnlib-mat` | the same function, kept on the materialized implementation | the full weights, from two `batched_mul` and a `softmax` | O(L²) |
 | `lux` | [LuxLib](https://github.com/LuxDL/Lux.jl/tree/main/lib/LuxLib) `scaled_dot_product_attention` | materialized softmax path | O(L²) |
 
@@ -72,7 +72,7 @@ Each cell runs `CUDA.@sync(op)` under `BenchmarkTools.run(...; seconds, evals=1)
 and reports `minimum(trial)` in **ms**. `evals=1` is *per sample*, not total:
 within the `seconds` budget BenchmarkTools collects as many samples as fit
 (thousands for a sub-ms kernel) and we take the fastest — the standard robust
-estimator for GPU kernels. The memory is `CUDA.@allocated` of one forward call. The
+estimator for GPU kernels. The memory is `CUDA.@allocated` of one call. The
 PyTorch script takes the minimum the same way, synchronizing after each call.
 
 `n/s` = that path can't run the config (reason echoed once to stderr);
@@ -99,142 +99,152 @@ Times in ms, lower is better.
 
 ### Float32
 
-"fused" is `nnlib`, which here is NNlib's own kernel, and "materialized" is `nnlib-mat`.
-That kernel has no gradient yet, so the gradient NNlib computes is the one of the
-materialized implementation.
+"fused" is `nnlib`, which here is NNlib's own kernel, in the forward pass and in the
+gradient, and "materialized" is `nnlib-mat`.
 
 Non-causal, forward (ms) and the memory a call allocates (MiB):
 
 | config | L | fused | materialized | LuxLib | PyTorch efficient | PyTorch math | materialized ÷ fused | MiB fused | MiB materialized |
 |---|--:|--:|--:|--:|--:|--:|--:|--:|--:|
-| tiny | 128 | 0.032 | 0.041 | 0.042 | 0.030 | 0.050 | 1.3× | 1.0 | 10 |
-| small | 512 | 0.220 | 0.245 | 0.246 | 0.182 | 0.319 | 1.1× | 8.0 | 176 |
-| gpt2-ish | 1024 | 0.540 | 0.748 | 0.753 | 0.440 | 1.090 | 1.4× | 12 | 456 |
-| llama3 L=2k | 2048 | 2.352 | 2.353 | 2.359 | 2.332 | 4.000 | 1.0× | 32 | 1216 |
-| llama3 L=4k | 4096 | 8.288 | 8.770 | 8.773 | 8.593 | 15.824 | 1.1× | 64 | 4480 |
-| llama3 L=8k | 8192 | 31.168 | n/s | n/s | 32.957 | 63.174 | — | 128 | n/s |
+| tiny | 128 | 0.026 | 0.042 | 0.043 | 0.030 | 0.050 | 1.6× | 1.0 | 10 |
+| small | 512 | 0.205 | 0.246 | 0.244 | 0.182 | 0.319 | 1.2× | 8.0 | 176 |
+| gpt2-ish | 1024 | 0.511 | 0.747 | 0.751 | 0.440 | 1.090 | 1.5× | 12 | 456 |
+| llama3 L=2k | 2048 | 2.291 | 2.342 | 2.355 | 2.332 | 4.000 | 1.0× | 32 | 1216 |
+| llama3 L=4k | 4096 | 8.216 | 8.753 | 8.750 | 8.593 | 15.824 | 1.1× | 64 | 4480 |
+| llama3 L=8k | 8192 | 31.184 | n/s | n/s | 32.957 | 63.174 | — | 128 | n/s |
 
-Non-causal, full gradient (ms):
+Non-causal, full gradient (ms) and the memory it allocates (MiB):
 
-| config | L | NNlib (materialized) | LuxLib | PyTorch efficient | PyTorch math |
-|---|--:|--:|--:|--:|--:|
-| tiny | 128 | 0.376 | 0.932 | 0.099 | 0.188 |
-| small | 512 | 0.951 | 1.085 | 0.771 | 0.785 |
-| gpt2-ish | 1024 | 2.224 | 2.118 | 1.920 | 2.590 |
-| llama3 L=2k | 2048 | 6.789 | 6.705 | 9.762 | 9.900 |
-| llama3 L=4k | 4096 | 24.791 | 24.597 | 36.216 | 38.744 |
-| llama3 L=8k | 8192 | n/s | n/s | 139.340 | n/s |
+| config | L | fused | materialized | LuxLib | PyTorch efficient | PyTorch math | materialized ÷ fused | MiB fused | MiB materialized |
+|---|--:|--:|--:|--:|--:|--:|--:|--:|--:|
+| tiny | 128 | 0.184 | 0.397 | 0.949 | 0.099 | 0.188 | 2.2× | 5.0 | 23 |
+| small | 512 | 1.054 | 0.963 | 1.108 | 0.771 | 0.785 | 0.9× | 40 | 376 |
+| gpt2-ish | 1024 | 2.587 | 2.228 | 2.122 | 1.920 | 2.590 | 0.9× | 60 | 948 |
+| llama3 L=2k | 2048 | 11.742 | 6.842 | 6.733 | 9.762 | 9.900 | 0.6× | 161 | 2528 |
+| llama3 L=4k | 4096 | 42.295 | 24.839 | 24.740 | 36.216 | 38.744 | 0.6× | 321 | 9152 |
+| llama3 L=8k | 8192 | 159.561 | n/s | n/s | 139.340 | n/s | — | 642 | n/s |
 
 Causal, forward (ms) and the memory a call allocates (MiB):
 
 | config | L | fused | materialized | LuxLib | PyTorch efficient | PyTorch math | materialized ÷ fused | MiB fused | MiB materialized |
 |---|--:|--:|--:|--:|--:|--:|--:|--:|--:|
-| tiny | 128 | 0.032 | 0.057 | 0.051 | 0.030 | 0.065 | 1.8× | 1.0 | 12 |
-| small | 512 | 0.159 | 0.374 | 0.373 | 0.121 | 0.372 | 2.4× | 8.0 | 240 |
-| gpt2-ish | 1024 | 0.366 | 1.222 | 1.222 | 0.285 | 1.362 | 3.3× | 12 | 650 |
-| llama3 L=2k | 2048 | 1.435 | 3.302 | 3.296 | 1.277 | 4.708 | 2.3× | 32 | 1736 |
-| llama3 L=4k | 4096 | 4.703 | 12.555 | 12.538 | 4.503 | 19.871 | 2.7× | 64 | 6560 |
-| llama3 L=8k | 8192 | 16.666 | n/s | n/s | 16.868 | 79.201 | — | 128 | n/s |
+| tiny | 128 | 0.027 | 0.054 | 0.052 | 0.030 | 0.065 | 2.0× | 1.0 | 12 |
+| small | 512 | 0.143 | 0.376 | 0.372 | 0.121 | 0.372 | 2.6× | 8.0 | 240 |
+| gpt2-ish | 1024 | 0.339 | 1.225 | 1.222 | 0.285 | 1.362 | 3.6× | 12 | 650 |
+| llama3 L=2k | 2048 | 1.390 | 3.308 | 3.299 | 1.277 | 4.708 | 2.4× | 32 | 1736 |
+| llama3 L=4k | 4096 | 4.597 | 12.557 | 12.499 | 4.503 | 19.871 | 2.7× | 64 | 6560 |
+| llama3 L=8k | 8192 | 16.217 | n/s | n/s | 16.868 | 79.201 | — | 128 | n/s |
 
-Causal, full gradient (ms):
+Causal, full gradient (ms) and the memory it allocates (MiB):
 
-| config | L | NNlib (materialized) | LuxLib | PyTorch efficient | PyTorch math |
-|---|--:|--:|--:|--:|--:|
-| tiny | 128 | 0.465 | 1.025 | 0.099 | 0.197 |
-| small | 512 | 2.342 | 2.695 | 0.481 | 0.833 |
-| gpt2-ish | 1024 | 6.253 | 6.332 | 1.193 | 2.843 |
-| llama3 L=2k | 2048 | 17.259 | 17.278 | 5.254 | 10.402 |
-| llama3 L=4k | 4096 | 69.160 | 67.563 | 18.829 | 42.105 |
-| llama3 L=8k | 8192 | OOM | OOM | 71.065 | n/s |
+| config | L | fused | materialized | LuxLib | PyTorch efficient | PyTorch math | materialized ÷ fused | MiB fused | MiB materialized |
+|---|--:|--:|--:|--:|--:|--:|--:|--:|--:|
+| tiny | 128 | 0.179 | 0.451 | 1.067 | 0.099 | 0.197 | 2.5× | 5.0 | 39 |
+| small | 512 | 0.781 | 2.371 | 2.621 | 0.481 | 0.833 | 3.0× | 40 | 890 |
+| gpt2-ish | 1024 | 1.822 | 6.273 | 6.336 | 1.193 | 2.843 | 3.4× | 60 | 2490 |
+| llama3 L=2k | 2048 | 6.998 | 17.413 | 17.234 | 5.254 | 10.402 | 2.5× | 161 | 6648 |
+| llama3 L=4k | 4096 | 23.171 | 67.739 | 67.836 | 18.829 | 42.105 | 2.9× | 321 | 25632 |
+| llama3 L=8k | 8192 | 82.346 | OOM | OOM | 71.065 | n/s | — | 642 | OOM |
 
 ### Float16
 
-`nnlib` is cuDNN's kernel here. "NNlib's kernel" is `nnlib-ka`, which NNlib takes for
-the calls cuDNN has no engine for, and "MiB fused" is what either of them allocates.
+`nnlib` is cuDNN's kernel here, in the forward pass and in the gradient. "NNlib's kernel"
+is `nnlib-ka`, which NNlib takes for the calls cuDNN has no engine for, and "MiB fused"
+is what either of them allocates in the forward pass.
 
 Non-causal, forward (ms) and the memory a call allocates (MiB):
 
 | config | L | cuDNN (`nnlib`) | NNlib's kernel | materialized | PyTorch flash | PyTorch cudnn | PyTorch efficient | PyTorch math | MiB fused | MiB materialized |
 |---|--:|--:|--:|--:|--:|--:|--:|--:|--:|--:|
-| tiny | 128 | 0.012 | 0.031 | 0.747 | 0.016 | 0.016 | 0.022 | 0.060 | 0.5 | 5.0 |
-| small | 512 | 0.036 | 0.217 | 1.451 | 0.040 | 0.039 | 0.072 | 0.361 | 4.0 | 88 |
-| gpt2-ish | 1024 | 0.117 | 0.533 | 1.210 | 0.089 | 0.118 | 0.157 | 1.305 | 6.0 | 228 |
-| llama3 L=2k | 2048 | 0.408 | 2.333 | 1.527 | 0.444 | 0.408 | 0.880 | 4.600 | 16 | 608 |
-| llama3 L=4k | 4096 | 1.376 | 8.432 | 4.162 | 1.508 | 1.401 | 3.253 | 17.980 | 32 | 2240 |
-| llama3 L=8k | 8192 | 5.086 | 31.549 | n/s | 5.496 | 5.182 | 12.404 | 71.177 | 64 | n/s |
+| tiny | 128 | 0.013 | 0.025 | 0.753 | 0.016 | 0.016 | 0.022 | 0.060 | 0.5 | 5.0 |
+| small | 512 | 0.036 | 0.204 | 1.451 | 0.040 | 0.039 | 0.072 | 0.361 | 4.0 | 88 |
+| gpt2-ish | 1024 | 0.118 | 0.506 | 1.103 | 0.089 | 0.118 | 0.157 | 1.305 | 6.0 | 228 |
+| llama3 L=2k | 2048 | 0.407 | 2.288 | 1.533 | 0.444 | 0.408 | 0.880 | 4.600 | 16 | 608 |
+| llama3 L=4k | 4096 | 1.388 | 8.410 | 4.161 | 1.508 | 1.401 | 3.253 | 17.980 | 32 | 2240 |
+| llama3 L=8k | 8192 | 5.126 | 31.814 | n/s | 5.496 | 5.182 | 12.404 | 71.177 | 64 | n/s |
 
-Non-causal, full gradient (ms):
+Non-causal, full gradient (ms) and the memory it allocates (MiB):
 
-| config | L | cuDNN (`nnlib`) | materialized | LuxLib | PyTorch flash | PyTorch cudnn | PyTorch efficient | PyTorch math |
-|---|--:|--:|--:|--:|--:|--:|--:|--:|
-| tiny | 128 | 0.168 | 2.693 | 3.242 | 0.068 | 0.080 | 0.069 | 0.201 |
-| small | 512 | 0.198 | 4.907 | 5.433 | 0.131 | 0.146 | 0.263 | 0.820 |
-| gpt2-ish | 1024 | 0.455 | 3.958 | 4.612 | 0.315 | 0.372 | 0.626 | 2.805 |
-| llama3 L=2k | 2048 | 1.558 | 4.660 | 4.667 | 1.416 | 1.490 | 4.856 | 10.427 |
-| llama3 L=4k | 4096 | 5.306 | 11.802 | 11.588 | 4.988 | 5.292 | 18.610 | 40.749 |
-| llama3 L=8k | 8192 | 19.210 | n/s | n/s | 18.945 | 19.569 | 72.780 | n/s |
+| config | L | cuDNN (`nnlib`) | NNlib's kernel | materialized | PyTorch flash | PyTorch cudnn | PyTorch efficient | PyTorch math | MiB cuDNN | MiB NNlib's kernel | MiB materialized |
+|---|--:|--:|--:|--:|--:|--:|--:|--:|--:|--:|--:|
+| tiny | 128 | 0.168 | 0.145 | 2.683 | 0.068 | 0.080 | 0.069 | 0.201 | 4.5 | 2.5 | 12 |
+| small | 512 | 0.198 | 1.045 | 5.172 | 0.131 | 0.146 | 0.263 | 0.820 | 36 | 20 | 188 |
+| gpt2-ish | 1024 | 0.454 | 2.569 | 3.992 | 0.315 | 0.372 | 0.626 | 2.805 | 54 | 30 | 474 |
+| llama3 L=2k | 2048 | 1.561 | 11.557 | 4.627 | 1.416 | 1.490 | 4.856 | 10.427 | 144 | 80 | 1264 |
+| llama3 L=4k | 4096 | 5.352 | 41.514 | 11.799 | 4.988 | 5.292 | 18.610 | 40.749 | 289 | 161 | 4576 |
+| llama3 L=8k | 8192 | 19.270 | 156.423 | n/s | 18.945 | 19.569 | 72.780 | n/s | 578 | 322 | n/s |
 
 Causal, forward (ms) and the memory a call allocates (MiB):
 
 | config | L | cuDNN (`nnlib`) | NNlib's kernel | materialized | PyTorch flash | PyTorch cudnn | PyTorch efficient | PyTorch math | MiB fused | MiB materialized |
 |---|--:|--:|--:|--:|--:|--:|--:|--:|--:|--:|
-| tiny | 128 | 0.014 | 0.031 | 0.760 | 0.016 | 0.017 | 0.022 | 0.088 | 0.5 | 6.0 |
-| small | 512 | 0.038 | 0.159 | 1.474 | 0.039 | 0.040 | 0.054 | 0.405 | 4.0 | 120 |
-| gpt2-ish | 1024 | 0.080 | 0.367 | 1.512 | 0.060 | 0.082 | 0.110 | 1.577 | 6.0 | 326 |
-| llama3 L=2k | 2048 | 0.244 | 1.367 | 2.445 | 0.255 | 0.245 | 0.492 | 5.297 | 16 | 872 |
-| llama3 L=4k | 4096 | 0.791 | 4.664 | 7.822 | 0.818 | 0.796 | 1.716 | 21.985 | 32 | 3296 |
-| llama3 L=8k | 8192 | 2.769 | 16.750 | n/s | 2.853 | 2.786 | 6.372 | 87.205 | 64 | n/s |
+| tiny | 128 | 0.014 | 0.025 | 0.764 | 0.016 | 0.017 | 0.022 | 0.088 | 0.5 | 6.0 |
+| small | 512 | 0.037 | 0.144 | 1.486 | 0.039 | 0.040 | 0.054 | 0.405 | 4.0 | 120 |
+| gpt2-ish | 1024 | 0.080 | 0.344 | 1.532 | 0.060 | 0.082 | 0.110 | 1.577 | 6.0 | 326 |
+| llama3 L=2k | 2048 | 0.245 | 1.336 | 2.453 | 0.255 | 0.245 | 0.492 | 5.297 | 16 | 872 |
+| llama3 L=4k | 4096 | 0.798 | 4.683 | 7.834 | 0.818 | 0.796 | 1.716 | 21.985 | 32 | 3296 |
+| llama3 L=8k | 8192 | 2.793 | 16.929 | n/s | 2.853 | 2.786 | 6.372 | 87.205 | 64 | n/s |
 
-Causal, full gradient (ms):
+Causal, full gradient (ms) and the memory it allocates (MiB):
 
-| config | L | cuDNN (`nnlib`) | materialized | LuxLib | PyTorch flash | PyTorch cudnn | PyTorch efficient | PyTorch math |
-|---|--:|--:|--:|--:|--:|--:|--:|--:|
-| tiny | 128 | 0.177 | 2.780 | 3.363 | 0.068 | 0.084 | 0.069 | 0.259 |
-| small | 512 | 0.198 | 5.585 | 6.149 | 0.115 | 0.139 | 0.187 | 0.876 |
-| gpt2-ish | 1024 | 0.328 | 7.380 | 8.002 | 0.213 | 0.264 | 0.418 | 3.046 |
-| llama3 L=2k | 2048 | 0.987 | 11.403 | 11.431 | 0.807 | 0.847 | 2.660 | 11.000 |
-| llama3 L=4k | 4096 | 3.137 | 38.206 | 37.860 | 2.670 | 2.847 | 9.611 | 44.181 |
-| llama3 L=8k | 8192 | 10.713 | n/s | n/s | 9.616 | 10.069 | 36.736 | n/s |
+| config | L | cuDNN (`nnlib`) | NNlib's kernel | materialized | PyTorch flash | PyTorch cudnn | PyTorch efficient | PyTorch math | MiB cuDNN | MiB NNlib's kernel | MiB materialized |
+|---|--:|--:|--:|--:|--:|--:|--:|--:|--:|--:|--:|
+| tiny | 128 | 0.176 | 0.140 | 2.820 | 0.068 | 0.084 | 0.069 | 0.259 | 4.5 | 2.5 | 20 |
+| small | 512 | 0.219 | 0.784 | 5.617 | 0.115 | 0.139 | 0.187 | 0.876 | 36 | 20 | 445 |
+| gpt2-ish | 1024 | 0.329 | 1.823 | 7.405 | 0.213 | 0.264 | 0.418 | 3.046 | 54 | 30 | 1246 |
+| llama3 L=2k | 2048 | 0.989 | 6.962 | 11.337 | 0.807 | 0.847 | 2.660 | 11.000 | 144 | 80 | 3328 |
+| llama3 L=4k | 4096 | 3.155 | 23.281 | 38.110 | 2.670 | 2.847 | 9.611 | 44.181 | 289 | 161 | 12832 |
+| llama3 L=8k | 8192 | 10.706 | 83.450 | n/s | 9.616 | 10.069 | 36.736 | n/s | 578 | 322 | n/s |
 
 ### BFloat16
 
-Within noise of `Float16` in every column (0.118 against 0.117 ms for cuDNN at
-`gpt2-ish`, 0.536 against 0.533 ms for NNlib's kernel): see the raw output.
+Within noise of `Float16` in every column (0.118 against 0.118 ms for cuDNN at
+`gpt2-ish`, 0.509 against 0.506 ms for NNlib's kernel): see the raw output.
 
 ## Takeaways
 
-- **`Float32` has a fused path now, and it is the faster one.** NNlib's kernel runs the
-  forward pass 1.0–1.4× faster than the materialized implementation without a causal
-  mask, the two being level at `llama3 L=2k`, and 1.8–3.3× faster with one, where it
+- **`Float32` has a fused path, and it is the faster one in the forward pass.** NNlib's
+  kernel runs it 1.0–1.6× faster than the materialized implementation without a causal
+  mask, the two being level at `llama3 L=2k`, and 2.0–3.6× faster with one, where it
   does about half the work while the materialized path builds and applies a mask.
 
-- **Its memory is the output.** A forward call allocates 64 MiB at `llama3 L=4k`
-  against 4480 MiB (6560 MiB with a causal mask), and it is the only NNlib path that
-  completes `L=8192` in `Float32`.
+- **Its memory is the output, and the three gradients when it is differentiated.** At
+  `llama3 L=4k` a forward call allocates 64 MiB against 4480 MiB (6560 MiB with a causal
+  mask), and a full gradient 321 MiB against 9152 MiB (25632 MiB). It is the only NNlib
+  path that completes `L=8192` in `Float32`, forward or gradient.
 
-- **It is level with PyTorch's memory-efficient kernel**, the one it is modelled on:
-  7–23% slower up to `gpt2-ish` (0.540 against 0.440 ms), equal at `llama3 L=2k`, and
-  4–5% faster at `L=4k` and `L=8k`. With a causal mask it is 7–31% slower up to
-  `L=2k` and within 5% beyond.
+- **The forward pass is level with PyTorch's memory-efficient kernel**, the one it is
+  modelled on: 13% faster at `tiny`, 13–16% slower at `small` and `gpt2-ish` (0.511
+  against 0.440 ms), and 2–5% faster from `llama3 L=2k` up. With a causal mask it is
+  9–19% slower from `small` to `L=2k` and within 4% beyond.
 
-- **In half precision cuDNN's kernel stays the one to take**: 2.2–6.2× faster than
-  NNlib's kernel, since it runs on tensor cores and NNlib's does not. PyTorch's
-  memory-efficient kernel uses them as well, and is 1.4–3.4× faster than NNlib's there.
-  NNlib's cuDNN path and PyTorch's `cudnn` kernel are the same code (0.117 against
-  0.118 ms at `gpt2-ish`, 5.09 against 5.18 ms at `L=8k`).
+- **The gradient costs four forward passes.** It recomputes the weights in three passes
+  of the forward kernel, one for each of the gradients of the query, the key and the
+  value, each accumulating in the registers of the blocks that own its positions: no
+  update is atomic, and the result is deterministic. With a causal mask it is 2.5–3.4×
+  faster than the materialized gradient (23.2 against 67.7 ms at `L=4k`). Without one it
+  is faster at `tiny`, 9–16% slower at `small` and `gpt2-ish`, and 1.7× slower from
+  `L=2k` up for as long as the materialized implementation fits (42.3 against 24.8 ms at
+  `L=4k`).
 
-- **Where cuDNN has no engine** (a mask, a bias, a head dimension that is not a
-  multiple of 8), NNlib's kernel is what half precision now takes. Against the
-  materialized implementation it is faster up to `gpt2-ish` and with a causal mask at
-  every size, slower from `L=2k` up without one (8.43 against 4.16 ms at `L=4k`), and
-  allocates 10–100× less.
+- **PyTorch's memory-efficient gradient is ahead**: 1.15–1.4× faster from `small` up
+  without a causal mask (36.2 ms at `L=4k`), 1.2–1.6× with one, and 1.8–1.9× at `tiny`.
 
-- **The gradient is the next step.** NNlib differentiates the materialized
-  implementation in `Float32`: with a causal mask that is 3.3–5.2× slower than PyTorch's
-  memory-efficient kernel from `gpt2-ish` up (69 against 19 ms at `L=4k`) and runs out of
-  memory at `L=8k`. Without a mask NNlib is the faster one from `L=2k` up (24.8 against
-  36.2 ms at `L=4k`), but cannot run `L=8k`.
+- **In half precision cuDNN's kernel stays the one to take**: 1.8–6.2× faster than
+  NNlib's kernel in the forward pass and up to 8× in the gradient, since it runs on
+  tensor cores and NNlib's does not. PyTorch's memory-efficient kernel uses them as
+  well, and is 1.1–3.2× faster than NNlib's there. NNlib's cuDNN path and PyTorch's
+  `cudnn` kernel are the same code (0.118 against 0.118 ms at `gpt2-ish`, 5.13 against
+  5.18 ms at `L=8k`).
+
+- **Where cuDNN has no engine** (a mask, a head dimension that is not a multiple of 8),
+  NNlib's kernel is what half precision takes, in the forward pass and in the gradient.
+  Against the materialized implementation both are faster up to `gpt2-ish` and with a
+  causal mask at every size (23.3 against 38.1 ms for the gradient at `L=4k`), slower
+  from `L=2k` up without one (8.41 against 4.16 ms forward and 41.5 against 11.8 ms for
+  the gradient at `L=4k`), and allocate far less (161 against 4576 MiB for that
+  gradient).
 
 - **NNlib ≈ LuxLib on the materialized path** — the same algorithm, within noise — and
-  both are faster than PyTorch's `math` kernel in `Float32` (8.77 against 15.8 ms at
+  both are faster than PyTorch's `math` kernel in `Float32` (8.75 against 15.8 ms at
   `L=4k`).

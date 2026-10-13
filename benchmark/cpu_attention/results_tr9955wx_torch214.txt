@@ -1,19 +1,19 @@
 PyTorch: 2.14.1+cu130  threads: 16
 
 ### dtype=f32  causal=False
-config            L   H |    torch ms
-tiny            128   4 |       0.180
-small           512   8 |       3.173
-gpt2-ish       1024  12 |       7.350
-llama3 L=2k    2048  32 |      38.552
-llama3 L=4k    4096  32 |     152.322
-llama3 L=8k    8192  32 |     718.658
+config            L   H |    torch ms   torch-grad ms
+tiny            128   4 |       0.159           0.800
+small           512   8 |       3.108          15.316
+gpt2-ish       1024  12 |       7.454          32.033
+llama3 L=2k    2048  32 |      38.317         150.523
+llama3 L=4k    4096  32 |     152.565         572.771
+llama3 L=8k    8192  32 |     607.714        2195.300
 
 ### dtype=f32  causal=True
-config            L   H |    torch ms
-tiny            128   4 |       0.177
-small           512   8 |       3.162
-gpt2-ish       1024  12 |       5.694
-llama3 L=2k    2048  32 |      27.321
-llama3 L=4k    4096  32 |     110.140
-llama3 L=8k    8192  32 |     341.789
+config            L   H |    torch ms   torch-grad ms
+tiny            128   4 |       0.173           0.795
+small           512   8 |       3.083          15.196
+gpt2-ish       1024  12 |       5.659          25.638
+llama3 L=2k    2048  32 |      25.028          95.098
+llama3 L=4k    4096  32 |      85.056         341.694
+llama3 L=8k    8192  32 |     330.874        1215.882

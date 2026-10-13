@@ -1,8 +1,8 @@
 """PyTorch counterpart of bench_attention.jl: `scaled_dot_product_attention` on the CPU,
 where PyTorch materializes the attention weights (matmul, softmax, matmul).
 
-Reports the forward wall time in ms: the minimum over the samples that fit in the time
-budget.
+Reports the wall time in ms of the forward pass and of the full gradient (forward +
+backward): the minimum over the samples that fit in the time budget.
 
     uv run --project . python bench_torch.py --threads 16
     uv run --project . python bench_torch.py --causal false --sizes gpt2-ish
@@ -45,19 +45,28 @@ def main():
     args = p.parse_args()
 
     torch.set_num_threads(args.threads)
-    torch.set_grad_enabled(False)
+
+    def forward(q, k, v, is_causal):
+        with torch.no_grad():
+            F.scaled_dot_product_attention(q, k, v, is_causal=is_causal)
+
+    def gradient(q, k, v, is_causal):
+        out = F.scaled_dot_product_attention(q, k, v, is_causal=is_causal)
+        torch.autograd.grad(out.sum(), (q, k, v))
+
     configs = CONFIGS if args.sizes == "all" else [c for c in CONFIGS if c[0] in args.sizes.split(",")]
     print("PyTorch:", torch.__version__, " threads:", torch.get_num_threads())
     for dtype_name in args.dtypes.split(","):
         for causal in args.causal.split(","):
             is_causal = causal == "true"
             print(f"\n### dtype={dtype_name}  causal={is_causal}")
-            print(f"{'config':<13}{'L':>6}{'H':>4} |{'torch ms':>12}")
+            print(f"{'config':<13}{'L':>6}{'H':>4} |{'torch ms':>12}{'torch-grad ms':>16}")
             for name, E, L, H, B in configs:
                 # PyTorch's layout is (batch, heads, seq, head_dim)
-                q, k, v = (torch.randn(B, H, L, E, dtype=DTYPES[dtype_name]) for _ in range(3))
-                t = timed(lambda: F.scaled_dot_product_attention(q, k, v, is_causal=is_causal), args.seconds)
-                print(f"{name:<13}{L:>6}{H:>4} |{t:>12.3f}", flush=True)
+                q, k, v = (torch.randn(B, H, L, E, dtype=DTYPES[dtype_name], requires_grad=True) for _ in range(3))
+                t = timed(lambda: forward(q, k, v, is_causal), args.seconds)
+                g = timed(lambda: gradient(q, k, v, is_causal), args.seconds)
+                print(f"{name:<13}{L:>6}{H:>4} |{t:>12.3f}{g:>16.3f}", flush=True)
 
 
 if __name__ == "__main__":

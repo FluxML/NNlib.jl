@@ -4,9 +4,10 @@
 #
 #   * nnlib      NNlib `scaled_dot_product_attention`, as it dispatches: cuDNN's fused
 #       kernel for Float16/BFloat16, NNlib's own fused kernel for the other eltypes.
-#       Neither materializes the attention weights: memory is O(seq).
+#       Neither materializes the attention weights, in the forward pass or in the
+#       gradient: memory is O(seq).
 #   * nnlib-ka   NNlib's own fused kernel (KernelAbstractions) for every eltype, that is
-#       also where cuDNN would take the call. It has no gradient yet.
+#       also where cuDNN would take the call.
 #   * nnlib-mat  the same function kept on the materialized implementation: the full
 #       (kv_len, q_len, nheads, batch) weights from two `batched_mul` and a `softmax`.
 #       Memory is O(seq²).
@@ -16,7 +17,7 @@
 # is the PyTorch counterpart.
 #
 # Reports forward and full Zygote-gradient (forward+backward) wall time in ms,
-# GPU-synchronized, and the GPU memory a forward call allocates. "OOM" = ran out of GPU
+# GPU-synchronized, and the GPU memory each of the two allocates. "OOM" = ran out of GPU
 # memory; "n/s" = that path can't run the config (echoed once to stderr).
 #
 # Run (whole suite):
@@ -77,7 +78,7 @@ const IMPLS = Dict(
                 sum(NNlib.scaled_dot_product_attention(q, k, v; is_causal=I[4])), I[1], I[2], I[3])),
     "nnlib-ka" => Impl("nnlib-ka",
         I -> nnlib_ka(I...),
-        I -> error("NNlib's fused kernel has no gradient yet")),
+        I -> Zygote.gradient((q, k, v) -> sum(nnlib_ka(q, k, v, I[4])), I[1], I[2], I[3])),
     "nnlib-mat" => Impl("nnlib-mat",
         I -> NNlib.scaled_dot_product_attention(I[1], I[2], I[3]; is_causal=I[4], fdrop=nofuse),
         I -> Zygote.gradient((q, k, v) ->
@@ -200,7 +201,8 @@ function run(T, causal, impls, configs, seconds)
             I = (q, k, v, causal)
             t[nm] = (; fwd  = timed(() -> im.fwd(I), seconds),
                       grad = timed(() -> im.grad(I), seconds),
-                      mem  = allocated(() -> im.fwd(I)))
+                      mem  = allocated(() -> im.fwd(I)),
+                      gmem = allocated(() -> im.grad(I)))
         end
         q = k = v = nothing; CUDA.reclaim()
         (; name, L, H, t)
@@ -208,6 +210,7 @@ function run(T, causal, impls, configs, seconds)
     print_table("FORWARD (ms)", impls, rows, :fwd)
     print_table("FULL GRADIENT, fwd+bwd (ms)", impls, rows, :grad)
     print_table("FORWARD, GPU memory allocated (MiB)", impls, rows, :mem)
+    print_table("FULL GRADIENT, GPU memory allocated (MiB)", impls, rows, :gmem)
     flush(stdout)   # show each block as it completes, also when writing to a file
 end
 

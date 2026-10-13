@@ -2,7 +2,8 @@
 # materialized one.
 #
 #   * nnlib      NNlib `scaled_dot_product_attention`: the fused implementation, which
-#       walks the keys in tiles and never forms the attention weights. Memory is O(seq).
+#       walks the keys in tiles and never forms the attention weights, in the forward
+#       pass or in the gradient. Memory is O(seq).
 #   * nnlib-mat  the same function kept on the materialized implementation: the full
 #       (kv_len, q_len, nheads, batch) weights from two `batched_mul` and a `softmax`.
 #       Memory is O(seq²).
@@ -10,7 +11,8 @@
 # Both take q,k,v = (head_dim, nheads, seq, batch) = (E, H, L, B). `bench_torch.py` is
 # the PyTorch counterpart.
 #
-# Reports the forward wall time in ms and the memory the call allocates.
+# Reports the wall time in ms and the memory allocated, for the forward pass and for the
+# full Zygote gradient (forward + backward).
 #
 # Run (whole suite), with as many threads as the comparison is meant for:
 #     julia --threads=auto --project=. bench_attention.jl
@@ -19,7 +21,7 @@
 # See all options:
 #     julia --project=. bench_attention.jl --help
 
-using NNlib, BenchmarkTools, Printf, ArgParse, LinearAlgebra
+using NNlib, Zygote, BenchmarkTools, Printf, ArgParse, LinearAlgebra
 
 # (name, head_dim E, seq_len L, nheads H, batch B). Self-attention: q_len=kv_len=L.
 # The configurations of the GPU benchmark, up to a Llama3-8B attention layer.
@@ -49,6 +51,11 @@ const IMPLS = Dict(
 )
 const IMPL_ORDER = ["nnlib", "nnlib-mat"]
 
+forward(f, q, k, v, causal) = f(q, k, v, causal)
+fullgradient(f, q, k, v, causal) = Zygote.gradient((q, k, v) -> sum(f(q, k, v, causal)), q, k, v)
+const PASSES = Dict("forward" => ("FORWARD", forward), "gradient" => ("FULL GRADIENT, fwd+bwd", fullgradient))
+const PASS_ORDER = ["forward", "gradient"]
+
 # (minimum time in ms, allocated MiB) of a thunk, or `nothing` if it does not run
 function timed(f, seconds)
     try
@@ -76,8 +83,9 @@ end
 
 fmt(x) = x === nothing ? "n/s" : @sprintf("%.3f", x)
 
-function run(T, causal, impls, configs, seconds)
-    @printf("\n%s\n### dtype=%s  causal=%s\n%s\n", "#"^92, string(T), causal, "#"^92)
+function run(T, causal, impls, configs, seconds, pass)
+    title, op = PASSES[pass]
+    println("\n-- $title --")
     header = rpad("config", 13) * lpad("L", 6) * lpad("H", 4) * " |"
     for name in impls; header *= lpad(name * " ms", 15); end
     header *= " |"
@@ -86,7 +94,7 @@ function run(T, causal, impls, configs, seconds)
     println(header)
     for (name, E, L, H, B) in configs
         q = randn(T, E, H, L, B); k = randn(T, E, H, L, B); v = randn(T, E, H, L, B)
-        res = [timed(() -> IMPLS[nm](q, k, v, causal), seconds) for nm in impls]
+        res = [timed(() -> op(IMPLS[nm], q, k, v, causal), seconds) for nm in impls]
         line = rpad(name, 13) * lpad(string(L), 6) * lpad(string(H), 4) * " |"
         for r in res; line *= lpad(fmt(r === nothing ? nothing : r[1]), 15); end
         line *= " |"
@@ -115,6 +123,9 @@ function parse_cli(argv)
         "--sizes"
             help = "comma list of config names (see --list). Default: all."
             default = "all"
+        "--passes"
+            help = "comma list of what to time: forward,gradient. Default: both."
+            default = "forward,gradient"
         "--seconds"
             help = "per-measurement time budget."
             arg_type = Float64
@@ -143,6 +154,7 @@ function main(argv)
     names = lowercase(strip(opts["sizes"])) == "all" ? first.(CONFIGS) : splitcsv(opts["sizes"])
     configs = filter(c -> c[1] in names, CONFIGS)
     isempty(configs) && error("no configs matched --sizes=$(opts["sizes"])")
+    passes = filter(in(map(lowercase, splitcsv(opts["passes"]))), PASS_ORDER)
 
     println("CPU:           ", Sys.cpu_info()[1].model, " (", Sys.CPU_THREADS, " hardware threads)")
     println("Julia:         ", VERSION, ", ", Threads.nthreads(), " threads")
@@ -153,7 +165,10 @@ function main(argv)
 
     for T in dtypes; sanity(T, impls); end
     for T in dtypes, causal in causals
-        run(T, causal, impls, configs, opts["seconds"])
+        @printf("\n%s\n### dtype=%s  causal=%s\n%s\n", "#"^92, string(T), causal, "#"^92)
+        for pass in passes
+            run(T, causal, impls, configs, opts["seconds"], pass)
+        end
     end
     length(impls) > 1 && println("\n$(impls[2])/$(impls[1]) = time relative to $(impls[1]) (>1 → $(impls[1]) faster).")
 end
