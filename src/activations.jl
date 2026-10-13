@@ -21,6 +21,89 @@ function rrule(::typeof(oftf), x, y)
     return oftf(x, y), oftf_pullback
 end
 
+## `exp` and `log1p` that the compiler can vectorize
+#
+# A broadcast of `exp` or `log1p` from Base is never compiled to SIMD code, because both
+# branch on their argument and `exp` is marked `@noinline`. The versions below are inlined
+# and free of branches, so that a loop calling them is vectorized. They exist for `Float32`
+# and `Float64` only, any other number type falls back to Base.
+# Both are accurate to less than 1 ulp, and `_exp` covers the whole range of `exp`,
+# subnormal results included, unlike `@fastmath exp`.
+
+_exp(x) = exp(x)
+
+# As in Base: `x = N log(2) + r` with `abs(r) ≤ log(2)/2`, then `exp(x) = 2^N exp(r)`
+# with a polynomial for `exp(r)`. The coefficients are those of Base.
+@inline function _exp(x::Float32)
+    x = clamp(x, -104f0, 89f0)  # beyond these the result is 0 or Inf anyway
+    N = round(x * 1.442695f0)
+    r = muladd(N, -0.69314575f0, x)  # log(2) is split into high and low bits
+    r = muladd(N, -1.4286068f-6, r)
+    p = evalpoly(r, (1f0, 1f0, 0.5f0, 0.16666667f0, 0.041666217f0,
+                     0.008333249f0, 0.001394858f0, 0.00019924171f0))
+    _mul_pow2(p, unsafe_trunc(Int32, N))
+end
+
+# Base reads `exp(r)` from a table for Float64, which cannot be vectorized. This is instead
+# the algorithm of FreeBSD's msun (`e_exp.c`): `exp(r) = 1 + r + r c / (2 - c)` with
+# `c = r - r^2 P(r^2)`.
+@inline function _exp(x::Float64)
+    x = clamp(x, -746.0, 710.0)
+    N = round(x * 1.4426950408889634)
+    hi = muladd(N, -0.6931471803691238, x)
+    lo = N * 1.9082149292705877e-10
+    r = hi - lo
+    r2 = r * r
+    c = r - r2 * evalpoly(r2, (0.16666666666666602, -0.0027777777777015593,
+                               6.613756321437934e-5, -1.6533902205465252e-6,
+                               4.1381367970572385e-8))
+    p = 1 - ((lo - r * c / (2 - c)) - hi)
+    _mul_pow2(p, unsafe_trunc(Int64, N))
+end
+
+# `p * 2^N`, with the power of two applied in two halves: neither of them can overflow or
+# underflow, so the product is rounded only once, also when it is subnormal.
+@inline function _mul_pow2(p::Float32, N::Int32)
+    M = N >> 1
+    p * reinterpret(Float32, (M + Int32(127)) << Int32(23)) *
+        reinterpret(Float32, (N - M + Int32(127)) << Int32(23))
+end
+@inline function _mul_pow2(p::Float64, N::Int64)
+    M = N >> 1
+    p * reinterpret(Float64, (M + 1023) << 52) * reinterpret(Float64, (N - M + 1023) << 52)
+end
+
+# `log1p(t)` for `0 ≤ t ≤ 1` only, which is all that `softplus` needs. This is the
+# algorithm of FreeBSD's msun (`s_log1p.c`) restricted to that interval:
+# `1 + t = 2^k (1 + f)` with `k` either 0 or 1, and
+# `log1p(f) = f - f^2/2 + s (f^2/2 + R(s^2))` where `s = f / (2 + f)`.
+@inline function _log1p_unit(t::T) where {T<:Union{Float32,Float64}}
+    halve = t ≥ T(0.41421356237309503)  # 1 + t ≥ √2
+    u = 1 + t
+    f = ifelse(halve, u / 2 - 1, t)
+    c = ifelse(halve, (t - (u - 1)) / u, zero(T))  # makes up for the rounding of `1 + t`
+    k = ifelse(halve, one(T), zero(T))
+    s = f / (2 + f)
+    z = s * s
+    h = f * f / 2
+    R = z * _log1p_poly(z)
+    log2hi, log2lo = _log2_hi_lo(T)
+    k * log2hi - ((h - (s * (h + R) + (k * log2lo + c))) - f)
+end
+
+_log1p_poly(z::Float32) = evalpoly(z, (0.6666667f0, 0.4f0, 0.2857143f0, 0.22222199f0,
+                                       0.18183573f0, 0.15313838f0, 0.14798199f0))
+_log1p_poly(z::Float64) = evalpoly(z, (0.6666666666666735, 0.3999999999940942,
+                                       0.2857142874366239, 0.22222198432149784,
+                                       0.1818357216161805, 0.15313837699209373,
+                                       0.14798198605116586))
+
+_log2_hi_lo(::Type{Float32}) = (0.6931381f0, 9.058001f-6)
+_log2_hi_lo(::Type{Float64}) = (0.6931471803691238, 1.9082149292705877e-10)
+
+@scalar_rule _exp(x) Ω
+@scalar_rule _log1p_unit(x) inv(1 + x)
+
 """
     σ(x) = 1 / (1 + exp(-x))
 
@@ -51,8 +134,8 @@ julia> sigmoid === σ
 true
 ```
 """
-function σ(x)
-    t = exp(-abs(x))
+@inline function σ(x)
+    t = _exp(-abs(x))
     ifelse(x ≥ 0, inv(1 + t), t / (1 + t))
 end
 
@@ -125,7 +208,7 @@ julia> lineplot(-5, 5, logsigmoid, height=7)
            ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀x⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀        
 ```
 """
-logσ(x) = -softplus(-x)
+@inline logσ(x) = -softplus(-x)
 
 const logsigmoid = logσ
 
@@ -304,7 +387,7 @@ julia> elu(-10f0, 2)
 -1.9999092f0
 ```
 """
-elu(x, α=1) = ifelse(x ≥ 0, float(x), @fastmath oftf(x, α) * (exp(x) - 1))
+@inline elu(x, α=1) = ifelse(x ≥ 0, float(x), oftf(x, α) * (_exp(x) - 1))
 
 deriv_elu(Ω, α=1) = ifelse(Ω ≥ 0, one(Ω), Ω + oftype(Ω, α))
 
@@ -347,7 +430,7 @@ julia> lineplot!(ans, swish)
              ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀x⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀         
 ```
 """
-function gelu_tanh(x)
+@inline function gelu_tanh(x)
     α = oftf(x, 0.044715)
     λ = oftf(x, gelu_λ)
     x/2 * (1 + tanh_fast(λ * (x + α * x^3)))
@@ -356,7 +439,7 @@ end
 const gelu_λ = √(2 / π)
 const gelu_2λ = √(8 / π)
 
-function deriv_gelu_tanh(x)
+@inline function deriv_gelu_tanh(x)
     α = oftf(x, 0.044715)
     α2 = oftf(x, 0.08943)
     λ = oftf(x, gelu_λ)
@@ -379,13 +462,13 @@ compilers. Use [`gelu_tanh`](@ref) if you need better compiler optimization supp
 
 See ["Gaussian Error Linear Units"](https://arxiv.org/abs/1606.08415).
 """
-function gelu_sigmoid(x)
+@inline function gelu_sigmoid(x)
     α = oftf(x, 0.044715)
     λλ = oftf(x, gelu_2λ)
     x * sigmoid_fast(λλ * x * muladd(x^2, α, one(x)))
 end
 
-function deriv_gelu_sigmoid(x)
+@inline function deriv_gelu_sigmoid(x)
     α = oftf(x, 0.044715)
     α2 = oftf(x, 0.08943)
     λλ = oftf(x, gelu_2λ)
@@ -518,7 +601,7 @@ julia> lineplot!(ans, logcosh)
           ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀x⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀           
 ```
 """
-lisht(x) = x * tanh_fast(x)
+@inline lisht(x) = x * tanh_fast(x)
 
 """
     selu(x) = λ * (x ≥ 0 ? x : α * (exp(x) - 1))
@@ -547,10 +630,10 @@ julia> selu(-10f0)
 -1.7580194f0
 ```
 """
-function selu(x)
+@inline function selu(x)
     λ = oftf(x, selu_λ)
     α = oftf(x, selu_α)
-    λ * ifelse(x > 0, x, @fastmath α * (exp(x) - 1))
+    λ * ifelse(x > 0, x, α * (_exp(x) - 1))
 end
 
 const selu_λ = 1.0507009873554804934193349852946
@@ -585,7 +668,7 @@ julia> celu(-10f0)
 -0.9999546f0
 ```
 """
-celu(x, α=1) = ifelse(x ≥ 0, float(x), oftf(x,α) * (exp(x/oftf(x,α)) - 1))
+@inline celu(x, α=1) = ifelse(x ≥ 0, float(x), oftf(x,α) * (_exp(x/oftf(x,α)) - 1))
 
 deriv_celu(Ω, α=1) = ifelse(Ω > 0, oftf(Ω, 1), Ω / oftf(Ω, α) + 1)
 
@@ -700,6 +783,13 @@ function softplus(x)
     real(x) < zero(real(x)) ? log1p(exp(x)) : x + log1p(exp(-x))
 end
 
+# The same without branches, so that it can be vectorized. Both terms switch at `x < 0`
+# for the derivative at zero to be right when an AD differentiates through this code.
+@inline function softplus(x::Union{Float32,Float64})
+    neg = x < 0
+    ifelse(neg, zero(x), x) + _log1p_unit(_exp(ifelse(neg, x, -x)))
+end
+
 """
     logcosh(x)
 
@@ -720,7 +810,7 @@ julia> lineplot(-5, 5, logcosh, height=7)
           ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀x⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀           
 ```
 """
-logcosh(x) = x + softplus(-2x) - oftf(x, log2)
+@inline logcosh(x) = x + softplus(-2x) - oftf(x, log2)
 
 const log2 = log(2)
 
@@ -746,6 +836,19 @@ julia> lineplot(-5, 5, mish, height=7)
 """
 mish(x) = x * tanh(softplus(x))
 
+@inline mish(x::Union{Float32,Float64}) = x * _tanh_softplus(x)
+
+# With `t = exp(-abs(x))`, `tanh(softplus(x))` is a ratio of polynomials in `t`:
+# a single `exp`, no `log1p` or `tanh`, and no overflow.
+@inline function _tanh_softplus(x::Union{Float32,Float64})
+    t = _exp(-abs(x))
+    a = ifelse(x ≥ 0, 1 + 2t, t * (t + 2))
+    b = ifelse(x ≥ 0, 2 * t * t, oftype(x, 2))
+    a / (a + b)
+end
+
+@scalar_rule _tanh_softplus(x) (1 - Ω^2) * sigmoid_fast(x)
+
 """
     tanhshrink(x) = x - tanh(x)
 
@@ -769,7 +872,7 @@ julia> tanhshrink.((-10f0, 10f0))
 (-9.0f0, 9.0f0)
 ```
 """
-tanhshrink(x) = x - tanh_fast(x)
+@inline tanhshrink(x) = x - tanh_fast(x)
 
 """
     softshrink(x, λ=0.5) =
@@ -856,7 +959,7 @@ julia> hard_tanh(0.5f0)
 end
 
 @inline function tanh_fast(x::Float64)
-    exp2x = @fastmath exp(x + x)
+    exp2x = _exp(x + x)
     y = (exp2x - 1) / (exp2x + 1) 
     # That has large errors near zero; using `expm1` would more accurate, but about as slow as `tanh`.
     # Instead, we switch to a polynomial, which is very accurate within its range:
@@ -872,8 +975,9 @@ tanh_fast(x::Number) = Base.tanh(x)
 """
     sigmoid_fast(x)
 
-This is a faster, and very slightly less accurate, version of `sigmoid`.
-For `x::Float32`, perhaps 3 times faster, and maximum errors 2 eps instead of 1.
+This used to be a faster, and very slightly less accurate, version of `sigmoid`.
+For `Float32` and `Float64` the two are now computed in the same way, and differ
+only in that `sigmoid_fast(x)` is exactly zero for `x < -80`.
 
 See also [`tanh_fast`](@ref).
 
@@ -888,11 +992,8 @@ julia> hardσ(0.2f0)
 0.53333336f0
 ```
 """
-function sigmoid_fast(x::Real)
-    @static if VERSION ≥ v"1.11-"
-        @inline
-    end
-    t = @fastmath exp(-abs(x))
+@inline function sigmoid_fast(x::Real)
+    t = _exp(-abs(x))
     y = ifelse(x ≥ 0, inv(1 + t), t / (1 + t))
     ifelse(x > 40, one(y), ifelse(x < -80, zero(y), y))
 end

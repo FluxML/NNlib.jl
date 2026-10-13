@@ -19,4 +19,9 @@ using NNlib: NNlib
 # Mooncake has no predicate to query, so `within_gradient` is replaced in the code it differentiates.
 Mooncake.@mooncake_overlay NNlib.within_gradient(x) = true
 
+# `_exp` builds a power of two from its bits, which Mooncake refuses to differentiate
+# (a `bitcast` from an integer to a float). It has a rule for `exp` instead.
+Mooncake.@mooncake_overlay NNlib._exp(x::Float32) = exp(x)
+Mooncake.@mooncake_overlay NNlib._exp(x::Float64) = exp(x)
+
 end
