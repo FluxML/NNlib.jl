@@ -42,8 +42,10 @@ function dropout(rng::AbstractRNG, A::AbstractArray, p::Real; dims = :)
     T = float(eltype(A))
     0 <= p <= 1 || throw(ArgumentError("dropout expects a probability 0 <= p <= 1"))
     if p > 0
-        dst = similar(A, T, size(A))
         pT = convert(real(T), p)
+        # Mooncake's rule only matches `p` of the array's float type (chalk-lab/Mooncake.jl#1368).
+        pT isa typeof(p) || return dropout(rng, A, pT; dims)
+        dst = similar(A, T, size(A))
         _dropout!(rng, dst, A, pT, dims)
     else
         # Not so sure we want fast paths... this tries but doesn't guarantee type-stability,
