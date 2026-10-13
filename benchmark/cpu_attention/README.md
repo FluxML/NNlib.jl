@@ -1,6 +1,6 @@
 # CPU multi-head attention benchmark — NNlib (fused / materialized) and PyTorch
 
-Compares NNlib's two implementations of scaled dot-product (multi-head) attention on the
+Compares NNlib's implementations of scaled dot-product (multi-head) attention on the
 CPU, and PyTorch's, across input sizes from tiny up to a single Llama3-8B attention
 layer: the time of the forward pass and of the full **Zygote** gradient (forward +
 backward), and the memory each of the two allocates.
@@ -8,6 +8,7 @@ backward), and the memory each of the two allocates.
 | Name | Function | Approach | Memory |
 |---|---|---|---|
 | `nnlib` | NNlib `scaled_dot_product_attention` | fused: Julia tasks walk the keys in tiles, with the softmax taken online, and never form the attention weights, in the forward pass or in the gradient | O(L) |
+| `nnlib-ka` | the kernel NNlib launches on the GPU backends, launched on the CPU backend of KernelAbstractions instead | fused: the decomposition made for a GPU, blocks of threads cooperating through local memory, compiled for the CPU by [PoCL](https://portablecl.org). Forward pass only, and not something NNlib dispatches to | O(L) |
 | `nnlib-mat` | the same function, kept on the materialized implementation | the full weights, from two `batched_mul` (BLAS) and a `softmax` | O(L²) |
 | PyTorch | `torch.nn.functional.scaled_dot_product_attention`, in `bench_torch.py` | materialized: matmul, softmax, matmul | O(L²) |
 
@@ -16,6 +17,13 @@ All of them compute the identical math (scale `1/√E`). NNlib takes
 
 `nnlib-mat` passes a no-op `fdrop` that is not `identity`: NNlib only takes the fused
 implementation without dropout, so this keeps it on the materialized one at no extra cost.
+
+`nnlib-ka` is there to tell whether one kernel could serve the GPU and the CPU. It needs
+KernelAbstractions 0.10, whose CPU backend is an OpenCL one running on PoCL: with 0.9 the
+script skips it. For now that takes an environment of its own: NNlib's `[compat]` has to
+allow 0.10, and Zygote has to be taken out of `Project.toml`, since StructArrays, which it
+depends on, holds KernelAbstractions at 0.9. Without Zygote the script runs the forward
+pass only.
 
 ## Run
 
@@ -32,6 +40,7 @@ Both scripts take flags, so that a single combination can be measured:
 
 ```bash
 julia --threads=16 --project=. bench_attention.jl --dtypes f32 --causal true --sizes gpt2-ish
+julia --threads=16 --project=. bench_attention.jl --impls nnlib,nnlib-ka --passes forward
 julia --project=. bench_attention.jl --help     # all options
 julia --project=. bench_attention.jl --list     # available configs / dtypes / impls
 ```
@@ -39,7 +48,7 @@ julia --project=. bench_attention.jl --list     # available configs / dtypes / i
 | flag | values | default |
 |---|---|---|
 | `--dtypes` | `f16`,`f32`,`f64` | `f32` |
-| `--impls` | `nnlib`,`nnlib-mat` | all |
+| `--impls` | `nnlib`,`nnlib-ka`,`nnlib-mat` | all |
 | `--causal` | `false`,`true` | both |
 | `--sizes` | config names (see `--list`) | all |
 | `--passes` | `forward`,`gradient` | both |
@@ -52,7 +61,8 @@ per sample, and the memory is what one call allocates. The gradient is that of t
 of the output with respect to the query, the key and the value.
 
 The fused implementation runs on Julia threads. The materialized one runs its two
-products on BLAS threads and its `softmax` on a single one. PyTorch uses its own
+products on BLAS threads and its `softmax` on a single one. The kernel of `nnlib-ka`
+runs on PoCL's threads, as many as Julia was started with. PyTorch uses its own
 intra-op pool, set with `--threads`.
 
 Configs (head_dim `E`, seq `L`, heads `H`, batch `B`), those of the
@@ -155,3 +165,44 @@ Causal:
 - **The second hardware thread of each core adds little to the forward pass, more to the
   gradient**: from `small` up, 32 threads are 3–7% faster than 16 in the forward pass
   (5–14% with a causal mask) and 4–13% in the gradient (5–18%).
+
+## The kernel of the GPU backends on the CPU — KernelAbstractions 0.10.0, PoCL 7.2
+
+Raw output: [`results_tr9955wx_ka010.txt`](results_tr9955wx_ka010.txt), from
+`--impls nnlib,nnlib-ka --passes forward --seconds 8`. Same machine, `Float32`, forward
+pass, 16 threads, times in ms. "fused" is `nnlib` and "GPU kernel" is `nnlib-ka`.
+
+| config | L | fused | GPU kernel | GPU kernel ÷ fused | fused, causal | GPU kernel, causal | GPU kernel ÷ fused, causal |
+|---|--:|--:|--:|--:|--:|--:|--:|
+| tiny | 128 | 0.13 | 0.69 | 5.3× | 0.12 | 0.57 | 4.8× |
+| small | 512 | 2.60 | 18.8 | 7.3× | 1.79 | 11.0 | 6.2× |
+| gpt2-ish | 1024 | 7.77 | 57.9 | 7.5× | 4.56 | 30.4 | 6.7× |
+| llama3 L=2k | 2048 | 37.78 | 408.7 | 10.8× | 22.14 | 210.5 | 9.5× |
+| llama3 L=4k | 4096 | 144.96 | 1644.9 | 11.3× | 80.83 | 828.1 | 10.2× |
+| llama3 L=8k | 8192 | 581.89 | 6612.8 | 11.4× | 300.46 | 3315.5 | 11.0× |
+
+- **The kernel of the GPU backends is 5–11× slower on the CPU than the Julia tasks**,
+  more so as the sequences grow. One kernel cannot serve both: NNlib keeps an
+  implementation of its own for the CPU.
+
+- **The decomposition is the one a GPU wants.** A block of 64 or 128 threads shares its
+  operands through local memory, and each thread keeps a tile of up to 8×8 logits in
+  registers. PoCL runs a block on one core, as loops over its threads between two
+  barriers, so that the registers become stack traffic and the shared reads gathers. The
+  Julia tasks run long loops over a packed tile of keys instead, which vectorize at full
+  width.
+
+- **With KernelAbstractions 0.9 it does not run at all**: that CPU backend splits a
+  kernel at every `@synchronize`, and this one keeps its state in local variables across
+  them.
+
+Two more measurements, made once and not part of the script:
+
+- **No tiling of the kernel fixes it.** Of 18 tilings at `gpt2-ish`, the best was 6.6×
+  slower than the Julia tasks, against 7.8× for the one the GPU backends get.
+
+- **PoCL is also slower on plain loops on this CPU.** The two inner loops of the Julia
+  implementation, written as a kernel, were 1.7× and 2.0× slower than compiled by Julia:
+  this PoCL targets `skylake-avx512` and emits 256-bit vectors, where Julia emits 512-bit
+  ones. Forcing the width with `POCL_DEBUG_LLVM_OPTS=force-vector-width=16` brings them
+  within 12%.
