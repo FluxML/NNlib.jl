@@ -356,11 +356,6 @@ end
         @test NNlib.attention_tiling(4096, 10^6, 47 * 1024 ÷ 4) === nothing
         @test NNlib.attention_tiling(64, 10^6, 100) === nothing
     end
-
-    @testset "attention_exp ($T)" for T in (Float32, Float64)
-        xs = range(NNlib.attention_exp_floor(T), zero(T); length=10_001)
-        @test all(x -> isapprox(NNlib.attention_exp(x), exp(x); rtol=4eps(T)), xs)
-    end
 end
 
 # The gradients of `sum(w .* f(xs...; kws...))` with respect to the `xs`.

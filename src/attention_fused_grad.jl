@@ -92,10 +92,8 @@ function attention_grad_weights!(s::Vector{A}, g::Vector{A}, n, nvalid, bias, ma
     @inbounds for j in (max(nvalid, 0) + 1):n
         s[j] = A(-Inf)
     end
-    low = attention_exp_floor(A)
     @inbounds @simd for j in 1:n
-        x = s[j] - lse
-        p = ifelse(x < low, zero(A), attention_exp(max(x, low)))
+        p = _exp(s[j] - lse)
         s[j] = p * (g[j] - delta)
         g[j] = p
     end

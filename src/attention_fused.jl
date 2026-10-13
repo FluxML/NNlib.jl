@@ -82,32 +82,6 @@ attention_vec(x::AbstractArray) = vec(x)
 # CPU
 #######################
 
-# `exp` for arguments in `[attention_exp_floor, 0]`, without the branches that keep
-# `Base.exp` from vectorizing. The relative error is below 2 ulp.
-@inline function attention_exp(x::Float32)
-    n = round(x * 1.442695f0)
-    r = muladd(n, -0.693359375f0, x)
-    r = muladd(n, 2.12194440f-4, r)
-    p = evalpoly(r, (5.0000001201f-1, 1.6666665459f-1, 4.1665795894f-2, 8.3334519073f-3,
-                     1.3981999507f-3, 1.9875691500f-4))
-    y = muladd(p * r, r, r) + 1f0
-    return y * reinterpret(Float32, (unsafe_trunc(Int32, n) + Int32(127)) << Int32(23))
-end
-
-@inline function attention_exp(x::Float64)
-    n = round(x * 1.4426950408889634)
-    r = muladd(n, -0.6931471803691238, x)
-    r = muladd(n, -1.9082149292705877e-10, r)
-    y = evalpoly(r, (1.0, 1.0, 0.5, 0.16666666666666666, 0.041666666666666664,
-                     0.008333333333333333, 0.001388888888888889, 0.0001984126984126984,
-                     2.48015873015873e-5, 2.7557319223985893e-6, 2.755731922398589e-7,
-                     2.505210838544172e-8, 2.08767569878681e-9))
-    return y * reinterpret(Float64, (unsafe_trunc(Int64, n) + 1023) << 52)
-end
-
-attention_exp_floor(::Type{Float32}) = -87f0
-attention_exp_floor(::Type{Float64}) = -708.0
-
 # The keys of a tile are packed transposed, so that the loops below run over contiguous
 # keys, and two queries go through them together, sharing the loads.
 
@@ -230,11 +204,9 @@ function attention_softmax!(s::Vector{A}, n, nvalid, bias, mask, j0, i, h, b, m,
             end
             m[ii] = mi = mt
         end
-        low = attention_exp_floor(A)
         lt = zero(A)
         @simd for j in 1:n
-            x = s[j] - mi
-            e = ifelse(x < low, zero(A), attention_exp(max(x, low)))
+            e = _exp(s[j] - mi)     # the `exp` of the activations, which vectorizes
             s[j] = e
             lt += e
         end
