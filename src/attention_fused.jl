@@ -37,7 +37,7 @@ function fused_attention_arrays(q::AbstractGPUArray, k::AbstractGPUArray, v::Abs
                                 bias::MaybeGPUArray{Real}, mask::MaybeGPUArray{Bool})
     backend = get_backend(q)
     return all(x -> x === nothing || get_backend(x) == backend, (k, v, bias, mask)) &&
-           size(v, 1) <= ATTENTION_MAX_HEAD_DIM
+           attention_tiling(backend, q, v) !== nothing
 end
 
 fused_attention_arrays(q, k, v, bias, mask) = false
@@ -399,21 +399,32 @@ end
 attention_shmem(c) = c.PP * c.BK + c.SLAB + c.BQ
 
 # The tiling for a value head dimension `Dv`, `nqueries` queries overall and `budget`
-# floats of shared memory.
+# floats of shared memory, or `nothing` if the kernel has none.
 function attention_tiling(Dv::Int, nqueries::Int, budget::Int)
+    Dv <= ATTENTION_MAX_HEAD_DIM || return nothing
     BQ = Dv <= 256 ? 64 : Dv <= 512 ? 32 : Dv <= 1024 ? 16 : 8
     # a small problem is split into more blocks, to occupy the device
     BQ == 64 && cld(nqueries, BQ) < 128 && (BQ = 32)
     T = Dv <= 64 ? 64 : Dv <= 128 ? 128 : 256
-    # 128 keys per tile where they fit: 8×8 logits per thread with twice the threads
-    wide = attention_tiling(max(T, 128), BQ, 128, Dv)
-    BQ == 64 && attention_shmem(wide) <= budget && return wide
-    c = attention_tiling(T, BQ, 64, Dv)
-    while attention_shmem(c) > budget && c.BQ > 8
-        c = attention_tiling(T, c.BQ ÷ 2, 64, Dv)
+    if BQ == 64
+        # 128 keys per tile where they fit: 8×8 logits per thread with twice the threads
+        wide = attention_tiling(max(T, 128), BQ, 128, Dv)
+        attention_shmem(wide) <= budget && return wide
     end
-    return c
+    # otherwise shrink until it fits: the slab of values first, then the tile of queries
+    while true
+        for KV in (8, 4, 2, 1)
+            c = attention_tiling(T, BQ, 64, Dv; KV)
+            attention_shmem(c) <= budget && return c
+        end
+        BQ > 8 || return nothing
+        BQ ÷= 2
+    end
 end
+
+attention_tiling(backend, q::AbstractArray{T}, v) where {T} =
+    attention_tiling(size(v, 1), length(q) ÷ size(q, 1),
+                     attention_shmem_budget(backend) ÷ sizeof(attention_compute_type(T)))
 
 # acc[m, n] += a[m] * c[n], with `acc` stored column-major as a tuple
 @inline @generated function attention_mma(acc::NTuple{MN,A}, a::NTuple{TM,A}, c::NTuple{TN,A}) where {MN,A,TM,TN}
@@ -678,7 +689,7 @@ end
 function fused_attention!(backend::GPU, o, q, k, v, bias, mask, q_lengths, kv_lengths, scale::A,
                           is_causal::Bool) where {A}
     H, Lq, B = size(q, 2), size(q, 3), size(q, 4)
-    c = attention_tiling(size(v, 1), Lq * H * B, attention_shmem_budget(backend) ÷ sizeof(A))
+    c = attention_tiling(backend, q, v)
     attention_kernel!(backend, (c.T, 1, 1))(o, q, k, v, bias, mask, q_lengths, kv_lengths,
         scale, Val(is_causal), Val(c); ndrange=(c.T * cld(Lq, c.BQ), H, B))
     return o

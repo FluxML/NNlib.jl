@@ -339,6 +339,24 @@ end
     @test all(isnan, y[:, :, :, 1])
     @test y[:, :, :, 2] ≈ materialized_attention(q2, k2, k2; kv_lengths=[5, 4])[:, :, :, 2]
 
+    # the tilings of the GPU kernel are plain arithmetic: each has to fit the shared
+    # memory it is given, whatever the head dimension, the problem size and the eltype
+    @testset "kernel tilings" begin
+        for budget in (31 * 1024, 47 * 1024), bytes in (4, 8), nqueries in (10, 10^6),
+                v_head_dim in (1, 5, 64, 65, 128, 200, 256, 257, 512, 600, 1024, 2048)
+            c = NNlib.attention_tiling(v_head_dim, nqueries, budget ÷ bytes)
+            @test c !== nothing
+            @test NNlib.attention_shmem(c) * bytes <= budget
+            @test c.T * c.TM * c.TN == c.BQ * c.BK      # the logits of a tile
+            @test c.NR * c.NC == c.T == c.ND * c.NQ
+            @test c.TD * c.ND >= v_head_dim             # the outputs of a tile of queries
+            @test c.TD * c.TQ <= 64 && c.TM * c.TN <= 64
+            @test c.T % c.KD == 0 && c.BK % c.KV == 0
+        end
+        @test NNlib.attention_tiling(4096, 10^6, 47 * 1024 ÷ 4) === nothing
+        @test NNlib.attention_tiling(64, 10^6, 100) === nothing
+    end
+
     @testset "attention_exp ($T)" for T in (Float32, Float64)
         xs = range(NNlib.attention_exp_floor(T), zero(T); length=10_001)
         @test all(x -> isapprox(NNlib.attention_exp(x), exp(x); rtol=4eps(T)), xs)
