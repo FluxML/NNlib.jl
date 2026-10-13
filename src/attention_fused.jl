@@ -10,14 +10,10 @@ const FusedAttentionFloat = Union{Float16,BFloat16,Float32,Float64}
 # Half-precision inputs are accumulated in single precision.
 attention_compute_type(::Type{T}) where {T} = sizeof(T) < 4 ? Float32 : T
 
-"""
-    fused_attention_applies(q, k, v, bias, fdrop, mask) -> Bool
-
-Whether the fused implementation computes `scaled_dot_product_attention` for these
-`(head_dim, nheads, seq_len, batch_size)` arrays. It needs dense arrays of one of the
-floating-point types `Float16`, `BFloat16`, `Float32` and `Float64` living on the same
-device, and no dropout: the weights `fdrop` would act on are never formed.
-"""
+# Whether the fused implementation computes `scaled_dot_product_attention` for these
+# `(head_dim, nheads, seq_len, batch_size)` arrays. It needs dense arrays of one of the
+# floating-point types above living on the same device, and no dropout: the weights
+# `fdrop` would act on are never formed.
 function fused_attention_applies(q::AA4{T}, k::AA4{T}, v::AA4{T}, bias, fdrop, mask) where {T<:FusedAttentionFloat}
     fdrop === identity || return false
     isempty(q) | isempty(k) | isempty(v) && return false
@@ -51,12 +47,8 @@ attention_broadcasts(x::Nothing, sz) = true
 attention_broadcasts(x::AbstractArray, sz) =
     ndims(x) <= 4 && all(d -> size(x, d) == 1 || size(x, d) == sz[d], 1:4)
 
-"""
-    fused_attention(q, k, v, bias, mask, scale, is_causal, q_lengths, kv_lengths)
-
-The output of `scaled_dot_product_attention` for inputs satisfying
-[`fused_attention_applies`](@ref), in the layout of `_scaled_dot_product_attention`.
-"""
+# The output of `scaled_dot_product_attention` for inputs satisfying
+# `fused_attention_applies`, in the layout of `_scaled_dot_product_attention`.
 function fused_attention(q::AA4{T}, k::AA4{T}, v::AA4{T}, bias, mask, scale, is_causal::Bool,
                          q_lengths, kv_lengths) where {T}
     A = attention_compute_type(T)
@@ -381,12 +373,8 @@ end
 
 const ATTENTION_MAX_HEAD_DIM = 2048
 
-"""
-    attention_shmem_budget(backend) -> Int
-
-Bytes of workgroup-local memory the fused attention kernel may use on `backend`. The
-default is what every backend provides; an extension raises it where more is available.
-"""
+# Bytes of workgroup-local memory the kernel may use on `backend`. The default is what
+# every backend provides; an extension raises it where more is available.
 attention_shmem_budget(backend) = 32 * 1024
 
 function attention_tiling(T::Int, BQ::Int, BK::Int, Dv::Int; KD::Int=8, KV::Int=(BK > 64 ? 16 : 8))
