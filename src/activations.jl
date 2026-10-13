@@ -171,7 +171,8 @@ true
 ```
 """
 @inline function σ(x)
-    t = _exp(-abs(x))
+    # Not `-abs(x)`, whose derivative at `-0.0` is that of the other branch.
+    t = _exp(ifelse(x ≥ 0, -x, x))
     ifelse(x ≥ 0, inv(1 + t), t / (1 + t))
 end
 
@@ -559,6 +560,11 @@ julia> lineplot(-2, 2, swish, height=7)
 """
 @inline swish(x) = x * sigmoid_fast(x)
 
+@inline function deriv_swish(x)
+    s = sigmoid_fast(x)
+    s * (1 + x * (1 - s))
+end
+
 """
     hardswish(x) = x * hardσ(x)
 
@@ -638,6 +644,11 @@ julia> lineplot!(ans, logcosh)
 ```
 """
 @inline lisht(x) = x * tanh_fast(x)
+
+@inline function deriv_lisht(x)
+    t = tanh_fast(x)
+    t + x * (1 - t^2)
+end
 
 """
     selu(x) = λ * (x ≥ 0 ? x : α * (exp(x) - 1))
@@ -870,9 +881,9 @@ julia> lineplot(-5, 5, mish, height=7)
            ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀x⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀        
 ```
 """
-mish(x) = x * tanh(softplus(x))
+@inline mish(x) = x * _tanh_softplus(x)
 
-@inline mish(x::Union{Float32,Float64}) = x * _tanh_softplus(x)
+_tanh_softplus(x) = tanh(softplus(x))
 
 # With `t = exp(-abs(x))`, `tanh(softplus(x))` is a ratio of polynomials in `t`:
 # a single `exp`, no `log1p` or `tanh`, and no overflow.
@@ -884,6 +895,11 @@ mish(x) = x * tanh(softplus(x))
 end
 
 @scalar_rule _tanh_softplus(x) (1 - Ω^2) * sigmoid_fast(x)
+
+@inline function deriv_mish(x)
+    t = _tanh_softplus(x)
+    t + x * (1 - t^2) * sigmoid_fast(x)
+end
 
 """
     tanhshrink(x) = x - tanh(x)
@@ -909,6 +925,8 @@ julia> tanhshrink.((-10f0, 10f0))
 ```
 """
 @inline tanhshrink(x) = x - tanh_fast(x)
+
+deriv_tanhshrink(x, Ω) = (x - Ω)^2
 
 """
     softshrink(x, λ=0.5) =
@@ -1040,7 +1058,7 @@ julia> hardσ(0.2f0)
 ```
 """
 @inline function sigmoid_fast(x::Real)
-    t = _exp(-abs(x))
+    t = _exp(ifelse(x ≥ 0, -x, x))
     y = ifelse(x ≥ 0, inv(1 + t), t / (1 + t))
     ifelse(x > 40, one(y), ifelse(x < -80, zero(y), y))
 end
@@ -1072,9 +1090,13 @@ const HalfFloat = Union{Float16,BFloat16}
 
 for f in (:σ, :hardσ, :logσ, :gelu_tanh, :gelu_sigmoid, :gelu_erf, :swish, :hardswish,
           :lisht, :selu, :softsign, :softplus, :logcosh, :mish, :tanhshrink,
-          :tanh_fast, :sigmoid_fast, :deriv_gelu_tanh, :deriv_gelu_sigmoid, :deriv_gelu_erf)
+          :tanh_fast, :sigmoid_fast, :deriv_gelu_tanh, :deriv_gelu_sigmoid, :deriv_gelu_erf,
+          :deriv_swish, :deriv_hardswish, :deriv_lisht, :deriv_softsign, :deriv_mish)
     @eval @inline $f(x::T) where {T<:HalfFloat} = T($f(Float32(x)))
 end
+
+# `x - Ω` has few correct digits in half precision, and none for large `x`.
+@inline deriv_tanhshrink(x::T, Ω::T) where {T<:HalfFloat} = T(tanh_fast(Float32(x))^2)
 
 for f in (:elu, :celu)
     @eval @inline $f(x::T, α=1) where {T<:HalfFloat} = T($f(Float32(x), α))
@@ -1103,8 +1125,6 @@ this replacement for some array or element types.
 ## it saves ADing the broadcasting machinery.
 ## Related Issue https://github.com/JuliaDiff/ChainRulesCore.jl/issues/271
 
-## TODO: add to the lists below all activations.
-
 UNARY_ACTS = [ # f, dfdx
     ## In the same order as above!
     ## Derivatives are the plain (un-conjugated) f'; the broadcasted rrule below applies
@@ -1122,18 +1142,18 @@ UNARY_ACTS = [ # f, dfdx
     (:gelu_tanh,    :(deriv_gelu_tanh(x))),
     (:gelu_sigmoid, :(deriv_gelu_sigmoid(x))),
     (:gelu_erf,     :(deriv_gelu_erf(x))),
-    (:swish,        :(Ω + sigmoid_fast(x) * (1 - Ω))),
+    (:swish,        :(deriv_swish(x))),
     (:hardswish,    :(deriv_hardswish(x))),
-    # lisht
+    (:lisht,        :(deriv_lisht(x))),
     (:selu,         :(deriv_selu(Ω))),
     (:celu,         :(deriv_celu(Ω))),
     (:trelu,        :(Ω > 0)),
     (:softsign,     :(deriv_softsign(x))),
     (:softplus,     :(sigmoid_fast(x))),
     # (:softplus,     :(1 - @fastmath exp(-Ω))),  # slightly faster, check accuracy?
-    # logcosh
-    # mish
-    (:tanhshrink,    :((x - Ω)^2)),
+    (:logcosh,      :(tanh_fast(x))),
+    (:mish,         :(deriv_mish(x))),
+    (:tanhshrink,   :(deriv_tanhshrink(x, Ω))),
     (:softshrink,    :(Ω != 0)),
     ## Fast variants are the same!
     (:tanh_fast,    :(1 - Ω^2)),

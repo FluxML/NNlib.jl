@@ -473,6 +473,14 @@ end
         @test maximum(errs) <= (f == gelu_tanh ? 8 : f == gelu_erf ? 3 : 1)  # 6, 2 and 1
         f in (gelu_tanh, gelu_erf, logcosh, tanhshrink) || @test mean(errs) < 1e-3  # 3e-4 at most
     end
+
+    # The derivatives that are a function of the input are computed in Float32 as well.
+    # Those written in terms of the output (`σ`, `tanh_fast`, `elu`, `selu`, `celu`) are not.
+    @testset "derivative of $f" for f in [hardσ, logσ, leakyrelu, gelu_sigmoid, gelu_erf, swish, hardswish,
+                                          lisht, softsign, softplus, logcosh, mish, tanhshrink]
+        xd = filter(x -> x != 0 && abs(x) != 3, xs)  # not at the kinks
+        @test maximum(x -> abs(countepsfrom(gradient(f, x)[1], ForwardDiff.derivative(f, big(x)))), xd) <= 1
+    end
 end
 
 ## Autodiff tests
@@ -485,7 +493,7 @@ has_rule(a) = rrule(a, 1f0) === nothing ? "(no rule)" : ""
 
 @testset "Gradient inference" begin
     @testset "$(a): $(has_rule(a))" for a in ACTIVATION_FUNCTIONS
-        @testset "$T" for T in [Float16, Float32, Float64]
+        @testset "$T" for T in [Float16, BFloat16, Float32, Float64]
             for val in [-10, -1, 0, 1, 10]
                 grad = @inferred gradient(a, T(val))
                 @test typeof(grad[1]) == T
@@ -517,7 +525,11 @@ end
         @test withgradient(softplus, ad, -zero(T)).grad[1] ≈ 0.5
         @test withgradient(logσ, ad, zero(T)).grad[1] ≈ 0.5
         @test withgradient(mish, ad, zero(T)).grad[1] ≈ 0.6
+        @test withgradient(σ, ad, -zero(T)).grad[1] ≈ 0.25
+        @test withgradient(sigmoid_fast, ad, -zero(T)).grad[1] ≈ 0.25
     end
+    @test ForwardDiff.derivative(σ, -zero(T)) ≈ 0.25
+    @test ForwardDiff.derivative(sigmoid_fast, -zero(T)) ≈ 0.25
 end
 
 @testset "AD in half precision" begin
