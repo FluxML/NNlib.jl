@@ -86,7 +86,7 @@ BINARY_ACTIVATIONS = filter(f -> hasmethod(f, Tuple{Float64, Float64}), ACTIVATI
 
 @testset "Float inference" begin
     @testset "$(a): " for a in ACTIVATION_FUNCTIONS
-        for T in [Float16, Float32, Float64]
+        for T in [Float16, BFloat16, Float32, Float64]
             for val in [-10, -1, 0, 1, 10]
                 out = @inferred a(T(val))
                 @test typeof(out) == T
@@ -94,7 +94,7 @@ BINARY_ACTIVATIONS = filter(f -> hasmethod(f, Tuple{Float64, Float64}), ACTIVATI
         end
     end
     @testset "binary $a: " for a in BINARY_ACTIVATIONS
-        for T in [Float16, Float32, Float64]
+        for T in [Float16, BFloat16, Float32, Float64]
             for val in [-10, -1, 0, 1, 10], beta in Any[0.1, 0.5f0, 1]
                 out = @inferred a(T(val), beta)
                 @test typeof(out) == T
@@ -404,7 +404,8 @@ function is_vectorized(f, T)
     ir = sprint() do io
         InteractiveUtils.code_llvm(io, simd_loop!, Tuple{typeof(f),Ptr{T},Ptr{T},Int}; debuginfo=:none)
     end
-    return occursin(Regex("<\\d+ x $(T === Float32 ? "float" : "double")>"), ir)
+    # Float16 is computed in Float32
+    return occursin(Regex("<\\d+ x $(T === Float64 ? "double" : "float")>"), ir)
 end
 
 @testset "SIMD" begin
@@ -414,6 +415,7 @@ end
                                 swish, softplus, logσ, logcosh, mish, lisht, tanhshrink]
             @test is_vectorized(f, Float32)
             @test is_vectorized(f, Float64)
+            @test is_vectorized(f, Float16)
         end
         @test !is_vectorized(exp, Float32)  # the reason for `_exp`
     end
@@ -434,6 +436,43 @@ composed_allocs(f, y, xs...) = (broadcast!(f, y, xs...); @allocated broadcast!(f
     @test (σ ∘ relu)(1.0) === σ(1.0)
     @test (σ ∘ +)(1, 2) === σ(3)
     @test (σ ∘ (x -> sum(x; dims=1)))([1.0 2.0; 3.0 4.0]) == σ.([4.0 6.0])  # not only numbers
+end
+
+## Half precision
+
+# The activations that are computed in Float32 for Float16 and BFloat16 inputs
+HALF_ACTIVATIONS = [σ, hardσ, logσ, leakyrelu, elu, gelu_tanh, gelu_sigmoid, gelu_erf, swish, hardswish,
+                    lisht, selu, celu, softsign, softplus, logcosh, mish, tanhshrink, tanh_fast, sigmoid_fast]
+
+@testset "half precision: $T" for T in [Float16, BFloat16]
+    # The Float32 result rounded once, for every input there is. One number at a time:
+    # a vectorized rounding to BFloat16 is not safe on all CPUs (JuliaMath/BFloat16s.jl#107).
+    @testset "$f" for f in HALF_ACTIVATIONS
+        ok = all(0x0000:0xffff) do u
+            x = reinterpret(T, u)
+            isequal(f(x), T(f(Float32(x))))
+        end
+        @test ok
+    end
+
+    @testset "two arguments" begin
+        for x in (T(-2), T(-0.5f0), T(0), T(3)), α in Any[0.3, 0.3f0, 2, T(0.5f0)]
+            @test elu(x, α) === T(elu(Float32(x), α))
+            @test celu(x, α) === T(celu(Float32(x), α))
+            @test leakyrelu(x, α) === T(leakyrelu(Float32(x), α))
+        end
+    end
+end
+
+@testset "half precision accuracy" begin
+    # One in seven of the Float16s. A rounded Float32 result is nearly always the correctly
+    # rounded one, except where the Float32 formula itself cancels.
+    xs = filter(isfinite, reinterpret.(Float16, 0x0000:0x0007:0xffff))
+    @testset "$f" for f in HALF_ACTIVATIONS
+        errs = [abs(countepsfrom(f(x), f(big(x)))) for x in xs]
+        @test maximum(errs) <= (f == gelu_tanh ? 8 : f == gelu_erf ? 3 : 1)  # 6, 2 and 1
+        f in (gelu_tanh, gelu_erf, logcosh, tanhshrink) || @test mean(errs) < 1e-3  # 3e-4 at most
+    end
 end
 
 ## Autodiff tests
@@ -478,6 +517,19 @@ end
         @test withgradient(softplus, ad, -zero(T)).grad[1] ≈ 0.5
         @test withgradient(logσ, ad, zero(T)).grad[1] ≈ 0.5
         @test withgradient(mish, ad, zero(T)).grad[1] ≈ 0.6
+    end
+end
+
+@testset "AD in half precision" begin
+    # Enzyme and Mooncake differentiate the conversions around the Float32 code as well
+    adtypes = AbstractADType[AutoZygote(), AutoMooncake()]
+    NNLIB_TEST_ENZYME && push!(adtypes, AutoEnzyme())
+    xs = Float16[-1.5, -0.5, 0.5, 1.5]
+
+    @testset "$f with $(nameof(typeof(ad)))" for ad in adtypes, f in HALF_ACTIVATIONS
+        ref = ForwardDiff.derivative.(f, Float32.(xs))
+        @test [withgradient(f, ad, x).grad[1] for x in xs] ≈ ref rtol=2e-2
+        @test withgradient(x -> sum(f.(x)), ad, xs).grad[1] ≈ ref rtol=2e-2
     end
 end
 

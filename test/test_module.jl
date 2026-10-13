@@ -22,6 +22,7 @@ using Random: Random
 using LinearAlgebra: LinearAlgebra
 using Logging: Logging
 using InteractiveUtils: InteractiveUtils
+using BFloat16s: BFloat16
 using ChainRulesCore: rrule
 using ChainRulesTestUtils: ChainRulesTestUtils
 using Base.Broadcast: broadcasted

@@ -980,6 +980,7 @@ may be wrong by 5 eps, a reduction by less than one decimal digit.
 
 For `x::Float32` this is usually about 10 times faster,
 with a smaller speedup for `x::Float64`.
+`Float16` and `BFloat16` are computed in `Float32`.
 For any other number types, it just calls `tanh`.
 
 See also [`sigmoid_fast`](@ref).
@@ -1014,8 +1015,8 @@ end
     ifelse(x2 > 900.0, sign(x), ifelse(x2 < 0.017, ypoly, y))
 end
 
-# These approximations are very badly behaved for Float16; none are fast.
-# They are also a bit slower with ForwardDiff.Dual numbers, let's use Base:
+# These approximations are a bit slower with ForwardDiff.Dual numbers, let's use Base.
+# Float16 and BFloat16 take the Float32 one, see "Half precision" below.
 tanh_fast(x::Number) = Base.tanh(x)
 
 """
@@ -1046,8 +1047,6 @@ end
 # For x::Float32, this is not as quick as the rational tanh_fast(x) above,
 # but that polynomial has poor relative accuracy for negative x.
 
-sigmoid_fast(x::Float16) = sigmoid(x)  # sigmoid_fast is extremely badly behaved at large x
-
 # Complex inputs: the `_fast` clamped approximation is real-only, so fall back to the
 # holomorphic `σ` (which has its own overflow-safe complex method). This keeps `swish`,
 # `logσ`, and the `softplus`/`logσ` gradients holomorphic and GPU-compilable; using a
@@ -1059,6 +1058,30 @@ function sigmoid_fast(x::Number)
     Base.depwarn("sigmoid only makes sense on real numbers, got $(typeof(x))", :sigmoid_fast)
     sigmoid(x)
 end
+
+## Half precision
+#
+# For `Float16` and `BFloat16` the activations below are computed in `Float32` and rounded
+# once at the end, as PyTorch does in its kernels (`OpMathType.h`) and Base in
+# `exp(::Float16)`. Half precision arithmetic rounds after every operation, and most CPUs
+# have to convert to `Float32` and back each time. The activations left out only select or
+# clamp (`relu`, `relu6`, `hardtanh`, `trelu`), do a single operation (`softshrink`) or
+# call `leakyrelu` (`rrelu`).
+
+const HalfFloat = Union{Float16,BFloat16}
+
+for f in (:σ, :hardσ, :logσ, :gelu_tanh, :gelu_sigmoid, :gelu_erf, :swish, :hardswish,
+          :lisht, :selu, :softsign, :softplus, :logcosh, :mish, :tanhshrink,
+          :tanh_fast, :sigmoid_fast, :deriv_gelu_tanh, :deriv_gelu_sigmoid, :deriv_gelu_erf)
+    @eval @inline $f(x::T) where {T<:HalfFloat} = T($f(Float32(x)))
+end
+
+for f in (:elu, :celu)
+    @eval @inline $f(x::T, α=1) where {T<:HalfFloat} = T($f(Float32(x), α))
+end
+
+@inline leakyrelu(x::T, a=Float32(leakyrelu_a)) where {T<:HalfFloat} =
+    T(leakyrelu(Float32(x), a))
 
 """
     NNlib.fast_act(f, [x::AbstractArray])
