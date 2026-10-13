@@ -144,10 +144,19 @@ end
     return a, b
 end
 
-function attention_pack!(xt::Matrix{A}, x, h, j0, n, b) where {A}
-    @inbounds for d in axes(x, 1)
+# The keys are copied to a compact buffer first, and transposed from there: in `x` they
+# are `head_dim * nheads` apart, often a multiple of the page size, so that walking them
+# for each head dimension in turn evicts them from the cache as it goes.
+function attention_pack!(xt::Matrix{A}, buf::Matrix{A}, x, h, j0, n, b) where {A}
+    D = size(x, 1)
+    @inbounds for j in 1:n
+        @simd for d in 1:D
+            buf[d, j] = A(x[d, h, j0 + j - 1, b])
+        end
+    end
+    @inbounds for d in 1:D
         @simd for j in 1:n
-            xt[j, d] = A(x[d, h, j0 + j - 1, b])
+            xt[j, d] = buf[d, j]
         end
     end
     return nothing
@@ -256,6 +265,7 @@ function attention_workspace(::Type{A}, D::Int, Dv::Int, nq::Int) where {A}
     nk = attention_keys_per_tile(max(D, Dv))
     # one slot more than the queries: an unpaired query is paired with a copy of itself
     return (; kt = Matrix{A}(undef, nk, D), vt = Matrix{A}(undef, nk, Dv),
+              buf = Matrix{A}(undef, max(D, Dv), nk),
               s1 = Vector{A}(undef, nk), s2 = Vector{A}(undef, nk),
               oacc = Matrix{A}(undef, Dv, nq + 1),
               m = Vector{A}(undef, nq + 1), l = Vector{A}(undef, nq + 1))
@@ -264,7 +274,7 @@ end
 # The queries `i0:i1` of the head `h` of the batch element `b`.
 function attention_item!(o::AbstractArray{T,4}, q, k, v, bias, mask, q_lengths, kv_lengths,
                          scale::A, is_causal::Bool, h, b, i0, i1, ws) where {T,A}
-    (; kt, vt, s1, s2, oacc, m, l) = ws
+    (; kt, vt, buf, s1, s2, oacc, m, l) = ws
     hk = (h - 1) ÷ (size(q, 2) ÷ size(k, 2)) + 1
     qlen = attention_len(q_lengths, b, size(q, 3))
     kvlen = attention_len(kv_lengths, b, size(k, 3))
@@ -276,8 +286,8 @@ function attention_item!(o::AbstractArray{T,4}, q, k, v, bias, mask, q_lengths, 
     j0 = 1
     while j0 <= jmax
         nt = min(nk, jmax - j0 + 1)
-        attention_pack!(kt, k, hk, j0, nt, b)
-        attention_pack!(vt, v, hk, j0, nt, b)
+        attention_pack!(kt, buf, k, hk, j0, nt, b)
+        attention_pack!(vt, buf, v, hk, j0, nt, b)
         for i in i0:2:i1
             i2 = min(i + 1, i1)
             ii = i - i0 + 1
