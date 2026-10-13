@@ -58,20 +58,34 @@ weights too.
 `mask`, `is_causal` and `kv_lengths` can be combined: a key is then attended to only
 where all of them allow it.
 
-# Fused GPU implementation
+# Fused implementation
 
-With CUDA.jl and cuDNN.jl loaded, `Float16` and `BFloat16` `CuArray`s are handled by
-cuDNN's fused kernel, which computes the output without materializing the attention
-weights, so that memory grows linearly rather than quadratically with the sequence
-length. It supports `scale`, `is_causal`, `q_lengths`, `kv_lengths` and grouped-query
+Without an `fdrop`, the output is computed tile by tile, with the softmax taken online
+over the tiles of keys: the attention weights are never materialized, so that memory
+grows linearly rather than quadratically with the sequence length. This is what `Array`s
+and GPU arrays of `Float16`, `Float32` and `Float64` take, and on the GPU those of
+`BFloat16`, with any of the arguments above. The `bias` and the `mask`, if any, have to
+be on the device of the inputs.
+
+Any other call takes the materialized implementation, which forms the weights.
+[`NNlib.is_fused_attention`](@ref) tells which of the two a call takes.
+
+The fused implementation has a gradient with respect to `query`, `key`, `value` and
+`scale`, which recomputes the weights tile by tile and does not materialize them either.
+It is what automatic differentiation based on ChainRules (as that of Zygote) and the
+reverse mode of Enzyme use. Under them a call with a `bias` takes the materialized
+implementation, which gives the gradient with respect to the bias too, and so does every
+call under the other automatic differentiation packages. A query that attends to no key,
+whose output is `NaN`, takes no part in the fused gradient.
+
+With CUDA.jl and cuDNN.jl loaded, the `Float16` and `BFloat16` `CuArray`s that cuDNN's
+own fused kernel has an engine for are handed to it: it runs on tensor cores, and has a
+gradient. It supports `scale`, `is_causal`, `q_lengths`, `kv_lengths` and grouped-query
 attention, and requires:
 
 - no `bias`, `fdrop` or `mask` (that is `nothing`, `identity` and `nothing`);
 - a head dimension that is a multiple of 8 and at most 256;
 - a `value` with the same head dimension as `query`.
-
-Any other call silently takes the generic implementation, which materializes the weights.
-[`NNlib.is_fused_attention`](@ref) tells which of the two a call takes.
 
 # Examples
 
@@ -108,11 +122,22 @@ const sdpa = scaled_dot_product_attention
 # Attention on `(head_dim, nheads, seq_len, batch_size)` arrays, with `q_lengths` and
 # `kv_lengths` as `(1, 1, 1, batch_size)` arrays or `nothing`. This is the method for
 # backends to overload: it receives the arguments as the user gave them, before the
-# generic implementation materializes the causal and padding masks, the repeated
+# materialized implementation builds the causal and padding masks, the repeated
 # key/value heads of grouped-query attention and the attention weights, none of which a
 # fused kernel needs.
-function _scaled_dot_product_attention(q::AA4, k::AA4, v::AA4, bias;
+#
+_scaled_dot_product_attention(q::AA4, k::AA4, v::AA4, bias; kws...) =
+    generic_attention(q, k, v, bias; kws...)
+
+# The implementation for every backend, which those with a kernel of their own fall back
+# to for the calls it does not take: the fused one where it applies, else the
+# materialized one. Under automatic differentiation the latter is also taken, and
+# differentiated, where the fused one has no rule.
+function generic_attention(q::AA4, k::AA4, v::AA4, bias;
             fdrop, mask, scale, is_causal, q_lengths, kv_lengths)
+    if fused_attention_applies(q, k, v, bias, fdrop, mask) && fused_attention_differentiable(q, bias)
+        return fused_attention(q, k, v, bias, mask, scale, is_causal, q_lengths, kv_lengths)
+    end
     x, _ = _attention(q, k, v, bias; fdrop, mask, scale, is_causal, q_lengths, kv_lengths)
     return x
 end
@@ -161,12 +186,11 @@ const sdpa_with_weights = scaled_dot_product_attention_with_weights
     NNlib.is_fused_attention(query, key, value, [bias]; kws...)
 
 Return `true` if [`scaled_dot_product_attention`](@ref) called with the same arguments
-is computed by the fused kernel of a backend, which does not materialize the attention
-weights, and `false` if it takes the generic implementation.
+is computed by a fused implementation, which does not materialize the attention weights,
+and `false` if it takes the materialized one.
 
-This is about the forward pass: a backend may have no fused kernel for the gradient of
-a call whose output it computes with one, and then differentiates the generic
-implementation.
+This is about a call outside of automatic differentiation: under it, the materialized
+implementation is differentiated where the fused one has no gradient, as with a `bias`.
 """
 function is_fused_attention(q::AbstractArray, k::AbstractArray, v::AbstractArray,
             bias=nothing; fdrop=identity, mask=nothing, scale=nothing,
@@ -179,7 +203,8 @@ function is_fused_attention(q::AbstractArray, k::AbstractArray, v::AbstractArray
 end
 
 # To be overloaded together with `_scaled_dot_product_attention`.
-_is_fused_attention(q::AA4, k::AA4, v::AA4, bias; kws...) = false
+_is_fused_attention(q::AA4, k::AA4, v::AA4, bias; fdrop, mask, kws...) =
+    fused_attention_applies(q, k, v, bias, fdrop, mask)
 
 function check_attention_inputs(q::AbstractArray, k::AbstractArray, v::AbstractArray)
     ndims(q) == ndims(k) == ndims(v) || throw(ArgumentError("""
@@ -286,7 +311,7 @@ end
 
 @non_differentiable attention_lengths(::Any...)
 
-# Generic implementation, returning both the attention output and the weights `α`.
+# Materialized implementation, returning both the attention output and the weights `α`.
 function _attention(q::AA4, k::AA4, v::AA4, bias; fdrop, mask, scale, is_causal,
                     q_lengths=nothing, kv_lengths=nothing)
     # [q] = [qk_head_dim, nheads, q_len, batch_size]
@@ -347,8 +372,8 @@ apply_query_lengths(α, q_lengths::Nothing) = α
 
 apply_query_lengths(α, q_lengths) = α .* padding_mask(size(α, 2), q_lengths; dims=2)
 
-# The mask of the generic implementation: the `mask` of the user, the causal one and the
-# one of the padded keys, a key being attended to only where all of them allow it.
+# The mask of the materialized implementation: the `mask` of the user, the causal one
+# and the one of the padded keys, a key being attended to only where all of them allow it.
 function attention_mask(q::AA4, k::AA4, mask, is_causal::Bool, kv_lengths)
     if is_causal
         mask = combine_masks(mask, make_causal_mask(q, size(k, 3), size(q, 3)))
@@ -378,8 +403,8 @@ Its elements are set such that `m[i, j] == i ≤ j`.
 
 Can be used as the `mask` of [`scaled_dot_product_attention`](@ref),
 whose inputs have the sequence length along `dims=3`. For a plain causal mask, prefer
-the `is_causal=true` keyword there, which lets backends with a fused implementation
-avoid materializing the mask.
+the `is_causal=true` keyword there, which lets a fused implementation avoid materializing
+the mask.
 
 Calling `make_causal_mask(x)` without `dims` is deprecated. It keeps returning the mask
 for `dims=2`, the sequence dimension of the deprecated `dot_product_attention`.

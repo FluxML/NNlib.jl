@@ -17,4 +17,8 @@ include("ctc.jl")
 include("scatter.jl")
 include("utils.jl")
 
+# A block can declare 48 KiB of shared memory without opting in to more. The kernel
+# stays a little under, for the alignment of its arrays.
+NNlib.attention_shmem_budget(::CUDABackend) = 47 * 1024
+
 end # module

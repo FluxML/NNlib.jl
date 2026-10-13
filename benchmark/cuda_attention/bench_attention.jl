@@ -1,26 +1,30 @@
-# GPU multi-head attention benchmark: NNlib (cuDNN fused / materialized) vs LuxLib.
+# GPU multi-head attention benchmark: NNlib (fused / materialized) vs LuxLib.
 #
 # Implementations of the SAME scaled dot-product (multi-head) attention (scale 1/√E):
 #
-#   * nnlib      NNlib `scaled_dot_product_attention`. For Float16/BFloat16 it runs
-#       cuDNN's fused kernel, which never materializes the scores: memory is O(seq).
-#       Other eltypes take the materialized path below.
-#   * nnlib-mat  the same function kept on its generic path: forms the full
-#       (kv_len, q_len, nheads, batch) score tensor, `softmax`, second batched_mul.
+#   * nnlib      NNlib `scaled_dot_product_attention`, as it dispatches: cuDNN's fused
+#       kernel for Float16/BFloat16, NNlib's own fused kernel for the other eltypes.
+#       Neither materializes the attention weights, in the forward pass or in the
+#       gradient: memory is O(seq).
+#   * nnlib-ka   NNlib's own fused kernel (KernelAbstractions) for every eltype, that is
+#       also where cuDNN would take the call.
+#   * nnlib-mat  the same function kept on the materialized implementation: the full
+#       (kv_len, q_len, nheads, batch) weights from two `batched_mul` and a `softmax`.
 #       Memory is O(seq²).
 #   * lux        LuxLib `scaled_dot_product_attention`, also a materialized softmax path.
 #
-# All of them take q,k,v = (head_dim, nheads, seq, batch) = (E, H, L, B).
+# All of them take q,k,v = (head_dim, nheads, seq, batch) = (E, H, L, B). `bench_torch.py`
+# is the PyTorch counterpart.
 #
 # Reports forward and full Zygote-gradient (forward+backward) wall time in ms,
-# GPU-synchronized. "OOM" = ran out of GPU memory; "n/s" = that path can't run
-# the config (echoed once to stderr).
+# GPU-synchronized, and the GPU memory each of the two allocates. "OOM" = ran out of GPU
+# memory; "n/s" = that path can't run the config (echoed once to stderr).
 #
 # Run (whole suite):
 #     julia --project=. bench_attention.jl
 # Benchmark a single dtype/impl combination without rerunning everything:
-#     julia --project=. bench_attention.jl --dtypes f16 --impls nnlib,nnlib-mat --causal false
-#     julia --project=. bench_attention.jl --dtypes f16,bf16 --impls nnlib,lux --sizes tiny,small
+#     julia --project=. bench_attention.jl --dtypes f32 --impls nnlib,nnlib-mat --causal false
+#     julia --project=. bench_attention.jl --dtypes f16,bf16 --impls nnlib,nnlib-ka --sizes tiny,small
 # Pin a GPU:
 #     CUDA_VISIBLE_DEVICES=GPU-<uuid> julia --project=. bench_attention.jl ...
 # See all options:
@@ -58,9 +62,13 @@ struct Impl
     grad::Function   # (inputs) -> gradient w.r.t. q,k,v
 end
 
-# NNlib only takes the fused kernel without dropout: a no-op `fdrop` other than
-# `identity` keeps it on the generic path, at no extra cost.
+# NNlib only takes a fused kernel without dropout: a no-op `fdrop` other than
+# `identity` keeps it on the materialized implementation, at no extra cost.
 nofuse(x) = x
+
+# NNlib's own fused kernel, also for the calls its cuDNN extension takes.
+nnlib_ka(q, k, v, causal) = NNlib.generic_attention(q, k, v, nothing; fdrop=identity,
+    mask=nothing, scale=nothing, is_causal=causal, q_lengths=nothing, kv_lengths=nothing)
 
 # TODO: add CuTile.jl to the comparison.
 const IMPLS = Dict(
@@ -68,6 +76,9 @@ const IMPLS = Dict(
         I -> NNlib.scaled_dot_product_attention(I[1], I[2], I[3]; is_causal=I[4]),
         I -> Zygote.gradient((q, k, v) ->
                 sum(NNlib.scaled_dot_product_attention(q, k, v; is_causal=I[4])), I[1], I[2], I[3])),
+    "nnlib-ka" => Impl("nnlib-ka",
+        I -> nnlib_ka(I...),
+        I -> Zygote.gradient((q, k, v) -> sum(nnlib_ka(q, k, v, I[4])), I[1], I[2], I[3])),
     "nnlib-mat" => Impl("nnlib-mat",
         I -> NNlib.scaled_dot_product_attention(I[1], I[2], I[3]; is_causal=I[4], fdrop=nofuse),
         I -> Zygote.gradient((q, k, v) ->
@@ -79,7 +90,7 @@ const IMPLS = Dict(
                 sum(LuxLib.scaled_dot_product_attention(q, k, v; is_causal=I[4])[1]), I[1], I[2], I[3])),
 )
 # canonical column order; the first selected one is the reference for the ratios
-const IMPL_ORDER = ["nnlib", "nnlib-mat", "lux"]
+const IMPL_ORDER = ["nnlib", "nnlib-ka", "nnlib-mat", "lux"]
 
 # ---------------------------------------------------------------------------
 # timing
@@ -109,6 +120,19 @@ function timed(f, seconds)
             @warn "unsupported path → n/s: $reason"
         end
         return -1.0
+    finally
+        CUDA.reclaim()
+    end
+end
+
+# GPU memory a call allocates, in MiB, with the conventions of `timed`
+function allocated(f)
+    try
+        CUDA.reclaim()
+        return CUDA.@allocated(CUDA.@sync f()) / 2^20
+    catch e
+        msg = lowercase(sprint(showerror, e))
+        return occursin("out of memory", msg) || occursin("out of gpu memory", msg) ? NaN : -1.0
     finally
         CUDA.reclaim()
     end
@@ -176,13 +200,17 @@ function run(T, causal, impls, configs, seconds)
             im = IMPLS[nm]
             I = (q, k, v, causal)
             t[nm] = (; fwd  = timed(() -> im.fwd(I), seconds),
-                      grad = timed(() -> im.grad(I), seconds))
+                      grad = timed(() -> im.grad(I), seconds),
+                      mem  = allocated(() -> im.fwd(I)),
+                      gmem = allocated(() -> im.grad(I)))
         end
         q = k = v = nothing; CUDA.reclaim()
         (; name, L, H, t)
     end
     print_table("FORWARD (ms)", impls, rows, :fwd)
     print_table("FULL GRADIENT, fwd+bwd (ms)", impls, rows, :grad)
+    print_table("FORWARD, GPU memory allocated (MiB)", impls, rows, :mem)
+    print_table("FULL GRADIENT, GPU memory allocated (MiB)", impls, rows, :gmem)
     flush(stdout)   # show each block as it completes, also when writing to a file
 end
 
@@ -191,7 +219,7 @@ end
 # ---------------------------------------------------------------------------
 
 function parse_cli(argv)
-    s = ArgParseSettings(description="GPU multi-head attention benchmark: NNlib (cuDNN fused / materialized) vs LuxLib.")
+    s = ArgParseSettings(description="GPU multi-head attention benchmark: NNlib (fused / materialized) vs LuxLib.")
     @add_arg_table! s begin
         "--dtypes"
             help = "comma list of dtypes: f16,bf16,f32 (aliases ok). Default: all."

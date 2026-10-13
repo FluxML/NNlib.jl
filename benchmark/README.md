@@ -3,7 +3,8 @@
 | Path | What it measures |
 |---|---|
 | [`cpu_conv_vs_pytorch`](cpu_conv_vs_pytorch) | `conv` on the CPU, against PyTorch |
-| [`cuda_attention`](cuda_attention) | attention on the GPU: cuDNN's fused kernel, the generic implementation, LuxLib |
+| [`cpu_attention`](cpu_attention) | attention on the CPU: the fused implementation, the kernel of the GPU backends run on the CPU, the materialized implementation, PyTorch |
+| [`cuda_attention`](cuda_attention) | attention on the GPU: cuDNN's fused kernel, NNlib's own, the materialized implementation, LuxLib, PyTorch |
 | [`cudnn`](cudnn) | every cuDNN-accelerated operator: what NNlib dispatches to against the generic, fixed-function and graph implementations |
 | [`others`](others) | `benchmarks.jl` and `runbenchmarks.jl`: the PkgBenchmark suite, comparing a target revision with a baseline. CI runs it on pull requests labelled `benchmark` |
 

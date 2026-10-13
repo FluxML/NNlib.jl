@@ -1,0 +1,52 @@
+CPU:           AMD Ryzen Threadripper PRO 9955WX 16-Cores (32 hardware threads)
+Julia:         1.13.1, 16 threads
+BLAS:          libopenblas64_.so, 16 threads
+NNlib:         0.9.47
+selection:     dtypes=Float32  impls=nnlib,nnlib-mat  causal=false,true  sizes=tiny,small,gpt2-ish,llama3 L=2k,llama3 L=4k,llama3 L=8k
+sanity Float32  (vs nnlib, fused: true)  nnlib=0.00e+00  nnlib-mat=2.38e-07
+
+############################################################################################
+### dtype=Float32  causal=false
+############################################################################################
+
+-- FORWARD --
+config            L   H |       nnlib ms   nnlib-mat ms |      nnlib MiB  nnlib-mat MiB |   nnlib-mat/nnlib
+tiny            128   4 |          0.134          3.290 |          2.665         10.033 |             24.5x
+small           512   8 |          2.625        114.851 |         10.568        176.150 |             43.8x
+gpt2-ish       1024  12 |          7.722        307.046 |         15.085        456.212 |             39.8x
+llama3 L=2k    2048  32 |         38.428        880.272 |         39.108       1216.298 |             22.9x
+llama3 L=4k    4096  32 |        145.552       3083.353 |         71.108       4480.548 |             21.2x
+llama3 L=8k    8192  32 |        567.399      11022.424 |        135.108      17153.048 |             19.4x
+
+-- FULL GRADIENT, fwd+bwd --
+config            L   H |       nnlib ms   nnlib-mat ms |      nnlib MiB  nnlib-mat MiB |   nnlib-mat/nnlib
+tiny            128   4 |          0.842          5.685 |          9.900         23.179 |              6.8x
+small           512   8 |         10.814        153.860 |         47.437        376.398 |             14.2x
+gpt2-ish       1024  12 |         30.501        372.861 |         68.026        948.535 |             12.2x
+llama3 L=2k    2048  32 |        154.009       1268.204 |        176.669       2528.721 |              8.2x
+llama3 L=4k    4096  32 |        561.886       4132.711 |        336.919       9153.221 |              7.4x
+llama3 L=8k    8192  32 |       2154.595      15176.526 |        657.419      34690.221 |              7.0x
+
+############################################################################################
+### dtype=Float32  causal=true
+############################################################################################
+
+-- FORWARD --
+config            L   H |       nnlib ms   nnlib-mat ms |      nnlib MiB  nnlib-mat MiB |   nnlib-mat/nnlib
+tiny            128   4 |          0.122          3.181 |          2.665         12.064 |             26.1x
+small           512   8 |          1.792        106.819 |         10.568        240.650 |             59.6x
+gpt2-ish       1024  12 |          4.487        314.069 |         15.085        650.217 |             70.0x
+llama3 L=2k    2048  32 |         23.389        949.688 |         39.105       1736.294 |             40.6x
+llama3 L=4k    4096  32 |         79.438       3201.838 |         71.108       6560.552 |             40.3x
+llama3 L=8k    8192  32 |        300.710      11979.802 |        135.108      25473.060 |             39.8x
+
+-- FULL GRADIENT, fwd+bwd --
+config            L   H |       nnlib ms   nnlib-mat ms |      nnlib MiB  nnlib-mat MiB |   nnlib-mat/nnlib
+tiny            128   4 |          0.874          7.534 |          9.900         39.275 |              8.6x
+small           512   8 |          7.707        349.245 |         47.437        889.931 |             45.3x
+gpt2-ish       1024  12 |         18.005        970.870 |         68.026       2490.560 |             53.9x
+llama3 L=2k    2048  32 |         88.803       2610.632 |        176.669       6648.742 |             29.4x
+llama3 L=4k    4096  32 |        337.658       9289.710 |        336.919      25633.246 |             27.5x
+llama3 L=8k    8192  32 |       1177.162      35195.352 |        657.419     100610.254 |             29.9x
+
+nnlib-mat/nnlib = time relative to nnlib (>1 → nnlib faster).

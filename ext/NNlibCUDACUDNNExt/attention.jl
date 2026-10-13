@@ -5,9 +5,11 @@ using ChainRulesCore: ChainRulesCore, HasReverseMode, NoTangent, RuleConfig,
 # cuDNN's fused scaled dot-product attention takes half-precision arrays in NNlib's
 # `(head_dim, nheads, seq_len, batch_size)` layout, and never materializes the attention
 # weights, the causal and padding masks or the repeated key/value heads of grouped-query
-# attention.
+# attention. It runs on tensor cores, which NNlib's own fused kernel does not use: that
+# one takes the calls cuDNN has no engine for.
 const CUDNNSDPAFloat = Union{Float16,BFloat16}
 
+# the materialized implementation, which can be differentiated
 generic_sdpa(q, k, v, bias; kws...) = first(NNlib._attention(q, k, v, bias; kws...))
 
 # cuDNN takes the lengths of both the queries and the keys, or of neither.
@@ -40,8 +42,8 @@ function _scaled_dot_product_attention(q::DenseCuArray{T,4}, k::DenseCuArray{T,4
     seq_len_q, seq_len_kv = cudnn_sdpa_lengths(q, k, q_lengths, kv_lengths)
     out = cudnn_sdpa_output(q, k, v, bias, fdrop, mask, is_causal, seq_len_q, seq_len_kv)
     out === nothing &&
-        return generic_sdpa(q, k, v, bias; fdrop, mask, scale, is_causal,
-                            q_lengths, kv_lengths)
+        return NNlib.generic_attention(q, k, v, bias; fdrop, mask, scale, is_causal,
+                                       q_lengths, kv_lengths)
     return cudnn_sdpa!(out, q, k, v, is_causal, something(scale, inv(sqrt(size(q, 1)))),
                        seq_len_q, seq_len_kv)
 end
@@ -52,7 +54,7 @@ function _is_fused_attention(q::DenseCuArray{T,4}, k::DenseCuArray{T,4},
                              q_lengths, kv_lengths) where {T<:CUDNNSDPAFloat}
     seq_len_q, seq_len_kv = cudnn_sdpa_lengths(q, k, q_lengths, kv_lengths)
     out = cudnn_sdpa_output(q, k, v, bias, fdrop, mask, is_causal, seq_len_q, seq_len_kv)
-    out === nothing && return false
+    out === nothing && return NNlib.fused_attention_applies(q, k, v, bias, fdrop, mask)
     CUDA.unsafe_free!(out)
     return true
 end

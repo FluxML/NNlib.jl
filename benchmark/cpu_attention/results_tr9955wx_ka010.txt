@@ -1,0 +1,35 @@
+CPU:           AMD Ryzen Threadripper PRO 9955WX 16-Cores (32 hardware threads)
+Julia:         1.13.1, 16 threads
+BLAS:          libopenblas64_.so, 16 threads
+NNlib:         0.9.47
+KernelAbstractions: 0.10.0
+selection:     dtypes=Float32  impls=nnlib,nnlib-ka  causal=false,true  sizes=tiny,small,gpt2-ish,llama3 L=2k,llama3 L=4k,llama3 L=8k
+sanity Float32  (vs nnlib, fused: true)  nnlib=0.00e+00  nnlib-ka=2.38e-07
+
+############################################################################################
+### dtype=Float32  causal=false
+############################################################################################
+
+-- FORWARD --
+config            L   H |       nnlib ms    nnlib-ka ms |      nnlib MiB   nnlib-ka MiB |    nnlib-ka/nnlib
+tiny            128   4 |          0.129          0.686 |          2.665          1.001 |              5.3x
+small           512   8 |          2.595         18.821 |         10.568          8.001 |              7.3x
+gpt2-ish       1024  12 |          7.771         57.935 |         15.085         12.001 |              7.5x
+llama3 L=2k    2048  32 |         37.775        408.728 |         39.108         32.004 |             10.8x
+llama3 L=4k    4096  32 |        144.964       1644.874 |         71.108         64.004 |             11.3x
+llama3 L=8k    8192  32 |        581.890       6612.803 |        135.108        128.004 |             11.4x
+
+############################################################################################
+### dtype=Float32  causal=true
+############################################################################################
+
+-- FORWARD --
+config            L   H |       nnlib ms    nnlib-ka ms |      nnlib MiB   nnlib-ka MiB |    nnlib-ka/nnlib
+tiny            128   4 |          0.119          0.566 |          2.665          1.001 |              4.8x
+small           512   8 |          1.787         10.990 |         10.568          8.001 |              6.2x
+gpt2-ish       1024  12 |          4.561         30.415 |         15.085         12.001 |              6.7x
+llama3 L=2k    2048  32 |         22.136        210.507 |         39.105         32.001 |              9.5x
+llama3 L=4k    4096  32 |         80.833        828.139 |         71.108         64.004 |             10.2x
+llama3 L=8k    8192  32 |        300.464       3315.471 |        135.108        128.004 |             11.0x
+
+x/nnlib = time relative to nnlib (>1 → nnlib faster).

@@ -811,4 +811,101 @@ function EnzymeRules.reverse(config::EnzymeRules.RevConfig,
 end
 
 
+# fused_attention
+#
+# The fused attention runs tasks on the CPU and a kernel on the GPU, which are not to be
+# differentiated through. Reverse mode calls its gradient, as the ChainRules `rrule`
+# does, and forward mode differentiates the materialized implementation instead.
+
+const AttentionArray{T} = EnzymeCore.Annotation{<:AbstractArray{T,4}}
+
+_attention_cached(x, overwritten::Bool) = overwritten && x isa AbstractArray ? copy(x) : x
+
+function EnzymeRules.augmented_primal(config::EnzymeRules.RevConfig,
+        func::EnzymeCore.Const{typeof(NNlib.fused_attention)}, ::Type{RT},
+        q::AttentionArray{T}, k::AttentionArray{T}, v::AttentionArray{T},
+        bias::EnzymeCore.Const{Nothing}, mask::EnzymeCore.Annotation, scale::EnzymeCore.Annotation,
+        is_causal::EnzymeCore.Annotation, q_lengths::EnzymeCore.Annotation,
+        kv_lengths::EnzymeCore.Annotation) where {RT,T}
+
+    lse = similar(q.val, NNlib.attention_compute_type(T), size(q.val, 2), size(q.val, 3), size(q.val, 4))
+    o = func.val(q.val, k.val, v.val, nothing, mask.val, scale.val, is_causal.val, q_lengths.val,
+                 kv_lengths.val; lse)
+
+    primal = EnzymeRules.needs_primal(config) ? o : nothing
+    shadow = if EnzymeRules.needs_shadow(config)
+        EnzymeRules.width(config) == 1 ? zero(o) :
+            ntuple(_ -> zero(o), Val(EnzymeRules.width(config)))
+    else
+        nothing
+    end
+
+    # What the reverse pass reads, copied where the caller may overwrite it.
+    ow = EnzymeRules.overwritten(config)
+    tape = (shadow, EnzymeRules.needs_primal(config) ? copy(o) : o, lse,
+            _attention_cached(q.val, ow[2]), _attention_cached(k.val, ow[3]),
+            _attention_cached(v.val, ow[4]), _attention_cached(mask.val, ow[6]),
+            _attention_cached(q_lengths.val, ow[9]), _attention_cached(kv_lengths.val, ow[10]))
+    return EnzymeRules.AugmentedReturn(primal, shadow, tape)
+end
+
+function EnzymeRules.reverse(config::EnzymeRules.RevConfig,
+        func::EnzymeCore.Const{typeof(NNlib.fused_attention)}, ::Type{RT}, tape,
+        q::AttentionArray{T}, k::AttentionArray{T}, v::AttentionArray{T},
+        bias::EnzymeCore.Const{Nothing}, mask::EnzymeCore.Annotation, scale::EnzymeCore.Annotation,
+        is_causal::EnzymeCore.Annotation, q_lengths::EnzymeCore.Annotation,
+        kv_lengths::EnzymeCore.Annotation) where {RT,T}
+
+    douts, o, lse, qval, kval, vval, maskval, qlval, kvlval = tape
+    N = EnzymeRules.width(config)
+    active = scale isa EnzymeCore.Active
+    dscales = active ? ntuple(_ -> zero(scale.val), Val(N)) : nothing
+
+    if douts !== nothing
+        shadow(x, i) = N == 1 ? x.dval : x.dval[i]
+        grads = ntuple(Val(N)) do i
+            NNlib.fused_attention_grad(N == 1 ? douts : douts[i], o, lse, qval, kval, vval, nothing,
+                                       maskval, scale.val, is_causal.val, qlval, kvlval)
+        end
+        for (i, (dq, dk, dv, _)) in enumerate(grads)
+            q isa EnzymeCore.Const || (shadow(q, i) .+= dq)
+            k isa EnzymeCore.Const || (shadow(k, i) .+= dk)
+            v isa EnzymeCore.Const || (shadow(v, i) .+= dv)
+        end
+        if active
+            dscales = map(g -> convert(typeof(scale.val), g[4]), grads)
+        end
+    end
+
+    dscale = active ? (N == 1 ? dscales[1] : dscales) : nothing
+    return (nothing, nothing, nothing, nothing, nothing, dscale, nothing, nothing, nothing)
+end
+
+# the materialized implementation takes the lengths as `(1, 1, 1, batch_size)` arrays
+_attention_lengths(lengths::Nothing) = nothing
+_attention_lengths(lengths::AbstractArray) = reshape(lengths, 1, 1, 1, :)
+
+_materialized_attention(q, k, v, bias, mask, scale, is_causal, q_lengths, kv_lengths) =
+    first(NNlib._attention(q, k, v, bias; fdrop=identity, mask, scale, is_causal,
+                           q_lengths=_attention_lengths(q_lengths),
+                           kv_lengths=_attention_lengths(kv_lengths)))
+
+function EnzymeRules.forward(config::EnzymeRules.FwdConfig,
+        func::EnzymeCore.Const{typeof(NNlib.fused_attention)}, ::Type{RT},
+        args::Vararg{EnzymeCore.Annotation,9}) where {RT}
+
+    EnzymeRules.needs_shadow(config) ||
+        return EnzymeRules.needs_primal(config) ? func.val(map(x -> x.val, args)...) : nothing
+
+    N = EnzymeRules.width(config)
+    ret = N == 1 ? EnzymeCore.Duplicated : EnzymeCore.BatchDuplicated
+    # with runtime activity: the materialized implementation mixes constant and active arrays
+    mode = EnzymeCore.set_runtime_activity(EnzymeCore.ForwardWithPrimal)
+    res = EnzymeCore.autodiff(mode, EnzymeCore.Const(_materialized_attention), ret, args...)
+    shadow = N == 1 ? res[1] : values(res[1])
+    EnzymeRules.needs_primal(config) || return shadow
+    return N == 1 ? EnzymeCore.Duplicated(res[2], shadow) : EnzymeCore.BatchDuplicated(res[2], shadow)
+end
+
+
 end
