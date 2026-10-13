@@ -21,16 +21,17 @@ function rrule(::typeof(oftf), x, y)
     return oftf(x, y), oftf_pullback
 end
 
-## `exp` and `log1p` that the compiler can vectorize
+## `exp`, `expm1` and `log1p` that the compiler can vectorize
 #
-# A broadcast of `exp` or `log1p` from Base is never compiled to SIMD code, because both
-# branch on their argument and `exp` is marked `@noinline`. The versions below are inlined
-# and free of branches, so that a loop calling them is vectorized. They exist for `Float32`
-# and `Float64` only, any other number type falls back to Base.
-# Both are accurate to less than 1 ulp, and `_exp` covers the whole range of `exp`,
-# subnormal results included, unlike `@fastmath exp`.
+# A broadcast of `exp`, `expm1` or `log1p` from Base is never compiled to SIMD code,
+# because they branch on their argument and `exp` is marked `@noinline`. The versions
+# below are inlined and free of branches, so that a loop calling them is vectorized. They
+# exist for `Float32` and `Float64` only, any other number type falls back to Base.
+# They are accurate to less than 1 ulp, `_expm1` for `x ≤ 0` only (1.6 ulp above), and
+# `_exp` covers the whole range of `exp`, subnormal results included, unlike `@fastmath exp`.
 
 _exp(x) = exp(x)
+_expm1(x) = expm1(x)
 
 # As in Base: `x = N log(2) + r` with `abs(r) ≤ log(2)/2`, then `exp(x) = 2^N exp(r)`
 # with a polynomial for `exp(r)`. The coefficients are those of Base.
@@ -48,7 +49,31 @@ end
 # the algorithm of FreeBSD's msun (`e_exp.c`): `exp(r) = 1 + r + r c / (2 - c)` with
 # `c = r - r^2 P(r^2)`.
 @inline function _exp(x::Float64)
-    x = clamp(x, -746.0, 710.0)
+    N, e = _expm1_reduced(clamp(x, -746.0, 710.0))
+    _mul_pow2(1 + e, unsafe_trunc(Int64, N))
+end
+
+# With the `N` and `r` of `_exp`, `expm1(x) = 2^N expm1(r) + (2^N - 1)`. Nothing cancels
+# for small `x`, where `N = 0`, unlike in `exp(x) - 1`.
+@inline function _expm1(x::Float32)
+    N, e = _expm1_reduced(clamp(x, -18f0, 89f0))  # beyond these the result is -1 or Inf
+    _expm1_scale(e, unsafe_trunc(Int32, N))
+end
+@inline function _expm1(x::Float64)
+    N, e = _expm1_reduced(clamp(x, -38.0, 710.0))
+    _expm1_scale(e, unsafe_trunc(Int64, N))
+end
+
+# `N` and `expm1(r)`, for `x = N log(2) + r` with `abs(r) ≤ log(2)/2`.
+@inline function _expm1_reduced(x::Float32)
+    N = round(x * 1.442695f0)
+    r = muladd(N, -0.69314575f0, x)
+    r = muladd(N, -1.4286068f-6, r)
+    q = evalpoly(r, (0.5f0, 0.16666667f0, 0.041666217f0, 0.008333249f0, 0.001394858f0,
+                     0.00019924171f0))
+    N, muladd(r, r * q, r)
+end
+@inline function _expm1_reduced(x::Float64)
     N = round(x * 1.4426950408889634)
     hi = muladd(N, -0.6931471803691238, x)
     lo = N * 1.9082149292705877e-10
@@ -57,8 +82,18 @@ end
     c = r - r2 * evalpoly(r2, (0.16666666666666602, -0.0027777777777015593,
                                6.613756321437934e-5, -1.6533902205465252e-6,
                                4.1381367970572385e-8))
-    p = 1 - ((lo - r * c / (2 - c)) - hi)
-    _mul_pow2(p, unsafe_trunc(Int64, N))
+    N, hi - (lo - r * c / (2 - c))
+end
+
+# `2^N e + (2^N - 1)`. For the largest `N` the power of two overflows while the result
+# need not, but there `2^N (1 + e)` is just as good.
+@inline function _expm1_scale(e::Float32, N::Int32)
+    p = reinterpret(Float32, (N + Int32(127)) << Int32(23))
+    ifelse(N == Int32(128), _mul_pow2(1 + e, N), muladd(p, e, p - 1))
+end
+@inline function _expm1_scale(e::Float64, N::Int64)
+    p = reinterpret(Float64, (N + 1023) << 52)
+    ifelse(N == 1024, _mul_pow2(1 + e, N), muladd(p, e, p - 1))
 end
 
 # `p * 2^N`, with the power of two applied in two halves: neither of them can overflow or
@@ -102,6 +137,7 @@ _log2_hi_lo(::Type{Float32}) = (0.6931381f0, 9.058001f-6)
 _log2_hi_lo(::Type{Float64}) = (0.6931471803691238, 1.9082149292705877e-10)
 
 @scalar_rule _exp(x) Ω
+@scalar_rule _expm1(x) Ω + 1
 @scalar_rule _log1p_unit(x) inv(1 + x)
 
 """
@@ -387,7 +423,7 @@ julia> elu(-10f0, 2)
 -1.9999092f0
 ```
 """
-@inline elu(x, α=1) = ifelse(x ≥ 0, float(x), oftf(x, α) * (_exp(x) - 1))
+@inline elu(x, α=1) = ifelse(x ≥ 0, float(x), oftf(x, α) * _expm1(x))
 
 deriv_elu(Ω, α=1) = ifelse(Ω ≥ 0, one(Ω), Ω + oftype(Ω, α))
 
@@ -633,7 +669,7 @@ julia> selu(-10f0)
 @inline function selu(x)
     λ = oftf(x, selu_λ)
     α = oftf(x, selu_α)
-    λ * ifelse(x > 0, x, α * (_exp(x) - 1))
+    λ * ifelse(x > 0, x, α * _expm1(x))
 end
 
 const selu_λ = 1.0507009873554804934193349852946
@@ -668,7 +704,7 @@ julia> celu(-10f0)
 -0.9999546f0
 ```
 """
-@inline celu(x, α=1) = ifelse(x ≥ 0, float(x), oftf(x,α) * (_exp(x/oftf(x,α)) - 1))
+@inline celu(x, α=1) = ifelse(x ≥ 0, float(x), oftf(x,α) * _expm1(x/oftf(x,α)))
 
 deriv_celu(Ω, α=1) = ifelse(Ω > 0, oftf(Ω, 1), Ω / oftf(Ω, α) + 1)
 

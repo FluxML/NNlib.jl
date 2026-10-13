@@ -313,8 +313,8 @@ end
 
 ## Vectorizable kernels
 
-@testset "_exp & _log1p_unit: $T" for T in [Float32, Float64]
-    _exp, _log1p_unit = NNlib._exp, NNlib._log1p_unit
+@testset "_exp, _expm1 & _log1p_unit: $T" for T in [Float32, Float64]
+    _exp, _expm1, _log1p_unit = NNlib._exp, NNlib._expm1, NNlib._log1p_unit
 
     @testset "_exp" begin
         xs = T.(-40:0.0137:40)
@@ -338,6 +338,24 @@ end
         @test isnan(_exp(T(NaN)))
     end
 
+    @testset "_expm1" begin
+        # Down to 4e-18, where `exp(x) - 1` is zero
+        xs = vcat(T.(-30:0.0137:0), -T.(exp.(-(0:0.01:40))))
+        @test worst_eps(_expm1, expm1, xs) <= 1   # 1, as for Base's expm1
+        @test worst_eps(_expm1, expm1, -xs) <= 2  # 1, but 2 for some x in 0.35..0.7
+
+        xtop = T.(range(log(floatmax(T)) - 2, log(floatmax(T)) + 2, length=2001))
+        @test worst_eps(_expm1, expm1, xtop) <= 1
+
+        @test _expm1(zero(T)) === zero(T)
+        @test _expm1(nextfloat(zero(T))) === nextfloat(zero(T))
+        @test _expm1(T(Inf)) === T(Inf)
+        @test _expm1(floatmax(T)) === T(Inf)
+        @test _expm1(T(-Inf)) === -one(T)
+        @test _expm1(-floatmax(T)) === -one(T)
+        @test isnan(_expm1(T(NaN)))
+    end
+
     @testset "_log1p_unit" begin
         ts = vcat(T.(0:1e-4:1), T.(exp.(-(0:0.01:40))))
         @test worst_eps(_log1p_unit, log1p, ts) <= 1  # 1, as for Base's log1p
@@ -354,14 +372,24 @@ end
         @test mean_eps(softplus, softplus, xs) < 0.3  # 0.097 for Float32, 0.143 for Float64
         @test worst_eps(mish, mish, xs) <= 4          # 3
         @test mean_eps(mish, mish, xs) < 0.6          # 0.284 for Float32, 0.448 for Float64
+
+        # Small negative inputs, for which `exp(x) - 1` has no correct digit
+        xs = vcat(T.(-30:0.0173:0), -T.(exp.(-(0:0.01:40))))
+        @test worst_eps(elu, elu, xs) <= 1    # 1
+        @test worst_eps(celu, celu, xs) <= 1  # 1
+        @test worst_eps(selu, selu, xs) <= 3  # 2
+        @test elu(-eps(T) / 4) === -eps(T) / 4  # was zero
     end
 end
 
-@testset "_exp falls back to exp" begin
+@testset "kernels fall back to Base" begin
     @test NNlib._exp(1) === exp(1)
     @test NNlib._exp(Float16(1)) === exp(Float16(1))
     @test NNlib._exp(big(1.0)) == exp(big(1.0))
     @test NNlib._exp(1.0 + 2.0im) === exp(1.0 + 2.0im)
+    @test NNlib._expm1(1) === expm1(1)
+    @test NNlib._expm1(Float16(1)) === expm1(Float16(1))
+    @test NNlib._expm1(big(1.0)) == expm1(big(1.0))
 end
 
 # A loop over `f` is compiled to SIMD code only if `f` is inlined and free of branches.
