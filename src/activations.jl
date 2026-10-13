@@ -922,6 +922,16 @@ for f in ACTIVATIONS
   @eval $(f)(x::AbstractArray, args...) = $(f).(x, args...)
 end
 
+# Base does not specialize a call `(f ∘ g)(x...)` on the number of arguments, which costs
+# nothing as long as that call is inlined. With an inlined activation inside it is too
+# large for that, and every call would box its arguments, or fail to compile on a GPU
+# (#597). These methods take such calls instead, for numbers, and are inlined.
+# `act ∘ +` is what `bias_act!` broadcasts.
+const Activation = Union{map(f -> typeof(getfield(@__MODULE__, f)), ACTIVATIONS)...}
+const ComposedActivation = Union{ComposedFunction{<:Activation}, ComposedFunction{<:Any,<:Activation}}
+
+@inline (c::ComposedActivation)(x::Vararg{Number,N}) where {N} = c.outer(c.inner(x...))
+
 ## Faster, less accurate, versions of some.
 
 """

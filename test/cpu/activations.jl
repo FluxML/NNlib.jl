@@ -380,7 +380,8 @@ function is_vectorized(f, T)
 end
 
 @testset "SIMD" begin
-    if Sys.ARCH in (:x86_64, :aarch64)
+    # The counters of code coverage sit in the loop, which is then not vectorized.
+    if Sys.ARCH in (:x86_64, :aarch64) && Base.JLOptions().code_coverage == 0
         @testset "$f" for f in [σ, sigmoid_fast, tanh_fast, elu, selu, celu, gelu_tanh, gelu_sigmoid,
                                 swish, softplus, logσ, logcosh, mish, lisht, tanhshrink]
             @test is_vectorized(f, Float32)
@@ -388,6 +389,23 @@ end
         end
         @test !is_vectorized(exp, Float32)  # the reason for `_exp`
     end
+end
+
+# `act ∘ +` is what `bias_act!` broadcasts. A call to it that is not inlined boxes its arguments.
+composed_allocs(f, y, xs...) = (broadcast!(f, y, xs...); @allocated broadcast!(f, y, xs...))
+
+@testset "composition with ∘" begin
+    x, b = randn(Float32, 100), randn(Float32, 100)
+    y = similar(x)
+    @testset "$f" for f in ACTIVATION_FUNCTIONS
+        @test composed_allocs(f ∘ +, y, x, b) < 100  # a box per element would be 1600 bytes or more
+        f == rrelu || @test y == f.(x .+ b)
+        @test composed_allocs(abs ∘ f, y, x) < 100
+        f == rrelu || @test y == abs.(f.(x))
+    end
+    @test (σ ∘ relu)(1.0) === σ(1.0)
+    @test (σ ∘ +)(1, 2) === σ(3)
+    @test (σ ∘ (x -> sum(x; dims=1)))([1.0 2.0; 3.0 4.0]) == σ.([4.0 6.0])  # not only numbers
 end
 
 ## Autodiff tests
