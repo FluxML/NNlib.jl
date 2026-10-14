@@ -1,5 +1,14 @@
 # Activation functions
 
+# `_exp`, `_expm1` and `_log1p_unit` are written for the CPU to vectorize. In a kernel that
+# buys nothing, and libdevice's functions are faster.
+CUDA.@device_override NNlib._exp(x::Float32) = exp(x)
+CUDA.@device_override NNlib._exp(x::Float64) = exp(x)
+CUDA.@device_override NNlib._expm1(x::Float32) = expm1(x)
+CUDA.@device_override NNlib._expm1(x::Float64) = expm1(x)
+CUDA.@device_override NNlib._log1p_unit(x::Float32) = log1p(x)
+CUDA.@device_override NNlib._log1p_unit(x::Float64) = log1p(x)
+
 # Some of activation functions need a wrapper for GPU support
 # https://github.com/JuliaGPU/CuArrays.jl/issues/614
 
