@@ -197,7 +197,7 @@ function attention_softmax!(s::Vector{A}, n, nvalid, bias, mask, j0, i, h, b, m,
     @inbounds begin
         mi = m[ii]
         if mt > mi
-            a = exp(mi - mt)
+            a = _exp(mi - mt)
             l[ii] *= a
             @simd for d in axes(oacc, 1)
                 oacc[d, ii] *= a
