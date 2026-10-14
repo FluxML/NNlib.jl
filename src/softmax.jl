@@ -69,10 +69,10 @@ softmax!(out::AbstractArray, x::AbstractArray; dims = 1) = _softmax!(out, x; dim
 function _softmax!(out::AbstractArray{T}, x::AbstractArray; dims = 1) where {T}
     max_ = fast_maximum(x; dims)
     if all(isfinite, max_)
-        @fastmath out .= _exp.(x .- max_)
+        out .= _exp.(x .- max_)
     else
         _zero, _one, _inf = T(0), T(1), T(Inf)
-        @fastmath @. out = ifelse(isequal(max_,_inf), ifelse(isequal(x,_inf), _one, _zero), _exp(x - max_))
+        @. out = ifelse(isequal(max_,_inf), ifelse(isequal(x,_inf), _one, _zero), _exp(x - max_))
     end
     tmp = dims isa Colon ? sum(out) : sum!(max_, out)
     out ./= tmp
@@ -156,7 +156,7 @@ function _logsoftmax!(out::AbstractArray{T}, x::AbstractArray; dims = 1) where {
         _zero, _minf, _inf = T(0), T(-Inf), T(Inf)
         @. out = ifelse(isequal(max_,_inf), ifelse(isequal(x,_inf), _zero, _minf), x - max_)
     end
-    @fastmath log_ = log.(sum(_exp, out; dims))
+    log_ = log.(sum(_exp, out; dims))
     out .-= log_
 end
 
@@ -212,14 +212,14 @@ See also [`logsoftmax`](@ref).
 """
 function logsumexp(x::AbstractArray; dims = :)
     max_ = fast_maximum(x; dims)
-    return @fastmath max_ .+ log.(sum(_exp.(x .- max_); dims))
+    return max_ .+ log.(sum(_exp.(x .- max_); dims))
 end
 
 function rrule(::typeof(logsumexp), x; dims = :)
     # The gradient is `softmax`, but both compute `tmp` so it's worth saving.
     max_ = fast_maximum(x; dims)
-    @fastmath tmp = _exp.(x .- max_)
-    @fastmath y = max_ .+ log.(sum(tmp; dims))
+    tmp = _exp.(x .- max_)
+    y = max_ .+ log.(sum(tmp; dims))
     logsumexp_pullback(dy) = (NoTangent(), unthunk(dy) .* tmp ./ sum(tmp; dims))
     return y, logsumexp_pullback
 end
