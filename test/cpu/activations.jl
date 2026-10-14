@@ -502,9 +502,19 @@ has_rule(a) = rrule(a, 1f0) === nothing ? "(no rule)" : ""
     end
 end
 
+@testset "Mooncake rules for the kernels: $T" for T in [Float32, Float64]
+    # Both modes against finite differences, and that the kernels are primitives
+    @testset "$f($x)" for (f, x) in [(NNlib._exp, T(-0.7)), (NNlib._exp, T(1.3)),
+                                    (NNlib._expm1, T(-0.3)), (NNlib._expm1, T(0.8)),
+                                    (NNlib._log1p_unit, T(0.2)), (NNlib._log1p_unit, T(0.9))]
+        Mooncake.TestUtils.test_rule(StableRNG(17), f, x; is_primitive=true, print_results=false)
+    end
+end
+
 @testset "AD through the vectorizable kernels: $T" for T in [Float32, Float64]
-    # Enzyme and Mooncake have no rules for the activations: they differentiate their code,
-    # and so the kernels for `Float32` and `Float64`. ForwardDiff takes the generic methods.
+    # Enzyme has no rules for the activations: it differentiates their code, and so the
+    # kernels for `Float32` and `Float64`. Mooncake stops at the kernels, which it has rules
+    # for. ForwardDiff takes the generic methods.
     adtypes = AbstractADType[AutoZygote(), AutoMooncake()]
     NNLIB_TEST_ENZYME && push!(adtypes, AutoEnzyme())
     rtol = T == Float32 ? 1e-3 : 1e-6

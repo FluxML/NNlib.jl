@@ -1,6 +1,7 @@
 module NNlibMooncakeExt
 
-using Mooncake: Mooncake, MinimalCtx, @zero_adjoint, @zero_derivative
+using Mooncake: Mooncake, MinimalCtx, DefaultCtx, CoDual, Dual, NoRData, primal, tangent,
+    zero_fcodual, @is_primitive, @zero_adjoint, @zero_derivative
 using NNlib: NNlib
 
 # Mooncake's reverse pass restores every value that was overwritten on the forward pass.
@@ -20,11 +21,29 @@ using NNlib: NNlib
 Mooncake.@mooncake_overlay NNlib.within_gradient(x) = true
 
 # `_exp` and `_expm1` build a power of two from its bits, which Mooncake refuses to
-# differentiate (a `bitcast` from an integer to a float). It has rules for `exp` and
-# `expm1` instead.
-Mooncake.@mooncake_overlay NNlib._exp(x::Float32) = exp(x)
-Mooncake.@mooncake_overlay NNlib._exp(x::Float64) = exp(x)
-Mooncake.@mooncake_overlay NNlib._expm1(x::Float32) = expm1(x)
-Mooncake.@mooncake_overlay NNlib._expm1(x::Float64) = expm1(x)
+# differentiate (a `bitcast` from an integer to a float). As primitives they are called
+# as they are, and their derivative comes from the value they return. `_log1p_unit` it
+# can differentiate, but one operation at a time: its rule is there for speed only.
+#
+# The rules are inlined into the code Mooncake derives, like the kernels into NNlib's:
+# left as a call, each costs some 2 ns more per element.
+for (f, ctx, dydx) in ((:_exp, :MinimalCtx, :y), (:_expm1, :MinimalCtx, :(y + 1)),
+                       (:_log1p_unit, :DefaultCtx, :(inv(1 + x))))
+    @eval begin
+        @is_primitive $ctx Tuple{typeof(NNlib.$f),P} where {P<:Union{Float32,Float64}}
+        @inline function Mooncake.frule!!(::Dual{typeof(NNlib.$f)}, x_ẋ::Dual{P}) where {P<:Union{Float32,Float64}}
+            x = primal(x_ẋ)
+            y = NNlib.$f(x)
+            return Dual(y, $dydx * tangent(x_ẋ))
+        end
+        @inline function Mooncake.rrule!!(::CoDual{typeof(NNlib.$f)}, x_x̄::CoDual{P}) where {P<:Union{Float32,Float64}}
+            x = primal(x_x̄)
+            y = NNlib.$f(x)
+            dydx = $dydx
+            pullback(ȳ::P) = NoRData(), dydx * ȳ
+            return zero_fcodual(y), pullback
+        end
+    end
+end
 
 end
