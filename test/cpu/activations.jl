@@ -502,9 +502,46 @@ has_rule(a) = rrule(a, 1f0) === nothing ? "(no rule)" : ""
     end
 end
 
+@testset "Mooncake rules for the kernels: $T" for T in [Float32, Float64]
+    # Both modes against finite differences, and that the kernels are primitives
+    @testset "$f($x)" for (f, x) in [(NNlib._exp, T(-0.7)), (NNlib._exp, T(1.3)),
+                                    (NNlib._expm1, T(-0.3)), (NNlib._expm1, T(0.8)),
+                                    (NNlib._log1p_unit, T(0.2)), (NNlib._log1p_unit, T(0.9))]
+        Mooncake.TestUtils.test_rule(StableRNG(17), f, x; is_primitive=true, print_results=false)
+    end
+end
+
+@testset "Mooncake rule for a broadcast: $T" for T in [Float32, Float64]
+    _broadcast = Base.get_extension(NNlib, :NNlibMooncakeExt)._broadcast
+    x = T[-2.3 -0.4; 0.7 1.9]  # away from the kinks
+    rtol = T == Float32 ? 1e-3 : 1e-8
+
+    @testset "$f" for f in WITH_UNARY_RULE
+        Mooncake.TestUtils.test_rule(StableRNG(17), _broadcast, f, x; is_primitive=true, print_results=false)
+        @test withgradient(x -> sum(abs2, f.(x)), AutoMooncake(), x).grad[1] ≈
+            ForwardDiff.gradient(x -> sum(abs2, f.(x)), x) rtol=rtol
+    end
+
+    # Mooncake is given a fused broadcast in pieces, with an array before and after the activation
+    b = T[0.1, -0.2]
+    @testset "$name" for (name, h) in [
+            "f.(x .+ b)"    => (x -> sum(abs2, elu.(x .+ b))),
+            "x .* f.(x)"    => (x -> sum(x .* softplus.(x))),
+            "g.(f.(h.(x)))" => (x -> sum(abs2.(mish.(2 .* x .- 1)))),
+            "f.(g.(x))"     => (x -> sum(σ.(elu.(x)))),
+            "in place"      => (x -> (y = similar(x); y .= selu.(x .+ 1); sum(abs2, y))),
+            "mutated after" => (x -> (y = elu.(x); y .*= 2; sum(y .* softplus.(x)))),
+            "a view"        => (x -> sum(abs2, elu.(view(x, 1:2, 1)))),  # not an Array: no rule
+        ]
+        @test withgradient(h, AutoMooncake(), x).val ≈ h(x)
+        @test withgradient(h, AutoMooncake(), x).grad[1] ≈ ForwardDiff.gradient(h, x) rtol=rtol
+    end
+end
+
 @testset "AD through the vectorizable kernels: $T" for T in [Float32, Float64]
-    # Enzyme and Mooncake have no rules for the activations: they differentiate their code,
-    # and so the kernels for `Float32` and `Float64`. ForwardDiff takes the generic methods.
+    # Enzyme has no rules for the activations: it differentiates their code, and so the
+    # kernels for `Float32` and `Float64`. Mooncake stops at the kernels, which it has rules
+    # for. ForwardDiff takes the generic methods.
     adtypes = AbstractADType[AutoZygote(), AutoMooncake()]
     NNLIB_TEST_ENZYME && push!(adtypes, AutoEnzyme())
     rtol = T == Float32 ? 1e-3 : 1e-6
