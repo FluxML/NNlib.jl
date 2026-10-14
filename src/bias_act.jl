@@ -4,8 +4,10 @@ using ChainRulesCore
 
 const RCR = RuleConfig{>:HasReverseMode}
 
-# This just saves typing `only.(only.(` many times:
-@inline only_derivative(y,f::F,x) where F = only(only(ChainRulesCore.derivatives_given_output(y, f, x)))
+# This just saves typing `only.(only.(` many times. The call is inlined here: the method that
+# `@scalar_rule` defines is not when the derivative is as large as `sigmoid_fast(x)`, and
+# a broadcast over it is then not compiled to SIMD code.
+@inline only_derivative(y,f::F,x) where F = only(only(@inline ChainRulesCore.derivatives_given_output(y, f, x)))
 
 # This has no methods, used for testing whether `derivatives_given_output(Ω, f, x)`
 # is independent of `x`, as `return_type` says `Union{}` when calling is an error.
