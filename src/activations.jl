@@ -36,21 +36,25 @@ _expm1(x) = expm1(x)
 # As in Base: `x = N log(2) + r` with `abs(r) ≤ log(2)/2`, then `exp(x) = 2^N exp(r)`
 # with a polynomial for `exp(r)`. The coefficients are those of Base.
 @inline function _exp(x::Float32)
-    x = clamp(x, -104f0, 89f0)  # beyond these the result is 0 or Inf anyway
+    # Below -104 the result is 0, which `_mul_pow2` would reach through subnormal numbers,
+    # slow on most CPUs. There `exp(0)` is computed instead, and replaced by 0.
+    tiny = x < -104f0
+    x = min(ifelse(tiny, 0f0, x), 89f0)  # above 89 the result is Inf anyway
     N = round(x * 1.442695f0)
     r = muladd(N, -0.69314575f0, x)  # log(2) is split into high and low bits
     r = muladd(N, -1.4286068f-6, r)
     p = evalpoly(r, (1f0, 1f0, 0.5f0, 0.16666667f0, 0.041666217f0,
                      0.008333249f0, 0.001394858f0, 0.00019924171f0))
-    _mul_pow2(p, unsafe_trunc(Int32, N))
+    ifelse(tiny, 0f0, _mul_pow2(p, unsafe_trunc(Int32, N)))
 end
 
 # Base reads `exp(r)` from a table for Float64, which cannot be vectorized. This is instead
 # the algorithm of FreeBSD's msun (`e_exp.c`): `exp(r) = 1 + r + r c / (2 - c)` with
 # `c = r - r^2 P(r^2)`.
 @inline function _exp(x::Float64)
-    N, e = _expm1_reduced(clamp(x, -746.0, 710.0))
-    _mul_pow2(1 + e, unsafe_trunc(Int64, N))
+    tiny = x < -746.0  # as for Float32
+    N, e = _expm1_reduced(min(ifelse(tiny, 0.0, x), 710.0))
+    ifelse(tiny, 0.0, _mul_pow2(1 + e, unsafe_trunc(Int64, N)))
 end
 
 # With the `N` and `r` of `_exp`, `expm1(x) = 2^N expm1(r) + (2^N - 1)`. Nothing cancels

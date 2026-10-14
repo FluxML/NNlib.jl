@@ -29,6 +29,16 @@ end
    @test all(softplus.(x) .== x)
 end
 
+@testset "exp, expm1 and log1p are libdevice's in a kernel" begin
+    for T in (Float32, Float64)
+        x = CuArray(T.(range(-20, 20, length=10_000)))
+        t = CuArray(T.(range(0, 1, length=10_000)))
+        @test Array(NNlib._exp.(x)) == Array(exp.(x))
+        @test Array(NNlib._expm1.(x)) == Array(expm1.(x))
+        @test Array(NNlib._log1p_unit.(t)) == Array(log1p.(t))
+    end
+end
+
 @testset "input is preserved" begin
     x = CUDA.ones(1)
     @test Array(x) == [1f0]

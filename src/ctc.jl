@@ -102,7 +102,7 @@ function ∇ctc_loss(ŷ::AbstractArray, y, out)
       accum[z′[u], t] = logaddexp(accum[z′[u], t], α[u,t] + β[u,t])
     end
   end
-  grads = exp.(ŷ) .- exp.(accum .+ loss)
+  grads = _exp.(ŷ) .- _exp.(accum .+ loss)
   return grads
 end
 
