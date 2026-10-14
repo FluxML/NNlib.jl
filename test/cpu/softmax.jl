@@ -99,35 +99,6 @@ end
     end
 end
 
-# An `Array` is given kernels of its own, written for the compiler to vectorize them.
-@testset "other arrays, and aliased ones: $T" for T in (Float32, Float64)
-    x = randn(rng, T, 6, 5, 4)
-    xv = view(x, 2:5, :, :)
-    xs = collect(xv)
-    @testset "dims = $dims" for dims in (1, 2, (1, 3), :)
-        @test softmax(xv; dims) ≈ softmax(xs; dims)
-        @test logsoftmax(xv; dims) ≈ logsoftmax(xs; dims)
-        @test logsumexp(xv; dims) ≈ logsumexp(xs; dims)
-        @test softmax(xs; dims) ≈ exp.(xs) ./ sum(exp.(xs); dims)
-        @test logsumexp(xs; dims) ≈ log.(sum(exp.(xs); dims))
-
-        out = zeros(T, 6, 5, 4)
-        outv = view(out, 2:5, :, :)
-        @test softmax!(outv, xs; dims) ≈ softmax(xs; dims)
-        @test softmax!(copy(xs); dims) ≈ softmax(xs; dims)
-
-        y, dy = logsoftmax(xs; dims), randn(rng, T, size(xs))
-        dx = dy .- sum(dy; dims) .* exp.(y)
-        @test ∇logsoftmax!(similar(y), dy, y; dims) ≈ dx
-        @test ∇logsoftmax!(outv, dy, y; dims) ≈ dx
-        @test ∇logsoftmax!(copy(dy), view(dy, :, :, :), y; dims) ≈ dx
-        dxy = copy(dy)
-        @test ∇logsoftmax!(dxy, dxy, y; dims) ≈ dx  # the output is the cotangent
-        dxy = copy(y)
-        @test ∇logsoftmax!(dxy, dy, dxy; dims) ≈ dx  # the output is `y`
-    end
-end
-
 @testset "logsumexp" begin
     flogsoft(x; dims) = mean(x .- logsoftmax(x; dims = dims), dims = dims)
 

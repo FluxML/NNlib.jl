@@ -102,8 +102,7 @@ function ∇ctc_loss(ŷ::AbstractArray, y, out)
       accum[z′[u], t] = logaddexp(accum[z′[u], t], α[u,t] + β[u,t])
     end
   end
-  # `-` and not `.-`: only in a broadcast over a single array is `_exp` always vectorized.
-  grads = _exp.(ŷ) - _exp.(accum .+ loss)
+  grads = _exp.(ŷ) .- _exp.(accum .+ loss)
   return grads
 end
 
