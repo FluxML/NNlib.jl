@@ -69,7 +69,7 @@ softmax!(out::AbstractArray, x::AbstractArray; dims = 1) = _softmax!(out, x; dim
 function _softmax!(out::AbstractArray{T}, x::AbstractArray; dims = 1) where {T}
     max_ = fast_maximum(x; dims)
     if all(isfinite, max_)
-        @fastmath out .= exp.(x .- max_)
+        _exp_sub!(out, x, max_)
     else
         _zero, _one, _inf = T(0), T(1), T(Inf)
         @fastmath @. out = ifelse(isequal(max_,_inf), ifelse(isequal(x,_inf), _one, _zero), exp(x - max_))
@@ -77,6 +77,17 @@ function _softmax!(out::AbstractArray{T}, x::AbstractArray; dims = 1) where {T}
     tmp = dims isa Colon ? sum(out) : sum!(max_, out)
     out ./= tmp
 end
+
+# `exp.(x .- m)`, the same written to `out`, and `sum(exp, x; dims)`. An `Array` takes
+# `_exp`, alone in a pass over a single array: there it is always vectorized, while next to
+# a second array it depends on the Julia version, on the number type and on the shape of
+# `m`. Other arrays keep `@fastmath exp`, which the GPU backends replace with their own.
+_exp_sub(x, m) = @fastmath exp.(x .- m)
+_exp_sub(x::Array, m) = _fast_broadcast!(_exp, x .- m)
+_exp_sub!(out, x, m) = @fastmath out .= exp.(x .- m)
+_exp_sub!(out::Array, x, m) = _fast_broadcast!(_exp, out .= x .- m)
+_sum_exp(x; dims) = @fastmath sum(exp, x; dims)
+_sum_exp(x::Array; dims) = sum(_exp, x; dims)
 
 """
     ∇softmax(dy, y; dims = 1)
@@ -156,7 +167,7 @@ function _logsoftmax!(out::AbstractArray{T}, x::AbstractArray; dims = 1) where {
         _zero, _minf, _inf = T(0), T(-Inf), T(Inf)
         @. out = ifelse(isequal(max_,_inf), ifelse(isequal(x,_inf), _zero, _minf), x - max_)
     end
-    @fastmath log_ = log.(sum(exp, out; dims))
+    @fastmath log_ = log.(_sum_exp(out; dims))
     out .-= log_
 end
 
@@ -181,6 +192,12 @@ In-place version of [`∇logsoftmax`](@ref), writing the gradient into `dx`.
 
 function _∇logsoftmax!(dx::AbstractArray, dy::AbstractArray, y::AbstractArray; dims = 1)
     dx .= dy .- sum(dy; dims) .* exp.(y)
+end
+
+# `_exp` in a pass of its own, as in `_exp_sub`.
+function _∇logsoftmax!(dx::Array, dy::AbstractArray, y::AbstractArray; dims = 1)
+    p = _exp.(y)
+    dx .= dy .- sum(dy; dims) .* p
 end
 
 function rrule(::typeof(logsoftmax), x; dims = 1)
@@ -212,13 +229,13 @@ See also [`logsoftmax`](@ref).
 """
 function logsumexp(x::AbstractArray; dims = :)
     max_ = fast_maximum(x; dims)
-    return @fastmath max_ .+ log.(sum(exp.(x .- max_); dims))
+    return @fastmath max_ .+ log.(sum(_exp_sub(x, max_); dims))
 end
 
 function rrule(::typeof(logsumexp), x; dims = :)
     # The gradient is `softmax`, but both compute `tmp` so it's worth saving.
     max_ = fast_maximum(x; dims)
-    @fastmath tmp = exp.(x .- max_)
+    tmp = _exp_sub(x, max_)
     @fastmath y = max_ .+ log.(sum(tmp; dims))
     logsumexp_pullback(dy) = (NoTangent(), unthunk(dy) .* tmp ./ sum(tmp; dims))
     return y, logsumexp_pullback
