@@ -27,4 +27,9 @@ Mooncake.@mooncake_overlay NNlib._exp(x::Float64) = exp(x)
 Mooncake.@mooncake_overlay NNlib._expm1(x::Float32) = expm1(x)
 Mooncake.@mooncake_overlay NNlib._expm1(x::Float64) = expm1(x)
 
+# `softmax!` and `logsoftmax!` of CPU arrays spawn tasks, which Mooncake does not
+# differentiate through: it is given the generic implementation instead.
+Mooncake.@mooncake_overlay NNlib.softmax_cpu!(f, out::Array, x::Array, dims) =
+    NNlib.softmax_generic!(f, out, x, dims)
+
 end

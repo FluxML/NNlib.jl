@@ -33,6 +33,7 @@ const THREADED_TESTS = [
     "cpu/conv_bias_act",
     "cpu/batchedmul",
     "cpu/sampling",
+    "cpu/softmax",
     "common_testsuite/fold",
 ]
 

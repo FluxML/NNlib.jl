@@ -224,6 +224,242 @@ function rrule(::typeof(logsumexp), x; dims = :)
     return y, logsumexp_pullback
 end
 
+## CPU implementation
+#
+# `softmax!` and `logsoftmax!` of `Array`s of `Float32` or `Float64` take the loops below
+# instead of the broadcasts of the generic implementation. They call `_exp`, so that the
+# compiler vectorizes them, and they are divided among tasks.
+#
+# The array is seen as `(pre, n, post)`, with the dimensions to reduce merged into the
+# second one. For `pre == 1` a slice is contiguous in memory, and the loops run along it.
+# Otherwise they run along the first dimension, over a tile of rows of a slice, with the
+# maximum and the sum of every row kept in a workspace.
+
+const SoftmaxFloat = Union{Float32,Float64}
+
+softmax!(out::Array{T}, x::Array{T}; dims = 1) where {T<:SoftmaxFloat} =
+    softmax_cpu!(softmax, out, x, dims)
+logsoftmax!(out::Array{T}, x::Array{T}; dims = 1) where {T<:SoftmaxFloat} =
+    softmax_cpu!(logsoftmax, out, x, dims)
+
+# Spawning tasks costs a few microseconds, and tens of them when the threads are asleep:
+# no tasks below 2^17 elements, and at most one for every 2^15 of them. The size is not
+# tested in one condition with `should_use_spawn()`: Enzyme then aborts while compiling
+# the callers, on an LLVM "inlinable function call ... must have a !dbg location".
+function softmax_ntasks(len::Int)
+    n = len < 2^17 ? 1 : len >> 15
+    return should_use_spawn() ? min(Threads.nthreads(:default), n) : 1
+end
+
+# Rows of a tile. The loops are faster on many rows than on few, but the tiles are what
+# the tasks share: at least two for each of them.
+softmax_tile(pre::Int, post::Int, ntasks::Int) = min(pre, clamp(pre * post ÷ 2ntasks, 64, 512))
+
+# The sizes `(pre, n, post)` for the dimensions `dims`, or `nothing` for what is left to
+# the generic implementation: dimensions that are not contiguous, an empty array, arrays
+# of different sizes, and arrays that share memory without being the same one.
+function softmax_shape(out::Array, x::Array, dims)
+    r = softmax_dims(dims, ndims(x))
+    (r === nothing || isempty(x) || size(out) != size(x)) && return nothing
+    (out === x || !Base.mightalias(out, x)) || return nothing
+    pre = n = post = 1
+    for d in 1:ndims(x)
+        d < r[1] ? (pre *= size(x, d)) : d <= r[2] ? (n *= size(x, d)) : (post *= size(x, d))
+    end
+    return (pre, n, post)
+end
+
+softmax_dims(::Colon, N::Int) = N > 0 ? (1, N) : nothing
+softmax_dims(d::Integer, N::Int) = 1 <= d <= N ? (Int(d), Int(d)) : nothing
+function softmax_dims(dims::Tuple{Integer,Vararg{Integer}}, N::Int)
+    d1, d2 = extrema(dims)
+    contiguous = 1 <= d1 && d2 <= N && allunique(dims) && length(dims) == d2 - d1 + 1
+    return contiguous ? (Int(d1), Int(d2)) : nothing
+end
+softmax_dims(dims, N::Int) = nothing
+
+softmax_generic!(::typeof(softmax), out, x, dims) = _softmax!(out, x; dims)
+softmax_generic!(::typeof(logsoftmax), out, x, dims) = _logsoftmax!(out, x; dims)
+
+function softmax_cpu!(f::F, out::Array{T}, x::Array{T}, dims) where {F,T}
+    shape = softmax_shape(out, x, dims)
+    shape === nothing && return softmax_generic!(f, out, x, dims)
+    pre, n, post = shape
+    maxtasks = softmax_ntasks(length(x))
+    # The items the tasks share: the slices if they are contiguous, tiles of rows if not.
+    tile = pre == 1 ? 1 : softmax_tile(pre, post, maxtasks)
+    nitems = cld(pre, tile) * post
+    ntasks = min(maxtasks, nitems)
+    if ntasks == 1
+        softmax_items!(f, out, x, softmax_workspace(T, pre, tile), pre, n, tile, 1:nitems)
+        return out
+    end
+    # Every task has a range of items of its own, which it takes a chunk at a time. Once
+    # done it takes chunks from the ranges of the others, so that a task on a slower or a
+    # busy core does not hold the others back.
+    bounds = [(t * nitems) ÷ ntasks for t in 0:ntasks]
+    nexts = [Threads.Atomic{Int}(bounds[t] + 1) for t in 1:ntasks]
+    chunk = max(1, nitems ÷ 16ntasks)
+    function run(t)
+        ws = softmax_workspace(T, pre, tile)
+        for u in t:t+ntasks-1
+            r = (u - 1) % ntasks + 1
+            while true
+                i0 = Threads.atomic_add!(nexts[r], chunk)
+                i0 > bounds[r+1] && break
+                softmax_items!(f, out, x, ws, pre, n, tile, i0:min(i0 + chunk - 1, bounds[r+1]))
+            end
+        end
+        return nothing
+    end
+    # the calling task takes the first range: the others may take a while to start
+    tasks = [Threads.@spawn(run(t)) for t in 2:ntasks]
+    run(1)
+    foreach(wait, tasks)
+    return out
+end
+
+# The maxima and the sums of the rows of a tile.
+softmax_workspace(::Type{T}, pre::Int, tile::Int) where {T} = Vector{T}(undef, pre == 1 ? 0 : 2tile)
+
+@inline function softmax_items!(f::F, out::Array{T}, x::Array{T}, ws::Vector{T}, pre::Int, n::Int,
+                                tile::Int, items::UnitRange{Int}) where {F,T}
+    if pre == 1
+        for k in items
+            softmax_slice!(f, out, x, (k - 1) * n, n)
+        end
+    else
+        ntiles = cld(pre, tile)
+        for item in items
+            k, it = divrem(item - 1, ntiles)
+            softmax_block!(f, out, x, ws, k * pre * n + it * tile, min(tile, pre - it * tile), pre, n)
+        end
+    end
+    return nothing
+end
+
+# `x - m` for the maximum `m` of the slice of `x`. If `m` is infinite, the infinite entries
+# share the probability and the others have none.
+@inline softmax_shift(x::T, m::T) where {T} = x - m
+@inline softmax_shift_inf(x::T, m::T) where {T} =
+    ifelse((m == T(Inf)) & (x == T(Inf)), zero(T), x - m)
+
+# `f` of the slice `x[off+1:off+n]`.
+@inline function softmax_slice!(f::F, out::Array{T}, x::Array{T}, off::Int, n::Int) where {F,T}
+    # The maximum, with the entries brought into [-floatmax, floatmax], NaN included: then
+    # none is infinite or NaN, as `@fastmath` takes for granted, and the loop is vectorized.
+    hi = floatmax(T)
+    m = -hi
+    @inbounds @simd for i in off+1:off+n
+        v = x[i]
+        v = ifelse(v <= hi, v, hi)
+        v = ifelse(v >= -hi, v, -hi)
+        m = @fastmath max(m, v)
+    end
+    if abs(m) < hi
+        softmax_slice!(f, softmax_shift, out, x, off, n, m)
+    else
+        # an infinite maximum, a NaN or no finite entry: the maximum again, one entry at a time
+        m = T(-Inf)
+        @inbounds for i in off+1:off+n
+            m = ifelse(x[i] > m, x[i], m)
+        end
+        softmax_slice!(f, softmax_shift_inf, out, x, off, n, m)
+    end
+    return nothing
+end
+
+@inline function softmax_slice!(f::F, shift::S, out::Array{T}, x::Array{T}, off::Int, n::Int,
+                                m::T) where {F,S,T}
+    s = zero(T)
+    if f === softmax
+        @inbounds @simd ivdep for i in off+1:off+n
+            e = _exp(shift(x[i], m))
+            out[i] = e
+            s += e
+        end
+        r = inv(s)
+        @inbounds @simd ivdep for i in off+1:off+n
+            out[i] *= r
+        end
+    else
+        @inbounds @simd for i in off+1:off+n
+            s += _exp(shift(x[i], m))
+        end
+        l = log(s)
+        @inbounds @simd ivdep for i in off+1:off+n
+            out[i] = shift(x[i], m) - l
+        end
+    end
+    return nothing
+end
+
+# `f` along the second dimension of `nt` rows of a slice, the first of which starts at
+# `x[off+1]`. `ws[1:nt]` receives the maxima of the rows and `ws[nt+1:2nt]` their sums.
+@inline function softmax_block!(f::F, out::Array{T}, x::Array{T}, ws::Vector{T}, off::Int, nt::Int,
+                                pre::Int, n::Int) where {F,T}
+    finite = true
+    @inbounds begin
+        @simd ivdep for t in 1:nt
+            ws[t] = x[off+t]
+        end
+        for j in 1:n-1
+            o = off + j * pre
+            @simd ivdep for t in 1:nt
+                ws[t] = ifelse(x[o+t] > ws[t], x[o+t], ws[t])
+            end
+        end
+        @simd for t in 1:nt
+            finite &= isfinite(ws[t])
+        end
+    end
+    if finite
+        softmax_block!(f, softmax_shift, out, x, ws, off, nt, pre, n)
+    else
+        softmax_block!(f, softmax_shift_inf, out, x, ws, off, nt, pre, n)
+    end
+    return nothing
+end
+
+@inline function softmax_block!(f::F, shift::S, out::Array{T}, x::Array{T}, ws::Vector{T}, off::Int,
+                                nt::Int, pre::Int, n::Int) where {F,S,T}
+    @inbounds begin
+        @simd ivdep for t in 1:nt
+            ws[nt+t] = zero(T)
+        end
+        for j in 0:n-1
+            o = off + j * pre
+            if f === softmax
+                @simd ivdep for t in 1:nt
+                    e = _exp(shift(x[o+t], ws[t]))
+                    out[o+t] = e
+                    ws[nt+t] += e
+                end
+            else
+                @simd ivdep for t in 1:nt
+                    ws[nt+t] += _exp(shift(x[o+t], ws[t]))
+                end
+            end
+        end
+        @simd ivdep for t in 1:nt
+            ws[nt+t] = f === softmax ? inv(ws[nt+t]) : log(ws[nt+t])
+        end
+        for j in 0:n-1
+            o = off + j * pre
+            if f === softmax
+                @simd ivdep for t in 1:nt
+                    out[o+t] *= ws[nt+t]
+                end
+            else
+                @simd ivdep for t in 1:nt
+                    out[o+t] = shift(x[o+t], ws[t]) - ws[nt+t]
+                end
+            end
+        end
+    end
+    return nothing
+end
+
 # Informative error message if any of the softmax variants is called with a number
 for f in (:softmax, :logsoftmax, :softmax!, :logsoftmax!, :logsumexp)
     @eval $(f)(x::Number, args...) = 

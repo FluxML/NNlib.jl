@@ -71,6 +71,74 @@ end
     @test exp.(logsoftmax(Float32[1 Inf; 3 Inf])) ≈ softmax(Float32[1 Inf; 3 Inf])
 end
 
+# `Array`s of `Float32` and `Float64` have loops of their own, divided among tasks from
+# 2^17 elements on: on a contiguous slice for `pre == 1`, on tiles of rows otherwise.
+@testset "CPU implementation" begin
+    generic!(f) = f === softmax ? NNlib._softmax! : NNlib._logsoftmax!
+    mutating!(f) = f === softmax ? softmax! : logsoftmax!
+
+    @testset "$f, $T" for f in (softmax, logsoftmax), T in (Float32, Float64)
+        f! = mutating!(f)
+        for (sz, dims) in (((17,), 1), ((1,), 1), ((33, 7, 5), 1), ((33, 7, 5), 2), ((33, 7, 5), 3),
+                           ((33, 7, 5), (1, 2)), ((33, 7, 5), (2, 3)), ((33, 7, 5), :),
+                           ((300, 20), 2), ((1, 50, 1), 2), ((2, 3, 64, 5), 3),
+                           # enough elements for the tasks
+                           ((600, 600), 1), ((600, 600), 2), ((600, 600), :), ((3, 100_000), 1),
+                           ((3, 100_000), 2), ((100_000, 3), 2), ((70, 60, 70), 2), ((70, 60, 70), (2, 3)))
+            x = randn(rng, T, sz)
+            y = f!(similar(x), x; dims)
+            @test y ≈ generic!(f)(similar(x), x; dims) rtol = 20eps(T)
+            @test f(x; dims) == y
+            z = copy(x)
+            @test f!(z; dims) === z
+            @test z == y
+            @test NNlib.@disallow_spawns(f!(similar(x), x; dims)) == y
+        end
+    end
+
+    @testset "non-finite entries, $f" for f in (softmax, logsoftmax)
+        f! = mutating!(f)
+        # the generic implementation agrees, unless a slice has both a NaN and an Inf
+        for T in (Float32, Float64), dims in (1, 2, :),
+            x in (T[1 2; 3 Inf], T[1 -Inf; 3 Inf], T[1 Inf; 3 Inf], T[1 2; 3 NaN], T[-Inf -Inf; -Inf 1],
+                  T[floatmax(T) 1; 2 3], T[-floatmax(T) -floatmax(T); 1 -Inf], T[floatmax(T) Inf; -floatmax(T) 0])
+            @test f(x; dims) ≈ generic!(f)(similar(x), x; dims) nans = true
+        end
+        # the same on slices and tiles long enough for the vectorized loops, and for the tasks
+        for sz in ((40, 50), (600, 600)), dims in (1, 2), bad in (Inf32, -Inf32, NaN32), pos in (1, 23, 40)
+            x = randn(rng, Float32, sz)
+            x[pos, 3] = x[5, pos] = x[end, end] = bad
+            @test f(x; dims) ≈ generic!(f)(similar(x), x; dims) nans = true
+        end
+        x = randn(rng, Float32, 40, 50)
+        x[21:40, :] .= -Inf32   # as left by a mask
+        for dims in (1, 2)
+            @test f(x; dims) ≈ generic!(f)(similar(x), x; dims) nans = true
+        end
+        # a NaN takes its slice, whatever else is there
+        x = Float32[NaN 1 Inf; 2 Inf 3; Inf NaN 4]
+        @test all(isnan, f(x; dims = :))
+        @test isnan.(f(x; dims = 1)) == [true true false; true true false; true true false]
+        @test isnan.(f(x; dims = 2)) == [true true true; false false false; true true true]
+    end
+
+    @testset "left to the generic implementation" begin
+        x = randn(rng, Float32, 4, 5, 6)
+        @test softmax(x; dims = (1, 3)) ≈ NNlib._softmax!(similar(x), x; dims = (1, 3))
+        @test logsoftmax(x; dims = (1, 3)) ≈ NNlib._logsoftmax!(similar(x), x; dims = (1, 3))
+        @test softmax(x; dims = 4) == ones(Float32, 4, 5, 6)
+        @test softmax!(zeros(Float64, 4, 5, 6), x) ≈ softmax(x)
+        @test softmax(view(x, :, 2:4, :)) ≈ softmax(x[:, 2:4, :])
+        @test softmax(PermutedDimsArray(x, (2, 1, 3))) ≈ permutedims(softmax(x; dims = 2), (2, 1, 3))
+        @test softmax(zeros(Float32, 0, 3)) == zeros(Float32, 0, 3)
+        # arrays sharing memory, without being the same
+        a = vec(copy(x))
+        b = vec(reshape(a, size(x)))
+        @test a !== b
+        @test softmax!(a, b) ≈ softmax(vec(x))
+    end
+end
+
 @testset "mutating softmax" begin
     map([
         Float64[1 2 3; 5 6 7],
@@ -121,6 +189,34 @@ end
 
     for d  in (:, 1, 2)
         @test test_gradients(x -> logsumexp(x; dims = d), randn(rng, 3, 4))
+    end
+end
+
+# Without rules for them Enzyme and Mooncake would differentiate the tasks of the CPU
+# implementation. Reverse mode has the rules behind `test_gradients` above.
+if NNLIB_TEST_ENZYME
+
+@testset "EnzymeRules, forward mode" begin
+    D, BD, C = EnzymeCore.Duplicated, EnzymeCore.BatchDuplicated, EnzymeCore.Const
+    for f! in (softmax!, logsoftmax!), dims in (1, 2, :), (Tret, Tout, Tx) in ((D, D, D), (BD, BD, BD), (D, D, C))
+        EnzymeTestUtils.test_forward(f!, Tret, (zeros(3, 4), Tout), (randn(rng, 3, 4), Tx);
+                                     fkwargs = (; dims), atol = 1e-6, rtol = 1e-6)
+    end
+    # in place, on a size that takes the tasks
+    for (f, f!) in ((softmax, softmax!), (logsoftmax, logsoftmax!))
+        x, v, w = randn(rng, 600, 600), randn(rng, 600, 600), randn(rng, 600, 600)
+        d = Enzyme.autodiff(Enzyme.Forward, (x, w) -> sum(w .* f!(copy(x))), Duplicated(x, v), Const(w))[1]
+        @test d ≈ sum(v .* gradient(x -> sum(w .* f(x)), x)[1])
+    end
+end
+
+end # NNLIB_TEST_ENZYME
+
+@testset "Mooncake, mutating functions" begin
+    for (f, f!) in ((softmax, softmax!), (logsoftmax, logsoftmax!)), sz in ((3, 4), (600, 600)), dims in (1, 2)
+        x, w = randn(rng, Float32, sz), randn(rng, Float32, sz)
+        y, (dx,) = withgradient(x -> sum(w .* f!(similar(x), x; dims)), AutoMooncake(), x)
+        @test dx ≈ gradient(x -> sum(w .* f(x; dims)), x)[1]
     end
 end
 

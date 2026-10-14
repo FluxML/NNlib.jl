@@ -339,8 +339,14 @@ end
 # the CPU a hand-off to `∇softmax!` matches the ChainRules `rrule`. The rule caches
 # `y` in the augmented pass and accumulates `∇softmax!` into the input shadow on
 # reverse. These are first-order rules, matching what `test_gradients` compares.
-for (fwd!, bwd!) in ((:(NNlib.softmax!),    :(NNlib.∇softmax!)),
-                     (:(NNlib.logsoftmax!), :(NNlib.∇logsoftmax!)))
+
+# For forward mode: the directional derivative `dy` of the output `y` along `dx`. That of
+# `softmax` is its own transpose, which `∇softmax!` applies.
+_softmax_jvp!(dy, dx, y, dims) = NNlib.∇softmax!(dy, dx, y; dims)
+_logsoftmax_jvp!(dy, dx, y, dims) = (dy .= dx .- sum(exp.(y) .* dx; dims))
+
+for (fwd!, bwd!, jvp!) in ((:(NNlib.softmax!),    :(NNlib.∇softmax!),    :_softmax_jvp!),
+                           (:(NNlib.logsoftmax!), :(NNlib.∇logsoftmax!), :_logsoftmax_jvp!))
     @eval begin
 
 function EnzymeRules.augmented_primal(config, func::EnzymeCore.Const{typeof($fwd!)}, ::Type{RT},
@@ -378,6 +384,30 @@ function EnzymeRules.reverse(config, func::EnzymeCore.Const{typeof($fwd!)}, ::Ty
     end
 
     return (nothing, nothing)
+end
+
+# Forward mode would differentiate the implementation otherwise, which for CPU arrays
+# spawns tasks (see `batched_mul` below) and on a GPU may be a library call.
+function EnzymeRules.forward(config::EnzymeRules.FwdConfig, func::EnzymeCore.Const{typeof($fwd!)},
+                             ::Type{RT}, out::EnzymeCore.Annotation{<:AbstractArray},
+                             x::EnzymeCore.Annotation{<:AbstractArray}; dims=1) where {RT}
+    func.val(out.val, x.val; dims)
+    N = EnzymeRules.width(config)
+    if !(out isa EnzymeCore.Const)
+        for i in 1:N
+            dout = N == 1 ? out.dval : out.dval[i]
+            if x isa EnzymeCore.Const
+                fill!(dout, 0)
+            else
+                $jvp!(dout, N == 1 ? x.dval : x.dval[i], out.val, dims)
+            end
+        end
+    end
+
+    EnzymeRules.needs_shadow(config) || return EnzymeRules.needs_primal(config) ? out.val : nothing
+    shadow = out isa EnzymeCore.Const ? (N == 1 ? zero(out.val) : ntuple(_ -> zero(out.val), Val(N))) : out.dval
+    EnzymeRules.needs_primal(config) || return shadow
+    return N == 1 ? EnzymeCore.Duplicated(out.val, shadow) : EnzymeCore.BatchDuplicated(out.val, shadow)
 end
 
     end

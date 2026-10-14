@@ -1,0 +1,33 @@
+Using CPython 3.12.10
+Creating virtual environment at: .venv
+Downloading numpy (5.2MiB)
+Downloading sympy (6.0MiB)
+Downloading torch (121.4MiB)
+Downloading networkx (2.0MiB)
+ Downloaded networkx
+ Downloaded numpy
+ Downloaded sympy
+ Downloaded torch
+PyTorch: 2.14.1  threads: 8
+
+### dtype=f32  (ms)
+config         size             dims |    1 thread   8 threads
+attention      256x256x256      1    |      24.550       4.597
+long slices    1024x1024x16     1    |      24.499       4.540
+classifier     1000x512         1    |       0.740       0.199
+few classes    10x65536         1    |       2.840       0.605
+rows           2048x512         2    |       3.920       0.835
+segmentation   128x128x21x16    3    |      16.074       3.159
+2^16 elements  64x1024          1    |       0.091       0.043
+2^10 elements  16x64            1    |       0.002       0.015
+
+### dtype=f64  (ms)
+config         size             dims |    1 thread   8 threads
+attention      256x256x256      1    |      65.356      11.950
+long slices    1024x1024x16     1    |      65.116      12.034
+classifier     1000x512         1    |       1.982       0.426
+few classes    10x65536         1    |       2.627       0.607
+rows           2048x512         2    |      33.462       4.864
+segmentation   128x128x21x16    3    |      39.640       7.332
+2^16 elements  64x1024          1    |       0.240       0.079
+2^10 elements  16x64            1    |       0.004       0.016

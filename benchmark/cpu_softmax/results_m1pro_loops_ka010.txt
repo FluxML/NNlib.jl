@@ -1,0 +1,15 @@
+CPU:           Apple M1 Pro
+Julia:         1.13.1, 1 threads
+KernelAbstractions: 0.10.0
+
+loop (ns per element)                   Julia     kernel      ratio
+exp, round                              0.549      1.500       2.7x
+exp, add and subtract                   0.583      0.873       1.5x
+max, @fastmath                          0.047      1.790      38.0x
+max, @fastmath, clamped                 0.062      1.128      18.3x
+max, on integers                        0.081      0.092       1.1x
+sum                                     0.047      0.061       1.3x
+scale                                   0.074      0.092       1.2x
+softmax of a slice                      0.812      1.094       1.3x
+softmax in place, one argument          0.834      1.091       1.3x
+softmax in place, two arguments         0.834      3.889       4.7x

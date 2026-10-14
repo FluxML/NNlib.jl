@@ -1,0 +1,15 @@
+CPU:           AMD Ryzen Threadripper PRO 9955WX 16-Cores
+Julia:         1.13.1, 1 threads
+KernelAbstractions: 0.10.0
+
+loop (ns per element)                   Julia     kernel      ratio
+exp, round                              0.141      0.404       2.9x
+exp, add and subtract                   0.154      0.426       2.8x
+max, @fastmath                          0.028      0.995      35.2x
+max, @fastmath, clamped                 0.030      1.005      33.7x
+max, on integers                        0.028      0.033       1.2x
+sum                                     0.028      0.030       1.1x
+scale                                   0.030      0.033       1.1x
+softmax of a slice                      0.211      0.457       2.2x
+softmax in place, one argument          0.207      0.465       2.3x
+softmax in place, two arguments         0.207      3.501      16.9x
