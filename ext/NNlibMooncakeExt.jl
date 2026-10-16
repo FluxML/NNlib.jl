@@ -63,10 +63,12 @@ const FloatArray = Array{<:Union{Float32,Float64}}
 
 _broadcast(f::Activation, x::FloatArray) = f.(x)
 
-Mooncake.@mooncake_overlay Base.Broadcast.broadcasted(f::Activation, x::FloatArray) =
-    _broadcast(f, x)
-Mooncake.@mooncake_overlay Base.Broadcast.broadcasted(f::Activation, x::Broadcasted{<:DefaultArrayStyle}) =
-    broadcasted(f, materialize(x))
+# Varargs, as Base's `broadcasted(f, arg1, args...)`: for a call dispatched at runtime,
+# Mooncake takes the varargs layout from Base's method and runs the overlay's code (#799).
+Mooncake.@mooncake_overlay Base.Broadcast.broadcasted(f::Activation, x::Vararg{FloatArray,1}) =
+    _broadcast(f, only(x))
+Mooncake.@mooncake_overlay Base.Broadcast.broadcasted(f::Activation, x::Vararg{Broadcasted{<:DefaultArrayStyle},1}) =
+    broadcasted(f, materialize(only(x)))
 
 @is_primitive DefaultCtx Tuple{typeof(_broadcast),Activation,FloatArray}
 
