@@ -60,7 +60,8 @@ const FloatArray = Array{<:Union{Float32,Float64}}
 _broadcast(f::Activation, x::FloatArray) = f.(x)
 
 # Varargs, as Base's `broadcasted(f, arg1, args...)`: for a call dispatched at runtime,
-# Mooncake takes the varargs layout from Base's method and runs the overlay's code (#799).
+# Mooncake takes the varargs layout from Base's method and runs the overlay's code
+# (chalk-lab/Mooncake.jl#1382).
 Mooncake.@mooncake_overlay Base.Broadcast.broadcasted(f::Activation, x::Vararg{FloatArray,1}) =
     _broadcast(f, only(x))
 Mooncake.@mooncake_overlay Base.Broadcast.broadcasted(f::Activation, x::Vararg{Broadcasted{<:DefaultArrayStyle},1}) =
