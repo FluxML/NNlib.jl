@@ -524,6 +524,7 @@ end
 
     # Mooncake is given a fused broadcast in pieces, with an array before and after the activation
     b = T[0.1, -0.2]
+    hide(x) = Ref{Any}(x)[]  # a call dispatched at runtime (#799)
     @testset "$name" for (name, h) in [
             "f.(x .+ b)"    => (x -> sum(abs2, elu.(x .+ b))),
             "x .* f.(x)"    => (x -> sum(x .* softplus.(x))),
@@ -532,6 +533,9 @@ end
             "in place"      => (x -> (y = similar(x); y .= selu.(x .+ 1); sum(abs2, y))),
             "mutated after" => (x -> (y = elu.(x); y .*= 2; sum(y .* softplus.(x)))),
             "a view"        => (x -> sum(abs2, elu.(view(x, 1:2, 1)))),  # not an Array: no rule
+            "not inferred: f.(x)"      => (x -> sum(abs2, elu.(hide(x)))),
+            "not inferred: x .* f.(x)" => (x -> sum(x .* softplus.(hide(x)))),
+            "not inferred: f.(x .+ b)" => (x -> sum(abs2, tanh_fast.(hide(x) .+ b))),
         ]
         @test withgradient(h, AutoMooncake(), x).val ≈ h(x)
         @test withgradient(h, AutoMooncake(), x).grad[1] ≈ ForwardDiff.gradient(h, x) rtol=rtol

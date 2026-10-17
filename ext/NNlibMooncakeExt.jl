@@ -1,7 +1,7 @@
 module NNlibMooncakeExt
 
 using Mooncake: Mooncake, MinimalCtx, DefaultCtx, CoDual, Dual, NoRData, primal, tangent,
-    zero_fcodual, @is_primitive, @zero_adjoint, @zero_derivative
+    zero_fcodual, @is_primitive, @zero_adjoint
 using NNlib: NNlib
 using Base.Broadcast: Broadcasted, DefaultArrayStyle, broadcasted, materialize
 
@@ -13,10 +13,6 @@ using Base.Broadcast: Broadcasted, DefaultArrayStyle, broadcasted, materialize
 # The statistics are updated once per evaluation of the function. `prepare_gradient_cache`
 # and `prepare_pullback_cache` evaluate it once themselves, so they update them as well.
 @zero_adjoint MinimalCtx Tuple{typeof(NNlib._update_running_stats!),Vararg}
-
-# `CUDA.default_rng()` reads the task-local storage, which Mooncake cannot differentiate
-# (chalk-lab/Mooncake.jl#1368). Same as the `@non_differentiable` for ChainRules.
-@zero_derivative MinimalCtx Tuple{typeof(NNlib._rng_from_array),AbstractArray}
 
 # Mooncake has no predicate to query, so `within_gradient` is replaced in the code it differentiates.
 Mooncake.@mooncake_overlay NNlib.within_gradient(x) = true
@@ -63,10 +59,13 @@ const FloatArray = Array{<:Union{Float32,Float64}}
 
 _broadcast(f::Activation, x::FloatArray) = f.(x)
 
-Mooncake.@mooncake_overlay Base.Broadcast.broadcasted(f::Activation, x::FloatArray) =
-    _broadcast(f, x)
-Mooncake.@mooncake_overlay Base.Broadcast.broadcasted(f::Activation, x::Broadcasted{<:DefaultArrayStyle}) =
-    broadcasted(f, materialize(x))
+# Varargs, as Base's `broadcasted(f, arg1, args...)`: for a call dispatched at runtime,
+# Mooncake takes the varargs layout from Base's method and runs the overlay's code
+# (chalk-lab/Mooncake.jl#1382).
+Mooncake.@mooncake_overlay Base.Broadcast.broadcasted(f::Activation, x::Vararg{FloatArray,1}) =
+    _broadcast(f, only(x))
+Mooncake.@mooncake_overlay Base.Broadcast.broadcasted(f::Activation, x::Vararg{Broadcasted{<:DefaultArrayStyle},1}) =
+    broadcasted(f, materialize(only(x)))
 
 @is_primitive DefaultCtx Tuple{typeof(_broadcast),Activation,FloatArray}
 
