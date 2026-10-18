@@ -10,6 +10,8 @@ With keyword `dims=1`, a choice is made for every value of the 1st index
 i.e. each row of a matrix is either zero or not.
 
 Optional first argument is the random number generator used.
+Inside a Reactant-compiled function, pass one (e.g. a `Reactant.ReactantRNG`) to get
+a new mask on every call, since `default_rng()` there is seeded once at compile time.
 
 # Examples
 ```julia-repl
