@@ -10,6 +10,8 @@ With keyword `dims=1`, a choice is made for every value of the 1st index
 i.e. each row of a matrix is either zero or not.
 
 Optional first argument is the random number generator used.
+Inside a Reactant-compiled function, pass one (e.g. a `Reactant.ReactantRNG`) to get
+a new mask on every call, since `default_rng()` there is seeded once at compile time.
 
 # Examples
 ```julia-repl
@@ -74,7 +76,7 @@ function dropout!(rng::AbstractRNG, dst::AbstractArray, src::AbstractArray, p::R
 end
 
 # This is the easy case in that we can safely use the output array for random numbers.
-function _dropout!(rng::AbstractRNG, dst::AbstractArray, src::AbstractArray, p::Real, dims::Colon)
+function _dropout!(rng::AbstractRNG, dst::AbstractArray, src::AbstractArray, p::Number, dims::Colon)
     T = real(eltype(dst))
     val = convert(T, 1/(1-p))
     rand!(rng, dst)
@@ -87,7 +89,7 @@ function _dropout!(rng::AbstractRNG, dst::AbstractArray, src::AbstractArray, p::
 end
 
 # For other dims, we we do need to allocate something.
-function _dropout!(rng::AbstractRNG, dst::AbstractArray, src::AbstractArray, p::Real, dims)
+function _dropout!(rng::AbstractRNG, dst::AbstractArray, src::AbstractArray, p::Number, dims)
     T = real(eltype(dst))
     tmp = similar(dst, T, ntuple(d -> d in dims ? size(src,d) : 1, ndims(src)))
     rand!(rng, tmp)
