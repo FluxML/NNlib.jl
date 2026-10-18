@@ -222,13 +222,14 @@ function scatter_testsuite(Backend)
 
                 for Tret in (EnzymeCore.Const, EnzymeCore.Duplicated, EnzymeCore.BatchDuplicated),
                     Tdst in (EnzymeCore.Duplicated, EnzymeCore.BatchDuplicated),
-                    Tsrc in (EnzymeCore.Duplicated, EnzymeCore.BatchDuplicated)
+                    Tsrc in (EnzymeCore.Duplicated, EnzymeCore.BatchDuplicated),
+                    Tidx in (EnzymeCore.Const, EnzymeCore.Duplicated, EnzymeCore.BatchDuplicated)
 
                     Tret == EnzymeCore.Const && continue # ERROR
-                    EnzymeTestUtils.are_activities_compatible(Tret, Tdst, Tsrc) || continue
+                    EnzymeTestUtils.are_activities_compatible(Tret, Tdst, Tsrc, Tidx) || continue
 
                     # `Float32` data (`T`) needs a looser tolerance than the default 1e-9.
-                    EnzymeTestUtils.test_reverse(scatter!, Tret, (op, EnzymeCore.Const), (dst, Tdst), (src, Tsrc), (idx, EnzymeCore.Const); atol=1e-4, rtol=1e-4)
+                    EnzymeTestUtils.test_reverse(scatter!, Tret, (op, EnzymeCore.Const), (dst, Tdst), (src, Tsrc), (idx, Tidx); atol=1e-4, rtol=1e-4)
                 end
             end
 
@@ -240,6 +241,21 @@ function scatter_testsuite(Backend)
                 # the scatter still runs, but a Const dst passes no derivative to src
                 @test cpu(dst) == cpu(scatter(+, src, idx))
                 @test all(iszero, cpu(dsrc))
+            end
+
+            # the reverse of `max`/`min` reads src and the post-scatter dst
+            @testset "$op with src or dst overwritten after the call" for op in (max, min)
+                x = device(T[1 4 2 8 5; 3 0 6 2 7; 9 5 1 3 4])
+                d0 = device(fill(T(op === max ? 2 : 6), 3, 4))
+                function grad(f)
+                    dx = zero(x)
+                    Enzyme.autodiff(Enzyme.Reverse, f, Active, Duplicated(copy(d0), zero(d0)),
+                                    Duplicated(copy(x), dx), Const(idx))
+                    return cpu(dx)
+                end
+                ref = grad((d, s, i) -> sum(abs2, scatter!(op, d, s, i)))
+                @test grad((d, s, i) -> (s2 = copy(s); r = sum(abs2, scatter!(op, d, s2, i)); s2 .= 0; r)) ≈ ref
+                @test grad((d, s, i) -> (r = sum(abs2, scatter!(op, d, s, i)); d .= 0; r)) ≈ ref
             end
         end
 
