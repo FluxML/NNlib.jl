@@ -91,7 +91,7 @@ function NNlib.istft(y;
     # Least-squares estimate (Griffin & Lim, 1984): overlap-add the windowed frames
     # and divide by the overlap-added squared window. Dividing each frame by the
     # window instead amplifies rounding errors where the window is close to zero.
-    w = use_window ? window : KernelAbstractions.ones(kab, real(eltype(x)), n_fft)
+    w = use_window ? window : _no_window(kab, real(eltype(x)), n_fft)
     x = _overlap_add(reshape(x .* w, n_fft, n_frames, :), hop_length)
     envelope = _overlap_add(repeat(w .^ 2, 1, n_frames, 1), hop_length)
     # Samples outside the support of every window cannot be recovered and stay `0`.
@@ -111,6 +111,9 @@ function NNlib.istft(y;
     x = x[left:right, nd...]
     return x
 end
+
+_no_window(kab, T, n) = KernelAbstractions.ones(kab, T, n)
+@non_differentiable _no_window(::Any...)
 
 # Sum the frames `(n_fft, n_frames, batch)`, `hop_length` apart, into `(len, batch)`.
 function _overlap_add(x::AbstractArray{<:Real, 3}, hop_length::Int)
