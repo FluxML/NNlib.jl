@@ -1,6 +1,9 @@
 function spectral_testsuite(Backend)
     cpu(x) = adapt(CPU(), x)
     device(x) = adapt(Backend(), x)
+    # `istft` divides by the window, which is close to zero at the frame edges, and
+    # Metal's FFT is less accurate than FFTW's.
+    window_rtol = nameof(Backend) === :MetalBackend ? 5f-3 : sqrt(eps(Float32))
 
     @testset "Window functions" begin
         for window_fn in (hann_window, hamming_window)
@@ -81,7 +84,7 @@ function spectral_testsuite(Backend)
             window = device(hann_window(512))
             y = stft(x; n_fft=512, window)
             xx = istft(y; n_fft=512, window, original_length=size(x, 1))
-            @test cpu(x) ≈ cpu(xx)
+            @test cpu(x) ≈ cpu(xx) rtol=window_rtol
 
             # Hop.
             for hop_length in (32, 33, 255, 256, 511, 512)

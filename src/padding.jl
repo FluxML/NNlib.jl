@@ -289,12 +289,10 @@ function _pad_reflect(
 ) where {F,N,dims}
   lpad, rpad = pad
   n = size(x, dims)
-  xl = lpad == 0 ?
-    similar(x, ntuple(i -> i == dims ? 0 : size(x, i), Val(N))) :
-    reverse(selectdim(x, dims, 2:lpad+1); dims)
-  xr = rpad == 0 ?
-    similar(x, ntuple(i -> i == dims ? 0 : size(x, i), Val(N))) :
-    reverse(selectdim(x, dims, n-rpad:n-1); dims)
+  # Reversed ranges rather than `reverse`, which has no GPU kernel in Metal.jl
+  # before GPUArrays 12. A zero `pad` gives an empty range.
+  xl = selectdim(x, dims, lpad+1:-1:2)
+  xr = selectdim(x, dims, n-1:-1:n-rpad)
   return cat(xl, x, xr; dims=Val(dims))
 end
 
@@ -356,13 +354,8 @@ function _pad_symmetric(
 ) where {F,N,dims}
   lpad, rpad = pad
   n = size(x, dims)
-
-  xl = lpad == 0 ?
-    similar(x, ntuple(i -> i == dims ? 0 : size(x, i), Val(N))) :
-    reverse(selectdim(x, dims, 1:lpad); dims)
-  xr = rpad == 0 ?
-    similar(x, ntuple(i -> i == dims ? 0 : size(x, i), Val(N))) :
-    reverse(selectdim(x, dims, n-rpad+1:n); dims)
+  xl = selectdim(x, dims, lpad:-1:1)
+  xr = selectdim(x, dims, n:-1:n-rpad+1)
   return cat(xl, x, xr; dims=Val(dims))
 end
 

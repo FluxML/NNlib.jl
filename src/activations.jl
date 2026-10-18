@@ -184,8 +184,10 @@ end
 # same function via the overflow-safe rearrangement. `1/(1+exp(-z))` and
 # `exp(z)/(1+exp(z))` are equal everywhere; we branch on `real(z)` to pick the one
 # whose `exp` cannot overflow (overflow depends only on the real part).
+# `one(z) / w` rather than `inv(w)`: Base's `inv(::ComplexF32)` computes in `ComplexF64`,
+# which Metal cannot compile.
 function σ(z::Complex)
-    real(z) ≥ 0 ? inv(1 + exp(-z)) : (t = exp(z); t / (1 + t))
+    real(z) ≥ 0 ? one(z) / (1 + exp(-z)) : (t = exp(z); t / (1 + t))
 end
 
 const sigmoid = σ

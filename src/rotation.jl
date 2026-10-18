@@ -69,22 +69,18 @@ function _check_trivial_rotations!(out, arr, θ, rotation_center; adjoint=false)
         rotation_center[1] ≈ size(arr, 1) ÷ 2 + 0.5 && rotation_center[2] ≈ size(arr, 2) ÷ 2 + 0.5) ||
         (isodd(size(arr, 1)) && isodd(size(arr, 2)) && 
         (rotation_center[1] == size(arr, 1) ÷ 2 + 1 && rotation_center[1] == size(arr, 2) ÷ 2 + 1))
+        # Reversed views rather than `reverse`, which has no GPU kernel in Metal.jl
+        # before GPUArrays 12.
+        flip1 = PermutedDimsArray(view(arr, size(arr, 1):-1:1, :, :, :), (2, 1, 3, 4))
+        flip2 = PermutedDimsArray(view(arr, :, size(arr, 2):-1:1, :, :), (2, 1, 3, 4))
         if θ ≈ π / 2 
-            if adjoint == false
-                out .= reverse(PermutedDimsArray(arr, (2, 1, 3, 4)), dims=(2,))
-            else
-                out .= reverse(PermutedDimsArray(arr, (2, 1, 3, 4)), dims=(1,))
-            end
+            out .= adjoint ? flip2 : flip1
             return true
         elseif θ ≈ π
-            out .= reverse(arr, dims=(1,2))
+            out .= view(arr, size(arr, 1):-1:1, size(arr, 2):-1:1, :, :)
             return true
         elseif θ ≈ 3 / 2 * π
-            if adjoint == false
-                out .= reverse(PermutedDimsArray(arr, (2, 1, 3, 4)), dims=(1,))
-            else
-                out .= reverse(PermutedDimsArray(arr, (2, 1, 3, 4)), dims=(2,))
-            end
+            out .= adjoint ? flip1 : flip2
             return true
         end
     end

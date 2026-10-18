@@ -1,13 +1,13 @@
 function rotation_testsuite(Backend)
     device(x) = adapt(Backend(), x)
-    T = Float64
+    T = nameof(Backend) === :MetalBackend ? Float32 : Float64   # Metal has no Float64
     atol = T == Float32 ? 1e-3 : 1e-6
     rtol = T == Float32 ? 1f-3 : 1f-6
     angles = deg2rad.([0, 0.0001, 35, 90, -90, -90.0123, 170, 180, 270, 360, 450, 1234.1234]) 
 
     @testset "imrotate" begin
         @testset "Simple test" begin
-            arr = device(zeros((6, 6, 1, 1))); 
+            arr = device(zeros(T, (6, 6, 1, 1))); 
             arr[3:4, 4, 1, 1] .= 1;
             @test all(cpu(NNlib.imrotate(arr, deg2rad(45))) .≈ [0.0 0.0 0.0 0.0 0.0 0.0; 0.0 0.0 0.0 0.0 0.0 0.0; 0.0 0.0 0.0 0.29289321881345254 0.585786437626905 0.0; 0.0 0.0 0.08578643762690495 1.0 0.2928932188134524 0.0; 0.0 0.0 0.0 0.08578643762690495 0.0 0.0; 0.0 0.0 0.0 0.0 0.0 0.0])
         end
@@ -17,7 +17,7 @@ function rotation_testsuite(Backend)
             for sz in [(51,51,1,1), (52,52,1,1), (51,52,1,1), (52,51,1,1)]
                 rotation_center = (sz[1:2] .+ 1) ./ 2  
                 arr1 = device(zeros(T, sz))
-                arr1[15:40, 15:40, :, :] .= device(1 .+ randn((26, 26)))                                                                       
+                arr1[15:40, 15:40, :, :] .= device(1 .+ randn(T, (26, 26)))                                                                       
                 arr2 = device(zeros(T, (sz[1], sz[2], sz[3], 3)))
                 arr2[15:40, 15:40, :, :] .= device(arr1[15:40, 15:40, :, :])
 
@@ -36,9 +36,11 @@ function rotation_testsuite(Backend)
                                 @test ≈(1 .+ res1[:, :, :, :], 1 .+ res2[:, :,:, 1], rtol=0.5)
                                 @test ≈(1 .+ res1[:, :, :, :], 1 .+ res2[:, :,:, 2], rtol=0.5)
                             else
-                                @test all(.≈(1 .+ res1[:, :, :, :], 1 .+ res_IT[:, :], rtol=rtol))
-                                @test all(.≈(1 .+ res1[:, :, :, :], 1 .+ res2[:, :,:, 1], rtol=rtol))
-                                @test all(.≈(1 .+ res1[:, :, :, :], 1 .+ res2[:, :,:, 2], rtol=rtol))
+                                # `atol` for pixels near `-1`, where Float32 rounding
+                                # dominates the relative error.
+                                @test all(.≈(1 .+ res1[:, :, :, :], 1 .+ res_IT[:, :]; rtol, atol))
+                                @test all(.≈(1 .+ res1[:, :, :, :], 1 .+ res2[:, :,:, 1]; rtol, atol))
+                                @test all(.≈(1 .+ res1[:, :, :, :], 1 .+ res2[:, :,:, 2]; rtol, atol))
                             end
                         end
                     end
