@@ -7,7 +7,7 @@
 end
 
 # Up to large inputs, where the fast `tanh` of Metal gives NaN, and in half precision,
-# which is computed in Float32. (The common activations suite is skipped on Metal.)
+# which is computed in Float32.
 @testset "values: $T" for T in (Float32, Float16)
     x = T.(range(-50f0, 50f0, length=201))
     for name in NNlib.ACTIVATIONS
