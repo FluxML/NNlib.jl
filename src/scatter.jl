@@ -232,12 +232,18 @@ scatter_empty(op::typeof(mean), T) = zero(T)
 
 ## Gradients
 
-∇scatter!_src(op, Δ, dst, src, idx) = ∇scatter_src(op, Δ, dst, src, idx)
-∇scatter!_src(op::Union{typeof(*),typeof(/)}, Δ, dst, src, idx) =
-    gather(dst, idx) .* ∇scatter_src(op, Δ, dst, src, idx)
-∇scatter!_dst(op, Δ, dst, y) = Δ
-∇scatter!_dst(op::Union{typeof(max),typeof(min)}, Δ, dst_old, dst) =
+# `dst_old` and `dst` are the destination before and after `scatter!`.
+∇scatter!_src(op, Δ, dst_old, dst, src, idx) = ∇scatter_src(op, Δ, dst, src, idx)
+∇scatter!_src(op::Union{typeof(*),typeof(/)}, Δ, dst_old, dst, src, idx) =
+    gather(dst_old, idx) .* ∇scatter_src(op, Δ, dst, src, idx)
+∇scatter!_dst(op, Δ, dst_old, dst, src, idx) = Δ
+∇scatter!_dst(op::Union{typeof(max),typeof(min)}, Δ, dst_old, dst, src, idx) =
     (dst_old .== op.(dst_old, dst)) .* Δ
+# dst_new = dst_old * P (or dst_old / P), with P the product of the sources scattered to each entry
+∇scatter!_dst(::typeof(*), Δ, dst_old, dst, src, idx) =
+    Δ .* scatter(*, src, idx; dstsize = size(dst))
+∇scatter!_dst(::typeof(/), Δ, dst_old, dst, src, idx) =
+    Δ ./ scatter(*, src, idx; dstsize = size(dst))
 
 modify_src(::typeof(+), X) = X
 modify_src(::typeof(-), X) = -X
@@ -306,12 +312,20 @@ end
 function rrule(::typeof(scatter!), op, dst::AbstractArray, src::AbstractArray, idx::AbstractArray)
     dst_old = copy(dst)
     scatter!(op, dst, src, idx)
-    scatter!_pullback(Δ) = (NoTangent(), NoTangent(), ∇scatter!_dst(op, unthunk(Δ), dst_old, dst), ∇scatter!_src(op, unthunk(Δ), dst, src, idx), NoTangent())
+    function scatter!_pullback(Δ)
+        Δ = unthunk(Δ)
+        return (NoTangent(), NoTangent(), ∇scatter!_dst(op, Δ, dst_old, dst, src, idx),
+                ∇scatter!_src(op, Δ, dst_old, dst, src, idx), NoTangent())
+    end
     dst, scatter!_pullback
 end
 
-function rrule(::typeof(scatter), op, src::AbstractArray, idx::AbstractArray; kws...)
-    y = scatter(op, src, idx; kws...)
-    scatter_pullback(Δ) = (NoTangent(), NoTangent(), ∇scatter_src(op, unthunk(Δ), y, src, idx), NoTangent())
+# the result of `*` and `/` is `init` times (or over) the product of the sources
+scale_init(op, init, Δsrc) = Δsrc
+scale_init(::Union{typeof(*),typeof(/)}, init::Number, Δsrc) = convert(eltype(Δsrc), init) .* Δsrc
+
+function rrule(::typeof(scatter), op, src::AbstractArray, idx::AbstractArray; init = nothing, kws...)
+    y = scatter(op, src, idx; init, kws...)
+    scatter_pullback(Δ) = (NoTangent(), NoTangent(), scale_init(op, init, ∇scatter_src(op, unthunk(Δ), y, src, idx)), NoTangent())
     y, scatter_pullback
 end
