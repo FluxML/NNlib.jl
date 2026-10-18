@@ -109,7 +109,7 @@ for (name, dataname, filtername) in (
 end
 end
 
-function EnzymeRules.augmented_primal(config, func::EnzymeCore.Const{typeof(NNlib.gather!)}, ::Type{RT}, dst::OutType, src, idx::EnzymeCore.Const) where {OutType, RT}
+function EnzymeRules.augmented_primal(config, func::EnzymeCore.Const{typeof(NNlib.gather!)}, ::Type{RT}, dst::OutType, src, idx::EnzymeCore.Annotation) where {OutType, RT}
 
     if OutType <: EnzymeCore.Duplicated || OutType <: EnzymeCore.BatchDuplicated
         func.val(dst.val, src.val, idx.val)
@@ -135,7 +135,7 @@ function EnzymeRules.augmented_primal(config, func::EnzymeCore.Const{typeof(NNli
     return EnzymeRules.AugmentedReturn(primal, shadow, cache_idx)
 end
 
-function EnzymeRules.reverse(config, func::EnzymeCore.Const{typeof(NNlib.gather!)}, ::Type{RT}, cache_idx, dst::OutType, src, idx::EnzymeCore.Const) where {OutType, RT}
+function EnzymeRules.reverse(config, func::EnzymeCore.Const{typeof(NNlib.gather!)}, ::Type{RT}, cache_idx, dst::OutType, src, idx::EnzymeCore.Annotation) where {OutType, RT}
 
     # Don't cache idx if not overwritten
     if !(typeof(src) <: EnzymeCore.Const) && !(typeof(dst) <: EnzymeCore.Const)
@@ -168,7 +168,7 @@ end
 
 
 
-function EnzymeRules.augmented_primal(config, func::EnzymeCore.Const{typeof(NNlib.scatter!)}, ::Type{RT}, op::EnzymeCore.Const, dst::OutType, src, idx::EnzymeCore.Const) where {OutType, RT}
+function EnzymeRules.augmented_primal(config, func::EnzymeCore.Const{typeof(NNlib.scatter!)}, ::Type{RT}, op::EnzymeCore.Const, dst::OutType, src, idx::EnzymeCore.Annotation) where {OutType, RT}
 
     # a Const dst is still written, it just has no shadow and passes nothing back
     if OutType <: EnzymeCore.Const
@@ -211,7 +211,7 @@ function EnzymeRules.reverse(config,
 										op::EnzymeCore.Const{<:Union{typeof(+),typeof(-),typeof(max),typeof(min),typeof(NNlib.mean)}},
 										dst::OutType,
 										src,
-										idx::EnzymeCore.Const) where {OutType, RT}
+										idx::EnzymeCore.Annotation) where {OutType, RT}
 
     OutType <: EnzymeCore.Const && return (nothing, nothing, nothing, nothing)
 

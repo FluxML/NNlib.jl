@@ -222,13 +222,14 @@ function scatter_testsuite(Backend)
 
                 for Tret in (EnzymeCore.Const, EnzymeCore.Duplicated, EnzymeCore.BatchDuplicated),
                     Tdst in (EnzymeCore.Duplicated, EnzymeCore.BatchDuplicated),
-                    Tsrc in (EnzymeCore.Duplicated, EnzymeCore.BatchDuplicated)
+                    Tsrc in (EnzymeCore.Duplicated, EnzymeCore.BatchDuplicated),
+                    Tidx in (EnzymeCore.Const, EnzymeCore.Duplicated, EnzymeCore.BatchDuplicated)
 
                     Tret == EnzymeCore.Const && continue # ERROR
-                    EnzymeTestUtils.are_activities_compatible(Tret, Tdst, Tsrc) || continue
+                    EnzymeTestUtils.are_activities_compatible(Tret, Tdst, Tsrc, Tidx) || continue
 
                     # `Float32` data (`T`) needs a looser tolerance than the default 1e-9.
-                    EnzymeTestUtils.test_reverse(scatter!, Tret, (op, EnzymeCore.Const), (dst, Tdst), (src, Tsrc), (idx, EnzymeCore.Const); atol=1e-4, rtol=1e-4)
+                    EnzymeTestUtils.test_reverse(scatter!, Tret, (op, EnzymeCore.Const), (dst, Tdst), (src, Tsrc), (idx, Tidx); atol=1e-4, rtol=1e-4)
                 end
             end
 
