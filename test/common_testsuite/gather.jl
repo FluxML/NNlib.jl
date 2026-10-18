@@ -173,6 +173,16 @@ function gather_testsuite(Backend)
                 EnzymeTestUtils.are_activities_compatible(Tret, Tdst, Tsrc, Tidx) || continue
                 EnzymeTestUtils.test_reverse(gather!, Tret, (dst, Tdst), (src, Tsrc), (idx, Tidx))
             end
+
+            @testset "Const dst" begin
+                dst = device(zeros(Float64, 3, 4))
+                dsrc = device(zeros(Float64, 5))
+                Enzyme.autodiff(Enzyme.Reverse, (d, s, i) -> sum(abs2, gather!(d, s, i)),
+                                Active, Const(dst), Duplicated(copy(src), dsrc), Const(idx))
+                # the gather still runs, but a Const dst passes no derivative to src
+                @test cpu(dst) == cpu(gather(src, idx))
+                @test all(iszero, cpu(dsrc))
+            end
         end
     end
 

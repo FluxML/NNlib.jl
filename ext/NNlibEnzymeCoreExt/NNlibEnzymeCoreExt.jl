@@ -111,6 +111,14 @@ end
 
 function EnzymeRules.augmented_primal(config, func::EnzymeCore.Const{typeof(NNlib.gather!)}, ::Type{RT}, dst::OutType, src, idx::EnzymeCore.Annotation) where {OutType, RT}
 
+    # a Const dst is still written, it just has no shadow and passes nothing back
+    if OutType <: EnzymeCore.Const
+        func.val(dst.val, src.val, idx.val)
+        primal = EnzymeRules.needs_primal(config) ? dst.val : nothing
+        shadow = EnzymeRules.needs_shadow(config) ? _enz_shadow(config, dst.val) : nothing
+        return EnzymeRules.AugmentedReturn(primal, shadow, nothing)
+    end
+
     if OutType <: EnzymeCore.Duplicated || OutType <: EnzymeCore.BatchDuplicated
         func.val(dst.val, src.val, idx.val)
     end
@@ -136,6 +144,8 @@ function EnzymeRules.augmented_primal(config, func::EnzymeCore.Const{typeof(NNli
 end
 
 function EnzymeRules.reverse(config, func::EnzymeCore.Const{typeof(NNlib.gather!)}, ::Type{RT}, cache_idx, dst::OutType, src, idx::EnzymeCore.Annotation) where {OutType, RT}
+
+    OutType <: EnzymeCore.Const && return (nothing, nothing, nothing)
 
     # Don't cache idx if not overwritten
     if !(typeof(src) <: EnzymeCore.Const) && !(typeof(dst) <: EnzymeCore.Const)
