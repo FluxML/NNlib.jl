@@ -189,7 +189,8 @@ function EnzymeRules.augmented_primal(config, func::EnzymeCore.Const{typeof(NNli
     end
 
     # `max`/`min` need the pre-scatter dst to tell which entries survived
-    dst_old = op.val isa Union{typeof(max),typeof(min)} ? copy(dst.val) : nothing
+    is_minmax = op.val isa Union{typeof(max),typeof(min)}
+    dst_old = is_minmax ? copy(dst.val) : nothing
     if OutType <: EnzymeCore.Duplicated || OutType <: EnzymeCore.BatchDuplicated
         func.val(op.val, dst.val, src.val, idx.val)
     end
@@ -205,13 +206,19 @@ function EnzymeRules.augmented_primal(config, func::EnzymeCore.Const{typeof(NNli
         nothing
     end
 
-    # Cache idx if its overwritten
-    cache_idx = ( EnzymeRules.overwritten(config)[4]
+    # `overwritten` counts `func` too, so op, dst, src, idx are at 2:5. The reverse of
+    # `max`/`min` also reads src and the post-scatter dst: cache those if overwritten.
+    overwritten = EnzymeRules.overwritten(config)
+    cache_dst = (is_minmax && overwritten[3]) ? copy(dst.val) : nothing
+    cache_src = ( is_minmax && overwritten[4]
+                    && !(typeof(src) <: EnzymeCore.Const)
+                    ) ? copy(src.val) : nothing
+    cache_idx = ( overwritten[5]
                     && !(typeof(src) <: EnzymeCore.Const)
                     && !(typeof(dst) <: EnzymeCore.Const)
                     ) ? copy(idx.val) : nothing
 
-    return EnzymeRules.AugmentedReturn(primal, shadow, (cache_idx, dst_old))
+    return EnzymeRules.AugmentedReturn(primal, shadow, (cache_idx, dst_old, cache_dst, cache_src))
 end
 
 function EnzymeRules.reverse(config,
@@ -225,14 +232,16 @@ function EnzymeRules.reverse(config,
 
     OutType <: EnzymeCore.Const && return (nothing, nothing, nothing, nothing)
 
-    cache_idx, dst_old = cache
+    cache_idx, dst_old, cache_dst, cache_src = cache
 
     # Don't cache idx if not overwritten
     if !(typeof(src) <: EnzymeCore.Const) && !(typeof(dst) <: EnzymeCore.Const)
-        if !EnzymeRules.overwritten(config)[4]
+        if !EnzymeRules.overwritten(config)[5]
             cache_idx = idx.val
         end
     end
+    dst_val = something(cache_dst, dst.val)
+    src_val = something(cache_src, src.val)
 
     ddsts = dst.dval
     dsrcs = (typeof(src) <: EnzymeCore.Const) ? ddsts : src.dval
@@ -246,12 +255,12 @@ function EnzymeRules.reverse(config,
         if !(typeof(dst) <: EnzymeCore.Const) && ddst !== dst.val
 
             if !(typeof(src) <: EnzymeCore.Const) && dsrc !== src.val
-                dsrc .+= NNlib.∇scatter!_src(op.val, ddst, dst.val, src.val, cache_idx)
+                dsrc .+= NNlib.∇scatter!_src(op.val, ddst, dst_val, src_val, cache_idx)
             end
 
             # after dsrc, which reads the same seed; only `max`/`min` need this
             if dst_old !== nothing
-                ddst .= NNlib.∇scatter!_dst(op.val, ddst, dst_old, dst.val)
+                ddst .= NNlib.∇scatter!_dst(op.val, ddst, dst_old, dst_val)
             end
 
         end
