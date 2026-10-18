@@ -74,7 +74,7 @@ function dropout!(rng::AbstractRNG, dst::AbstractArray, src::AbstractArray, p::R
 end
 
 # This is the easy case in that we can safely use the output array for random numbers.
-function _dropout!(rng::AbstractRNG, dst::AbstractArray, src::AbstractArray, p::Real, dims::Colon)
+function _dropout!(rng::AbstractRNG, dst::AbstractArray, src::AbstractArray, p::Number, dims::Colon)
     T = real(eltype(dst))
     val = convert(T, 1/(1-p))
     rand!(rng, dst)
@@ -87,7 +87,7 @@ function _dropout!(rng::AbstractRNG, dst::AbstractArray, src::AbstractArray, p::
 end
 
 # For other dims, we we do need to allocate something.
-function _dropout!(rng::AbstractRNG, dst::AbstractArray, src::AbstractArray, p::Real, dims)
+function _dropout!(rng::AbstractRNG, dst::AbstractArray, src::AbstractArray, p::Number, dims)
     T = real(eltype(dst))
     tmp = similar(dst, T, ntuple(d -> d in dims ? size(src,d) : 1, ndims(src)))
     rand!(rng, tmp)
