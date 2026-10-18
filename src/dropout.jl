@@ -75,6 +75,9 @@ function dropout!(rng::AbstractRNG, dst::AbstractArray, src::AbstractArray, p::R
     end
 end
 
+# `p` arrives converted to `real(eltype(dst))`, which need not be a `Real`: for Reactant's traced
+# arrays it is a `TracedRNumber`, a `Number` (#807).
+
 # This is the easy case in that we can safely use the output array for random numbers.
 function _dropout!(rng::AbstractRNG, dst::AbstractArray, src::AbstractArray, p::Number, dims::Colon)
     T = real(eltype(dst))

@@ -79,6 +79,33 @@
     @test_throws ArgumentError dropout!(y1, x1, 3)
 end
 
+# https://github.com/FluxML/NNlib.jl/issues/807
+@testset "dropout with a non-Real eltype" begin
+    # Like Reactant's `TracedRNumber`: a `Number`, but not a `Real`.
+    struct NotReal <: Number
+        x::Float32
+    end
+    Base.float(::Type{NotReal}) = NotReal
+    Base.real(::Type{NotReal}) = NotReal
+    Base.real(a::NotReal) = a
+    Base.promote_rule(::Type{NotReal}, ::Type{<:Real}) = NotReal
+    Base.:-(a::NotReal, b::NotReal) = NotReal(a.x - b.x)
+    Base.:*(a::NotReal, b::NotReal) = NotReal(a.x * b.x)
+    Base.:/(a::NotReal, b::NotReal) = NotReal(a.x / b.x)
+    Base.:<(a::NotReal, b::NotReal) = a.x < b.x
+    Base.rand(rng::Random.AbstractRNG, ::Random.SamplerType{NotReal}) = NotReal(rand(rng, Float32))
+
+    x = NotReal.(ones(Float32, 100, 50))
+    for dims in (:, 2)
+        y = dropout(x, 0.5; dims)
+        @test y isa Matrix{NotReal}
+        vals = map(a -> a.x, y)
+        @test sort(unique(vals)) == [0, 2]
+        @test 0.3 < mean(iszero, vals) < 0.7
+    end
+    @test map(a -> a.x, dropout!(similar(x), x, 0.25)) ⊆ Float32[0, 4/3]
+end
+
 @static if NNLIB_TEST_ENZYME
 
 @testset "EnzymeRules: dropout " begin
