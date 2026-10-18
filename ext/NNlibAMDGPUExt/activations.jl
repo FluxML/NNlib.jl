@@ -1,7 +1,8 @@
 for (f, op) in [
         NNlib.relu => MIOpen.relu,
         NNlib.relu6 => x -> MIOpen.clippedrelu(x, 6),
-        NNlib.softplus => MIOpen.softrelu,
+        # Not softplus: MIOpen's softrelu adds 1 + exp(x) in the input type, which
+        # for Float16 is off by up to 77% at x < 0 and returns 0 below x = -7.6.
         NNlib.σ => MIOpen.sigmoid,
         Base.tanh => MIOpen.tanh,
         # TODO define for leakyrelu, elu, etc.?
