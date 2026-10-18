@@ -36,6 +36,10 @@ function spectral_testsuite(Backend)
                 @test test_gradients((s, w) -> abs.(stft(s; n_fft, window=w)), x, window; test_gpu = true)
                 @test test_gradients((s, w) -> abs.(stft(s; n_fft, window=w, center=false)), x, window; test_gpu = true)
                 @test test_gradients((s, w) -> abs.(stft(s; n_fft, window=w, normalized=true)), x, window; test_gpu = true)
+
+                y = stft(x; n_fft, window)
+                @test test_gradients(y -> istft(y; n_fft), y; test_gpu = true)
+                @test test_gradients((y, w) -> istft(y; n_fft, window=w), y, window; test_gpu = true)
             end
         end
 
@@ -86,6 +90,13 @@ function spectral_testsuite(Backend)
             xx = istft(y; n_fft=512, window, original_length=size(x, 1))
             @test cpu(x) ≈ cpu(xx) rtol=window_rtol
 
+            # Without `center`, the first sample has zero Hann window weight: it
+            # cannot be recovered, and is set to zero rather than `NaN`.
+            y = stft(x; n_fft=512, window, center=false)
+            xx = cpu(istft(y; n_fft=512, window, center=false))
+            @test all(iszero, xx[1, bd...])
+            @test all(isfinite, xx)
+
             # Hop.
             for hop_length in (32, 33, 255, 256, 511, 512)
                 y = stft(x; n_fft=512, hop_length)
@@ -99,6 +110,22 @@ function spectral_testsuite(Backend)
                 xx = istft(y; n_fft, original_length=size(x, 1))
                 @test cpu(x) ≈ cpu(xx)
             end
+        end
+    end
+
+    # For a modified STFT `Y`, `istft` is the signal whose STFT is closest to `Y`.
+    if Backend == CPU
+        @testset "Least squares" begin
+            n_fft, hop_length, window = 128, 32, hann_window(128, Float64)
+            x = rand(n_fft + 15hop_length)
+            Y = stft(x; n_fft, hop_length, window, center=false)
+            Y += 0.1 * randn(ComplexF64, size(Y))
+            # `rfft` bins other than the first and last stand for two bins of the full spectrum.
+            c = [1; fill(2, n_fft ÷ 2 - 1); 1]
+            residual(x) = sum(c .* abs2.(stft(x; n_fft, hop_length, window, center=false) - Y))
+            x̂ = istft(Y; n_fft, hop_length, window, center=false)
+            # The first sample has zero window weight, so it does not enter the residual.
+            @test maximum(abs, Zygote.gradient(residual, x̂)[1]) < 1e-10
         end
     end
 

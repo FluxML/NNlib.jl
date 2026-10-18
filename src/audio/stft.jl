@@ -181,6 +181,11 @@ function stft end
 Inverse Short-time Fourier Transform.
 
 Return the least squares estimation of the original signal
+(D. Griffin and J. Lim, "Signal estimation from modified short-time Fourier transform", 1984):
+the inverse transforms of the frames are multiplied by the window, overlap-added,
+and divided by the overlap-added squared window.
+Samples where the latter vanishes (e.g. the first one for `center=false` and a
+`hann_window`) cannot be recovered and are set to zero.
 
 # Arguments:
 

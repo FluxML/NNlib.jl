@@ -88,40 +88,42 @@ function NNlib.istft(y;
     region = 1
     x = return_complex ? ifft(y, region) : irfft(y, n_fft, region)
 
-    # De-apply window.
-    use_window && (x = x ./ window;)
+    # Least-squares estimate (Griffin & Lim, 1984): overlap-add the windowed frames
+    # and divide by the overlap-added squared window. Dividing each frame by the
+    # window instead amplifies rounding errors where the window is close to zero.
+    w = use_window ? window : _no_window(kab, real(eltype(x)), n_fft)
+    x = _overlap_add(reshape(x .* w, n_fft, n_frames, :), hop_length)
+    envelope = _overlap_add(repeat(w .^ 2, 1, n_frames, 1), hop_length)
+    # Samples outside the support of every window cannot be recovered and stay `0`.
+    x = x ./ ifelse.(envelope .> floatmin(eltype(envelope)), envelope, one(eltype(envelope)))
 
-    # col2time.
-    expected_output_len = n_fft + hop_length * (n_frames - 1)
-
-    ids = Vector{Int}(undef, expected_output_len)
-    in_idx, out_idx = 0, 0
-    prev_e, v = 0, 0
-
-    for col in 0:(n_frames - 1)
-        for row in 1:n_fft
-            in_idx += 1
-            v = row + hop_length * col
-            v > prev_e || continue
-
-            out_idx += 1
-            ids[out_idx] = in_idx
-        end
-        prev_e = v
-    end
-
-    # In case of batched input, reshaped it (n_fft, n_frames, batch) -> (:, batch).
-    nd = ntuple(_ -> Colon(), ndims(x) - 2)
-    ndims(x) == 3 && (x = reshape(x, (:, size(x, 3)));)
-    x = @inbounds x[ids, nd...]
+    # (len, batch) -> (len,) for unbatched input.
+    x = reshape(x, size(x, 1), Base.tail(Base.tail(size(y)))...)
+    nd = ntuple(_ -> Colon(), ndims(x) - 1)
 
     # Trim padding.
     left = center ? (n_fft ÷ 2 + 1) : 1
     right = if isnothing(original_length)
-        center ? (size(x, 1) - n_fft ÷ 2) : expected_output_len
+        center ? (size(x, 1) - n_fft ÷ 2) : size(x, 1)
     else
         left + original_length - 1
     end
     x = x[left:right, nd...]
     return x
 end
+
+_no_window(kab, T, n) = KernelAbstractions.ones(kab, T, n)
+@non_differentiable _no_window(::Any...)
+
+# Sum the frames `(n_fft, n_frames, batch)`, `hop_length` apart, into `(len, batch)`.
+function _overlap_add(x::AbstractArray{<:Real, 3}, hop_length::Int)
+    n_fft, n_frames, batch = size(x)
+    len = n_fft + hop_length * (n_frames - 1)
+    y = NNlib.fold(permutedims(x, (2, 1, 3)), (len, 1, batch), (n_fft, 1, 1);
+                   stride=hop_length)
+    return reshape(y, len, batch)
+end
+
+# `fold` accumulates with atomics, which GPUs support only for real numbers.
+_overlap_add(x::AbstractArray{<:Complex, 3}, hop_length::Int) =
+    complex.(_overlap_add(real(x), hop_length), _overlap_add(imag(x), hop_length))
