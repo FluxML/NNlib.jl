@@ -175,8 +175,6 @@ function scatter_testsuite(Backend)
                 src_d = device(src); idx_d = device(idx)
                 @test test_gradients(x -> scatter!(op, copy(x), src, idx), dst;
                     test_gpu = Backend != CPU, reference = get_reference_ad(op),
-                    # Enzyme's `scatter!` rule does not cover `*`/`/` yet
-                    compare = op in (*, /) ? AutoZygote() : [AutoZygote(), AutoEnzyme()],
                     f_gpu = x -> scatter!(op, copy(x), src_d, idx_d))
             end
         end
@@ -188,8 +186,6 @@ function scatter_testsuite(Backend)
                 idx_d = device(idx)
                 @test test_gradients(xs -> scatter(op, xs, idx), src;
                     test_gpu = Backend != CPU, reference = get_reference_ad(op),
-                    # Enzyme's `scatter!` rule does not cover `*`/`/` yet
-                    compare = op in (*, /) ? AutoZygote() : [AutoZygote(), AutoEnzyme()],
                     f_gpu = xs -> scatter(op, xs, idx_d))
             end
         end
@@ -202,8 +198,29 @@ function scatter_testsuite(Backend)
             idx_d = device(idx)
             @test test_gradients(xs -> scatter(op, xs, idx), src;
                 test_gpu = Backend != CPU, reference = get_reference_ad(op),
-                compare = AutoZygote(),  # Enzyme's `scatter!` rule does not cover `*`/`/` yet
                 f_gpu = xs -> scatter(op, xs, idx_d))
+        end
+
+        # the result of `*`/`/` scales with `init`, and so does the gradient
+        @testset "∂src with init - $op" for op in (+, -, *, /, mean, max, min)
+            idx = Int32[1, 2, 2, 3, 3]
+            src = T[2 3 0.5 1.5 4; 1 2.5 3.5 0.7 1.2]
+            idx_d = device(idx)
+            @test test_gradients(xs -> scatter(op, xs, idx; init = T(2.7)), src;
+                test_gpu = Backend != CPU, reference = get_reference_ad(op),
+                f_gpu = xs -> scatter(op, xs, idx_d; init = T(2.7)))
+        end
+
+        # The `∂dst`/`∂src` data above is all ones for `*`/`/`, which hides the
+        # dependence of the gradients on the values of `dst` and `src`.
+        @testset "scatter! gradients with non-unit dst and src - $op" for op in (*, /)
+            idx = Int32[1, 2, 2, 3, 3]
+            src = T[2 3 0.5 1.5 4; 1 2.5 3.5 0.7 1.2]
+            dst = T[1.5 2 0.8; 0.6 1.1 2.2]
+            idx_d = device(idx)
+            @test test_gradients((d, s) -> scatter!(op, copy(d), s, idx), dst, src;
+                test_gpu = Backend != CPU, reference = get_reference_ad(op),
+                f_gpu = (d, s) -> scatter!(op, copy(d), s, idx_d))
         end
 
 
@@ -256,6 +273,38 @@ function scatter_testsuite(Backend)
                 ref = grad((d, s, i) -> sum(abs2, scatter!(op, d, s, i)))
                 @test grad((d, s, i) -> (s2 = copy(s); r = sum(abs2, scatter!(op, d, s2, i)); s2 .= 0; r)) ≈ ref
                 @test grad((d, s, i) -> (r = sum(abs2, scatter!(op, d, s, i)); d .= 0; r)) ≈ ref
+            end
+
+            # the gradients of `*`/`/` depend on the values of dst and src, both in the
+            # reverse of dst (even with a Const src) and of src
+            @testset "$op with non-unit values" for op in (*, /)
+                x = device(T[2 3 0.5 1.5 4; 1 2.5 3.5 0.7 1.2; 0.8 1.4 2.2 3 0.6])
+                d0 = device(T[1.5 2 0.8 1.2; 0.6 1.1 2.2 0.9; 1 2 3 0.5])
+                function grads(f; const_src = false)
+                    dd, dx = zero(d0), zero(x)
+                    src_act = const_src ? Const(copy(x)) : Duplicated(copy(x), dx)
+                    Enzyme.autodiff(Enzyme.Reverse, f, Active, Duplicated(copy(d0), dd),
+                                    src_act, Const(idx))
+                    return cpu(dd), cpu(dx)
+                end
+                f = (d, s, i) -> sum(abs2, scatter!(op, d, s, i))
+                ref_d, ref_x = grads(f)
+                @test grads(f; const_src = true)[1] ≈ ref_d
+                for g in ((d, s, i) -> (s2 = copy(s); r = f(d, s2, i); s2 .= 0; r),
+                          (d, s, i) -> (r = f(d, s, i); d .= 0; r))
+                    gd, gx = grads(g)
+                    @test gd ≈ ref_d
+                    @test gx ≈ ref_x
+                    @test grads(g; const_src = true)[1] ≈ ref_d
+                end
+
+                dst = device(copy(d0))
+                for Tdst in (EnzymeCore.Duplicated, EnzymeCore.BatchDuplicated),
+                    Tsrc in (EnzymeCore.Duplicated, EnzymeCore.BatchDuplicated)
+
+                    EnzymeTestUtils.are_activities_compatible(EnzymeCore.Duplicated, Tdst, Tsrc, EnzymeCore.Const) || continue
+                    EnzymeTestUtils.test_reverse(scatter!, EnzymeCore.Duplicated, (op, EnzymeCore.Const), (dst, Tdst), (x, Tsrc), (idx, EnzymeCore.Const); atol=1e-3, rtol=1e-3)
+                end
             end
         end
 
