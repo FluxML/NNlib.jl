@@ -23,8 +23,9 @@ full_lengths(x) = fill!(similar(x, Int32, (1, 1, 1, size(x, 4))), size(x, 3))
 ChainRulesCore.@non_differentiable cudnn_sdpa_lengths(::Any...)
 
 # The output buffer for the fused kernel, or `nothing` when it does not apply: it has no
-# bias, dropout or arbitrary mask, its causal mask is aligned with the first key, and its
-# output has the head dimension of the query.
+# bias, dropout or arbitrary mask, its causal mask is aligned with the first key (which
+# a bottom-right one is for as many queries as keys), and its output has the head
+# dimension of the query.
 function cudnn_sdpa_output(q, k, v, bias, fdrop, mask, is_causal, q_offset, seq_len_q, seq_len_kv)
     bias === nothing && fdrop === identity && mask === nothing || return nothing
     !is_causal || (q_offset isa Integer && iszero(q_offset)) || return nothing
@@ -42,11 +43,12 @@ function _scaled_dot_product_attention(q::DenseCuArray{T,4}, k::DenseCuArray{T,4
                                        fdrop, mask, scale, is_causal,
                                        q_offset, q_lengths, kv_lengths) where {T<:CUDNNSDPAFloat}
     seq_len_q, seq_len_kv = cudnn_sdpa_lengths(q, k, q_lengths, kv_lengths)
-    out = cudnn_sdpa_output(q, k, v, bias, fdrop, mask, is_causal, q_offset, seq_len_q, seq_len_kv)
+    causal, offset = NNlib.causal_offsets(q, k, is_causal, q_offset, q_lengths, kv_lengths)
+    out = cudnn_sdpa_output(q, k, v, bias, fdrop, mask, causal, offset, seq_len_q, seq_len_kv)
     out === nothing &&
         return NNlib.generic_attention(q, k, v, bias; fdrop, mask, scale, is_causal,
                                        q_offset, q_lengths, kv_lengths)
-    return cudnn_sdpa!(out, q, k, v, is_causal, something(scale, inv(sqrt(size(q, 1)))),
+    return cudnn_sdpa!(out, q, k, v, causal, something(scale, inv(sqrt(size(q, 1)))),
                        seq_len_q, seq_len_kv)
 end
 
@@ -55,7 +57,8 @@ function _is_fused_attention(q::DenseCuArray{T,4}, k::DenseCuArray{T,4},
                              fdrop, mask, scale, is_causal,
                              q_offset, q_lengths, kv_lengths) where {T<:CUDNNSDPAFloat}
     seq_len_q, seq_len_kv = cudnn_sdpa_lengths(q, k, q_lengths, kv_lengths)
-    out = cudnn_sdpa_output(q, k, v, bias, fdrop, mask, is_causal, q_offset, seq_len_q, seq_len_kv)
+    causal, offset = NNlib.causal_offsets(q, k, is_causal, q_offset, q_lengths, kv_lengths)
+    out = cudnn_sdpa_output(q, k, v, bias, fdrop, mask, causal, offset, seq_len_q, seq_len_kv)
     out === nothing && return NNlib.fused_attention_applies(q, k, v, bias, fdrop, mask)
     CUDA.unsafe_free!(out)
     return true

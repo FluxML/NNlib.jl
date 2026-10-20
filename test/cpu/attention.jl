@@ -255,6 +255,46 @@ end
     @test test_gradients((x...) -> scaled_dot_product_attention(x...; kws...), qd, kd, vd)
 end
 
+@testset "bottom-right causal mask" begin
+    head_dim, nheads, lenq, lenkv, bs = 4, 2, 3, 7, 3
+    q = rand(Float32, head_dim, nheads, lenq, bs)
+    k = rand(Float32, head_dim, nheads, lenkv, bs)
+    v = rand(Float32, head_dim, nheads, lenkv, bs)
+    q_lengths, kv_lengths = [3, 2, 1], [7, 4, 5]
+    with_weights(args...; kws...) = first(scaled_dot_product_attention_with_weights(args...; kws...))
+    # the queries are the last positions of the keys: the offsets come from the sizes of
+    # the arrays, or from the lengths where given
+    for f in (scaled_dot_product_attention, materialized_attention, with_weights)
+        @test f(q, k, v; is_causal=:bottom_right) ≈ f(q, k, v; is_causal=true, q_offset=lenkv - lenq)
+        @test f(q, k, v; is_causal=:bottom_right, q_lengths, kv_lengths) ≈
+              f(q, k, v; is_causal=true, q_offset=kv_lengths .- q_lengths, q_lengths, kv_lengths)
+        @test f(q, k, v; is_causal=:bottom_right, kv_lengths) ≈
+              f(q, k, v; is_causal=true, q_offset=kv_lengths .- lenq, kv_lengths)
+    end
+    @test attention_weights(q, k; is_causal=:bottom_right) ≈
+          attention_weights(q, k; is_causal=true, q_offset=lenkv - lenq)
+    # as many queries as keys: the usual causal mask
+    @test scaled_dot_product_attention(k, k, v; is_causal=:bottom_right) ==
+          scaled_dot_product_attention(k, k, v; is_causal=true)
+    # more queries than keys: the first ones attend to no key
+    q9 = rand(Float32, head_dim, nheads, 9, bs)
+    y = scaled_dot_product_attention(q9, k, v; is_causal=:bottom_right)
+    @test all(isnan, y[:, :, 1:2, :])
+    @test y[:, :, 3:end, :] ≈ materialized_attention(q9, k, v; is_causal=true, q_offset=-2)[:, :, 3:end, :]
+
+    @test_throws ArgumentError scaled_dot_product_attention(q, k, v; is_causal=:top_left)
+    @test_throws ArgumentError scaled_dot_product_attention(q, k, v; is_causal=:bottom_right, q_offset=1)
+    @test_throws ArgumentError scaled_dot_product_attention_with_weights(q, k, v; is_causal=:bottom_right, q_offset=[1, 2, 3])
+    @test_throws ArgumentError NNlib.is_fused_attention(q, k, v; is_causal=:upper_left)
+
+    @inferred scaled_dot_product_attention(q, k, v; is_causal=:bottom_right, q_lengths, kv_lengths)
+    @test NNlib.is_fused_attention(q, k, v; is_causal=:bottom_right, kv_lengths)
+
+    qd, kd, vd = map(x -> Float64.(x), (q, k, v))
+    @test test_gradients((x...) -> scaled_dot_product_attention(x...; is_causal=:bottom_right, q_lengths, kv_lengths),
+                         qd, kd, vd)
+end
+
 # A chunk of new queries attending to a cache of keys, partly filled, gives the rows of
 # the causal attention over the whole sequences that these queries end.
 @testset "KV cache" begin
@@ -274,8 +314,9 @@ end
         k[:, :, (kv_lengths[b] + 1):end, b] .= 100
         v[:, :, (kv_lengths[b] + 1):end, b] .= 100
     end
-    for f in (scaled_dot_product_attention, materialized_attention)
-        yc = f(q, k, v; is_causal=true, q_offset=cached, q_lengths=new, kv_lengths)
+    for f in (scaled_dot_product_attention, materialized_attention),
+            causal in ((; is_causal=true, q_offset=cached), (; is_causal=:bottom_right))
+        yc = f(q, k, v; causal..., q_lengths=new, kv_lengths)
         for b in 1:bs
             @test yc[:, :, 1:new[b], b] ≈ y[:, :, cached[b] .+ (1:new[b]), b] rtol=1f-4
             @test all(iszero, yc[:, :, (new[b] + 1):end, b])
@@ -397,6 +438,8 @@ end
             @test scaled_dot_product_attention(q, k, v, bias; mask, is_causal=true, q_offset, lengths...) ≈
                   materialized_attention(q, k, v, bias; mask, is_causal=true, q_offset, lengths...) rtol=rtol
         end
+        @test scaled_dot_product_attention(q, k, v; is_causal=:bottom_right, lengths...) ≈
+              materialized_attention(q, k, v; is_causal=:bottom_right, lengths...) rtol=rtol
 
         # grouped-query attention
         kg, vg = k[:, 1:2, :, :], v[:, 1:2, :, :]
@@ -487,6 +530,7 @@ attention_gradients(f, w, xs...; kws...) = gradient((xs...) -> sum(w .* f(xs...;
         @test same_gradients(w, q, k, v; rtol, is_causal=true, q_offset=lenkv - lenq)
         @test same_gradients(w, q, k, v; rtol, mask, is_causal=true, q_offset=[100, 3], lengths...)
         @test same_gradients(w, q, k[:, 1:2, :, :], v[:, 1:2, :, :]; rtol, is_causal=true, q_offset=[100, 3])
+        @test same_gradients(w, q, k, v; rtol, is_causal=:bottom_right, lengths...)
 
         dq, dk, dv = attention_gradients(scaled_dot_product_attention, w, q, k, v; lengths...)
         @test dq isa Array{T,4} && dk isa Array{T,4} && dv isa Array{T,4}

@@ -47,14 +47,17 @@ weights too.
 - `is_causal`: If `true`, a causal mask is applied so that each query position can
           only attend to key positions up to and including its own. Equivalent to
           `mask = make_causal_mask(query; dims=3)` for equal query and key lengths, but
-          a fused implementation does not have to materialize the mask. Default `false`.
+          a fused implementation does not have to materialize the mask. If
+          `:bottom_right`, the mask is aligned with the last valid key instead of the
+          first: the queries are taken as the last positions of the keys, as when
+          decoding with a KV cache, and `q_offset` is `kv_lengths .- q_lengths`, these
+          being the sizes of the arrays where not given. This is the causal mask of
+          FlashAttention and PyTorch's `causal_lower_right`. Default `false`.
 - `q_offset`: With `is_causal=true`, the number of keys that precede the first query:
           the query `i` attends to the keys `j ≤ q_offset + i`. An integer, or an integer
-          array with one entry for each batch element. When decoding with a KV cache, the
-          queries are the last positions of the keys and `q_offset` is the number of keys
-          cached before them, `kv_lengths .- q_lengths` (the bottom-right alignment of the
-          causal mask). It counts the keys given, which with a sliding-window cache is not
-          the absolute position. It has no effect without `is_causal`. Default `0`.
+          array with one entry for each batch element. It counts the keys given, which
+          with a sliding-window cache is not the absolute position. It has no effect
+          without `is_causal`, and is set by `is_causal=:bottom_right`. Default `0`.
 - `q_lengths`, `kv_lengths`: Either `nothing` or the number of valid positions of each
           query and of each key/value sequence in the batch, the following ones being
           padding: an integer array with one entry for each batch element, or an
@@ -91,7 +94,9 @@ gradient. It supports `scale`, `is_causal`, `q_lengths`, `kv_lengths` and groupe
 attention, and requires:
 
 - no `bias`, `fdrop` or `mask` (that is `nothing`, `identity` and `nothing`);
-- with `is_causal`, an integer `q_offset` of zero, its default;
+- with `is_causal`, a causal mask aligned with the first key: the default `q_offset` of
+  zero, and for `:bottom_right` as many queries as keys, without `q_lengths` or
+  `kv_lengths`;
 - a head dimension that is a multiple of 8 and at most 256;
 - a `value` with the same head dimension as `query`.
 
@@ -116,14 +121,17 @@ y = scaled_dot_product_attention(q, k, v; kv_lengths=[12, 30, 30, 30])
 # appended to the 10, 20, 30 and 40 keys already cached
 q = rand(Float32, 16, 8, 3, 4)
 k = v = rand(Float32, 16, 8, 64, 4)
+y = scaled_dot_product_attention(q, k, v; is_causal=:bottom_right, kv_lengths=[13, 23, 33, 43])
+# the same, with the offsets of the queries
 y = scaled_dot_product_attention(q, k, v; is_causal=true, q_offset=[10, 20, 30, 40],
                                  kv_lengths=[13, 23, 33, 43])
 ```
 """
 function scaled_dot_product_attention(q::AbstractArray, k::AbstractArray, v::AbstractArray,
             bias=nothing; fdrop=identity, mask=nothing, scale=nothing,
-            is_causal::Bool=false, q_offset=0, q_lengths=nothing, kv_lengths=nothing)
+            is_causal::Union{Bool,Symbol}=false, q_offset=0, q_lengths=nothing, kv_lengths=nothing)
     check_attention_inputs(q, k, v)
+    check_causal(is_causal, q_offset)
     batch_size = size(q)[4:end]
     q, k, v, bias, mask, q_offset, q_lengths, kv_lengths =
         collapse_attention_inputs(q, k, v, bias, mask, q_offset, q_lengths, kv_lengths)
@@ -137,9 +145,10 @@ const sdpa = scaled_dot_product_attention
 # Attention on `(head_dim, nheads, seq_len, batch_size)` arrays, with `q_lengths` and
 # `kv_lengths` as `(1, 1, 1, batch_size)` arrays or `nothing`, and `q_offset` as such an
 # array or an `Int`. This is the method for backends to overload: it receives the
-# arguments as the user gave them, before the materialized implementation builds the
-# causal and padding masks, the repeated key/value heads of grouped-query attention and
-# the attention weights, none of which a fused kernel needs.
+# arguments as the user gave them, `is_causal=:bottom_right` included, before the
+# materialized implementation builds the causal and padding masks, the repeated
+# key/value heads of grouped-query attention and the attention weights, none of which a
+# fused kernel needs.
 #
 _scaled_dot_product_attention(q::AA4, k::AA4, v::AA4, bias; kws...) =
     generic_attention(q, k, v, bias; kws...)
@@ -150,6 +159,7 @@ _scaled_dot_product_attention(q::AA4, k::AA4, v::AA4, bias; kws...) =
 # differentiated, where the fused one has no rule.
 function generic_attention(q::AA4, k::AA4, v::AA4, bias;
             fdrop, mask, scale, is_causal, q_offset, q_lengths, kv_lengths)
+    is_causal, q_offset = causal_offsets(q, k, is_causal, q_offset, q_lengths, kv_lengths)
     if fused_attention_applies(q, k, v, bias, fdrop, mask) && fused_attention_differentiable(q, bias)
         return fused_attention(q, k, v, bias, mask, scale, is_causal, q_offset, q_lengths, kv_lengths)
     end
@@ -184,8 +194,9 @@ y, α = scaled_dot_product_attention_with_weights(q, k, v)
 """
 function scaled_dot_product_attention_with_weights(q::AbstractArray, k::AbstractArray,
             v::AbstractArray, bias=nothing; fdrop=identity, mask=nothing, scale=nothing,
-            is_causal::Bool=false, q_offset=0, q_lengths=nothing, kv_lengths=nothing)
+            is_causal::Union{Bool,Symbol}=false, q_offset=0, q_lengths=nothing, kv_lengths=nothing)
     check_attention_inputs(q, k, v)
+    check_causal(is_causal, q_offset)
     batch_size = size(q)[4:end]
     q, k, v, bias, mask, q_offset, q_lengths, kv_lengths =
         collapse_attention_inputs(q, k, v, bias, mask, q_offset, q_lengths, kv_lengths)
@@ -209,8 +220,9 @@ implementation is differentiated where the fused one has no gradient, as with a 
 """
 function is_fused_attention(q::AbstractArray, k::AbstractArray, v::AbstractArray,
             bias=nothing; fdrop=identity, mask=nothing, scale=nothing,
-            is_causal::Bool=false, q_offset=0, q_lengths=nothing, kv_lengths=nothing)
+            is_causal::Union{Bool,Symbol}=false, q_offset=0, q_lengths=nothing, kv_lengths=nothing)
     check_attention_inputs(q, k, v)
+    check_causal(is_causal, q_offset)
     q, k, v, bias, mask, q_offset, q_lengths, kv_lengths =
         collapse_attention_inputs(q, k, v, bias, mask, q_offset, q_lengths, kv_lengths)
     return _is_fused_attention(q, k, v, bias; fdrop, mask, scale, is_causal,
@@ -263,6 +275,18 @@ function check_attention_inputs(q::AbstractArray, k::AbstractArray, v::AbstractA
 end
 
 @non_differentiable check_attention_inputs(::Any...)
+
+check_causal(is_causal::Bool, q_offset) = nothing
+
+function check_causal(is_causal::Symbol, q_offset)
+    is_causal === :bottom_right || throw(ArgumentError(
+        "`is_causal` must be `true`, `false` or `:bottom_right`, got :$is_causal."))
+    q_offset isa Integer && iszero(q_offset) || throw(ArgumentError(
+        "`is_causal=:bottom_right` sets the offsets of the queries: leave `q_offset` at its default."))
+    return nothing
+end
+
+@non_differentiable check_causal(::Any...)
 
 # Bring the arguments of the public functions to the layout of the implementations:
 # `q`, `k` and `v` with a single batch dimension, `bias` and `mask` broadcastable against
@@ -349,6 +373,7 @@ function _attention(q::AA4, k::AA4, v::AA4, bias; fdrop, mask, scale, is_causal,
     # [q] = [qk_head_dim, nheads, q_len, batch_size]
     # [k] = [qk_head_dim, nkvheads, kv_len, batch_size]
     # [v] = [v_head_dim,  nkvheads, kv_len, batch_size]
+    is_causal, q_offset = causal_offsets(q, k, is_causal, q_offset, q_lengths, kv_lengths)
     mask = attention_mask(q, k, mask, is_causal, q_offset, kv_lengths)
     nheads, nkvheads = size(q, 2), size(k, 2)
     if nkvheads != nheads
@@ -415,6 +440,18 @@ function attention_mask(q::AA4, k::AA4, mask, is_causal::Bool, q_offset, kv_leng
     end
     return mask
 end
+
+# `is_causal` as a `Bool` and the offsets it goes with: `:bottom_right` aligns the last
+# valid query with the last valid key.
+causal_offsets(q, k, is_causal::Bool, q_offset, q_lengths, kv_lengths) = is_causal, q_offset
+causal_offsets(q, k, is_causal::Symbol, q_offset, q_lengths, kv_lengths) =
+    true, bottom_right_offsets(q, k, q_lengths, kv_lengths)
+
+bottom_right_offsets(q, k, q_lengths::Nothing, kv_lengths::Nothing) = size(k, 3) - size(q, 3)
+bottom_right_offsets(q, k, q_lengths, kv_lengths) =
+    something(kv_lengths, size(k, 3)) .- something(q_lengths, size(q, 3))
+
+@non_differentiable causal_offsets(::Any...)
 
 combine_masks(mask::Nothing, m) = m
 combine_masks(mask, m) = mask .& m

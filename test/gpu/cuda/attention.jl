@@ -30,15 +30,24 @@ half(T, x) = T.(CuArray(x))    # round on the device (JuliaMath/BFloat16s.jl#107
         @test Float32.(Array(scaled_dot_product_attention(qd, kd, vd; is_causal=true))) ≈
               scaled_dot_product_attention(q, k, v; is_causal=true) rtol=2f-2
 
-        # cuDNN aligns the causal mask with the first key: an offset takes NNlib's kernel
+        # cuDNN aligns the causal mask with the first key: an offset takes NNlib's kernel,
+        # and so does a bottom-right mask, but for as many queries as keys
         ext = Base.get_extension(NNlib, :NNlibCUDACUDNNExt)
-        cudnn(q_offset) = ext.cudnn_sdpa_output(qd, kd, vd, nothing, identity, nothing, true,
-                                                NNlib.attention_offsets(qd, q_offset), nothing, nothing)
-        @test cudnn(0) !== nothing
-        @test cudnn(2) === nothing && cudnn([2, 0, 5]) === nothing
+        cudnn(q, k, is_causal, q_offset=0) = ext.cudnn_sdpa_output(q, k, k, nothing, identity, nothing,
+            NNlib.causal_offsets(q, k, is_causal, NNlib.attention_offsets(q, q_offset), nothing, nothing)...,
+            nothing, nothing)
+        @test cudnn(qd, kd, true) !== nothing
+        @test cudnn(qd, kd, true, 2) === nothing && cudnn(qd, kd, true, [2, 0, 5]) === nothing
+        @test cudnn(qd, qd, :bottom_right) !== nothing && cudnn(qd, kd, :bottom_right) === nothing
         @test sdpa_fused(qd, kd, vd; is_causal=true, q_offset=[2, 0, 5])
         @test Float32.(Array(scaled_dot_product_attention(qd, kd, vd; is_causal=true, q_offset=[2, 0, 5]))) ≈
               scaled_dot_product_attention(q, k, v; is_causal=true, q_offset=[2, 0, 5]) rtol=2f-2
+        @test Array(scaled_dot_product_attention(qd, qd, qd; is_causal=:bottom_right)) ==
+              Array(scaled_dot_product_attention(qd, qd, qd; is_causal=true))
+        br = (; is_causal=:bottom_right, q_lengths=[12, 5, 1], kv_lengths=[16, 9, 7])
+        @test sdpa_fused(kd, qd, qd; br...)
+        @test Float32.(Array(scaled_dot_product_attention(kd, qd, qd; br...))) ≈
+              scaled_dot_product_attention(k, q, q; br...) rtol=2f-2
     end
 
     @testset "grouped-query attention" begin
@@ -205,6 +214,11 @@ end
         gputest((q, k, v) -> last(scaled_dot_product_attention_with_weights(q, k, v; is_causal=true, q_offset)),
                 q, k, v; rtol=1f-4, atol=1f-5)
     end
+    # a bottom-right causal mask, the queries being the shorter sequences
+    br = (; is_causal=:bottom_right, q_lengths=[12, 5, 1], kv_lengths=[16, 9, 7])
+    gputest((q, k, v) -> scaled_dot_product_attention(k, q, q; br...), q, k, v; rtol=1f-4, atol=1f-5)
+    gputest((q, k, v) -> last(scaled_dot_product_attention_with_weights(k, q, q; br...)), q, k, v;
+            rtol=1f-4, atol=1f-5)
 
     # a bias and a mask following the batch dimensions of the inputs
     q2, k2, v2 = map(x -> repeat(x; outer=(1, 1, 1, 1, 2)), (q, k, v))
@@ -253,7 +267,10 @@ end
         @test Array(scaled_dot_product_attention(q, kg, vg; is_causal=true, q_offset)) ≈
               Array(materialized_attention(q, kg, vg; is_causal=true, q_offset)) rtol=rtol
     end
-    # a negative one leaves the first queries without a key
+    # a bottom-right causal mask, from the lengths
+    br = (; is_causal=:bottom_right, q_lengths=[60, 10, 1], kv_lengths=[77, 12, 70])
+    @test Array(scaled_dot_product_attention(q, k, v; br...)) ≈ Array(materialized_attention(q, k, v; br...)) rtol=rtol
+    # a negative offset leaves the first queries without a key
     yn = Array(scaled_dot_product_attention(q, k, v; is_causal=true, q_offset=-3))
     @test all(isnan, yn[:, :, 1:3, :])
     @test yn[:, :, 4:end, :] ≈ Array(materialized_attention(q, k, v; is_causal=true, q_offset=-3))[:, :, 4:end, :] rtol=rtol
@@ -329,6 +346,7 @@ end
     @test same_gradients(q, k, v; is_causal=true, q_offset=[0, 40, 77])
     @test same_gradients(q, k, v; mask, is_causal=true, q_offset=5, lengths...)
     @test same_gradients(q, k[:, 1:2, :, :], v[:, 1:2, :, :]; is_causal=true, q_offset=[0, 40, 77], lengths...)
+    @test same_gradients(q, k, v; is_causal=:bottom_right, q_lengths=[60, 10, 1], kv_lengths=[77, 12, 70])
 
     qd, kd, vd = CuArray(q), CuArray(k), CuArray(v)
     # the same array as query, key and value
