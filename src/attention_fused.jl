@@ -53,10 +53,10 @@ attention_broadcasts(x::AbstractArray, sz) =
 # `lse` receives what the gradient needs of the softmax: the logarithm of the sum of the
 # exponentials of the logits of each query, as `lse[h, i, b]`.
 function fused_attention(q::AA4{T}, k::AA4{T}, v::AA4{T}, bias, mask, scale, is_causal::Bool,
-                         q_lengths, kv_lengths; lse=nothing) where {T}
+                         q_offset, q_lengths, kv_lengths; lse=nothing) where {T}
     o = similar(q, size(v, 1), size(q, 2), size(q, 3), size(q, 4))
     fused_attention!(get_backend(q), o, lse, q, k, v, attention_pad4(bias), attention_pad4(mask),
-                     attention_vec(q_lengths), attention_vec(kv_lengths),
+                     attention_vec_offsets(q_offset), attention_vec(q_lengths), attention_vec(kv_lengths),
                      attention_scale(attention_compute_type(T), q, scale), is_causal)
     return o
 end
@@ -68,6 +68,10 @@ attention_pad4(x::Nothing) = nothing
 attention_pad4(x::AbstractArray) = reshape(x, size(x, 1), size(x, 2), size(x, 3), size(x, 4))
 attention_vec(x::Nothing) = nothing
 attention_vec(x::AbstractArray) = vec(x)
+# A zero offset is passed as `nothing`, with which the kernels compile as they would
+# without offsets: keeping one in a register makes a gradient kernel spill.
+attention_vec_offsets(x::Integer) = iszero(x) ? nothing : Int(x)
+attention_vec_offsets(x::AbstractArray) = vec(x)
 
 # The entry of a `bias` or `mask` for the key `j` and the query `i`.
 @inline attention_sel(x, n) = ifelse(n == 1, 1, x)
@@ -76,6 +80,10 @@ attention_vec(x::AbstractArray) = vec(x)
                                                   attention_sel(h, size(a, 3)), attention_sel(b, size(a, 4))]
 @inline attention_len(l::Nothing, b, n) = n
 @inline attention_len(l, b, n) = Int(@inbounds l[b])
+# the offset of the queries of the batch element `b` under a causal mask
+@inline attention_offset(o::Nothing, b) = 0
+@inline attention_offset(o::Integer, b) = o
+@inline attention_offset(o, b) = Int(@inbounds o[b])
 
 
 #######################
@@ -249,13 +257,15 @@ function attention_workspace(::Type{A}, D::Int, Dv::Int, nq::Int) where {A}
 end
 
 # The queries `i0:i1` of the head `h` of the batch element `b`.
-function attention_item!(o::AbstractArray{T,4}, lse, q, k, v, bias, mask, q_lengths, kv_lengths,
-                         scale::A, is_causal::Bool, h, b, i0, i1, ws) where {T,A}
+function attention_item!(o::AbstractArray{T,4}, lse, q, k, v, bias, mask, q_offset, q_lengths,
+                         kv_lengths, scale::A, is_causal::Bool, h, b, i0, i1, ws) where {T,A}
     (; kt, vt, buf, s1, s2, oacc, m, l) = ws
     hk = (h - 1) ÷ (size(q, 2) ÷ size(k, 2)) + 1
     qlen = attention_len(q_lengths, b, size(q, 3))
     kvlen = attention_len(kv_lengths, b, size(k, 3))
-    jmax = is_causal ? min(kvlen, i1) : kvlen
+    # with a causal mask the query `i` attends to the keys up to `i + off`
+    off = attention_offset(q_offset, b)
+    jmax = is_causal ? min(kvlen, i1 + off) : kvlen
     nk = size(kt, 1)
     fill!(oacc, zero(A))
     fill!(m, -floatmax(A))
@@ -269,9 +279,9 @@ function attention_item!(o::AbstractArray{T,4}, lse, q, k, v, bias, mask, q_leng
             i2 = min(i + 1, i1)
             ii = i - i0 + 1
             # with a causal mask the earlier query of the pair attends to one key less
-            n = is_causal ? min(nt, i2 - j0 + 1) : nt
+            n = is_causal ? min(nt, i2 + off - j0 + 1) : nt
             n <= 0 && continue
-            n1 = is_causal ? min(nt, i - j0 + 1) : nt
+            n1 = is_causal ? min(nt, i + off - j0 + 1) : nt
             attention_logits!(s1, s2, kt, n, q, h, i, i2, b, scale)
             attention_softmax!(s1, n, n1, bias, mask, j0, i, h, b, m, l, oacc, ii)
             attention_softmax!(s2, n, n, bias, mask, j0, i2, h, b, m, l, oacc, ii + 1)
@@ -296,8 +306,8 @@ function attention_item!(o::AbstractArray{T,4}, lse, q, k, v, bias, mask, q_leng
     return nothing
 end
 
-function fused_attention!(::CPU, o, lse, q, k, v, bias, mask, q_lengths, kv_lengths, scale::A,
-                          is_causal::Bool) where {A}
+function fused_attention!(::CPU, o, lse, q, k, v, bias, mask, q_offset, q_lengths, kv_lengths,
+                          scale::A, is_causal::Bool) where {A}
     H, Lq, B = size(q, 2), size(q, 3), size(q, 4)
     # a task for every 2^16 multiply-adds at least: spawning one costs a few microseconds
     work = Lq * size(k, 3) * H * B * (size(q, 1) + size(v, 1))
@@ -316,8 +326,8 @@ function fused_attention!(::CPU, o, lse, q, k, v, bias, mask, q_lengths, kv_leng
             i0 = ((item - 1) % nqt) * nq + 1
             h = ((item - 1) ÷ nqt) % H + 1
             b = (item - 1) ÷ (nqt * H) + 1
-            attention_item!(o, lse, q, k, v, bias, mask, q_lengths, kv_lengths, scale, is_causal,
-                            h, b, i0, min(i0 + nq - 1, Lq), ws)
+            attention_item!(o, lse, q, k, v, bias, mask, q_offset, q_lengths, kv_lengths, scale,
+                            is_causal, h, b, i0, min(i0 + nq - 1, Lq), ws)
         end
         return nothing
     end
@@ -503,12 +513,12 @@ end
 end
 
 # the logits of a thread, with the bias added and `-Inf` at the keys not attended to
-@inline function attention_masked(acc::NTuple{MN,A}, mask, bias, i0, j0, tr, tc, h, b, jmax, Lq,
+@inline function attention_masked(acc::NTuple{MN,A}, mask, bias, i0, j0, tr, tc, h, b, jmax, Lq, off,
                                   ::Val{causal}, ::Val{c}) where {MN,A,causal,c}
     ntuple(Val(MN)) do x
         i = i0 + tr + c.NR * ((x - 1) % c.TM)
         j = j0 + tc + c.NC * ((x - 1) ÷ c.TM)
-        ok = (j < jmax) & (i < Lq) & (!causal | (j <= i))
+        ok = (j < jmax) & (i < Lq) & (!causal | (j <= i + off))
         ok && attention_allowed(attention_at(mask, j + 1, i + 1, h, b)) ?
             attention_biased(acc[x], attention_at(bias, j + 1, i + 1, h, b)) : A(-Inf)
     end
@@ -605,7 +615,7 @@ end
 end
 
 @kernel inbounds=true cpu=false unsafe_indices=true function attention_kernel!(
-        o, lse, @Const(q), @Const(k), @Const(v), bias, mask, q_lengths, kv_lengths,
+        o, lse, @Const(q), @Const(k), @Const(v), bias, mask, q_offset, q_lengths, kv_lengths,
         scale::A, causal::Val, til::Val{c}) where {A,c}
     p_shm = @localmem A (c.PP * c.BK,)
     slab = @localmem A (c.SLAB,)
@@ -617,7 +627,8 @@ end
     hk = (h - 1) ÷ (size(q, 2) ÷ size(k, 2)) + 1
     i0 = (gq - 1) * c.BQ
     qlen = attention_len(q_lengths, b, Lq)
-    jmax = min(attention_len(kv_lengths, b, size(k, 3)), causal === Val(true) ? i0 + c.BQ : size(k, 3))
+    off = attention_offset(q_offset, b)
+    jmax = min(attention_len(kv_lengths, b, size(k, 3)), causal === Val(true) ? i0 + c.BQ + off : size(k, 3))
 
     tr, tc = t ÷ c.NC, t % c.NC       # logits tile: queries tr + NR*m, keys tc + NC*n
     ud, uq = t ÷ c.NQ, t % c.NQ       # output tile: dimensions ud + ND*e, queries uq + NQ*m
@@ -651,7 +662,7 @@ end
         end
 
         # ---- online softmax
-        sc = attention_masked(acc, mask, bias, i0, j0, tr, tc, h, b, jmax, Lq, causal, til)
+        sc = attention_masked(acc, mask, bias, i0, j0, tr, tc, h, b, jmax, Lq, off, causal, til)
         attention_put_rowstat!(p_shm, attention_rowmax(sc, Val(c.TM)), tr, tc, til)
         @synchronize()
         mnew = attention_rows_max(p_shm, mx, tr, til)
@@ -690,11 +701,11 @@ end
     tc == 0 && attention_write_lse!(lse, mx, p_shm, tr, i0, h, b, til)
 end
 
-function fused_attention!(backend::GPU, o, lse, q, k, v, bias, mask, q_lengths, kv_lengths, scale::A,
-                          is_causal::Bool) where {A}
+function fused_attention!(backend::GPU, o, lse, q, k, v, bias, mask, q_offset, q_lengths, kv_lengths,
+                          scale::A, is_causal::Bool) where {A}
     H, Lq, B = size(q, 2), size(q, 3), size(q, 4)
     c = attention_tiling(backend, q, v)
-    attention_kernel!(backend, (c.T, 1, 1))(o, lse, q, k, v, bias, mask, q_lengths, kv_lengths,
+    attention_kernel!(backend, (c.T, 1, 1))(o, lse, q, k, v, bias, mask, q_offset, q_lengths, kv_lengths,
         scale, Val(is_causal), Val(c); ndrange=(c.T * cld(Lq, c.BQ), H, B))
     return o
 end

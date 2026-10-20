@@ -213,6 +213,80 @@ end
                          qd, kd, vd)
 end
 
+@testset "query offset" begin
+    head_dim, nheads, lenq, lenkv, bs = 4, 2, 3, 7, 3
+    q = rand(Float32, head_dim, nheads, lenq, bs)
+    k = rand(Float32, head_dim, nheads, lenkv, bs)
+    v = rand(Float32, head_dim, nheads, lenkv, bs)
+    # the query `i` attends to the keys `j ≤ q_offset + i`
+    offset_mask(offsets) = reshape([j <= o + i for j in 1:lenkv, i in 1:lenq, o in offsets], lenkv, lenq, 1, bs)
+
+    for q_offset in (2, [0, 4, 1])
+        mask = offset_mask(q_offset isa Integer ? fill(q_offset, bs) : q_offset)
+        @test attention_weights(q, k; is_causal=true, q_offset) ≈ attention_weights(q, k; mask)
+        @test scaled_dot_product_attention(q, k, v; is_causal=true, q_offset) ≈
+              scaled_dot_product_attention(q, k, v; mask)
+    end
+    # zero is the default, and without `is_causal` an offset has no effect
+    @test scaled_dot_product_attention(q, k, v; is_causal=true, q_offset=0) ==
+          scaled_dot_product_attention(q, k, v; is_causal=true)
+    @test scaled_dot_product_attention(q, k, v; q_offset=[0, 4, 1]) == scaled_dot_product_attention(q, k, v)
+    # an offset from the last key on masks nothing, and a negative one leaves the first
+    # queries without a key
+    @test scaled_dot_product_attention(q, k, v; is_causal=true, q_offset=lenkv) ≈
+          scaled_dot_product_attention(q, k, v)
+    y = scaled_dot_product_attention(q, k, v; is_causal=true, q_offset=-1)
+    @test all(isnan, y[:, :, 1, :])
+    @test y[:, :, 2:end, :] ≈ scaled_dot_product_attention(q, k, v; mask=offset_mask(fill(-1, bs)))[:, :, 2:end, :]
+
+    # integral numbers that are not `Integer`s are accepted, as the lengths are
+    @test scaled_dot_product_attention(q, k, v; is_causal=true, q_offset=2f0) ==
+          scaled_dot_product_attention(q, k, v; is_causal=true, q_offset=2)
+    @test scaled_dot_product_attention(q, k, v; is_causal=true, q_offset=Float64[0, 4, 1]) ==
+          scaled_dot_product_attention(q, k, v; is_causal=true, q_offset=[0, 4, 1])
+    @test_throws InexactError scaled_dot_product_attention(q, k, v; is_causal=true, q_offset=2.5)
+    @test_throws ArgumentError scaled_dot_product_attention(q, k, v; is_causal=true, q_offset=[1, 2])
+
+    @inferred scaled_dot_product_attention(q, k, v; is_causal=true, q_offset=[0, 4, 1], kv_lengths=[3, 7, 5])
+    @test NNlib.is_fused_attention(q, k, v; is_causal=true, q_offset=[0, 4, 1])
+
+    qd, kd, vd = map(x -> Float64.(x), (q, k, v))
+    kws = (; is_causal=true, q_offset=[0, 4, 1], q_lengths=[3, 3, 2], kv_lengths=[3, 7, 5])
+    @test test_gradients((x...) -> scaled_dot_product_attention(x...; kws...), qd, kd, vd)
+end
+
+# A chunk of new queries attending to a cache of keys, partly filled, gives the rows of
+# the causal attention over the whole sequences that these queries end.
+@testset "KV cache" begin
+    head_dim, nheads, nkvheads, len, bs = 8, 4, 2, 300, 3
+    x = randn(Float32, head_dim, nheads, len, bs) ./ 2
+    kx = randn(Float32, head_dim, nkvheads, len, bs) ./ 2
+    vx = randn(Float32, head_dim, nkvheads, len, bs)
+    y = materialized_attention(x, kx, vx; is_causal=true)
+
+    cached, new = [0, 150, 280], [5, 20, 1]
+    kv_lengths = cached .+ new
+    q = zeros(Float32, head_dim, nheads, maximum(new), bs)
+    k, v = copy(kx), copy(vx)
+    for b in 1:bs
+        q[:, :, 1:new[b], b] = x[:, :, cached[b] .+ (1:new[b]), b]
+        # what the cache holds past the valid keys is not attended to
+        k[:, :, (kv_lengths[b] + 1):end, b] .= 100
+        v[:, :, (kv_lengths[b] + 1):end, b] .= 100
+    end
+    for f in (scaled_dot_product_attention, materialized_attention)
+        yc = f(q, k, v; is_causal=true, q_offset=cached, q_lengths=new, kv_lengths)
+        for b in 1:bs
+            @test yc[:, :, 1:new[b], b] ≈ y[:, :, cached[b] .+ (1:new[b]), b] rtol=1f-4
+            @test all(iszero, yc[:, :, (new[b] + 1):end, b])
+        end
+    end
+    # the offsets of a cache whose valid lengths are those of the arrays
+    q1 = x[:, :, (len - 3):len, :]
+    @test scaled_dot_product_attention(q1, kx, vx; is_causal=true, q_offset=len - 4) ≈
+          y[:, :, (len - 3):len, :] rtol=1f-4
+end
+
 @testset "bias and mask with several batch dimensions" begin
     head_dim, nheads, lenq, lenkv = 4, 2, 3, 5
     batch_size = (2, 3)
@@ -316,10 +390,20 @@ end
         @test scaled_dot_product_attention(q, k, v, bias; mask, is_causal=true, lengths...) ≈
               materialized_attention(q, k, v, bias; mask, is_causal=true, lengths...) rtol=rtol
 
+        # a causal mask shifted by an offset, which ends inside the tiles of keys
+        for q_offset in (lenkv - lenq, [100, 3])
+            @test scaled_dot_product_attention(q, k, v; is_causal=true, q_offset) ≈
+                  materialized_attention(q, k, v; is_causal=true, q_offset) rtol=rtol
+            @test scaled_dot_product_attention(q, k, v, bias; mask, is_causal=true, q_offset, lengths...) ≈
+                  materialized_attention(q, k, v, bias; mask, is_causal=true, q_offset, lengths...) rtol=rtol
+        end
+
         # grouped-query attention
         kg, vg = k[:, 1:2, :, :], v[:, 1:2, :, :]
         @test scaled_dot_product_attention(q, kg, vg; is_causal=true) ≈
               materialized_attention(q, kg, vg; is_causal=true) rtol=rtol
+        @test scaled_dot_product_attention(q, kg, vg; is_causal=true, q_offset=[100, 3]) ≈
+              materialized_attention(q, kg, vg; is_causal=true, q_offset=[100, 3]) rtol=rtol
     end
 
     # self-attention over several tiles of keys, where the causal mask ends inside them
@@ -342,6 +426,12 @@ end
     y = scaled_dot_product_attention(q2, k2, k2; kv_lengths=[0, 4])
     @test all(isnan, y[:, :, :, 1])
     @test y[:, :, :, 2] ≈ materialized_attention(q2, k2, k2; kv_lengths=[5, 4])[:, :, :, 2]
+
+    # ... and the queries a negative offset leaves without a key
+    y = scaled_dot_product_attention(q2, k2, k2; is_causal=true, q_offset=[-2, -5])
+    ym = materialized_attention(q2, k2, k2; is_causal=true, q_offset=[-2, -5])
+    @test all(isnan, y[:, :, 1:2, 1]) && all(isnan, y[:, :, :, 2])
+    @test y[:, :, 3, 1] ≈ ym[:, :, 3, 1]
 
     # the tilings of the GPU kernel are plain arithmetic: each has to fit the shared
     # memory it is given, whatever the head dimension, the problem size and the eltype
@@ -394,6 +484,9 @@ attention_gradients(f, w, xs...; kws...) = gradient((xs...) -> sum(w .* f(xs...;
         @test same_gradients(w, q, k, v; rtol, mask=BitArray(mask), is_causal=true, lengths...)
         @test same_gradients(w, q, k[:, 1:2, :, :], v[:, 1:2, :, :]; rtol, is_causal=true)
         @test NNlib.@disallow_spawns same_gradients(w, q, k, v; rtol, is_causal=true)
+        @test same_gradients(w, q, k, v; rtol, is_causal=true, q_offset=lenkv - lenq)
+        @test same_gradients(w, q, k, v; rtol, mask, is_causal=true, q_offset=[100, 3], lengths...)
+        @test same_gradients(w, q, k[:, 1:2, :, :], v[:, 1:2, :, :]; rtol, is_causal=true, q_offset=[100, 3])
 
         dq, dk, dv = attention_gradients(scaled_dot_product_attention, w, q, k, v; lengths...)
         @test dq isa Array{T,4} && dk isa Array{T,4} && dv isa Array{T,4}
@@ -425,6 +518,7 @@ attention_gradients(f, w, xs...; kws...) = gradient((xs...) -> sum(w .* f(xs...;
         w = randn(Float32, 5, 1, lenq, 1)
         @test same_gradients(w, q, k, v; rtol=1f-3)
         @test same_gradients(w, q, k, v; rtol=1f-3, is_causal=true, q_lengths=[lenq - 5], kv_lengths=[lenkv - 9])
+        @test same_gradients(w, q, k, v; rtol=1f-3, is_causal=true, q_offset=max(lenkv - lenq, 0) + 70)
     end
 
     # the same array as query, key and value
@@ -460,13 +554,21 @@ attention_gradients(f, w, xs...; kws...) = gradient((xs...) -> sum(w .* f(xs...;
     @test dq[:, :, rest, :] ≈ dqr
     @test dk ≈ dkr && dv ≈ dvr
 
+    # ... so do those a negative offset leaves without a key
+    dq, dk, dv = attention_gradients(scaled_dot_product_attention, w, q, k, v; is_causal=true, q_offset=-2)
+    dqr, dkr, dvr = attention_gradients(scaled_dot_product_attention, w[:, :, 3:end, :], q[:, :, 3:end, :], k, v;
+                                        is_causal=true, q_offset=0)
+    @test all(iszero, dq[:, :, 1:2, :])
+    @test dq[:, :, 3:end, :] ≈ dqr
+    @test dk ≈ dkr && dv ≈ dvr
+
     # With a bias the materialized implementation is the one differentiated: the fused
     # one has no gradient with respect to it.
     bias = randn(Float32, 30, 20)
     @test NNlib.is_fused_attention(q, k, v, bias)
     @test gradient(b -> sum(w .* scaled_dot_product_attention(q, k, v, b)), bias)[1] ≈
           gradient(b -> sum(w .* materialized_attention(q, k, v, b)), bias)[1]
-    @test_throws ArgumentError gradient(b -> sum(NNlib.fused_attention(q, k, v, b, nothing, nothing, false, nothing, nothing)), bias)
+    @test_throws ArgumentError gradient(b -> sum(NNlib.fused_attention(q, k, v, b, nothing, nothing, false, 0, nothing, nothing)), bias)
 end
 
 if NNLIB_TEST_ENZYME
@@ -478,7 +580,8 @@ if NNLIB_TEST_ENZYME
     k = randn(3, 2, 5, 2) ./ 2
     v = randn(2, 2, 5, 2)
     rest(Tscale) = ((nothing, EnzymeCore.Const), (nothing, EnzymeCore.Const), (0.3, Tscale),
-                    (true, EnzymeCore.Const), (nothing, EnzymeCore.Const), ([4, 2], EnzymeCore.Const))
+                    (true, EnzymeCore.Const), ([1, 0], EnzymeCore.Const), (nothing, EnzymeCore.Const),
+                    ([4, 2], EnzymeCore.Const))
     D, BD, C = EnzymeCore.Duplicated, EnzymeCore.BatchDuplicated, EnzymeCore.Const
 
     for (Tret, Tq, Tk, Tv, Tscale) in ((D, D, D, D, EnzymeCore.Active), (D, C, D, D, C), (D, D, C, C, EnzymeCore.Active),

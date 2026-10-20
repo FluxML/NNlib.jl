@@ -68,7 +68,7 @@ nofuse(x) = x
 
 # NNlib's own fused kernel, also for the calls its cuDNN extension takes.
 nnlib_ka(q, k, v, causal) = NNlib.generic_attention(q, k, v, nothing; fdrop=identity,
-    mask=nothing, scale=nothing, is_causal=causal, q_lengths=nothing, kv_lengths=nothing)
+    mask=nothing, scale=nothing, is_causal=causal, q_offset=0, q_lengths=nothing, kv_lengths=nothing)
 
 # TODO: add CuTile.jl to the comparison.
 const IMPLS = Dict(

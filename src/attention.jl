@@ -3,7 +3,7 @@ const AA4{T} = AbstractArray{T,4}
 const AA{N,T} = AbstractArray{T,N}
 
 """
-    scaled_dot_product_attention(query, key, value, [bias]; [fdrop, mask, scale, is_causal, q_lengths, kv_lengths])
+    scaled_dot_product_attention(query, key, value, [bias]; [fdrop, mask, scale, is_causal, q_offset, q_lengths, kv_lengths])
     sdpa(query, key, value, [bias]; kws...)
 
 Multihead dot product attention used in transformer architectures, with an explicit
@@ -48,6 +48,13 @@ weights too.
           only attend to key positions up to and including its own. Equivalent to
           `mask = make_causal_mask(query; dims=3)` for equal query and key lengths, but
           a fused implementation does not have to materialize the mask. Default `false`.
+- `q_offset`: With `is_causal=true`, the number of keys that precede the first query:
+          the query `i` attends to the keys `j ≤ q_offset + i`. An integer, or an integer
+          array with one entry for each batch element. When decoding with a KV cache, the
+          queries are the last positions of the keys and `q_offset` is the number of keys
+          cached before them, `kv_lengths .- q_lengths` (the bottom-right alignment of the
+          causal mask). It counts the keys given, which with a sliding-window cache is not
+          the absolute position. It has no effect without `is_causal`. Default `0`.
 - `q_lengths`, `kv_lengths`: Either `nothing` or the number of valid positions of each
           query and of each key/value sequence in the batch, the following ones being
           padding: an integer array with one entry for each batch element, or an
@@ -84,6 +91,7 @@ gradient. It supports `scale`, `is_causal`, `q_lengths`, `kv_lengths` and groupe
 attention, and requires:
 
 - no `bias`, `fdrop` or `mask` (that is `nothing`, `identity` and `nothing`);
+- with `is_causal`, an integer `q_offset` of zero, its default;
 - a head dimension that is a multiple of 8 and at most 256;
 - a `value` with the same head dimension as `query`.
 
@@ -103,28 +111,35 @@ y = scaled_dot_product_attention(q, k, v)
 
 # a padded batch, whose first key/value sequence has 12 valid positions out of 30
 y = scaled_dot_product_attention(q, k, v; kv_lengths=[12, 30, 30, 30])
+
+# decoding with a KV cache of 64 positions: 3 new queries for each batch element,
+# appended to the 10, 20, 30 and 40 keys already cached
+q = rand(Float32, 16, 8, 3, 4)
+k = v = rand(Float32, 16, 8, 64, 4)
+y = scaled_dot_product_attention(q, k, v; is_causal=true, q_offset=[10, 20, 30, 40],
+                                 kv_lengths=[13, 23, 33, 43])
 ```
 """
 function scaled_dot_product_attention(q::AbstractArray, k::AbstractArray, v::AbstractArray,
             bias=nothing; fdrop=identity, mask=nothing, scale=nothing,
-            is_causal::Bool=false, q_lengths=nothing, kv_lengths=nothing)
+            is_causal::Bool=false, q_offset=0, q_lengths=nothing, kv_lengths=nothing)
     check_attention_inputs(q, k, v)
     batch_size = size(q)[4:end]
-    q, k, v, bias, mask, q_lengths, kv_lengths =
-        collapse_attention_inputs(q, k, v, bias, mask, q_lengths, kv_lengths)
+    q, k, v, bias, mask, q_offset, q_lengths, kv_lengths =
+        collapse_attention_inputs(q, k, v, bias, mask, q_offset, q_lengths, kv_lengths)
     x = _scaled_dot_product_attention(q, k, v, bias; fdrop, mask, scale, is_causal,
-                                      q_lengths, kv_lengths)
+                                      q_offset, q_lengths, kv_lengths)
     return reshape(x, size(x, 1), size(x, 2), size(x, 3), batch_size...)
 end
 
 const sdpa = scaled_dot_product_attention
 
 # Attention on `(head_dim, nheads, seq_len, batch_size)` arrays, with `q_lengths` and
-# `kv_lengths` as `(1, 1, 1, batch_size)` arrays or `nothing`. This is the method for
-# backends to overload: it receives the arguments as the user gave them, before the
-# materialized implementation builds the causal and padding masks, the repeated
-# key/value heads of grouped-query attention and the attention weights, none of which a
-# fused kernel needs.
+# `kv_lengths` as `(1, 1, 1, batch_size)` arrays or `nothing`, and `q_offset` as such an
+# array or an `Int`. This is the method for backends to overload: it receives the
+# arguments as the user gave them, before the materialized implementation builds the
+# causal and padding masks, the repeated key/value heads of grouped-query attention and
+# the attention weights, none of which a fused kernel needs.
 #
 _scaled_dot_product_attention(q::AA4, k::AA4, v::AA4, bias; kws...) =
     generic_attention(q, k, v, bias; kws...)
@@ -134,11 +149,11 @@ _scaled_dot_product_attention(q::AA4, k::AA4, v::AA4, bias; kws...) =
 # materialized one. Under automatic differentiation the latter is also taken, and
 # differentiated, where the fused one has no rule.
 function generic_attention(q::AA4, k::AA4, v::AA4, bias;
-            fdrop, mask, scale, is_causal, q_lengths, kv_lengths)
+            fdrop, mask, scale, is_causal, q_offset, q_lengths, kv_lengths)
     if fused_attention_applies(q, k, v, bias, fdrop, mask) && fused_attention_differentiable(q, bias)
-        return fused_attention(q, k, v, bias, mask, scale, is_causal, q_lengths, kv_lengths)
+        return fused_attention(q, k, v, bias, mask, scale, is_causal, q_offset, q_lengths, kv_lengths)
     end
-    x, _ = _attention(q, k, v, bias; fdrop, mask, scale, is_causal, q_lengths, kv_lengths)
+    x, _ = _attention(q, k, v, bias; fdrop, mask, scale, is_causal, q_offset, q_lengths, kv_lengths)
     return x
 end
 
@@ -169,12 +184,12 @@ y, α = scaled_dot_product_attention_with_weights(q, k, v)
 """
 function scaled_dot_product_attention_with_weights(q::AbstractArray, k::AbstractArray,
             v::AbstractArray, bias=nothing; fdrop=identity, mask=nothing, scale=nothing,
-            is_causal::Bool=false, q_lengths=nothing, kv_lengths=nothing)
+            is_causal::Bool=false, q_offset=0, q_lengths=nothing, kv_lengths=nothing)
     check_attention_inputs(q, k, v)
     batch_size = size(q)[4:end]
-    q, k, v, bias, mask, q_lengths, kv_lengths =
-        collapse_attention_inputs(q, k, v, bias, mask, q_lengths, kv_lengths)
-    x, α = _attention(q, k, v, bias; fdrop, mask, scale, is_causal, q_lengths, kv_lengths)
+    q, k, v, bias, mask, q_offset, q_lengths, kv_lengths =
+        collapse_attention_inputs(q, k, v, bias, mask, q_offset, q_lengths, kv_lengths)
+    x, α = _attention(q, k, v, bias; fdrop, mask, scale, is_causal, q_offset, q_lengths, kv_lengths)
     x = reshape(x, size(x, 1), size(x, 2), size(x, 3), batch_size...)
     α = reshape(α, size(α, 1), size(α, 2), size(α, 3), batch_size...)
     return x, α
@@ -194,12 +209,12 @@ implementation is differentiated where the fused one has no gradient, as with a 
 """
 function is_fused_attention(q::AbstractArray, k::AbstractArray, v::AbstractArray,
             bias=nothing; fdrop=identity, mask=nothing, scale=nothing,
-            is_causal::Bool=false, q_lengths=nothing, kv_lengths=nothing)
+            is_causal::Bool=false, q_offset=0, q_lengths=nothing, kv_lengths=nothing)
     check_attention_inputs(q, k, v)
-    q, k, v, bias, mask, q_lengths, kv_lengths =
-        collapse_attention_inputs(q, k, v, bias, mask, q_lengths, kv_lengths)
+    q, k, v, bias, mask, q_offset, q_lengths, kv_lengths =
+        collapse_attention_inputs(q, k, v, bias, mask, q_offset, q_lengths, kv_lengths)
     return _is_fused_attention(q, k, v, bias; fdrop, mask, scale, is_causal,
-                               q_lengths, kv_lengths)
+                               q_offset, q_lengths, kv_lengths)
 end
 
 # To be overloaded together with `_scaled_dot_product_attention`.
@@ -251,15 +266,17 @@ end
 
 # Bring the arguments of the public functions to the layout of the implementations:
 # `q`, `k` and `v` with a single batch dimension, `bias` and `mask` broadcastable against
-# it, the lengths as `(1, 1, 1, batch_size)` arrays on the device of the inputs.
-function collapse_attention_inputs(q, k, v, bias, mask, q_lengths, kv_lengths)
+# it, the lengths and the offsets but an `Integer` one as `(1, 1, 1, batch_size)` arrays
+# on the device of the inputs.
+function collapse_attention_inputs(q, k, v, bias, mask, q_offset, q_lengths, kv_lengths)
     batch_size = size(q)[4:end]
     q, k, v = map(collapse_batch_dims, (q, k, v))
     bias = collapse_batch_dims(bias, batch_size)
     mask = collapse_batch_dims(mask, batch_size)
+    q_offset = attention_offsets(q, q_offset)
     q_lengths = attention_lengths(q, q_lengths)
     kv_lengths = attention_lengths(k, kv_lengths)
-    return q, k, v, bias, mask, q_lengths, kv_lengths
+    return q, k, v, bias, mask, q_offset, q_lengths, kv_lengths
 end
 
 # collapse the batch dimensions into a single one
@@ -310,15 +327,29 @@ function attention_lengths(x::AA4, lengths::Union{Number,AbstractArray})
     return copyto!(out, Int32.(clamp.(vec(lengths), 0, size(x, 3))))
 end
 
+# The offsets of the queries as the lengths, but an `Integer`, which is kept as it is:
+# a backend then recognizes the default of zero without reading the device.
+attention_offsets(x::AA4, offset::Integer) = Int(offset)
+
+function attention_offsets(x::AA4, offsets::Union{Number,AbstractArray})
+    out = similar(x, Int32, (1, 1, 1, size(x, 4)))
+    offsets isa Number && return fill!(out, offsets)
+    length(offsets) == length(out) || throw(ArgumentError(
+        "Expected a query offset for each of the $(length(out)) batch elements, \
+         got $(length(offsets))."))
+    return copyto!(out, Int32.(vec(offsets)))
+end
+
 @non_differentiable attention_lengths(::Any...)
+@non_differentiable attention_offsets(::Any...)
 
 # Materialized implementation, returning both the attention output and the weights `α`.
 function _attention(q::AA4, k::AA4, v::AA4, bias; fdrop, mask, scale, is_causal,
-                    q_lengths=nothing, kv_lengths=nothing)
+                    q_offset=0, q_lengths=nothing, kv_lengths=nothing)
     # [q] = [qk_head_dim, nheads, q_len, batch_size]
     # [k] = [qk_head_dim, nkvheads, kv_len, batch_size]
     # [v] = [v_head_dim,  nkvheads, kv_len, batch_size]
-    mask = attention_mask(q, k, mask, is_causal, kv_lengths)
+    mask = attention_mask(q, k, mask, is_causal, q_offset, kv_lengths)
     nheads, nkvheads = size(q, 2), size(k, 2)
     if nkvheads != nheads
         # Grouped-query attention: expand the kv heads so each group of
@@ -375,9 +406,9 @@ apply_query_lengths(α, q_lengths) = α .* padding_mask(size(α, 2), q_lengths; 
 
 # The mask of the materialized implementation: the `mask` of the user, the causal one
 # and the one of the padded keys, a key being attended to only where all of them allow it.
-function attention_mask(q::AA4, k::AA4, mask, is_causal::Bool, kv_lengths)
+function attention_mask(q::AA4, k::AA4, mask, is_causal::Bool, q_offset, kv_lengths)
     if is_causal
-        mask = combine_masks(mask, make_causal_mask(q, size(k, 3), size(q, 3)))
+        mask = combine_masks(mask, make_causal_mask(q, size(k, 3), size(q, 3), q_offset))
     end
     if kv_lengths !== nothing
         mask = combine_masks(mask, padding_mask(size(k, 3), kv_lengths; dims=1))
@@ -423,9 +454,13 @@ function make_causal_mask(x::AbstractArray; dims::Union{Int,Nothing}=nothing)
   return mask
 end
 
-# Rectangular causal mask of size `(kvlen, qlen)` with `m[j, i] == j ≤ i`,
-# used internally by `scaled_dot_product_attention(...; is_causal=true)`.
-make_causal_mask(x::AbstractArray, kvlen::Int, qlen::Int) = triu(trues_like(x, (kvlen, qlen)))
+# Rectangular causal mask of size `(kvlen, qlen)` with `m[j, i] == j ≤ offset + i`,
+# used internally by `scaled_dot_product_attention(...; is_causal=true)`. An array of
+# offsets, of size `(1, 1, 1, batch_size)`, gives a mask for each batch element.
+make_causal_mask(x::AbstractArray, kvlen::Int, qlen::Int, offset::Integer=0) =
+    triu(trues_like(x, (kvlen, qlen)), clamp(-offset, 1 - kvlen, qlen + 1))
+make_causal_mask(x::AbstractArray, kvlen::Int, qlen::Int, offset::AbstractArray) =
+    (1:kvlen) .<= (1:qlen)' .+ offset
 
 trues_like(x::AbstractArray, sz=size(x)) = fill!(similar(x, Bool, sz), true)
 falses_like(x::AbstractArray, sz=size(x)) = fill!(similar(x, Bool, sz), false)
