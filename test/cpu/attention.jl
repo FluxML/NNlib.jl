@@ -190,6 +190,10 @@ end
           scaled_dot_product_attention(q, k, v; kv_lengths=[4, 4, 4])
     @test scaled_dot_product_attention(q, k, v; kv_lengths=Int32.(kv_lengths)) ==
           scaled_dot_product_attention(q, k, v; kv_lengths)
+    # so are integral numbers that are not `Integer`s, as the traced ones of Reactant
+    @test scaled_dot_product_attention(q, k, v; q_lengths=Float32.(q_lengths), kv_lengths=4.0) ==
+          scaled_dot_product_attention(q, k, v; q_lengths, kv_lengths=4)
+    @test_throws InexactError scaled_dot_product_attention(q, k, v; kv_lengths=2.5)
     # lengths reaching the end of the sequences mean no padding
     @test scaled_dot_product_attention(q, k, v; q_lengths=lenq, kv_lengths=fill(lenkv + 2, bs)) ≈
           scaled_dot_product_attention(q, k, v)

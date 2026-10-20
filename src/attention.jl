@@ -297,12 +297,13 @@ expand_batch_dims(x::AbstractArray, batch_size::Tuple) =
     x .+ falses_like(x, (1, 1, 1, batch_size...))
 
 # Sequence lengths as an `Int32` array of size `(1, 1, 1, batch_size)` on the device of
-# `x`, a `(head_dim, nheads, seq_len, batch_size)` array.
+# `x`, a `(head_dim, nheads, seq_len, batch_size)` array. The lengths are not restricted
+# to `Integer`s, which the traced integers of Reactant are not.
 attention_lengths(x::AA4, lengths::Nothing) = nothing
 
-function attention_lengths(x::AA4, lengths::Union{Integer,AbstractArray{<:Integer}})
+function attention_lengths(x::AA4, lengths::Union{Number,AbstractArray})
     out = similar(x, Int32, (1, 1, 1, size(x, 4)))
-    lengths isa Integer && return fill!(out, clamp(lengths, 0, size(x, 3)))
+    lengths isa Number && return fill!(out, clamp(lengths, 0, size(x, 3)))
     length(lengths) == length(out) || throw(ArgumentError(
         "Expected a sequence length for each of the $(length(out)) batch elements, \
          got $(length(lengths))."))
