@@ -65,16 +65,22 @@ softmax!(x::AbstractArray; dims = 1) = softmax!(x, x; dims)
 
 softmax!(out::AbstractArray, x::AbstractArray; dims = 1) = _softmax!(out, x; dims)
 
+# Float16 and BFloat16 are summed in Float32: in their own type, the sums lose most of
+# their digits, and Float16 overflows past 65504. `fast_maximum` returns Float32 for them,
+# so `x .- max_` is computed in Float32 too. Results keep the input eltype.
+_acc(x) = x
+_acc(x::HalfFloat) = Float32(x)
+
 # Generic implementation, can be overidden by CUDA and other backends.
 function _softmax!(out::AbstractArray{T}, x::AbstractArray; dims = 1) where {T}
     max_ = fast_maximum(x; dims)
     if all(isfinite, max_)
         out .= _exp.(x .- max_)
     else
-        _zero, _one, _inf = T(0), T(1), T(Inf)
+        _zero, _one, _inf = _acc(T(0)), _acc(T(1)), _acc(T(Inf))
         @. out = ifelse(isequal(max_,_inf), ifelse(isequal(x,_inf), _one, _zero), _exp(x - max_))
     end
-    tmp = dims isa Colon ? sum(out) : sum!(max_, out)
+    tmp = dims isa Colon ? sum(_acc, out) : sum!(_acc, max_, out)
     out ./= tmp
 end
 
@@ -99,7 +105,7 @@ In-place version of [`∇softmax`](@ref), writing the gradient into `dx`.
 
 function _∇softmax!(dx::AbstractArray, dy::AbstractArray{T}, y::AbstractArray{S}; dims = 1) where {T,S}
     dx .= dy .* y
-    dx .= dx .- y .* sum(dx; dims)
+    dx .= dx .- y .* sum(_acc, dx; dims)
 end
 
 function rrule(::typeof(softmax), x; dims = 1)
@@ -121,7 +127,7 @@ function rrule(::typeof(∇softmax), dy, y; dims = 1)
     return dx, ∇softmax_pullback
 end
 
-fast_maximum(x::AbstractArray{T}; dims) where {T} = @fastmath reduce(max, x; dims, init = float(T)(-Inf))
+fast_maximum(x::AbstractArray{T}; dims) where {T} = @fastmath reduce(max, x; dims, init = _acc(float(T)(-Inf)))
 
 """
     logsoftmax(x; dims = 1)
@@ -153,10 +159,10 @@ function _logsoftmax!(out::AbstractArray{T}, x::AbstractArray; dims = 1) where {
     if all(isfinite, max_)
         out .= x .- max_
     else
-        _zero, _minf, _inf = T(0), T(-Inf), T(Inf)
+        _zero, _minf, _inf = _acc(T(0)), _acc(T(-Inf)), _acc(T(Inf))
         @. out = ifelse(isequal(max_,_inf), ifelse(isequal(x,_inf), _zero, _minf), x - max_)
     end
-    log_ = log.(sum(_exp, out; dims))
+    log_ = log.(sum(@inline(y -> _exp(_acc(y))), out; dims))  # not vectorized without `@inline`
     out .-= log_
 end
 
@@ -180,7 +186,7 @@ In-place version of [`∇logsoftmax`](@ref), writing the gradient into `dx`.
 ∇logsoftmax!(dx::AbstractArray, dy::AbstractArray, y::AbstractArray; dims = 1) = _∇logsoftmax!(dx, dy, y; dims)
 
 function _∇logsoftmax!(dx::AbstractArray, dy::AbstractArray, y::AbstractArray; dims = 1)
-    dx .= dy .- sum(dy; dims) .* _exp.(y)
+    dx .= dy .- sum(_acc, dy; dims) .* _exp.(_acc.(y))
 end
 
 function rrule(::typeof(logsoftmax), x; dims = 1)
@@ -210,17 +216,17 @@ Without `dims` keyword this returns a scalar.
 
 See also [`logsoftmax`](@ref).
 """
-function logsumexp(x::AbstractArray; dims = :)
+function logsumexp(x::AbstractArray{T}; dims = :) where {T}
     max_ = fast_maximum(x; dims)
-    return max_ .+ log.(sum(_exp.(x .- max_); dims))
+    return float(T).(max_ .+ log.(sum(_exp.(x .- max_); dims)))
 end
 
-function rrule(::typeof(logsumexp), x; dims = :)
+function rrule(::typeof(logsumexp), x::AbstractArray{T}; dims = :) where {T}
     # The gradient is `softmax`, but both compute `tmp` so it's worth saving.
     max_ = fast_maximum(x; dims)
     tmp = _exp.(x .- max_)
-    y = max_ .+ log.(sum(tmp; dims))
-    logsumexp_pullback(dy) = (NoTangent(), unthunk(dy) .* tmp ./ sum(tmp; dims))
+    y = float(T).(max_ .+ log.(sum(tmp; dims)))
+    logsumexp_pullback(dy) = (NoTangent(), float(T).(unthunk(dy) .* tmp ./ sum(tmp; dims)))
     return y, logsumexp_pullback
 end
 
