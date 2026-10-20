@@ -375,32 +375,26 @@ function _attention(q::AA4, k::AA4, v::AA4, bias; fdrop, mask, scale, is_causal,
     # [v] = [v_head_dim,  nkvheads, kv_len, batch_size]
     is_causal, q_offset = causal_offsets(q, k, is_causal, q_offset, q_lengths, kv_lengths)
     mask = attention_mask(q, k, mask, is_causal, q_offset, kv_lengths)
-    nheads, nkvheads = size(q, 2), size(k, 2)
-    if nkvheads != nheads
-        # Grouped-query attention: expand the kv heads so each group of
-        # `nheads ÷ nkvheads` query heads shares one key/value head.
-        r = nheads ÷ nkvheads
-        k = repeat_kv_heads(k, r)
-        v = repeat_kv_heads(v, r)
-    end
+    # grouped-query attention: each group of `r` query heads shares a key/value head
+    r = size(q, 2) ÷ size(k, 2)
 
-    α = _attention_weights(q, k, bias, fdrop, mask, scale, q_lengths)
+    α = _attention_weights(q, k, bias, fdrop, mask, scale, q_lengths, r)
     # [α] = [kv_len, q_len, nheads, batch_size]
 
     # The following permutedims and batched_mul are equivalent to
-    # @tullio x[d, h, i, b] := α[j, i, h, b] * v[d, h, j, b]
-    vt = permutedims(v, (1, 3, 2, 4))
+    # @tullio x[d, h, i, b] := α[j, i, h, b] * v[d, (h - 1) ÷ r + 1, j, b]
+    vt = permute_kv_heads(v, (1, 3, 2, 4), r)
     x = batched_mul(vt, α)
     x = permutedims(x, (1, 3, 2, 4))
     # [x] = [v_head_dim, nheads, q_len, batch_size]
     return x, α
 end
 
-function _attention_weights(q::AA4{T}, k::AA4, bias, fdrop, mask, scale, q_lengths=nothing) where T
+function _attention_weights(q::AA4{T}, k::AA4, bias, fdrop, mask, scale, q_lengths=nothing, r=1) where T
     s = scale === nothing ? inv(√T(size(q, 1))) : T(scale)
     # The following permutedims and batched_mul are equivalent to
-    # @tullio logits[j, i, h, b] := s * q[d, h, i, b] * k[d, h, j, b]
-    kt = permutedims(k, (3, 1, 2, 4))
+    # @tullio logits[j, i, h, b] := s * q[d, h, i, b] * k[d, (h - 1) ÷ r + 1, j, b]
+    kt = permute_kv_heads(k, (3, 1, 2, 4), r)
     qt = permutedims(q, (1, 3, 2, 4)) .* s
     logits = batched_mul(kt, qt)
     # [logits] = [kv_len, q_len, nheads, batch_size]
@@ -505,17 +499,25 @@ falses_like(x::AbstractArray, sz=size(x)) = fill!(similar(x, Bool, sz), false)
 split_heads(x, nheads) = reshape(x, size(x, 1) ÷ nheads, nheads, size(x)[2:end]...)
 join_heads(x) = reshape(x, :, size(x)[3:end]...)
 
-# Grouped-query attention: repeat each kv head `r` times contiguously along the
-# heads dimension, so it lines up with the query heads.
-# [x] = [head_dim, nkvheads, len, batch] -> [head_dim, nkvheads * r, len, batch]
-repeat_kv_heads(x::AA4, r::Int) = repeat(x; inner=(1, r, 1, 1))
+# `permutedims(x, perm)` of a key or value array, for a `perm` that takes its heads to the
+# third dimension, with each head repeated `r` times for grouped-query attention, so that
+# it lines up with the query heads. The heads are repeated in the permuted copy rather
+# than in `x`: a branch between `x` itself and a new array cannot be differentiated by
+# Enzyme where `x` is constant.
+function permute_kv_heads(x::AA4, perm, r::Int)
+    xt = permutedims(x, perm)
+    return r == 1 ? xt : repeat_kv_heads(xt, r)
+end
+
+# [x] = [_, _, nkvheads, batch] -> [_, _, nkvheads * r, batch]
+repeat_kv_heads(x::AA4, r::Int) = repeat(x; inner=(1, 1, r, 1))
 
 function rrule(::typeof(repeat_kv_heads), x::AA4, r::Int)
     y = repeat_kv_heads(x, r)
     function repeat_kv_heads_pullback(Δ)
         Δ = unthunk(Δ)
-        Δ = reshape(Δ, size(x, 1), r, size(x, 2), size(x, 3), size(x, 4))
-        dx = reshape(sum(Δ; dims=2), size(x))
+        Δ = reshape(Δ, size(x, 1), size(x, 2), r, size(x, 3), size(x, 4))
+        dx = reshape(sum(Δ; dims=3), size(x))
         return NoTangent(), dx, NoTangent()
     end
     return y, repeat_kv_heads_pullback

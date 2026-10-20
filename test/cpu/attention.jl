@@ -645,6 +645,22 @@ if NNLIB_TEST_ENZYME
     Enzyme.autodiff(Enzyme.Reverse, Const(x -> sum(w .* scaled_dot_product_attention(x, x, x; is_causal=true))),
                     Active, Duplicated(x, dx))
     @test dx ≈ gradient(x -> sum(w .* materialized_attention(x, x, x; is_causal=true)), x)[1]
+
+    # Constant arguments next to active ones, as a cache of keys and values, in the fused
+    # implementation, in the materialized one (with a bias) and with several batch dimensions.
+    q, k, v = randn(3, 4, 2, 2), randn(3, 2, 4, 2), randn(2, 2, 4, 2)
+    xs5 = (randn(3, 2, 2, 2, 2), randn(3, 2, 4, 2, 2), randn(2, 2, 4, 2, 2))
+    @testset "$name, active $act" for (name, xs, bias, kws) in (
+                ("fused", (q, k, v), nothing, (; is_causal=:bottom_right, kv_lengths=[3, 4])),
+                ("materialized", (q, k, v), randn(4, 2), (; is_causal=true)),
+                ("5 dimensions", xs5, nothing, (;))),
+            act in ((true, false, false), (false, true, true))
+        shadows = map(zero, xs)
+        Enzyme.autodiff(Enzyme.Reverse, Const((xs...) -> sum(scaled_dot_product_attention(xs..., bias; kws...))),
+                        Active, map((x, s, a) -> a ? Duplicated(x, s) : Const(x), xs, shadows, act)...)
+        grads = gradient((xs...) -> sum(materialized_attention(xs..., bias; kws...)), xs...)
+        @test all(i -> !act[i] || shadows[i] ≈ grads[i], 1:3)
+    end
 end
 
 end # NNLIB_TEST_ENZYME

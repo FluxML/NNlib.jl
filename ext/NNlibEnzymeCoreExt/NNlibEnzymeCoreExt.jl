@@ -826,6 +826,41 @@ function EnzymeRules.reverse(config::EnzymeRules.RevConfig,
 end
 
 
+# collapse_batch_dims
+#
+# A reshape, whose result aliases its argument. That of a constant `key` or `value` next
+# to an active `query` is constant memory Enzyme's activity analysis takes for active
+# memory: the shadow of the result is that of the argument reshaped, or scratch memory
+# for a constant argument.
+
+function EnzymeRules.augmented_primal(config::EnzymeRules.RevConfig,
+        func::EnzymeCore.Const{typeof(NNlib.collapse_batch_dims)}, ::Type{RT},
+        x::EnzymeCore.Annotation{<:AbstractArray}) where {RT}
+    y = func.val(x.val)
+    shadow = EnzymeRules.needs_shadow(config) ? _collapsed_shadow(config, func.val, x, y) : nothing
+    return EnzymeRules.AugmentedReturn(EnzymeRules.needs_primal(config) ? y : nothing, shadow, nothing)
+end
+
+EnzymeRules.reverse(config::EnzymeRules.RevConfig, func::EnzymeCore.Const{typeof(NNlib.collapse_batch_dims)},
+                    ::Type{RT}, tape, x::EnzymeCore.Annotation{<:AbstractArray}) where {RT} = (nothing,)
+
+function EnzymeRules.forward(config::EnzymeRules.FwdConfig,
+        func::EnzymeCore.Const{typeof(NNlib.collapse_batch_dims)}, ::Type{RT},
+        x::EnzymeCore.Annotation{<:AbstractArray}) where {RT}
+    y = func.val(x.val)
+    EnzymeRules.needs_shadow(config) || return EnzymeRules.needs_primal(config) ? y : nothing
+    shadow = _collapsed_shadow(config, func.val, x, y)
+    EnzymeRules.needs_primal(config) || return shadow
+    return EnzymeRules.width(config) == 1 ? EnzymeCore.Duplicated(y, shadow) : EnzymeCore.BatchDuplicated(y, shadow)
+end
+
+function _collapsed_shadow(config, f, x, y)
+    N = EnzymeRules.width(config)
+    x isa EnzymeCore.Const && return N == 1 ? zero(y) : ntuple(_ -> zero(y), Val(N))
+    return N == 1 ? f(x.dval) : map(f, x.dval)
+end
+
+
 # fused_attention
 #
 # The fused attention runs tasks on the CPU and a kernel on the GPU, which are not to be
