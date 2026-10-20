@@ -16,14 +16,14 @@
 # The gradients of `fused_attention` with respect to `q`, `k`, `v` and `scale`, for the
 # cotangent `dout` of its output `o`.
 function fused_attention_grad(dout, o, lse, q::AA4{T}, k::AA4{T}, v::AA4{T}, bias, mask, scale,
-                              is_causal::Bool, q_lengths, kv_lengths) where {T}
+                              is_causal::Bool, q_offset, q_lengths, kv_lengths) where {T}
     A = attention_compute_type(T)
     s = attention_scale(A, q, scale)
     # `dq` is left without its factor `scale` when the gradient of the latter is needed
     dq, dk, dv = fused_attention_grad(get_backend(q), dout, o, lse, q, k, v, attention_pad4(bias),
-                                      attention_pad4(mask), attention_vec(q_lengths),
-                                      attention_vec(kv_lengths), s, scale === nothing ? s : one(A),
-                                      is_causal)
+                                      attention_pad4(mask), attention_vec_offsets(q_offset),
+                                      attention_vec(q_lengths), attention_vec(kv_lengths), s,
+                                      scale === nothing ? s : one(A), is_causal)
     dscale = NoTangent()
     if scale !== nothing
         dscale = mapreduce(attention_wide_prod, +, q, dq)
@@ -41,19 +41,19 @@ attention_cotangent(o::AbstractGPUArray, dout::AbstractGPUArray{<:Real,4}) = dou
 attention_cotangent(o, dout) = copyto!(similar(o), dout)
 
 function rrule(::typeof(fused_attention), q::AA4{T}, k::AA4{T}, v::AA4{T}, bias, mask, scale,
-               is_causal::Bool, q_lengths, kv_lengths) where {T}
+               is_causal::Bool, q_offset, q_lengths, kv_lengths) where {T}
     bias === nothing || throw(ArgumentError(
         "The fused attention has no gradient with respect to a bias: differentiate the \
          materialized implementation, as `scaled_dot_product_attention` does."))
     lse = similar(q, attention_compute_type(T), size(q, 2), size(q, 3), size(q, 4))
-    o = fused_attention(q, k, v, bias, mask, scale, is_causal, q_lengths, kv_lengths; lse)
+    o = fused_attention(q, k, v, bias, mask, scale, is_causal, q_offset, q_lengths, kv_lengths; lse)
+    nograds = ntuple(_ -> NoTangent(), 4)
     function fused_attention_pullback(Δ)
         Δ = unthunk(Δ)
-        Δ isa AbstractZero &&
-            return (NoTangent(), Δ, Δ, Δ, NoTangent(), NoTangent(), Δ, NoTangent(), NoTangent(), NoTangent())
+        Δ isa AbstractZero && return (NoTangent(), Δ, Δ, Δ, NoTangent(), NoTangent(), Δ, nograds...)
         dq, dk, dv, dscale = fused_attention_grad(attention_cotangent(o, Δ), o, lse, q, k, v, bias,
-                                                  mask, scale, is_causal, q_lengths, kv_lengths)
-        return (NoTangent(), dq, dk, dv, NoTangent(), NoTangent(), dscale, NoTangent(), NoTangent(), NoTangent())
+                                                  mask, scale, is_causal, q_offset, q_lengths, kv_lengths)
+        return (NoTangent(), dq, dk, dv, NoTangent(), NoTangent(), dscale, nograds...)
     end
     return o, fused_attention_pullback
 end
@@ -178,14 +178,16 @@ end
 
 # The pair of the queries `i0:i1` and the keys `ja:jb`, in the head `h` of the batch
 # element `b`.
-function attention_grad_item!(dq, dk, dv, dout, o, lse, q, k, v, bias, mask, q_lengths, kv_lengths,
-                              scale::A, qscale::A, is_causal::Bool, h, b, i0, i1, ja, jb, ws) where {A}
+function attention_grad_item!(dq, dk, dv, dout, o, lse, q, k, v, bias, mask, q_offset, q_lengths,
+                              kv_lengths, scale::A, qscale::A, is_causal::Bool, h, b, i0, i1, ja, jb,
+                              ws) where {A}
     (; kt, vt, buf, dkt, dvt, s, g, qs, dos, dqacc, delta) = ws
     hk = (h - 1) ÷ (size(q, 2) ÷ size(k, 2)) + 1
     # the output is zero at the padded queries
     i1 = min(i1, attention_len(q_lengths, b, size(q, 3)))
     jmax = min(jb, attention_len(kv_lengths, b, size(k, 3)))
-    is_causal && (jmax = min(jmax, i1))
+    off = attention_offset(q_offset, b)
+    is_causal && (jmax = min(jmax, i1 + off))
     (i0 > i1 || ja > jmax) && return nothing
     nk = size(kt, 1)
     fill!(dqacc, zero(A))
@@ -203,10 +205,10 @@ function attention_grad_item!(dq, dk, dv, dout, o, lse, q, k, v, bias, mask, q_l
         attention_pack!(vt, buf, v, hk, j0, nt, b)
         fill!(dkt, zero(A))
         fill!(dvt, zero(A))
-        for i in (is_causal ? max(i0, j0) : i0):4:i1
+        for i in (is_causal ? max(i0, j0 - off) : i0):4:i1
             i2, i3, i4 = min(i + 1, i1), min(i + 2, i1), min(i + 3, i1)
             # with a causal mask the earlier queries of the four attend to fewer keys
-            n = is_causal ? min(nt, i4 - j0 + 1) : nt
+            n = is_causal ? min(nt, i4 + off - j0 + 1) : nt
             attention_logits!(s[1], s[2], kt, n, q, h, i, i2, b, scale)
             attention_logits!(s[3], s[4], kt, n, q, h, i3, i4, b, scale)
             attention_logits!(g[1], g[2], vt, n, dout, h, i, i2, b, one(A))
@@ -215,7 +217,7 @@ function attention_grad_item!(dq, dk, dv, dout, o, lse, q, k, v, bias, mask, q_l
                 ic = min(i + c - 1, i1)
                 # a query attending to no key, whose output is NaN, takes no part
                 active = (i + c - 1 <= i1) && @inbounds(lse[h, ic, b]) != A(-Inf)
-                attention_grad_query!(s[c], g[c], qs, dos, c, n, is_causal ? min(nt, ic - j0 + 1) : nt,
+                attention_grad_query!(s[c], g[c], qs, dos, c, n, is_causal ? min(nt, ic + off - j0 + 1) : nt,
                                       active, q, dout, bias, mask, j0, ic, h, b, scale,
                                       @inbounds(lse[h, ic, b]), @inbounds(delta[ic - i0 + 1]))
             end
@@ -240,7 +242,8 @@ end
 # The pairs of a round, for the key/value head `hk` of each batch element: `next` hands
 # them out to the tasks.
 function attention_grad_round!(next, round, ws, dq, dk, dv, dout, o, lse, q, k, v, bias, mask,
-                               q_lengths, kv_lengths, scale, qscale, is_causal, (; rq, rk, nrq, nrk, nq))
+                               q_offset, q_lengths, kv_lengths, scale, qscale, is_causal,
+                               (; rq, rk, nrq, nrk, nq))
     Lq, Lk, Hk = size(q, 3), size(k, 3), size(k, 2)
     r = size(q, 2) ÷ Hk
     nx = min(nrq, nrk)
@@ -253,17 +256,18 @@ function attention_grad_round!(next, round, ws, dq, dk, dv, dout, o, lse, q, k, 
         b = (item - 1) ÷ (nx * Hk) + 1
         ia, ib = t * rq + 1, min((t + 1) * rq, Lq)
         ja, jb = u * rk + 1, min((u + 1) * rk, Lk)
-        is_causal && ja > ib && continue
+        is_causal && ja > ib + attention_offset(q_offset, b) && continue
         # the query heads sharing these keys, and the queries in tiles
         for h in ((hk - 1) * r + 1):(hk * r), i0 in ia:nq:ib
-            attention_grad_item!(dq, dk, dv, dout, o, lse, q, k, v, bias, mask, q_lengths, kv_lengths,
-                                 scale, qscale, is_causal, h, b, i0, min(i0 + nq - 1, ib), ja, jb, ws)
+            attention_grad_item!(dq, dk, dv, dout, o, lse, q, k, v, bias, mask, q_offset, q_lengths,
+                                 kv_lengths, scale, qscale, is_causal, h, b, i0, min(i0 + nq - 1, ib),
+                                 ja, jb, ws)
         end
     end
     return nothing
 end
 
-function fused_attention_grad(::CPU, dout, o, lse, q::AA4{T}, k, v, bias, mask, q_lengths,
+function fused_attention_grad(::CPU, dout, o, lse, q::AA4{T}, k, v, bias, mask, q_offset, q_lengths,
                               kv_lengths, scale::A, qscale::A, is_causal::Bool) where {T,A}
     D, Dv, Lq, Lk = size(q, 1), size(v, 1), size(q, 3), size(k, 3)
     nheads = size(k, 2) * size(q, 4)                # key/value heads, over the batch
@@ -282,7 +286,7 @@ function fused_attention_grad(::CPU, dout, o, lse, q::AA4{T}, k, v, bias, mask, 
     for round in 0:(max(sched.nrq, sched.nrk) - 1)
         next = Threads.Atomic{Int}(1)
         run(ws) = attention_grad_round!(next, round, ws, dq, dk, dv, dout, o, lse, q, k, v, bias, mask,
-                                        q_lengths, kv_lengths, scale, qscale, is_causal, sched)
+                                        q_offset, q_lengths, kv_lengths, scale, qscale, is_causal, sched)
         ntasks == 1 ? run(wss[1]) : foreach(wait, [Threads.@spawn(run(ws)) for ws in wss])
     end
     return attention_narrow(T, dq), attention_narrow(T, dk), attention_narrow(T, dv)
@@ -329,20 +333,23 @@ end
 # the walked head `g` of an owned one, and the positions to walk
 @inline attention_grad_head(::Val{:q}, ho, g, Ho, Hw) = (ho - 1) ÷ (Ho ÷ Hw) + 1
 @inline attention_grad_head(::Val{:k}, ho, g, Ho, Hw) = (ho - 1) * (Hw ÷ Ho) + g + 1
-@inline attention_grad_range(::Val{:q}, ::Val{causal}, o0, wlen, c) where {causal} =
-    (0, causal ? min(wlen, o0 + c.BQ) : wlen)
-@inline attention_grad_range(::Val{:k}, ::Val{causal}, o0, wlen, c) where {causal} =
-    (causal ? (o0 ÷ c.BK) * c.BK : 0, wlen)
+@inline attention_grad_range(::Val{:q}, ::Val{causal}, o0, wlen, q_offset, b, c) where {causal} =
+    (0, causal ? min(wlen, o0 + c.BQ + attention_offset(q_offset, b)) : wlen)
+@inline attention_grad_range(::Val{:k}, ::Val{causal}, o0, wlen, q_offset, b, c) where {causal} =
+    (causal ? (attention_grad_first(o0, q_offset, b) ÷ c.BK) * c.BK : 0, wlen)
+# the first query attending to the key `o0`
+@inline attention_grad_first(o0, ::Nothing, b) = o0
+@inline attention_grad_first(o0, q_offset, b) = max(o0 - attention_offset(q_offset, b), 0)
 
 # the logits of a thread, as `attention_masked`
 @inline function attention_grad_masked(acc::NTuple{MN,A}, mask, bias, o0, w0, tr, tc, hq, b, omax, wmax,
-                                       ::Val{causal}, ::Val{own}, ::Val{c}) where {MN,A,causal,own,c}
+                                       off, ::Val{causal}, ::Val{own}, ::Val{c}) where {MN,A,causal,own,c}
     ntuple(Val(MN)) do x
         @inline
         a = o0 + tr + c.NR * ((x - 1) % c.TM)
         w = w0 + tc + c.NC * ((x - 1) ÷ c.TM)
         i, j = own === :q ? (a, w) : (w, a)
-        ok = (a < omax) & (w < wmax) & (!causal | (j <= i))
+        ok = (a < omax) & (w < wmax) & (!causal | (j <= i + off))
         ok && attention_allowed(attention_at(mask, j + 1, i + 1, hq, b)) ?
             attention_biased(acc[x], attention_at(bias, j + 1, i + 1, hq, b)) : A(-Inf)
     end
@@ -400,7 +407,7 @@ end
 # if `yo` is nothing, else dS with G = yoᵀyw.
 @kernel inbounds=true cpu=false unsafe_indices=true function attention_grad_kernel!(
         dx, @Const(xo), @Const(xw), yo, yw, @Const(z), @Const(lse), delta,
-        bias, mask, o_lengths, w_lengths, oscale::A, wscale::A, dxscale::A, causal::Val,
+        bias, mask, q_offset, o_lengths, w_lengths, oscale::A, wscale::A, dxscale::A, causal::Val,
         own::Val, til::Val{c}) where {A,c}
     w = @localmem A (c.PP * c.BK,)
     slab = @localmem A (c.SLAB,)
@@ -410,7 +417,8 @@ end
     D = size(xo, 1)
     o0 = (go - 1) * c.BQ
     omax = attention_len(o_lengths, b, size(xo, 3))
-    wfirst, wmax = attention_grad_range(own, causal, o0, attention_len(w_lengths, b, size(xw, 3)), c)
+    off = attention_offset(q_offset, b)
+    wfirst, wmax = attention_grad_range(own, causal, o0, attention_len(w_lengths, b, size(xw, 3)), q_offset, b, c)
     ng = own === Val(:q) ? 1 : size(xw, 2) ÷ size(xo, 2)
 
     tr, tc = t ÷ c.NC, t % c.NC
@@ -452,7 +460,7 @@ end
             i0, s, nq = attention_grad_queries(own, o0, w0, tr, tc, til)
             ls = attention_grad_lse(lse, A, i0, s, hq, b, own === Val(:q) ? omax : wmax, nq)
             pr = attention_grad_p(attention_grad_masked(acc, mask, bias, o0, w0, tr, tc, hq, b, omax, wmax,
-                                                        causal, own, til), ls, own, til)
+                                                        off, causal, own, til), ls, own, til)
             attention_put_tile!(w, pr, tr, tc, til)
             if yo !== nothing
                 # ---- G, as the logits, and dS in place of P
@@ -500,23 +508,24 @@ end
     attention_grad_write!(dx, oacc, dxscale, ud, uq, o0, ho, b, til)
 end
 
-function attention_grad_launch!(backend, dx, xo, xw, yo, yw, z, lse, delta, bias, mask, o_lengths,
-                                w_lengths, oscale::A, wscale::A, dxscale::A, is_causal::Bool, own) where {A}
+function attention_grad_launch!(backend, dx, xo, xw, yo, yw, z, lse, delta, bias, mask, q_offset,
+                                o_lengths, w_lengths, oscale::A, wscale::A, dxscale::A, is_causal::Bool,
+                                own) where {A}
     c = attention_tiling(size(dx, 1), length(dx) ÷ size(dx, 1), attention_shmem_budget(backend) ÷ sizeof(A))
-    attention_grad_kernel!(backend, (c.T, 1, 1))(dx, xo, xw, yo, yw, z, lse, delta, bias, mask, o_lengths,
-        w_lengths, oscale, wscale, dxscale, Val(is_causal), own, Val(c);
+    attention_grad_kernel!(backend, (c.T, 1, 1))(dx, xo, xw, yo, yw, z, lse, delta, bias, mask, q_offset,
+        o_lengths, w_lengths, oscale, wscale, dxscale, Val(is_causal), own, Val(c);
         ndrange=(c.T * cld(size(dx, 3), c.BQ), size(dx, 2), size(dx, 4)))
     return dx
 end
 
-function fused_attention_grad(backend::GPU, dout, o, lse, q, k, v, bias, mask, q_lengths, kv_lengths,
-                              scale::A, qscale::A, is_causal::Bool) where {A}
+function fused_attention_grad(backend::GPU, dout, o, lse, q, k, v, bias, mask, q_offset, q_lengths,
+                              kv_lengths, scale::A, qscale::A, is_causal::Bool) where {A}
     delta = dropdims(mapreduce(attention_wide_prod, +, dout, o; dims=1); dims=1)
-    dq = attention_grad_launch!(backend, similar(q), q, k, dout, v, k, lse, delta, bias, mask, q_lengths,
-                                kv_lengths, scale, one(A), qscale, is_causal, Val(:q))
-    dk = attention_grad_launch!(backend, similar(k), k, q, v, dout, q, lse, delta, bias, mask, kv_lengths,
-                                q_lengths, one(A), scale, scale, is_causal, Val(:k))
+    dq = attention_grad_launch!(backend, similar(q), q, k, dout, v, k, lse, delta, bias, mask, q_offset,
+                                q_lengths, kv_lengths, scale, one(A), qscale, is_causal, Val(:q))
+    dk = attention_grad_launch!(backend, similar(k), k, q, v, dout, q, lse, delta, bias, mask, q_offset,
+                                kv_lengths, q_lengths, one(A), scale, scale, is_causal, Val(:k))
     dv = attention_grad_launch!(backend, similar(v), k, q, nothing, nothing, dout, lse, nothing, bias, mask,
-                                kv_lengths, q_lengths, one(A), scale, one(A), is_causal, Val(:k))
+                                q_offset, kv_lengths, q_lengths, one(A), scale, one(A), is_causal, Val(:k))
     return dq, dk, dv
 end

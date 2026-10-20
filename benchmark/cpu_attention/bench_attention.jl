@@ -65,7 +65,7 @@ const KA_ON_CPU = pkgversion(KA) >= v"0.10"
 function nnlib_ka(q::Array{T}, k, v, causal) where {T}
     A = NNlib.attention_compute_type(T)
     o = similar(q, size(v, 1), size(q, 2), size(q, 3), size(q, 4))
-    args = (o, nothing, q, k, v, nothing, nothing, nothing, nothing, inv(sqrt(A(size(q, 1)))), causal)
+    args = (o, nothing, q, k, v, nothing, nothing, nothing, nothing, nothing, inv(sqrt(A(size(q, 1)))), causal)
     invoke(NNlib.fused_attention!, Tuple{KA.Backend,map(typeof, args)...}, KA.CPU(), args...)
     return o
 end
