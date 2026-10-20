@@ -116,12 +116,14 @@ end
 
 # `∇softmax` mutates, and may call a backend kernel, so nested reverse-mode AD
 # differentiates it with this rule. It is linear and self-adjoint in `dy`.
+# Half precision is computed in Float32 (see `_acc`) and rounded back to `T`.
 function rrule(::typeof(∇softmax), dy, y; dims = 1)
     dx = ∇softmax(dy, y; dims)
     function ∇softmax_pullback(Δ)
         Δ = unthunk(Δ)
         ∂dy = ∇softmax(Δ, y; dims)
-        ∂y = Δ .* (dy .- sum(dy .* y; dims)) .- dy .* sum(Δ .* y; dims)
+        T = promote_type(eltype(Δ), eltype(dy), eltype(y))
+        ∂y = T.(Δ .* (dy .- sum(dy .* _acc.(y); dims)) .- dy .* sum(Δ .* _acc.(y); dims))
         return (NoTangent(), ∂dy, ∂y)
     end
     return dx, ∇softmax_pullback
@@ -202,9 +204,11 @@ function rrule(::typeof(∇logsoftmax), dy, y; dims = 1)
     dx = ∇logsoftmax(dy, y; dims)
     function ∇logsoftmax_pullback(Δ)
         Δ = unthunk(Δ)
-        p = _exp.(y)
-        ∂dy = Δ .- sum(Δ .* p; dims)
-        ∂y = .-sum(dy; dims) .* p .* Δ
+        T = promote_type(eltype(Δ), eltype(y))
+        S = promote_type(T, eltype(dy))
+        p = _exp.(_acc.(y))
+        ∂dy = T.(Δ .- sum(Δ .* p; dims))
+        ∂y = S.(.-sum(_acc, dy; dims) .* p .* Δ)
         return (NoTangent(), ∂dy, ∂y)
     end
     return dx, ∇logsoftmax_pullback

@@ -186,3 +186,20 @@ end
         ChainRulesTestUtils.test_rrule(NNlib.∇logsoftmax, dy, log.(y); fkwargs = (; dims = d))
     end
 end
+
+@testset "second-order rules, half precision: $T" for T in (Float16, BFloat16)
+    # `dy ≈ 1`, as from `sum(sin, softmax(x))`, so the sums cancel against `dy`.
+    hrng = StableRNG(815)
+    V = 128256
+    x = T.(0.01f0 .* randn(hrng, Float32, V, 2))
+    dy = T.(1 .+ 0.01f0 .* randn(hrng, Float32, V, 2))
+    Δ = T.(randn(hrng, Float32, V, 2))
+    ulps(a, ref) = maximum(abs, Float64.(a) .- ref) / eps(T(maximum(abs, ref)))
+    @testset "$∇f" for (∇f, y) in ((∇softmax, softmax(x)), (∇logsoftmax, logsoftmax(x)))
+        _, ∂dy, ∂y = rrule(∇f, dy, y)[2](Δ)
+        _, ref_dy, ref_y = rrule(∇f, Float64.(dy), Float64.(y))[2](Float64.(Δ))
+        @test eltype(∂dy) == eltype(∂y) == T
+        @test ulps(∂dy, ref_dy) <= 1
+        @test ulps(∂y, ref_y) <= 1
+    end
+end
