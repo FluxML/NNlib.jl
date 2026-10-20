@@ -350,9 +350,12 @@ function fused_attention!(::CPU, o, lse, q, k, v, bias, mask, q_offset, q_length
         while true
             item = Threads.atomic_add!(next, 1)
             item > nitems && break
-            i0 = ((item - 1) % nqt) * nq + 1
-            h = ((item - 1) ÷ nqt) % H + 1
-            s = (item - 1) ÷ (nqt * H) + 1
+            # The sequences vary fastest: the items running together then write to
+            # different pages of `o`, which they would otherwise all fault in together,
+            # a row of `o` holding every head.
+            s = (item - 1) % B + 1
+            i0 = ((item - 1) ÷ B) % nqt * nq + 1
+            h = (item - 1) ÷ (B * nqt) + 1
             qs, ks = attention_seq(q, seqs.q_ends, s), attention_seq(k, seqs.kv_ends, s)
             i0 > size(qs, 3) && continue
             attention_item!(attention_seq(o, seqs.q_ends, s), attention_seq(lse, seqs.q_ends, s), qs, ks,
