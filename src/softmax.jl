@@ -9,6 +9,7 @@ It is semantically equivalent to the following:
     softmax(x; dims = 1) = exp.(x) ./ sum(exp.(x), dims = dims)
 
 with additional manipulations enhancing numerical stability.
+For `Float16` and `BFloat16` inputs, the sums are computed in `Float32`.
 
 For a matrix input `x` it will by default (`dims = 1`) treat it as a batch of vectors,
 with each column independent. Keyword `dims = 2` will instead treat rows independently, and so on.
@@ -80,8 +81,7 @@ function _softmax!(out::AbstractArray{T}, x::AbstractArray; dims = 1) where {T}
         _zero, _one, _inf = _acc(T(0)), _acc(T(1)), _acc(T(Inf))
         @. out = ifelse(isequal(max_,_inf), ifelse(isequal(x,_inf), _one, _zero), _exp(x - max_))
     end
-    tmp = dims isa Colon ? sum(_acc, out) : sum!(_acc, max_, out)
-    out ./= tmp
+    out ./= sum(_acc, out; dims)
 end
 
 """
@@ -139,6 +139,8 @@ computing cross entropy loss.
 It is semantically equivalent to the following:
 
     logsoftmax(x; dims = 1) = x .- log.(sum(exp.(x), dims = dims))
+
+For `Float16` and `BFloat16` inputs, the sum is computed in `Float32`.
 
 See also [`softmax`](@ref).
 """
@@ -213,6 +215,7 @@ end
 
 Computes `log.(sum(exp.(x); dims))` in a numerically stable way.
 Without `dims` keyword this returns a scalar.
+For `Float16` and `BFloat16` inputs, it is computed in `Float32` and rounded once.
 
 See also [`logsoftmax`](@ref).
 """

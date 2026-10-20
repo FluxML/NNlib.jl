@@ -80,3 +80,23 @@ end
         CUDA.math_mode!(orig)
     end
 end
+
+@testset "half precision sums in Float32 (#813)" begin
+    # `logsumexp`, and the `dims` cuDNN doesn't take, run the generic kernels.
+    err(a, b) = maximum(abs, Float64.(collect(a)) .- b)
+    V = 50257
+    for T in (Float16, BFloat16)
+        T == BFloat16 && CUDA.capability(CUDA.device()) < v"8.0" && continue
+        x = T.(cu(0.01f0 .* randn(Float32, 2, V)))  # round on the GPU, see bfloat16.jl
+        xd = Float64.(collect(x))
+        tol = eps(T(log(V)))  # an ulp of the outputs of `logsoftmax` and `logsumexp`
+        for d in (2, :)
+            @test eltype(logsumexp(x; dims = d)) == T
+            @test err(logsumexp(x; dims = d), logsumexp(xd; dims = d)) <= tol
+        end
+        @test err(logsoftmax(x; dims = 2), logsoftmax(xd; dims = 2)) <= tol
+        @test err(sum(Float32.(softmax(x; dims = 2)); dims = 2), 1) < eps(T) / 2
+    end
+    # Past 65504, a Float16 sum overflows.
+    @test collect(logsumexp(CUDA.zeros(Float16, 128256, 1); dims = 1)) == fill(Float16(log(128256)), 1, 1)
+end

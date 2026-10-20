@@ -107,6 +107,50 @@ end
     @test logsumexp(x; dims = 1) ≈ flogsoft(x, dims = 1)
 end
 
+# Sums are accumulated in Float32 (#813). Near-uniform logits over a large vocabulary
+# are the hard case: summed in their own type, BFloat16 keeps no correct digit.
+@testset "half precision: $T" for T in (Float16, BFloat16)
+    maxerr(a, b) = maximum(abs, Float64.(a) .- b)
+    ulp(ref) = eps(T(maximum(abs, ref)))  # of the largest entry
+    hrng = StableRNG(813)
+    V = 50257
+    x2 = T.(0.01f0 .* randn(hrng, Float32, V, 2))
+    dy2 = T.(randn(hrng, Float32, V, 2))
+    tol = eps(T(log(V)))  # an ulp of the outputs of `logsoftmax` and `logsumexp`
+    @testset "dims = $d" for (x, dy, d) in ((x2, dy2, 1), (permutedims(x2), permutedims(dy2), 2),
+                                            (x2[:, 1], dy2[:, 1], :))
+        xd, dyd = Float64.(x), Float64.(dy)
+        y, ly, lse = softmax(x; dims = d), logsoftmax(x; dims = d), logsumexp(x; dims = d)
+        @test eltype(y) == eltype(ly) == eltype(lse) == T
+        @test maxerr(sum(Float64, y; dims = d), 1) < eps(T) / 2
+        @test maxerr(ly, logsoftmax(xd; dims = d)) <= tol
+        @test maxerr(lse, logsumexp(xd; dims = d)) <= tol
+        @test softmax!(copy(x); dims = d) == y
+        @test logsoftmax!(copy(x); dims = d) == ly
+
+        dx, ref = ∇softmax(dy, y; dims = d), ∇softmax(dyd, Float64.(y); dims = d)
+        @test eltype(dx) == T
+        @test maxerr(dx, ref) <= 2ulp(ref)
+        dx, ref = ∇logsoftmax(dy, ly; dims = d), ∇logsoftmax(dyd, Float64.(ly); dims = d)
+        @test eltype(dx) == T
+        @test maxerr(dx, ref) <= 2ulp(ref)
+
+        g = gradient(x -> sum(logsumexp(x; dims = d)), x)[1]
+        @test eltype(g) == T
+        @test maxerr(g, softmax(xd; dims = d)) <= ulp(softmax(xd; dims = d))
+    end
+
+    if T == Float16  # past 65504, a Float16 sum overflows
+        V = 128256
+        x = zeros(T, V, 1)
+        @test logsumexp(x; dims = 1) == fill(T(log(V)), 1, 1)
+        @test logsumexp(x) == T(log(V))
+        @test logsoftmax(x) == fill(T(-log(V)), V, 1)
+        @test sum(Float64, softmax(x)) ≈ 1 rtol = 3e-3  # 1/V is subnormal
+        @test maxerr(∇logsoftmax(ones(T, V, 1), logsoftmax(x)), 0) < 1e-2
+    end
+end
+
 @testset "AutoDiff" begin
     for f in (softmax, logsoftmax), d in (:, 1, 2)
         @test test_gradients(x -> f(x; dims = d), randn(rng, 3, 4))
