@@ -876,11 +876,12 @@ function EnzymeRules.augmented_primal(config::EnzymeRules.RevConfig,
         q::AttentionArray{T}, k::AttentionArray{T}, v::AttentionArray{T},
         bias::EnzymeCore.Const{Nothing}, mask::EnzymeCore.Annotation, scale::EnzymeCore.Annotation,
         is_causal::EnzymeCore.Annotation, q_offset::EnzymeCore.Annotation,
-        q_lengths::EnzymeCore.Annotation, kv_lengths::EnzymeCore.Annotation) where {RT,T}
+        q_lengths::EnzymeCore.Annotation, kv_lengths::EnzymeCore.Annotation,
+        segments::EnzymeCore.Annotation) where {RT,T}
 
     lse = similar(q.val, NNlib.attention_compute_type(T), size(q.val, 2), size(q.val, 3), size(q.val, 4))
     o = func.val(q.val, k.val, v.val, nothing, mask.val, scale.val, is_causal.val, q_offset.val,
-                 q_lengths.val, kv_lengths.val; lse)
+                 q_lengths.val, kv_lengths.val, segments.val; lse)
 
     primal = EnzymeRules.needs_primal(config) ? o : nothing
     shadow = if EnzymeRules.needs_shadow(config)
@@ -896,7 +897,7 @@ function EnzymeRules.augmented_primal(config::EnzymeRules.RevConfig,
             _attention_cached(q.val, ow[2]), _attention_cached(k.val, ow[3]),
             _attention_cached(v.val, ow[4]), _attention_cached(mask.val, ow[6]),
             _attention_cached(q_offset.val, ow[9]), _attention_cached(q_lengths.val, ow[10]),
-            _attention_cached(kv_lengths.val, ow[11]))
+            _attention_cached(kv_lengths.val, ow[11]), segments.val)
     return EnzymeRules.AugmentedReturn(primal, shadow, tape)
 end
 
@@ -905,9 +906,10 @@ function EnzymeRules.reverse(config::EnzymeRules.RevConfig,
         q::AttentionArray{T}, k::AttentionArray{T}, v::AttentionArray{T},
         bias::EnzymeCore.Const{Nothing}, mask::EnzymeCore.Annotation, scale::EnzymeCore.Annotation,
         is_causal::EnzymeCore.Annotation, q_offset::EnzymeCore.Annotation,
-        q_lengths::EnzymeCore.Annotation, kv_lengths::EnzymeCore.Annotation) where {RT,T}
+        q_lengths::EnzymeCore.Annotation, kv_lengths::EnzymeCore.Annotation,
+        segments::EnzymeCore.Annotation) where {RT,T}
 
-    douts, o, lse, qval, kval, vval, maskval, qoval, qlval, kvlval = tape
+    douts, o, lse, qval, kval, vval, maskval, qoval, qlval, kvlval, segval = tape
     N = EnzymeRules.width(config)
     active = scale isa EnzymeCore.Active
     dscales = active ? ntuple(_ -> zero(scale.val), Val(N)) : nothing
@@ -916,7 +918,7 @@ function EnzymeRules.reverse(config::EnzymeRules.RevConfig,
         shadow(x, i) = N == 1 ? x.dval : x.dval[i]
         grads = ntuple(Val(N)) do i
             NNlib.fused_attention_grad(N == 1 ? douts : douts[i], o, lse, qval, kval, vval, nothing,
-                                       maskval, scale.val, is_causal.val, qoval, qlval, kvlval)
+                                       maskval, scale.val, is_causal.val, qoval, qlval, kvlval, segval)
         end
         for (i, (dq, dk, dv, _)) in enumerate(grads)
             q isa EnzymeCore.Const || (shadow(q, i) .+= dq)
@@ -929,22 +931,22 @@ function EnzymeRules.reverse(config::EnzymeRules.RevConfig,
     end
 
     dscale = active ? (N == 1 ? dscales[1] : dscales) : nothing
-    return (nothing, nothing, nothing, nothing, nothing, dscale, nothing, nothing, nothing, nothing)
+    return (nothing, nothing, nothing, nothing, nothing, dscale, nothing, nothing, nothing, nothing, nothing)
 end
 
 # the materialized implementation takes the offsets and the lengths as `(1, 1, 1, batch_size)` arrays
 _attention_per_batch(x::Union{Nothing,Integer}) = x
 _attention_per_batch(x::AbstractArray) = reshape(x, 1, 1, 1, :)
 
-_materialized_attention(q, k, v, bias, mask, scale, is_causal, q_offset, q_lengths, kv_lengths) =
+_materialized_attention(q, k, v, bias, mask, scale, is_causal, q_offset, q_lengths, kv_lengths, segments) =
     first(NNlib._attention(q, k, v, bias; fdrop=identity, mask, scale, is_causal,
                            q_offset=_attention_per_batch(q_offset),
                            q_lengths=_attention_per_batch(q_lengths),
-                           kv_lengths=_attention_per_batch(kv_lengths)))
+                           kv_lengths=_attention_per_batch(kv_lengths), segments))
 
 function EnzymeRules.forward(config::EnzymeRules.FwdConfig,
         func::EnzymeCore.Const{typeof(NNlib.fused_attention)}, ::Type{RT},
-        args::Vararg{EnzymeCore.Annotation,10}) where {RT}
+        args::Vararg{EnzymeCore.Annotation,11}) where {RT}
 
     EnzymeRules.needs_shadow(config) ||
         return EnzymeRules.needs_primal(config) ? func.val(map(x -> x.val, args)...) : nothing

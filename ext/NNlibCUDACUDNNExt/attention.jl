@@ -38,10 +38,15 @@ function cudnn_sdpa_output(q, k, v, bias, fdrop, mask, is_causal, q_offset, seq_
 end
 ChainRulesCore.@non_differentiable cudnn_sdpa_output(::Any...)
 
+# Packed sequences need cuDNN's ragged offsets, which cuDNN.jl does not expose
+# (JuliaGPU/CUDA.jl#3435): NNlib's kernel takes them.
 function _scaled_dot_product_attention(q::DenseCuArray{T,4}, k::DenseCuArray{T,4},
                                        v::DenseCuArray{T,4}, bias;
                                        fdrop, mask, scale, is_causal,
-                                       q_offset, q_lengths, kv_lengths) where {T<:CUDNNSDPAFloat}
+                                       q_offset, q_lengths, kv_lengths, segments) where {T<:CUDNNSDPAFloat}
+    segments === nothing ||
+        return NNlib.generic_attention(q, k, v, bias; fdrop, mask, scale, is_causal,
+                                       q_offset, q_lengths, kv_lengths, segments)
     seq_len_q, seq_len_kv = cudnn_sdpa_lengths(q, k, q_lengths, kv_lengths)
     causal, offset = NNlib.causal_offsets(q, k, is_causal, q_offset, q_lengths, kv_lengths)
     out = cudnn_sdpa_output(q, k, v, bias, fdrop, mask, causal, offset, seq_len_q, seq_len_kv)
@@ -55,7 +60,10 @@ end
 function _is_fused_attention(q::DenseCuArray{T,4}, k::DenseCuArray{T,4},
                              v::DenseCuArray{T,4}, bias;
                              fdrop, mask, scale, is_causal,
-                             q_offset, q_lengths, kv_lengths) where {T<:CUDNNSDPAFloat}
+                             q_offset, q_lengths, kv_lengths, segments) where {T<:CUDNNSDPAFloat}
+    segments === nothing ||
+        return NNlib.fused_attention_applies(q, k, v, bias, fdrop, mask) &&
+               NNlib.fused_attention_segments(segments)
     seq_len_q, seq_len_kv = cudnn_sdpa_lengths(q, k, q_lengths, kv_lengths)
     causal, offset = NNlib.causal_offsets(q, k, is_causal, q_offset, q_lengths, kv_lengths)
     out = cudnn_sdpa_output(q, k, v, bias, fdrop, mask, causal, offset, seq_len_q, seq_len_kv)

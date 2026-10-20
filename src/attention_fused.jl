@@ -53,13 +53,22 @@ attention_broadcasts(x::AbstractArray, sz) =
 # `lse` receives what the gradient needs of the softmax: the logarithm of the sum of the
 # exponentials of the logits of each query, as `lse[h, i, b]`.
 function fused_attention(q::AA4{T}, k::AA4{T}, v::AA4{T}, bias, mask, scale, is_causal::Bool,
-                         q_offset, q_lengths, kv_lengths; lse=nothing) where {T}
+                         q_offset, q_lengths, kv_lengths, segments; lse=nothing) where {T}
     o = similar(q, size(v, 1), size(q, 2), size(q, 3), size(q, 4))
     fused_attention!(get_backend(q), o, lse, q, k, v, attention_pad4(bias), attention_pad4(mask),
                      attention_vec_offsets(q_offset), attention_vec(q_lengths), attention_vec(kv_lengths),
-                     attention_scale(attention_compute_type(T), q, scale), is_causal)
+                     attention_seqs(q, k, segments), attention_scale(attention_compute_type(T), q, scale),
+                     is_causal)
     return o
 end
+
+# The sequences the kernels go through: the batch elements, or the segments of packed
+# arrays, which end at `q_ends` and `kv_ends` along the sequence dimension of their only
+# batch element.
+attention_seqs(q, k, segments::Nothing) =
+    (; q_ends = nothing, kv_ends = nothing, n = size(q, 4), maxlen_q = size(q, 3), maxlen_kv = size(k, 3))
+attention_seqs(q, k, s::AttentionSegments) =
+    (; s.q_ends, s.kv_ends, n = length(s.q_ends), maxlen_q = s.maxlen_q::Int, maxlen_kv = s.maxlen_kv::Int)
 
 attention_scale(::Type{A}, q, scale::Nothing) where {A} = inv(sqrt(A(size(q, 1))))
 attention_scale(::Type{A}, q, scale) where {A} = A(scale)
@@ -84,6 +93,26 @@ attention_vec_offsets(x::AbstractArray) = vec(x)
 @inline attention_offset(o::Nothing, b) = 0
 @inline attention_offset(o::Integer, b) = o
 @inline attention_offset(o, b) = Int(@inbounds o[b])
+# The first position of the sequence `s` along the sequence dimension of an array of `n`
+# positions, and how many it has; and the batch element of the arrays it is in.
+@inline attention_span(ends::Nothing, s, n) = (0, n)
+@inline function attention_span(ends, s, n)
+    first = s == 1 ? 0 : min(Int(@inbounds ends[s - 1]), n)
+    return first, min(Int(@inbounds ends[s]), n) - first
+end
+@inline attention_batch(ends::Nothing, s) = s
+@inline attention_batch(ends, s) = 1
+# A packed sequence shorter than the longest has blocks with no position to go through.
+@inline attention_live(ends::Nothing, i0, len, jmax) = jmax
+@inline attention_live(ends, i0, len, jmax) = ifelse(i0 < len, jmax, 0)
+
+# The sequence `s` of an array as an array of its own, along the dimension of the
+# positions: a view of a segment of packed arrays.
+@inline attention_seq(x, ends::Nothing, s) = x
+@inline attention_seq(x::Nothing, ends::AbstractVector, s) = nothing
+@inline attention_seq(x::AbstractArray{<:Any,4}, ends::AbstractVector, s) = view(x, :, :, attention_range(ends, s), :)
+@inline attention_seq(x::AbstractArray{<:Any,3}, ends::AbstractVector, s) = view(x, :, attention_range(ends, s), :)
+@inline attention_range(ends, s) = ((s == 1 ? 0 : Int(ends[s - 1])) + 1):Int(ends[s])
 
 
 #######################
@@ -256,15 +285,13 @@ function attention_workspace(::Type{A}, D::Int, Dv::Int, nq::Int) where {A}
               m = Vector{A}(undef, nq + 1), l = Vector{A}(undef, nq + 1))
 end
 
-# The queries `i0:i1` of the head `h` of the batch element `b`.
-function attention_item!(o::AbstractArray{T,4}, lse, q, k, v, bias, mask, q_offset, q_lengths,
-                         kv_lengths, scale::A, is_causal::Bool, h, b, i0, i1, ws) where {T,A}
+# The queries `i0:i1` of the head `h` of the batch element `b`, of which the first `qlen`
+# are valid and attend to the first `kvlen` keys, up to `i + off` for the query `i` with
+# a causal mask.
+function attention_item!(o::AbstractArray{T,4}, lse, q, k, v, bias, mask, qlen, kvlen, off,
+                         scale::A, is_causal::Bool, h, b, i0, i1, ws) where {T,A}
     (; kt, vt, buf, s1, s2, oacc, m, l) = ws
     hk = (h - 1) ÷ (size(q, 2) ÷ size(k, 2)) + 1
-    qlen = attention_len(q_lengths, b, size(q, 3))
-    kvlen = attention_len(kv_lengths, b, size(k, 3))
-    # with a causal mask the query `i` attends to the keys up to `i + off`
-    off = attention_offset(q_offset, b)
     jmax = is_causal ? min(kvlen, i1 + off) : kvlen
     nk = size(kt, 1)
     fill!(oacc, zero(A))
@@ -306,11 +333,11 @@ function attention_item!(o::AbstractArray{T,4}, lse, q, k, v, bias, mask, q_offs
     return nothing
 end
 
-function fused_attention!(::CPU, o, lse, q, k, v, bias, mask, q_offset, q_lengths, kv_lengths,
+function fused_attention!(::CPU, o, lse, q, k, v, bias, mask, q_offset, q_lengths, kv_lengths, seqs,
                           scale::A, is_causal::Bool) where {A}
-    H, Lq, B = size(q, 2), size(q, 3), size(q, 4)
+    H, Lq, B = size(q, 2), seqs.maxlen_q, seqs.n
     # a task for every 2^16 multiply-adds at least: spawning one costs a few microseconds
-    work = Lq * size(k, 3) * H * B * (size(q, 1) + size(v, 1))
+    work = Lq * seqs.maxlen_kv * H * B * (size(q, 1) + size(v, 1))
     ntasks = should_use_spawn() ? min(Threads.nthreads(:default), cld(work, 2^16)) : 1
     # Queries per item: many, since each item packs every tile of keys it goes through,
     # but leaving several items to each task so that they balance the load.
@@ -325,9 +352,14 @@ function fused_attention!(::CPU, o, lse, q, k, v, bias, mask, q_offset, q_length
             item > nitems && break
             i0 = ((item - 1) % nqt) * nq + 1
             h = ((item - 1) ÷ nqt) % H + 1
-            b = (item - 1) ÷ (nqt * H) + 1
-            attention_item!(o, lse, q, k, v, bias, mask, q_offset, q_lengths, kv_lengths, scale,
-                            is_causal, h, b, i0, min(i0 + nq - 1, Lq), ws)
+            s = (item - 1) ÷ (nqt * H) + 1
+            qs, ks = attention_seq(q, seqs.q_ends, s), attention_seq(k, seqs.kv_ends, s)
+            i0 > size(qs, 3) && continue
+            attention_item!(attention_seq(o, seqs.q_ends, s), attention_seq(lse, seqs.q_ends, s), qs, ks,
+                            attention_seq(v, seqs.kv_ends, s), bias, mask,
+                            attention_len(q_lengths, s, size(qs, 3)), attention_len(kv_lengths, s, size(ks, 3)),
+                            attention_offset(q_offset, s), scale, is_causal, h, attention_batch(seqs.q_ends, s),
+                            i0, min(i0 + nq - 1, size(qs, 3)), ws)
         end
         return nothing
     end
@@ -581,8 +613,9 @@ end
 @inline attention_get_stat(stat, uq, ::Val{c}) where {c} =
     ntuple(m -> @inbounds(stat[uq + c.NQ * (m - 1) + 1]), Val(c.TQ))
 
-@inline function attention_write!(o, oacc::NTuple{MN,A}, p_shm, ud, uq, i0, h, b, qlen, ::Val{c}) where {MN,A,c}
-    Dv, Lq = size(o, 1), size(o, 3)
+# the outputs of the queries `i0 + ...` of a sequence of `Lq` starting at `qb`
+@inline function attention_write!(o, oacc::NTuple{MN,A}, p_shm, ud, uq, i0, qb, Lq, h, b, qlen, ::Val{c}) where {MN,A,c}
+    Dv = size(o, 1)
     ntuple(Val(c.TQ)) do m
         @inline
         r = uq + c.NQ * (m - 1)
@@ -592,7 +625,7 @@ end
             @inline
             d = ud + c.ND * (e - 1)
             if (d < Dv) & (i < Lq)
-                @inbounds o[d + 1, h, i + 1, b] = i < qlen ? oacc[(m - 1) * c.TD + e] * il : zero(A)
+                @inbounds o[d + 1, h, qb + i + 1, b] = i < qlen ? oacc[(m - 1) * c.TD + e] * il : zero(A)
             end
             nothing
         end
@@ -601,34 +634,40 @@ end
     return nothing
 end
 
-@inline attention_write_lse!(lse::Nothing, mx::NTuple, p_shm, tr, i0, h, b, ::Val) = nothing
-@inline function attention_write_lse!(lse, mx::NTuple{TM,A}, p_shm, tr, i0, h, b, ::Val{c}) where {TM,A,c}
+@inline attention_write_lse!(lse::Nothing, mx::NTuple, p_shm, tr, i0, qb, Lq, h, b, ::Val) = nothing
+@inline function attention_write_lse!(lse, mx::NTuple{TM,A}, p_shm, tr, i0, qb, Lq, h, b, ::Val{c}) where {TM,A,c}
     ntuple(Val(TM)) do m
         @inline
         r = tr + c.NR * (m - 1)
-        if i0 + r < size(lse, 2)
-            @inbounds lse[h, i0 + r + 1, b] = mx[m] + log(attention_row_sum(p_shm, r, A, Val(c)))
+        if i0 + r < Lq
+            @inbounds lse[h, qb + i0 + r + 1, b] = mx[m] + log(attention_row_sum(p_shm, r, A, Val(c)))
         end
         nothing
     end
     return nothing
 end
 
+# The queries and the keys of the sequence `s` start at `qb` and `kb` in the batch element
+# `b` of the arrays: in a block the positions `i0`, `j0` and their bounds count from there.
 @kernel inbounds=true cpu=false unsafe_indices=true function attention_kernel!(
         o, lse, @Const(q), @Const(k), @Const(v), bias, mask, q_offset, q_lengths, kv_lengths,
-        scale::A, causal::Val, til::Val{c}) where {A,c}
+        q_ends, kv_ends, scale::A, causal::Val, til::Val{c}) where {A,c}
     p_shm = @localmem A (c.PP * c.BK,)
     slab = @localmem A (c.SLAB,)
     stat = @localmem A (c.BQ,)
 
     t = @index(Local, Linear) - 1
-    gq, h, b = @index(Group, NTuple)
-    D, Lq = size(q, 1), size(q, 3)
+    gq, h, s = @index(Group, NTuple)
+    D = size(q, 1)
+    qb, Lq = attention_span(q_ends, s, size(q, 3))
+    kb, Lk = attention_span(kv_ends, s, size(k, 3))
+    b = attention_batch(q_ends, s)
     hk = (h - 1) ÷ (size(q, 2) ÷ size(k, 2)) + 1
     i0 = (gq - 1) * c.BQ
-    qlen = attention_len(q_lengths, b, Lq)
-    off = attention_offset(q_offset, b)
-    jmax = min(attention_len(kv_lengths, b, size(k, 3)), causal === Val(true) ? i0 + c.BQ + off : size(k, 3))
+    qlen = attention_len(q_lengths, s, Lq)
+    off = attention_offset(q_offset, s)
+    jmax = attention_live(q_ends, i0, Lq,
+                          min(attention_len(kv_lengths, s, Lk), causal === Val(true) ? i0 + c.BQ + off : Lk))
 
     tr, tc = t ÷ c.NC, t % c.NC       # logits tile: queries tr + NR*m, keys tc + NC*n
     ud, uq = t ÷ c.NQ, t % c.NQ       # output tile: dimensions ud + ND*e, queries uq + NQ*m
@@ -638,8 +677,8 @@ end
     ls = ntuple(_ -> zero(A), Val(c.TM))
     oacc = ntuple(_ -> zero(A), Val(c.TD * c.TQ))
 
-    qv = attention_fetch_rows(q, scale, dd, h, i0, r0, b, D, Lq, Val(c.BQ), Val(c.RS))
-    kv = attention_fetch_rows(k, one(A), dd, hk, 0, r0, b, D, jmax, Val(c.BK), Val(c.RS))
+    qv = attention_fetch_rows(q, scale, dd, h, qb + i0, r0, b, D, qb + Lq, Val(c.BQ), Val(c.RS))
+    kv = attention_fetch_rows(k, one(A), dd, hk, kb, r0, b, D, kb + jmax, Val(c.BK), Val(c.RS))
     vv = ntuple(_ -> zero(A), Val(c.KV * cld(c.DVP, c.T)))
     j0 = 0
     while j0 < jmax
@@ -652,10 +691,10 @@ end
             @synchronize()
             d0 += c.KD
             if d0 < D
-                qv = attention_fetch_rows(q, scale, d0 + dd, h, i0, r0, b, D, Lq, Val(c.BQ), Val(c.RS))
-                kv = attention_fetch_rows(k, one(A), d0 + dd, hk, j0, r0, b, D, jmax, Val(c.BK), Val(c.RS))
+                qv = attention_fetch_rows(q, scale, d0 + dd, h, qb + i0, r0, b, D, qb + Lq, Val(c.BQ), Val(c.RS))
+                kv = attention_fetch_rows(k, one(A), d0 + dd, hk, kb + j0, r0, b, D, kb + jmax, Val(c.BK), Val(c.RS))
             else
-                vv = attention_fetch_dims(v, A, t, hk, j0, b, jmax, til)
+                vv = attention_fetch_dims(v, A, t, hk, kb + j0, b, kb + jmax, til)
             end
             acc = attention_logits_slab(acc, slab, tr, tc, til)
             @synchronize()
@@ -683,10 +722,10 @@ end
             @synchronize()
             jj0 += c.KV
             if jj0 < c.BK
-                vv = attention_fetch_dims(v, A, t, hk, j0 + jj0, b, jmax, til)
+                vv = attention_fetch_dims(v, A, t, hk, kb + j0 + jj0, b, kb + jmax, til)
             elseif j0 + c.BK < jmax
-                qv = attention_fetch_rows(q, scale, dd, h, i0, r0, b, D, Lq, Val(c.BQ), Val(c.RS))
-                kv = attention_fetch_rows(k, one(A), dd, hk, j0 + c.BK, r0, b, D, jmax, Val(c.BK), Val(c.RS))
+                qv = attention_fetch_rows(q, scale, dd, h, qb + i0, r0, b, D, qb + Lq, Val(c.BQ), Val(c.RS))
+                kv = attention_fetch_rows(k, one(A), dd, hk, kb + j0 + c.BK, r0, b, D, kb + jmax, Val(c.BK), Val(c.RS))
             end
             oacc = attention_output_slab(oacc, slab, p_shm, ud, uq, jj0 - c.KV, til)
             @synchronize()
@@ -697,15 +736,15 @@ end
     # ---- normalization
     attention_put_rowstat!(p_shm, ls, tr, tc, til)
     @synchronize()
-    attention_write!(o, oacc, p_shm, ud, uq, i0, h, b, qlen, til)
-    tc == 0 && attention_write_lse!(lse, mx, p_shm, tr, i0, h, b, til)
+    attention_write!(o, oacc, p_shm, ud, uq, i0, qb, Lq, h, b, qlen, til)
+    tc == 0 && attention_write_lse!(lse, mx, p_shm, tr, i0, qb, Lq, h, b, til)
 end
 
-function fused_attention!(backend::GPU, o, lse, q, k, v, bias, mask, q_offset, q_lengths, kv_lengths,
+function fused_attention!(backend::GPU, o, lse, q, k, v, bias, mask, q_offset, q_lengths, kv_lengths, seqs,
                           scale::A, is_causal::Bool) where {A}
-    H, Lq, B = size(q, 2), size(q, 3), size(q, 4)
     c = attention_tiling(backend, q, v)
     attention_kernel!(backend, (c.T, 1, 1))(o, lse, q, k, v, bias, mask, q_offset, q_lengths, kv_lengths,
-        scale, Val(is_causal), Val(c); ndrange=(c.T * cld(Lq, c.BQ), H, B))
+        seqs.q_ends, seqs.kv_ends, scale, Val(is_causal), Val(c);
+        ndrange=(c.T * cld(seqs.maxlen_q, c.BQ), size(q, 2), seqs.n))
     return o
 end
