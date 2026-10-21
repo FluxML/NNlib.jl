@@ -3,7 +3,7 @@ const AA4{T} = AbstractArray{T,4}
 const AA{N,T} = AbstractArray{T,N}
 
 """
-    scaled_dot_product_attention(query, key, value, [bias]; [fdrop, mask, scale, is_causal, q_offset, q_lengths, kv_lengths])
+    scaled_dot_product_attention(query, key, value, [bias]; [fdrop, mask, scale, is_causal, q_offset, q_lengths, kv_lengths, q_segments, kv_segments, maxlen])
     sdpa(query, key, value, [bias]; kws...)
 
 Multihead dot product attention used in transformer architectures, with an explicit
@@ -64,9 +64,30 @@ weights too.
           integer for all of them. The keys past `kv_lengths` are not attended to, and
           the output is zero at the queries past `q_lengths`. Each can be given without
           the other. Default `nothing`.
+- `q_segments`, `kv_segments`: Either `nothing` or the lengths of the sequences packed
+          one after the other along the sequence dimension of `query` and of `key` and
+          `value`, as an integer vector. See below. `kv_segments` defaults to `q_segments`.
+- `maxlen`: With `q_segments`, either `nothing` or an integer at least as large as every
+          segment. It saves reading the lengths of the segments on the host where they
+          are on a GPU, which waits for the device, and stands in for them where they
+          cannot be read, as the traced ones of Reactant. Default `nothing`.
 
 `mask`, `is_causal` and `kv_lengths` can be combined: a key is then attended to only
 where all of them allow it.
+
+# Packed sequences
+
+With `q_segments`, the inputs hold sequences of different lengths one after the other,
+without padding: they have size `(head_dim, nheads, total_len)`, without batch
+dimensions, and the output has the size of `query`. The `s`-th segment of `query`
+attends to the `s`-th segment of `key` and `value` only, as a batch element does in a
+padded batch: `is_causal` applies within each segment, and `q_offset`, `q_lengths` and
+`kv_lengths` take one entry for each segment. The lengths of the segments have to add up
+to the sequence lengths of the arrays. A `bias` or a `mask` is not supported.
+
+This is how documents packed in a sequence are kept from attending to each other, and
+how a batch of sequences of different lengths avoids padding: layers other than the
+attention act on the `(features, total_len)` array of all the positions.
 
 # Fused implementation
 
@@ -125,18 +146,26 @@ y = scaled_dot_product_attention(q, k, v; is_causal=:bottom_right, kv_lengths=[1
 # the same, with the offsets of the queries
 y = scaled_dot_product_attention(q, k, v; is_causal=true, q_offset=[10, 20, 30, 40],
                                  kv_lengths=[13, 23, 33, 43])
+
+# three documents of 5, 12 and 3 positions packed in one sequence, each attending
+# causally to itself only
+x = rand(Float32, 16, 8, 20)
+y = scaled_dot_product_attention(x, x, x; is_causal=true, q_segments=[5, 12, 3])
+# size(y) == (16, 8, 20)
 ```
 """
 function scaled_dot_product_attention(q::AbstractArray, k::AbstractArray, v::AbstractArray,
             bias=nothing; fdrop=identity, mask=nothing, scale=nothing,
-            is_causal::Union{Bool,Symbol}=false, q_offset=0, q_lengths=nothing, kv_lengths=nothing)
+            is_causal::Union{Bool,Symbol}=false, q_offset=0, q_lengths=nothing, kv_lengths=nothing,
+            q_segments=nothing, kv_segments=q_segments, maxlen=nothing)
     check_attention_inputs(q, k, v)
     check_causal(is_causal, q_offset)
     batch_size = size(q)[4:end]
-    q, k, v, bias, mask, q_offset, q_lengths, kv_lengths =
-        collapse_attention_inputs(q, k, v, bias, mask, q_offset, q_lengths, kv_lengths)
+    q, k, v, bias, mask, q_offset, q_lengths, kv_lengths, segments =
+        collapse_attention_inputs(q, k, v, bias, mask, q_offset, q_lengths, kv_lengths,
+                                  q_segments, kv_segments, maxlen)
     x = _scaled_dot_product_attention(q, k, v, bias; fdrop, mask, scale, is_causal,
-                                      q_offset, q_lengths, kv_lengths)
+                                      q_offset, q_lengths, kv_lengths, segments)
     return reshape(x, size(x, 1), size(x, 2), size(x, 3), batch_size...)
 end
 
@@ -144,11 +173,12 @@ const sdpa = scaled_dot_product_attention
 
 # Attention on `(head_dim, nheads, seq_len, batch_size)` arrays, with `q_lengths` and
 # `kv_lengths` as `(1, 1, 1, batch_size)` arrays or `nothing`, and `q_offset` as such an
-# array or an `Int`. This is the method for backends to overload: it receives the
-# arguments as the user gave them, `is_causal=:bottom_right` included, before the
-# materialized implementation builds the causal and padding masks, the repeated
-# key/value heads of grouped-query attention and the attention weights, none of which a
-# fused kernel needs.
+# array or an `Int`. With `segments`, an `AttentionSegments`, the arrays hold packed
+# sequences, and those arguments have an entry for each segment. This is the method for
+# backends to overload: it receives the arguments as the user gave them,
+# `is_causal=:bottom_right` included, before the materialized implementation builds the
+# causal and padding masks, the repeated key/value heads of grouped-query attention and
+# the attention weights, none of which a fused kernel needs.
 #
 _scaled_dot_product_attention(q::AA4, k::AA4, v::AA4, bias; kws...) =
     generic_attention(q, k, v, bias; kws...)
@@ -158,11 +188,14 @@ _scaled_dot_product_attention(q::AA4, k::AA4, v::AA4, bias; kws...) =
 # materialized one. Under automatic differentiation the latter is also taken, and
 # differentiated, where the fused one has no rule.
 function generic_attention(q::AA4, k::AA4, v::AA4, bias;
-            fdrop, mask, scale, is_causal, q_offset, q_lengths, kv_lengths)
+            fdrop, mask, scale, is_causal, q_offset, q_lengths, kv_lengths, segments=nothing)
     is_causal, q_offset = causal_offsets(q, k, is_causal, q_offset, q_lengths, kv_lengths)
-    if fused_attention_applies(q, k, v, bias, fdrop, mask) && fused_attention_differentiable(q, bias)
-        return fused_attention(q, k, v, bias, mask, scale, is_causal, q_offset, q_lengths, kv_lengths)
+    if fused_attention_applies(q, k, v, bias, fdrop, mask) && fused_attention_differentiable(q, bias) &&
+            fused_attention_segments(segments)
+        return fused_attention(q, k, v, bias, mask, scale, is_causal, q_offset, q_lengths, kv_lengths, segments)
     end
+    segments === nothing ||
+        return packed_attention(q, k, v; fdrop, scale, is_causal, q_offset, q_lengths, kv_lengths, segments)
     x, _ = _attention(q, k, v, bias; fdrop, mask, scale, is_causal, q_offset, q_lengths, kv_lengths)
     return x
 end
@@ -177,7 +210,9 @@ weights it is computed from, in a single pass.
 The arguments are those of [`scaled_dot_product_attention`](@ref). The weights have size
 `(kv_len, q_len, nheads, batch_size...)`, with `α[j, i, h, b]` the weight of the key `j`
 for the query `i` in the head `h`: the softmax over the keys of the attention logits,
-after `fdrop`. They are zero at the queries past `q_lengths`.
+after `fdrop`. They are zero at the queries past `q_lengths`. With `q_segments` they
+have size `(kv_len, q_len, nheads)`, and are zero but for the keys of the segment of
+each query.
 
 Returning the weights means materializing them, so this function never takes a fused
 implementation: prefer [`scaled_dot_product_attention`](@ref) when they are not needed.
@@ -194,13 +229,16 @@ y, α = scaled_dot_product_attention_with_weights(q, k, v)
 """
 function scaled_dot_product_attention_with_weights(q::AbstractArray, k::AbstractArray,
             v::AbstractArray, bias=nothing; fdrop=identity, mask=nothing, scale=nothing,
-            is_causal::Union{Bool,Symbol}=false, q_offset=0, q_lengths=nothing, kv_lengths=nothing)
+            is_causal::Union{Bool,Symbol}=false, q_offset=0, q_lengths=nothing, kv_lengths=nothing,
+            q_segments=nothing, kv_segments=q_segments, maxlen=nothing)
     check_attention_inputs(q, k, v)
     check_causal(is_causal, q_offset)
     batch_size = size(q)[4:end]
-    q, k, v, bias, mask, q_offset, q_lengths, kv_lengths =
-        collapse_attention_inputs(q, k, v, bias, mask, q_offset, q_lengths, kv_lengths)
-    x, α = _attention(q, k, v, bias; fdrop, mask, scale, is_causal, q_offset, q_lengths, kv_lengths)
+    q, k, v, bias, mask, q_offset, q_lengths, kv_lengths, segments =
+        collapse_attention_inputs(q, k, v, bias, mask, q_offset, q_lengths, kv_lengths,
+                                  q_segments, kv_segments, maxlen)
+    x, α = _attention(q, k, v, bias; fdrop, mask, scale, is_causal, q_offset, q_lengths, kv_lengths,
+                      segments)
     x = reshape(x, size(x, 1), size(x, 2), size(x, 3), batch_size...)
     α = reshape(α, size(α, 1), size(α, 2), size(α, 3), batch_size...)
     return x, α
@@ -220,18 +258,20 @@ implementation is differentiated where the fused one has no gradient, as with a 
 """
 function is_fused_attention(q::AbstractArray, k::AbstractArray, v::AbstractArray,
             bias=nothing; fdrop=identity, mask=nothing, scale=nothing,
-            is_causal::Union{Bool,Symbol}=false, q_offset=0, q_lengths=nothing, kv_lengths=nothing)
+            is_causal::Union{Bool,Symbol}=false, q_offset=0, q_lengths=nothing, kv_lengths=nothing,
+            q_segments=nothing, kv_segments=q_segments, maxlen=nothing)
     check_attention_inputs(q, k, v)
     check_causal(is_causal, q_offset)
-    q, k, v, bias, mask, q_offset, q_lengths, kv_lengths =
-        collapse_attention_inputs(q, k, v, bias, mask, q_offset, q_lengths, kv_lengths)
+    q, k, v, bias, mask, q_offset, q_lengths, kv_lengths, segments =
+        collapse_attention_inputs(q, k, v, bias, mask, q_offset, q_lengths, kv_lengths,
+                                  q_segments, kv_segments, maxlen)
     return _is_fused_attention(q, k, v, bias; fdrop, mask, scale, is_causal,
-                               q_offset, q_lengths, kv_lengths)
+                               q_offset, q_lengths, kv_lengths, segments)
 end
 
 # To be overloaded together with `_scaled_dot_product_attention`.
-_is_fused_attention(q::AA4, k::AA4, v::AA4, bias; fdrop, mask, kws...) =
-    fused_attention_applies(q, k, v, bias, fdrop, mask)
+_is_fused_attention(q::AA4, k::AA4, v::AA4, bias; fdrop, mask, segments=nothing, kws...) =
+    fused_attention_applies(q, k, v, bias, fdrop, mask) && fused_attention_segments(segments)
 
 function check_attention_inputs(q::AbstractArray, k::AbstractArray, v::AbstractArray)
     ndims(q) == ndims(k) == ndims(v) || throw(ArgumentError("""
@@ -291,17 +331,48 @@ end
 # Bring the arguments of the public functions to the layout of the implementations:
 # `q`, `k` and `v` with a single batch dimension, `bias` and `mask` broadcastable against
 # it, the lengths and the offsets but an `Integer` one as `(1, 1, 1, batch_size)` arrays
-# on the device of the inputs.
-function collapse_attention_inputs(q, k, v, bias, mask, q_offset, q_lengths, kv_lengths)
+# on the device of the inputs. Packed sequences have a batch dimension of one, an
+# `AttentionSegments`, and the lengths of their segments as `q_lengths` and `kv_lengths`
+# where these are not given. Inlined: Enzyme takes the integer arrays of a returned tuple
+# that also holds active arrays for active memory (EnzymeAD/Enzyme.jl#3873).
+@inline function collapse_attention_inputs(q, k, v, bias, mask, q_offset, q_lengths, kv_lengths,
+                                           q_segments=nothing, kv_segments=nothing, maxlen=nothing)
     batch_size = size(q)[4:end]
+    check_segments(q, bias, mask, q_segments, kv_segments)
     q, k, v = map(collapse_batch_dims, (q, k, v))
+    segments = attention_segments(q, k, q_segments, kv_segments, maxlen)
+    if segments !== nothing
+        n = length(segments.q_ends)
+        q_offset = attention_offsets(q, q_offset, n)
+        q_lengths = segment_lengths(q, q_lengths, segments.q_sizes)
+        kv_lengths = segment_lengths(k, kv_lengths, segments.kv_sizes)
+        return q, k, v, nothing, nothing, q_offset, q_lengths, kv_lengths, segments
+    end
     bias = collapse_batch_dims(bias, batch_size)
     mask = collapse_batch_dims(mask, batch_size)
     q_offset = attention_offsets(q, q_offset)
     q_lengths = attention_lengths(q, q_lengths)
     kv_lengths = attention_lengths(k, kv_lengths)
-    return q, k, v, bias, mask, q_offset, q_lengths, kv_lengths
+    return q, k, v, bias, mask, q_offset, q_lengths, kv_lengths, nothing
 end
+
+check_segments(q, bias, mask, q_segments::Nothing, kv_segments::Nothing) = nothing
+check_segments(q, bias, mask, q_segments::Nothing, kv_segments) =
+    throw(ArgumentError("`kv_segments` is given without `q_segments`."))
+
+function check_segments(q, bias, mask, q_segments, kv_segments)
+    ndims(q) == 3 || throw(ArgumentError(
+        "Packed sequences have size `(head_dim, nheads, total_len)`, without batch \
+         dimensions: got arrays of size $(size(q))."))
+    bias === nothing && mask === nothing || throw(ArgumentError(
+        "A `bias` or a `mask` is not supported with `q_segments`."))
+    length(q_segments) == length(kv_segments) || throw(ArgumentError(
+        "Expected as many segments of keys as of queries, got $(length(kv_segments)) and \
+         $(length(q_segments))."))
+    return nothing
+end
+
+@non_differentiable check_segments(::Any...)
 
 # collapse the batch dimensions into a single one
 collapse_batch_dims(x) = reshape(x, size(x, 1), size(x, 2), size(x, 3), :)
@@ -340,40 +411,109 @@ expand_batch_dims(x::AbstractArray, batch_size::Tuple) =
 # Sequence lengths as an `Int32` array of size `(1, 1, 1, batch_size)` on the device of
 # `x`, a `(head_dim, nheads, seq_len, batch_size)` array. The lengths are not restricted
 # to `Integer`s, which the traced integers of Reactant are not.
-attention_lengths(x::AA4, lengths::Nothing) = nothing
+attention_lengths(x::AA4, lengths::Nothing, n::Int=size(x, 4)) = nothing
 
-function attention_lengths(x::AA4, lengths::Union{Number,AbstractArray})
-    out = similar(x, Int32, (1, 1, 1, size(x, 4)))
+function attention_lengths(x::AA4, lengths::Union{Number,AbstractArray}, n::Int=size(x, 4))
+    out = similar(x, Int32, (1, 1, 1, n))
     lengths isa Number && return fill!(out, clamp(lengths, 0, size(x, 3)))
     length(lengths) == length(out) || throw(ArgumentError(
-        "Expected a sequence length for each of the $(length(out)) batch elements, \
+        "Expected a sequence length for each of the $(length(out)) sequences, \
          got $(length(lengths))."))
     return copyto!(out, Int32.(clamp.(vec(lengths), 0, size(x, 3))))
 end
 
 # The offsets of the queries as the lengths, but an `Integer`, which is kept as it is:
 # a backend then recognizes the default of zero without reading the device.
-attention_offsets(x::AA4, offset::Integer) = Int(offset)
+attention_offsets(x::AA4, offset::Integer, n::Int=size(x, 4)) = Int(offset)
 
-function attention_offsets(x::AA4, offsets::Union{Number,AbstractArray})
-    out = similar(x, Int32, (1, 1, 1, size(x, 4)))
+function attention_offsets(x::AA4, offsets::Union{Number,AbstractArray}, n::Int=size(x, 4))
+    out = similar(x, Int32, (1, 1, 1, n))
     offsets isa Number && return fill!(out, offsets)
     length(offsets) == length(out) || throw(ArgumentError(
-        "Expected a query offset for each of the $(length(out)) batch elements, \
+        "Expected a query offset for each of the $(length(out)) sequences, \
          got $(length(offsets))."))
     return copyto!(out, Int32.(vec(offsets)))
 end
 
+# The valid positions of each segment: all of them, or the `lengths` given.
+segment_lengths(x::AA4, lengths::Nothing, sizes) = reshape(sizes, 1, 1, 1, :)
+segment_lengths(x::AA4, lengths, sizes) =
+    min.(attention_lengths(x, lengths, length(sizes)), reshape(sizes, 1, 1, 1, :))
+
 @non_differentiable attention_lengths(::Any...)
 @non_differentiable attention_offsets(::Any...)
+@non_differentiable segment_lengths(::Any...)
+
+# Packed sequences, in `(head_dim, nheads, total_len, 1)` arrays: the segment `s` of the
+# queries, their positions `q_ends[s - 1] + 1:q_ends[s]`, attends to the segment `s` of
+# the keys only. The sizes and the cumulative ends of the segments are `Int32` vectors on
+# the device of the inputs. The longest segment is `nothing` where the sizes are not read
+# on the host and no `maxlen` is given: the fused kernels, whose launches it sizes, are
+# then not taken.
+struct AttentionSegments{V<:AbstractVector}
+    q_sizes::V
+    q_ends::V
+    kv_sizes::V
+    kv_ends::V
+    maxlen_q::Union{Int,Nothing}
+    maxlen_kv::Union{Int,Nothing}
+end
+
+attention_segments(q::AA4, k::AA4, q_segments::Nothing, kv_segments, maxlen) = nothing
+
+function attention_segments(q::AA4, k::AA4, q_segments, kv_segments, maxlen)
+    q_sizes, q_ends, maxlen_q = segment_sizes(q, q_segments, maxlen, "queries")
+    kv_sizes, kv_ends, maxlen_kv = segment_sizes(k, kv_segments, maxlen, "keys")
+    return AttentionSegments(q_sizes, q_ends, kv_sizes, kv_ends, maxlen_q, maxlen_kv)
+end
+
+function segment_sizes(x::AA4, segments::AbstractVector, maxlen, name)
+    n = length(segments)
+    host = segments_on_host(segments, maxlen)
+    if host === nothing
+        sizes = copyto!(similar(x, Int32, n), Int32.(segments))
+        # `accumulate` keeps `Int32`, which Reactant's scan needs where `cumsum` widens it
+        # (EnzymeAD/Reactant.jl#3525)
+        return sizes, accumulate(+, sizes), maxlen === nothing ? nothing : Int(maxlen)
+    end
+    sizes = Int32.(host)
+    all(>=(0), sizes) && sum(sizes; init=0) == size(x, 3) || throw(ArgumentError(
+        "The lengths of the $n segments of the $name have to be nonnegative and add up to \
+         the $(size(x, 3)) positions of the sequence."))
+    return copyto!(similar(x, Int32, n), sizes), copyto!(similar(x, Int32, n), accumulate(+, sizes)),
+           Int(maximum(sizes; init=0))
+end
+
+segment_sizes(x, segments, maxlen, name) =
+    throw(ArgumentError("The lengths of the segments have to be a vector, got $(typeof(segments))."))
+
+# The lengths of the segments on the host, or `nothing` where they are not read there:
+# on a device when `maxlen` is given, and where they cannot be, as the traced numbers of
+# Reactant.
+segments_on_host(segments::Array, maxlen) = segments
+segments_on_host(segments::AbstractArray, maxlen) =
+    maxlen === nothing && eltype(segments) <: Integer ? Array(segments) : nothing
+
+@non_differentiable attention_segments(::Any...)
+
+fused_attention_segments(segments::Nothing) = true
+fused_attention_segments(segments::AttentionSegments) =
+    segments.maxlen_q !== nothing && segments.maxlen_kv !== nothing
+
+@non_differentiable fused_attention_segments(::Any...)
 
 # Materialized implementation, returning both the attention output and the weights `α`.
 function _attention(q::AA4, k::AA4, v::AA4, bias; fdrop, mask, scale, is_causal,
-                    q_offset=0, q_lengths=nothing, kv_lengths=nothing)
+                    q_offset=0, q_lengths=nothing, kv_lengths=nothing, segments=nothing)
     # [q] = [qk_head_dim, nheads, q_len, batch_size]
     # [k] = [qk_head_dim, nkvheads, kv_len, batch_size]
     # [v] = [v_head_dim,  nkvheads, kv_len, batch_size]
     is_causal, q_offset = causal_offsets(q, k, is_causal, q_offset, q_lengths, kv_lengths)
+    if segments !== nothing
+        mask, valid = packed_attention_mask(q, k, is_causal, q_offset, q_lengths, kv_lengths, segments)
+        x, α = _attention(q, k, v, bias; fdrop, mask, scale, is_causal=false)
+        return x .* reshape(valid, 1, 1, :, 1), α .* reshape(valid, 1, :, 1, 1)
+    end
     mask = attention_mask(q, k, mask, is_causal, q_offset, kv_lengths)
     # grouped-query attention: each group of `r` query heads shares a key/value head
     r = size(q, 2) ÷ size(k, 2)
@@ -449,6 +589,83 @@ bottom_right_offsets(q, k, q_lengths, kv_lengths) =
 
 combine_masks(mask::Nothing, m) = m
 combine_masks(mask, m) = mask .& m
+
+# Packed sequences outside of the fused kernels: in a padded batch with a segment in each
+# batch element, or over the whole packed sequence with a mask that keeps each query to
+# the keys of its segment, whichever attends to fewer pairs. Long segments among short
+# ones pad to many times the positions they have.
+function packed_attention(q::AA4, k::AA4, v::AA4; fdrop, scale, is_causal::Bool, q_offset,
+                          q_lengths, kv_lengths, segments::AttentionSegments)
+    padded_segments_cheaper(q, k, segments) &&
+        return padded_segments_attention(q, k, v; fdrop, scale, is_causal, q_offset, q_lengths,
+                                         kv_lengths, segments)
+    mask, valid = packed_attention_mask(q, k, is_causal, q_offset, q_lengths, kv_lengths, segments)
+    x = _scaled_dot_product_attention(q, k, v, nothing; fdrop, mask, scale, is_causal=false,
+                                      q_offset=0, q_lengths=nothing, kv_lengths=nothing,
+                                      segments=nothing)
+    return x .* reshape(valid, 1, 1, :, 1)
+end
+
+function padded_segments_cheaper(q::AA4, k::AA4, s::AttentionSegments)
+    (s.maxlen_q === nothing || s.maxlen_kv === nothing) && return false
+    return length(s.q_ends) * s.maxlen_q * s.maxlen_kv <= size(q, 3) * size(k, 3)
+end
+
+function padded_segments_attention(q::AA4, k::AA4, v::AA4; fdrop, scale, is_causal, q_offset,
+                                   q_lengths, kv_lengths, segments::AttentionSegments)
+    (; maxlen_q, maxlen_kv) = segments
+    qi = padded_segment_indices(segments.q_sizes, segments.q_ends, maxlen_q)
+    ki = padded_segment_indices(segments.kv_sizes, segments.kv_ends, maxlen_kv)
+    x = _scaled_dot_product_attention(gather_positions(q, qi), gather_positions(k, ki),
+                                      gather_positions(v, ki), nothing; fdrop, mask=nothing,
+                                      scale, is_causal, q_offset, q_lengths, kv_lengths, segments=nothing)
+    # [x] = [v_head_dim, nheads, maxlen_q, nsegments]
+    id, pos = segment_positions(segments.q_sizes, segments.q_ends, size(q, 3))
+    x = gather_positions(x, pos .+ maxlen_q .* (id .- 1) .+ 1)
+    return reshape(x, size(x)..., 1)
+end
+
+# The positions `idx` of `x`, its batch elements taken one after the other. Reactant
+# leaves the reshape lazy, which its `gather` does not take (EnzymeAD/Reactant.jl#3526):
+# it is copied there.
+gather_positions(x::AA4, idx) = gather(unlazy(reshape(x, size(x, 1), size(x, 2), :)), idx)
+
+unlazy(x) = x
+unlazy(x::Base.ReshapedArray) = copy(x)
+
+# The positions of the packed sequence in a padded batch of `maxlen` positions for each
+# segment, as a `(maxlen, nsegments)` array of indices: the padding repeats a position of
+# the segment, or the first one of the sequence for an empty segment.
+padded_segment_indices(sizes, ends, maxlen::Int) =
+    max.(reshape(ends .- sizes, 1, :) .+ min.(0:(maxlen - 1), reshape(sizes, 1, :) .- 1) .+ 1, 1)
+
+# The segment of each of the `len` positions of a packed sequence, and its position in
+# the segment, counted from zero.
+function segment_positions(sizes, ends, len::Int)
+    id = vec(sum((0:(len - 1)) .>= reshape(ends, 1, :); dims=2)) .+ 1
+    return id, (0:(len - 1)) .- (ends .- sizes)[id]
+end
+
+# The `(kv_len, q_len, 1, 1)` mask that keeps each query to the valid keys of its
+# segment, and to its causal bound, and which of the queries are valid.
+function packed_attention_mask(q::AA4, k::AA4, is_causal::Bool, q_offset, q_lengths, kv_lengths,
+                               s::AttentionSegments)
+    qid, qpos = segment_positions(s.q_sizes, s.q_ends, size(q, 3))
+    kid, kpos = segment_positions(s.kv_sizes, s.kv_ends, size(k, 3))
+    mask = (kid .== reshape(qid, 1, :)) .& (kpos .< vec(kv_lengths)[kid])
+    if is_causal
+        mask = mask .& (kpos .<= reshape(qpos .+ per_segment(q_offset, qid), 1, :))
+    end
+    return reshape(mask, size(mask)..., 1, 1), qpos .< vec(q_lengths)[qid]
+end
+
+per_segment(x::Integer, id) = x
+per_segment(x::AbstractArray, id) = vec(x)[id]
+
+@non_differentiable padded_segments_cheaper(::Any...)
+@non_differentiable padded_segment_indices(::Any...)
+@non_differentiable segment_positions(::Any...)
+@non_differentiable packed_attention_mask(::Any...)
 
 # Boolean mask of the positions `1:len` of the dimension `dims` (1 or 2) that are within
 # the `lengths`, a `(1, 1, 1, batch_size)` array.

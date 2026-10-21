@@ -5,6 +5,9 @@ attention_weights(q, k, args...; kws...) =
 # The materialized implementation: an `fdrop` other than `identity` keeps a call on it.
 materialized_attention(args...; kws...) = scaled_dot_product_attention(args...; fdrop = x -> x, kws...)
 
+# The gradients of `sum(w .* f(xs...; kws...))` with respect to the `xs`.
+attention_gradients(f, w, xs...; kws...) = gradient((xs...) -> sum(w .* f(xs...; kws...)), xs...)
+
 @testset "different batchsizes" begin
     head_dim = 5
     lenq = 3
@@ -328,6 +331,127 @@ end
           y[:, :, (len - 3):len, :] rtol=1f-4
 end
 
+# Packed sequences attend as their segments do one by one.
+function segment_attention(f, q, k, v, q_segments, kv_segments=q_segments;
+                           q_offset=0, q_lengths=nothing, kv_lengths=nothing, kws...)
+    qe, ke = cumsum(q_segments), cumsum(kv_segments)
+    ys = map(eachindex(q_segments)) do s
+        rq, rk = (qe[s] - q_segments[s] + 1):qe[s], (ke[s] - kv_segments[s] + 1):ke[s]
+        # an empty array has no batch size for `reshape(x, ..., :)` to find
+        isempty(rq) && return similar(v, size(v, 1), size(q, 2), 0)
+        at(x) = x isa AbstractArray ? x[s] : x
+        f(q[:, :, rq], k[:, :, rk], v[:, :, rk]; q_offset=at(q_offset), q_lengths=at(q_lengths),
+          kv_lengths=at(kv_lengths), kws...)
+    end
+    return cat(ys...; dims=3)
+end
+
+# the same, up to rounding, with NaN where the other is
+same_attention(y, yref; rtol) =
+    isequal(isnan.(y), isnan.(yref)) && isapprox(y[.!isnan.(y)], yref[.!isnan.(yref)]; rtol)
+
+@testset "packed sequences" begin
+    head_dim, v_head_dim, nheads, nkvheads = 8, 6, 4, 2
+    with_weights(args...; kws...) = first(scaled_dot_product_attention_with_weights(args...; kws...))
+    # segments of the queries and of the keys of the same or different lengths, empty
+    # ones, a long segment among short ones and longer than a tile of keys
+    @testset "segments $q_segments, $kv_segments" for (q_segments, kv_segments) in
+            (([5, 12, 3], [5, 12, 3]), ([70, 0, 200, 31], [90, 4, 150, 31]), ([2, 300, 1], [3, 400, 2]))
+        n = length(q_segments)
+        q = randn(Float32, head_dim, nheads, sum(q_segments)) ./ 2
+        k = randn(Float32, head_dim, nkvheads, sum(kv_segments)) ./ 2
+        v = randn(Float32, v_head_dim, nkvheads, sum(kv_segments))
+        segs = (; q_segments, kv_segments)
+        @test NNlib.is_fused_attention(q, k, v; segs...)
+        @test !NNlib.is_fused_attention(q, k, v; fdrop = x -> x, segs...)
+
+        for kws in ((;), (; is_causal=true), (; is_causal=:bottom_right), (; scale=0.3f0),
+                    (; is_causal=true, q_offset=[1, 0, 2, 5][1:n]),
+                    (; is_causal=:bottom_right, kv_lengths=[3, 0, 100, 7][1:n]),
+                    (; is_causal=true, q_lengths=[1, 0, 50, 2][1:n]))
+            yref = segment_attention(materialized_attention, q, k, v, q_segments, kv_segments; kws...)
+            for f in (scaled_dot_product_attention, materialized_attention, with_weights)
+                y = f(q, k, v; segs..., kws...)
+                @test size(y) == (v_head_dim, nheads, sum(q_segments))
+                @test same_attention(y, yref; rtol=1f-4)
+            end
+        end
+
+        # the weights are those of the segments, and zero elsewhere
+        α = attention_weights(q, k; is_causal=true, segs...)
+        @test size(α) == (sum(kv_segments), sum(q_segments), nheads)
+        qe, ke = cumsum(q_segments), cumsum(kv_segments)
+        for s in findall(>(0), q_segments)
+            rq, rk = (qe[s] - q_segments[s] + 1):qe[s], (ke[s] - kv_segments[s] + 1):ke[s]
+            @test α[rk, rq, :] ≈ attention_weights(q[:, :, rq], k[:, :, rk]; is_causal=true)
+            @test all(iszero, α[setdiff(1:end, rk), rq, :])
+        end
+
+        # the gradients, of the fused implementation and of the materialized one
+        w = randn(Float32, v_head_dim, nheads, sum(q_segments))
+        for kws in ((;), (; is_causal=true), (; is_causal=true, q_offset=1, kv_lengths=max.(kv_segments .- 1, 1)))
+            gref = attention_gradients((x...; kws...) -> segment_attention(materialized_attention, x...,
+                                                                           q_segments, kv_segments; kws...),
+                                       w, q, k, v; kws...)
+            for f in (scaled_dot_product_attention, materialized_attention)
+                @test all(isapprox.(attention_gradients(f, w, q, k, v; segs..., kws...), gref; rtol=1f-3))
+            end
+        end
+    end
+
+    x = randn(Float32, head_dim, nheads, 20)
+    q_segments = [5, 12, 3]
+    y = scaled_dot_product_attention(x, x, x; is_causal=true, q_segments)
+    # the segments of the keys are those of the queries, and a single one is a sequence
+    @test y == scaled_dot_product_attention(x, x, x; is_causal=true, q_segments, kv_segments=q_segments)
+    @test scaled_dot_product_attention(x, x, x; is_causal=true, q_segments=[20]) ≈
+          scaled_dot_product_attention(x, x, x; is_causal=true)
+    @inferred scaled_dot_product_attention(x, x, x; is_causal=true, q_segments)
+
+    # The materialized implementation pads the segments into a batch, unless they have
+    # lengths so different that the padding outweighs attending over the whole sequence.
+    packed(segments) = NNlib.attention_segments(reshape(x, size(x)..., 1), reshape(x, size(x)..., 1),
+                                                segments, segments, nothing)
+    cheaper(segments) = NNlib.padded_segments_cheaper(reshape(x, size(x)..., 1), reshape(x, size(x)..., 1),
+                                                      packed(segments))
+    @test cheaper([7, 6, 7]) && !cheaper([1, 18, 1])
+    for q_segments in ([7, 6, 7], [1, 18, 1])
+        @test materialized_attention(x, x, x; is_causal=true, q_segments) ≈
+              segment_attention(materialized_attention, x, x, x, q_segments; is_causal=true)
+    end
+
+    # Lengths of segments that are not read on the host, as traced ones: the fused
+    # kernels need `maxlen` for their launches, without it the materialized implementation
+    # attends over the whole sequence.
+    traced = view(Float64.(q_segments), :)
+    @test NNlib.is_fused_attention(x, x, x; q_segments=traced, maxlen=12)
+    @test !NNlib.is_fused_attention(x, x, x; q_segments=traced)
+    @test !cheaper(traced)
+    @test scaled_dot_product_attention(x, x, x; is_causal=true, q_segments=traced, maxlen=12) ≈ y
+    @test scaled_dot_product_attention(x, x, x; is_causal=true, q_segments=traced) ≈ y
+    # `maxlen` is not needed where the lengths are read
+    @test scaled_dot_product_attention(x, x, x; is_causal=true, q_segments, maxlen=100) == y
+
+    # inputs with a batch dimension, a bias, a mask, lengths that do not add up to the
+    # sequence, keys without queries, as many entries as segments
+    @test_throws ArgumentError scaled_dot_product_attention(reshape(x, size(x)..., 1), x, x; q_segments)
+    @test_throws ArgumentError scaled_dot_product_attention(x, x, x, randn(Float32, 20, 20); q_segments)
+    @test_throws ArgumentError scaled_dot_product_attention(x, x, x; mask=trues(20, 20), q_segments)
+    @test_throws ArgumentError scaled_dot_product_attention(x, x, x; q_segments=[5, 12, 4])
+    @test_throws ArgumentError scaled_dot_product_attention(x, x, x; q_segments=[5, 16, -1])
+    @test_throws ArgumentError scaled_dot_product_attention(x, x, x; kv_segments=q_segments)
+    @test_throws ArgumentError scaled_dot_product_attention(x, x, x; q_segments, kv_segments=[20])
+    @test_throws ArgumentError scaled_dot_product_attention(x, x, x; q_segments, kv_lengths=[1, 2])
+    @test_throws ArgumentError scaled_dot_product_attention_with_weights(x, x, x; q_segments=[5, 12, 4])
+
+    qd, kd = Float64.(x[:, :, 1:9]), Float64.(x[:, :, 1:12])
+    @test test_gradients((x...) -> scaled_dot_product_attention(x...; is_causal=true, q_segments=[2, 4, 3]),
+                         qd, qd, qd)
+    @test test_gradients((x...) -> scaled_dot_product_attention(x...; is_causal=:bottom_right, q_segments=[2, 4, 3],
+                                                                kv_segments=[3, 5, 4], kv_lengths=[3, 4, 4]),
+                         qd, kd, kd)
+end
+
 @testset "bias and mask with several batch dimensions" begin
     head_dim, nheads, lenq, lenkv = 4, 2, 3, 5
     batch_size = (2, 3)
@@ -495,9 +619,6 @@ end
     end
 end
 
-# The gradients of `sum(w .* f(xs...; kws...))` with respect to the `xs`.
-attention_gradients(f, w, xs...; kws...) = gradient((xs...) -> sum(w .* f(xs...; kws...)), xs...)
-
 @testset "fused gradient" begin
     # Under Zygote the fused implementation takes its rule, and the materialized one is
     # differentiated through.
@@ -612,7 +733,7 @@ attention_gradients(f, w, xs...; kws...) = gradient((xs...) -> sum(w .* f(xs...;
     @test NNlib.is_fused_attention(q, k, v, bias)
     @test gradient(b -> sum(w .* scaled_dot_product_attention(q, k, v, b)), bias)[1] ≈
           gradient(b -> sum(w .* materialized_attention(q, k, v, b)), bias)[1]
-    @test_throws ArgumentError gradient(b -> sum(NNlib.fused_attention(q, k, v, b, nothing, nothing, false, 0, nothing, nothing)), bias)
+    @test_throws ArgumentError gradient(b -> sum(NNlib.fused_attention(q, k, v, b, nothing, nothing, false, 0, nothing, nothing, nothing)), bias)
 end
 
 if NNLIB_TEST_ENZYME
@@ -625,7 +746,7 @@ if NNLIB_TEST_ENZYME
     v = randn(2, 2, 5, 2)
     rest(Tscale) = ((nothing, EnzymeCore.Const), (nothing, EnzymeCore.Const), (0.3, Tscale),
                     (true, EnzymeCore.Const), ([1, 0], EnzymeCore.Const), (nothing, EnzymeCore.Const),
-                    ([4, 2], EnzymeCore.Const))
+                    ([4, 2], EnzymeCore.Const), (nothing, EnzymeCore.Const))
     D, BD, C = EnzymeCore.Duplicated, EnzymeCore.BatchDuplicated, EnzymeCore.Const
 
     for (Tret, Tq, Tk, Tv, Tscale) in ((D, D, D, D, EnzymeCore.Active), (D, C, D, D, C), (D, D, C, C, EnzymeCore.Active),
@@ -650,10 +771,12 @@ if NNLIB_TEST_ENZYME
     # implementation, in the materialized one (with a bias) and with several batch dimensions.
     q, k, v = randn(3, 4, 2, 2), randn(3, 2, 4, 2), randn(2, 2, 4, 2)
     xs5 = (randn(3, 2, 2, 2, 2), randn(3, 2, 4, 2, 2), randn(2, 2, 4, 2, 2))
+    xs3 = (randn(3, 4, 5), randn(3, 2, 6), randn(2, 2, 6))
     @testset "$name, active $act" for (name, xs, bias, kws) in (
                 ("fused", (q, k, v), nothing, (; is_causal=:bottom_right, kv_lengths=[3, 4])),
                 ("materialized", (q, k, v), randn(4, 2), (; is_causal=true)),
-                ("5 dimensions", xs5, nothing, (;))),
+                ("5 dimensions", xs5, nothing, (;)),
+                ("packed", xs3, nothing, (; is_causal=true, q_segments=[2, 3], kv_segments=[4, 2]))),
             act in ((true, false, false), (false, true, true))
         shadows = map(zero, xs)
         Enzyme.autodiff(Enzyme.Reverse, Const((xs...) -> sum(scaled_dot_product_attention(xs..., bias; kws...))),

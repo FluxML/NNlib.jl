@@ -417,6 +417,54 @@ end
     @test all(isapprox.(map(x -> Float32.(Array(x)), g), gm; rtol=T == Float16 ? 2f-2 : 5f-2))
 end
 
+# Packed sequences take NNlib's kernel in every precision, and the materialized
+# implementation pads them into a batch or masks the whole sequence; against the
+# materialized implementation on the CPU.
+@testset "packed sequences ($T)" for T in (Float32, Float64, Float16, BFloat16)
+    T == BFloat16 && CUDA.capability(CUDA.device()) < v"8.0" && continue
+    rtol = T == Float32 ? 1f-3 : T == Float64 ? 1e-8 : T == Float16 ? 2f-2 : 5f-2
+    same(y, yref) = isequal(isnan.(y), isnan.(yref)) && isapprox(y[.!isnan.(y)], yref[.!isnan.(yref)]; rtol)
+    # an empty segment, and one longer than the others and than a tile
+    q_segments, kv_segments = [70, 0, 200, 31], [90, 4, 150, 31]
+    segs = (; q_segments, kv_segments)
+    qd = half(T, randn(Float32, 12, 6, sum(q_segments)) ./ 2)
+    kd = half(T, randn(Float32, 12, 2, sum(kv_segments)) ./ 2)
+    vd = half(T, randn(Float32, 44, 2, sum(kv_segments)))
+    wd = half(T, randn(Float32, 44, 6, sum(q_segments)))
+    q, k, v, w = map(x -> Float64.(Array(x)), (qd, kd, vd, wd))
+    @test NNlib.is_fused_attention(qd, kd, vd; segs...)
+
+    for kws in ((;), (; is_causal=true), (; is_causal=:bottom_right, kv_lengths=[3, 0, 100, 7]),
+                (; is_causal=true, q_offset=[0, 0, 3, 1], q_lengths=[1, 0, 50, 2]))
+        yref = materialized_attention(q, k, v; segs..., kws...)
+        y = scaled_dot_product_attention(qd, kd, vd; segs..., kws...)
+        @test y isa CuArray{T,3}
+        @test same(Array(y), yref)
+        # cuDNN's softmax, which the materialized implementation takes on the GPU, gives
+        # zero rather than NaN for a query attending to no key
+        ym, valid = Array(materialized_attention(qd, kd, vd; segs..., kws...)), .!isnan.(yref)
+        @test isapprox(ym[valid], yref[valid]; rtol)
+    end
+    # lengths on the device, read on the host or, with `maxlen`, not
+    yref = materialized_attention(q, k, v; is_causal=true, segs...)
+    for maxlen in (nothing, 200)
+        @test Array(scaled_dot_product_attention(qd, kd, vd; is_causal=true, maxlen, q_segments=CuArray(q_segments),
+                                                 kv_segments=CuArray(kv_segments))) ≈ yref rtol=rtol
+    end
+    # segments of similar lengths, which the materialized implementation pads
+    yref = materialized_attention(q, k, v; is_causal=true, q_segments=[100, 101, 100], kv_segments=[95, 90, 90])
+    @test Array(materialized_attention(qd, kd, vd; is_causal=true, q_segments=[100, 101, 100],
+                                       kv_segments=[95, 90, 90])) ≈ yref rtol=rtol
+
+    loss(f, w; kws...) = (x...) -> sum(w .* f(x...; kws...))
+    for kws in ((; is_causal=true), (; is_causal=true, q_offset=1, kv_lengths=[80, 4, 150, 20]))
+        g = gradient(loss(scaled_dot_product_attention, wd; segs..., kws...), qd, kd, vd)
+        gm = gradient(loss(materialized_attention, w; segs..., kws...), q, k, v)
+        @test all(x -> x isa CuArray{T,3}, g)
+        @test all(isapprox.(map(x -> Float64.(Array(x)), g), gm; rtol))
+    end
+end
+
 @testset "deprecated interface" begin
     q = rand(Float32, 64, 16, 3) ./ 4
     qd = CuArray(Float16.(q))

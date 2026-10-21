@@ -16,13 +16,14 @@
 # The gradients of `fused_attention` with respect to `q`, `k`, `v` and `scale`, for the
 # cotangent `dout` of its output `o`.
 function fused_attention_grad(dout, o, lse, q::AA4{T}, k::AA4{T}, v::AA4{T}, bias, mask, scale,
-                              is_causal::Bool, q_offset, q_lengths, kv_lengths) where {T}
+                              is_causal::Bool, q_offset, q_lengths, kv_lengths, segments) where {T}
     A = attention_compute_type(T)
     s = attention_scale(A, q, scale)
     # `dq` is left without its factor `scale` when the gradient of the latter is needed
     dq, dk, dv = fused_attention_grad(get_backend(q), dout, o, lse, q, k, v, attention_pad4(bias),
                                       attention_pad4(mask), attention_vec_offsets(q_offset),
-                                      attention_vec(q_lengths), attention_vec(kv_lengths), s,
+                                      attention_vec(q_lengths), attention_vec(kv_lengths),
+                                      attention_seqs(q, k, segments), s,
                                       scale === nothing ? s : one(A), is_causal)
     dscale = NoTangent()
     if scale !== nothing
@@ -41,18 +42,19 @@ attention_cotangent(o::AbstractGPUArray, dout::AbstractGPUArray{<:Real,4}) = dou
 attention_cotangent(o, dout) = copyto!(similar(o), dout)
 
 function rrule(::typeof(fused_attention), q::AA4{T}, k::AA4{T}, v::AA4{T}, bias, mask, scale,
-               is_causal::Bool, q_offset, q_lengths, kv_lengths) where {T}
+               is_causal::Bool, q_offset, q_lengths, kv_lengths, segments) where {T}
     bias === nothing || throw(ArgumentError(
         "The fused attention has no gradient with respect to a bias: differentiate the \
          materialized implementation, as `scaled_dot_product_attention` does."))
     lse = similar(q, attention_compute_type(T), size(q, 2), size(q, 3), size(q, 4))
-    o = fused_attention(q, k, v, bias, mask, scale, is_causal, q_offset, q_lengths, kv_lengths; lse)
-    nograds = ntuple(_ -> NoTangent(), 4)
+    o = fused_attention(q, k, v, bias, mask, scale, is_causal, q_offset, q_lengths, kv_lengths, segments; lse)
+    nograds = ntuple(_ -> NoTangent(), 5)
     function fused_attention_pullback(Δ)
         Δ = unthunk(Δ)
         Δ isa AbstractZero && return (NoTangent(), Δ, Δ, Δ, NoTangent(), NoTangent(), Δ, nograds...)
         dq, dk, dv, dscale = fused_attention_grad(attention_cotangent(o, Δ), o, lse, q, k, v, bias,
-                                                  mask, scale, is_causal, q_offset, q_lengths, kv_lengths)
+                                                  mask, scale, is_causal, q_offset, q_lengths, kv_lengths,
+                                                  segments)
         return (NoTangent(), dq, dk, dv, NoTangent(), NoTangent(), dscale, nograds...)
     end
     return o, fused_attention_pullback
@@ -177,16 +179,14 @@ function attention_grad_query!(s::Vector{A}, g::Vector{A}, qs, dos, c, n, nvalid
 end
 
 # The pair of the queries `i0:i1` and the keys `ja:jb`, in the head `h` of the batch
-# element `b`.
-function attention_grad_item!(dq, dk, dv, dout, o, lse, q, k, v, bias, mask, q_offset, q_lengths,
-                              kv_lengths, scale::A, qscale::A, is_causal::Bool, h, b, i0, i1, ja, jb,
-                              ws) where {A}
+# element `b`, with `qlen`, `kvlen` and `off` as in `attention_item!`.
+function attention_grad_item!(dq, dk, dv, dout, o, lse, q, k, v, bias, mask, qlen, kvlen, off,
+                              scale::A, qscale::A, is_causal::Bool, h, b, i0, i1, ja, jb, ws) where {A}
     (; kt, vt, buf, dkt, dvt, s, g, qs, dos, dqacc, delta) = ws
     hk = (h - 1) ÷ (size(q, 2) ÷ size(k, 2)) + 1
     # the output is zero at the padded queries
-    i1 = min(i1, attention_len(q_lengths, b, size(q, 3)))
-    jmax = min(jb, attention_len(kv_lengths, b, size(k, 3)))
-    off = attention_offset(q_offset, b)
+    i1 = min(i1, qlen)
+    jmax = min(jb, kvlen)
     is_causal && (jmax = min(jmax, i1 + off))
     (i0 > i1 || ja > jmax) && return nothing
     nk = size(kt, 1)
@@ -239,39 +239,46 @@ function attention_grad_item!(dq, dk, dv, dout, o, lse, q, k, v, bias, mask, q_o
     return nothing
 end
 
-# The pairs of a round, for the key/value head `hk` of each batch element: `next` hands
-# them out to the tasks.
+# The pairs of a round, for the key/value head `hk` of each sequence: `next` hands them
+# out to the tasks. The ranges of the segments of packed sequences are those a sequence
+# of the longest segment has, as far as the segment goes.
 function attention_grad_round!(next, round, ws, dq, dk, dv, dout, o, lse, q, k, v, bias, mask,
-                               q_offset, q_lengths, kv_lengths, scale, qscale, is_causal,
+                               q_offset, q_lengths, kv_lengths, seqs, scale, qscale, is_causal,
                                (; rq, rk, nrq, nrk, nq))
-    Lq, Lk, Hk = size(q, 3), size(k, 3), size(k, 2)
+    Hk = size(k, 2)
     r = size(q, 2) ÷ Hk
     nx = min(nrq, nrk)
-    nitems = nx * Hk * size(q, 4)
+    nitems = nx * Hk * seqs.n
     while true
         item = Threads.atomic_add!(next, 1)
         item > nitems && break
         t, u = attention_pair((item - 1) % nx, round, nrq, nrk)
         hk = ((item - 1) ÷ nx) % Hk + 1
-        b = (item - 1) ÷ (nx * Hk) + 1
+        s = (item - 1) ÷ (nx * Hk) + 1
+        qs, ks = attention_seq(q, seqs.q_ends, s), attention_seq(k, seqs.kv_ends, s)
+        Lq, Lk = size(qs, 3), size(ks, 3)
         ia, ib = t * rq + 1, min((t + 1) * rq, Lq)
         ja, jb = u * rk + 1, min((u + 1) * rk, Lk)
-        is_causal && ja > ib + attention_offset(q_offset, b) && continue
+        off = attention_offset(q_offset, s)
+        (ia > ib || ja > jb || is_causal && ja > ib + off) && continue
+        dqs, dos, os, lses = map(x -> attention_seq(x, seqs.q_ends, s), (dq, dout, o, lse))
+        dks, dvs, vs = map(x -> attention_seq(x, seqs.kv_ends, s), (dk, dv, v))
+        qlen, kvlen = attention_len(q_lengths, s, Lq), attention_len(kv_lengths, s, Lk)
+        b = attention_batch(seqs.q_ends, s)
         # the query heads sharing these keys, and the queries in tiles
         for h in ((hk - 1) * r + 1):(hk * r), i0 in ia:nq:ib
-            attention_grad_item!(dq, dk, dv, dout, o, lse, q, k, v, bias, mask, q_offset, q_lengths,
-                                 kv_lengths, scale, qscale, is_causal, h, b, i0, min(i0 + nq - 1, ib),
-                                 ja, jb, ws)
+            attention_grad_item!(dqs, dks, dvs, dos, os, lses, qs, ks, vs, bias, mask, qlen, kvlen, off,
+                                 scale, qscale, is_causal, h, b, i0, min(i0 + nq - 1, ib), ja, jb, ws)
         end
     end
     return nothing
 end
 
 function fused_attention_grad(::CPU, dout, o, lse, q::AA4{T}, k, v, bias, mask, q_offset, q_lengths,
-                              kv_lengths, scale::A, qscale::A, is_causal::Bool) where {T,A}
-    D, Dv, Lq, Lk = size(q, 1), size(v, 1), size(q, 3), size(k, 3)
-    nheads = size(k, 2) * size(q, 4)                # key/value heads, over the batch
-    work = Lq * Lk * size(q, 2) * size(q, 4) * (2 * D + 3 * Dv)
+                              kv_lengths, seqs, scale::A, qscale::A, is_causal::Bool) where {T,A}
+    D, Dv, Lq, Lk = size(q, 1), size(v, 1), seqs.maxlen_q, seqs.maxlen_kv
+    nheads = size(k, 2) * seqs.n                    # key/value heads, over the sequences
+    work = Lq * Lk * size(q, 2) * seqs.n * (2 * D + 3 * Dv)
     ntasks = should_use_spawn() ? min(Threads.nthreads(:default), cld(work, 2^17)) : 1
     dq, dk, dv = map(x -> attention_zeros(A, x, ntasks), (q, k, v))
     nk = attention_keys_per_tile(max(D, Dv))
@@ -286,7 +293,7 @@ function fused_attention_grad(::CPU, dout, o, lse, q::AA4{T}, k, v, bias, mask, 
     for round in 0:(max(sched.nrq, sched.nrk) - 1)
         next = Threads.Atomic{Int}(1)
         run(ws) = attention_grad_round!(next, round, ws, dq, dk, dv, dout, o, lse, q, k, v, bias, mask,
-                                        q_offset, q_lengths, kv_lengths, scale, qscale, is_causal, sched)
+                                        q_offset, q_lengths, kv_lengths, seqs, scale, qscale, is_causal, sched)
         ntasks == 1 ? run(wss[1]) : foreach(wait, [Threads.@spawn(run(ws)) for ws in wss])
     end
     return attention_narrow(T, dq), attention_narrow(T, dk), attention_narrow(T, dv)
@@ -355,20 +362,21 @@ end
     end
 end
 
-# The `lse` or the `δ` of the queries `i0 + s*m` of a thread. A query that takes no
-# part, being padding or attending to no key, gets an infinite `lse`, hence zero weights.
-@inline function attention_grad_lse(lse, ::Type{A}, i0, s, hq, b, qmax, ::Val{N}) where {A,N}
+# The `lse` or the `δ` of the queries `i0 + s*m` of a thread, of a sequence starting at
+# `qb`. A query that takes no part, being padding or attending to no key, gets an
+# infinite `lse`, hence zero weights.
+@inline function attention_grad_lse(lse, ::Type{A}, i0, s, qb, hq, b, qmax, ::Val{N}) where {A,N}
     ntuple(Val(N)) do m
         @inline
         i = i0 + s * (m - 1)
-        x = A(@inbounds lse[hq, min(i, size(lse, 2) - 1) + 1, b])
+        x = A(@inbounds lse[hq, min(qb + i, size(lse, 2) - 1) + 1, b])
         ifelse((i < qmax) & (x != A(-Inf)), x, A(Inf))
     end
 end
-@inline function attention_grad_delta(delta, ls::NTuple{N,A}, i0, s, hq, b) where {N,A}
+@inline function attention_grad_delta(delta, ls::NTuple{N,A}, i0, s, qb, hq, b) where {N,A}
     ntuple(Val(N)) do m
         @inline
-        x = A(@inbounds delta[hq, min(i0 + s * (m - 1), size(delta, 2) - 1) + 1, b])
+        x = A(@inbounds delta[hq, min(qb + i0 + s * (m - 1), size(delta, 2) - 1) + 1, b])
         ifelse(ls[m] != A(Inf), x, zero(A))
     end
 end
@@ -389,14 +397,14 @@ end
     ntuple(x -> @inbounds(w[tr + c.NR * ((x - 1) % c.TM) + c.PP * (tc + c.NC * ((x - 1) ÷ c.TM)) + 1]),
            Val(c.TM * c.TN))
 
-@inline function attention_grad_write!(dx, oacc::NTuple{MN,A}, scale::A, ud, uq, o0, ho, b, ::Val{c}) where {MN,A,c}
-    Dx, Lo = size(dx, 1), size(dx, 3)
+@inline function attention_grad_write!(dx, oacc::NTuple{MN,A}, scale::A, ud, uq, o0, ob, Lo, ho, b, ::Val{c}) where {MN,A,c}
+    Dx = size(dx, 1)
     ntuple(Val(MN)) do x
         @inline
         d = ud + c.ND * ((x - 1) % c.TD)
         n = o0 + uq + c.NQ * ((x - 1) ÷ c.TD)
         if (d < Dx) & (n < Lo)
-            @inbounds dx[d + 1, ho, n + 1, b] = oacc[x] * scale
+            @inbounds dx[d + 1, ho, ob + n + 1, b] = oacc[x] * scale
         end
         nothing
     end
@@ -404,21 +412,27 @@ end
 end
 
 # dx = scale * Σ z * Wᵀ over the walked side, with W the weights P of the logits xoᵀxw
-# if `yo` is nothing, else dS with G = yoᵀyw.
+# if `yo` is nothing, else dS with G = yoᵀyw. The owned and the walked positions of the
+# sequence `s` start at `ob` and `wb` in the batch element `b`, as in `attention_kernel!`.
 @kernel inbounds=true cpu=false unsafe_indices=true function attention_grad_kernel!(
         dx, @Const(xo), @Const(xw), yo, yw, @Const(z), @Const(lse), delta,
-        bias, mask, q_offset, o_lengths, w_lengths, oscale::A, wscale::A, dxscale::A, causal::Val,
-        own::Val, til::Val{c}) where {A,c}
+        bias, mask, q_offset, o_lengths, w_lengths, o_ends, w_ends, oscale::A, wscale::A, dxscale::A,
+        causal::Val, own::Val, til::Val{c}) where {A,c}
     w = @localmem A (c.PP * c.BK,)
     slab = @localmem A (c.SLAB,)
 
     t = @index(Local, Linear) - 1
-    go, ho, b = @index(Group, NTuple)
+    go, ho, s = @index(Group, NTuple)
     D = size(xo, 1)
+    ob, Lo = attention_span(o_ends, s, size(xo, 3))
+    wb, Lw = attention_span(w_ends, s, size(xw, 3))
+    b = attention_batch(o_ends, s)
+    qb = own === Val(:q) ? ob : wb
     o0 = (go - 1) * c.BQ
-    omax = attention_len(o_lengths, b, size(xo, 3))
-    off = attention_offset(q_offset, b)
-    wfirst, wmax = attention_grad_range(own, causal, o0, attention_len(w_lengths, b, size(xw, 3)), q_offset, b, c)
+    omax = attention_len(o_lengths, s, Lo)
+    off = attention_offset(q_offset, s)
+    wfirst, wmax = attention_grad_range(own, causal, o0, attention_len(w_lengths, s, Lw), q_offset, s, c)
+    wmax = attention_live(o_ends, o0, Lo, wmax)
     ng = own === Val(:q) ? 1 : size(xw, 2) ÷ size(xo, 2)
 
     tr, tc = t ÷ c.NC, t % c.NC
@@ -432,8 +446,8 @@ end
         hw = attention_grad_head(own, ho, g, size(xo, 2), size(xw, 2))
         hq = own === Val(:q) ? ho : hw
         w0 = wfirst
-        ov = attention_fetch_rows(xo, oscale, dd, ho, o0, r0, b, D, omax, Val(c.BQ), Val(c.RS))
-        wv = attention_fetch_rows(xw, wscale, dd, hw, w0, r0, b, D, wmax, Val(c.BK), Val(c.RS))
+        ov = attention_fetch_rows(xo, oscale, dd, ho, ob + o0, r0, b, D, ob + omax, Val(c.BQ), Val(c.RS))
+        wv = attention_fetch_rows(xw, wscale, dd, hw, wb + w0, r0, b, D, wb + wmax, Val(c.BK), Val(c.RS))
         while w0 < wmax
             # ---- logits
             acc = ntuple(_ -> zero(A), Val(c.TM * c.TN))
@@ -444,21 +458,21 @@ end
                 @synchronize()
                 d0 += c.KD
                 if d0 < D
-                    ov = attention_fetch_rows(xo, oscale, d0 + dd, ho, o0, r0, b, D, omax, Val(c.BQ), Val(c.RS))
-                    wv = attention_fetch_rows(xw, wscale, d0 + dd, hw, w0, r0, b, D, wmax, Val(c.BK), Val(c.RS))
+                    ov = attention_fetch_rows(xo, oscale, d0 + dd, ho, ob + o0, r0, b, D, ob + omax, Val(c.BQ), Val(c.RS))
+                    wv = attention_fetch_rows(xw, wscale, d0 + dd, hw, wb + w0, r0, b, D, wb + wmax, Val(c.BK), Val(c.RS))
                 elseif yo === nothing
-                    zv = attention_fetch_dims(z, A, t, hw, w0, b, wmax, til)
+                    zv = attention_fetch_dims(z, A, t, hw, wb + w0, b, wb + wmax, til)
                 else
-                    ov = attention_fetch_rows(yo, one(A), dd, ho, o0, r0, b, size(yo, 1), omax, Val(c.BQ), Val(c.RS))
-                    wv = attention_fetch_rows(yw, one(A), dd, hw, w0, r0, b, size(yo, 1), wmax, Val(c.BK), Val(c.RS))
+                    ov = attention_fetch_rows(yo, one(A), dd, ho, ob + o0, r0, b, size(yo, 1), ob + omax, Val(c.BQ), Val(c.RS))
+                    wv = attention_fetch_rows(yw, one(A), dd, hw, wb + w0, r0, b, size(yo, 1), wb + wmax, Val(c.BK), Val(c.RS))
                 end
                 acc = attention_logits_slab(acc, slab, tr, tc, til)
                 @synchronize()
             end
 
             # ---- weights
-            i0, s, nq = attention_grad_queries(own, o0, w0, tr, tc, til)
-            ls = attention_grad_lse(lse, A, i0, s, hq, b, own === Val(:q) ? omax : wmax, nq)
+            i0, st, nq = attention_grad_queries(own, o0, w0, tr, tc, til)
+            ls = attention_grad_lse(lse, A, i0, st, qb, hq, b, own === Val(:q) ? omax : wmax, nq)
             pr = attention_grad_p(attention_grad_masked(acc, mask, bias, o0, w0, tr, tc, hq, b, omax, wmax,
                                                         off, causal, own, til), ls, own, til)
             attention_put_tile!(w, pr, tr, tc, til)
@@ -472,15 +486,15 @@ end
                     @synchronize()
                     d0 += c.KD
                     if d0 < size(yo, 1)
-                        ov = attention_fetch_rows(yo, one(A), d0 + dd, ho, o0, r0, b, size(yo, 1), omax, Val(c.BQ), Val(c.RS))
-                        wv = attention_fetch_rows(yw, one(A), d0 + dd, hw, w0, r0, b, size(yo, 1), wmax, Val(c.BK), Val(c.RS))
+                        ov = attention_fetch_rows(yo, one(A), d0 + dd, ho, ob + o0, r0, b, size(yo, 1), ob + omax, Val(c.BQ), Val(c.RS))
+                        wv = attention_fetch_rows(yw, one(A), d0 + dd, hw, wb + w0, r0, b, size(yo, 1), wb + wmax, Val(c.BK), Val(c.RS))
                     else
-                        zv = attention_fetch_dims(z, A, t, hw, w0, b, wmax, til)
+                        zv = attention_fetch_dims(z, A, t, hw, wb + w0, b, wb + wmax, til)
                     end
                     acc = attention_logits_slab(acc, slab, tr, tc, til)
                     @synchronize()
                 end
-                de = attention_grad_delta(delta, ls, i0, s, hq, b)
+                de = attention_grad_delta(delta, ls, i0, st, qb, hq, b)
                 attention_put_tile!(w, attention_grad_ds(attention_get_tile(w, A, tr, tc, til), acc, de, own, til),
                                     tr, tc, til)
             end
@@ -493,10 +507,10 @@ end
                 @synchronize()
                 jj0 += c.KV
                 if jj0 < c.BK
-                    zv = attention_fetch_dims(z, A, t, hw, w0 + jj0, b, wmax, til)
+                    zv = attention_fetch_dims(z, A, t, hw, wb + w0 + jj0, b, wb + wmax, til)
                 elseif w0 + c.BK < wmax
-                    ov = attention_fetch_rows(xo, oscale, dd, ho, o0, r0, b, D, omax, Val(c.BQ), Val(c.RS))
-                    wv = attention_fetch_rows(xw, wscale, dd, hw, w0 + c.BK, r0, b, D, wmax, Val(c.BK), Val(c.RS))
+                    ov = attention_fetch_rows(xo, oscale, dd, ho, ob + o0, r0, b, D, ob + omax, Val(c.BQ), Val(c.RS))
+                    wv = attention_fetch_rows(xw, wscale, dd, hw, wb + w0 + c.BK, r0, b, D, wb + wmax, Val(c.BK), Val(c.RS))
                 end
                 oacc = attention_output_slab(oacc, slab, w, ud, uq, jj0 - c.KV, til)
                 @synchronize()
@@ -505,27 +519,38 @@ end
         end
         g += 1
     end
-    attention_grad_write!(dx, oacc, dxscale, ud, uq, o0, ho, b, til)
+    attention_grad_write!(dx, oacc, dxscale, ud, uq, o0, ob, attention_bound(o_ends, dx, Lo), ho, b, til)
 end
 
+# The bound of the owned positions: that of the array without segments, with which the
+# kernel compiles as it would without them.
+@inline attention_bound(ends::Nothing, x, len) = size(x, 3)
+@inline attention_bound(ends, x, len) = len
+
+# `o_ends` and `w_ends` are the ends of the segments of the owned and the walked side,
+# `n` the number of sequences and `maxlen` the longest owned one.
 function attention_grad_launch!(backend, dx, xo, xw, yo, yw, z, lse, delta, bias, mask, q_offset,
-                                o_lengths, w_lengths, oscale::A, wscale::A, dxscale::A, is_causal::Bool,
-                                own) where {A}
+                                o_lengths, w_lengths, o_ends, w_ends, n, maxlen, oscale::A, wscale::A,
+                                dxscale::A, is_causal::Bool, own) where {A}
     c = attention_tiling(size(dx, 1), length(dx) ÷ size(dx, 1), attention_shmem_budget(backend) ÷ sizeof(A))
     attention_grad_kernel!(backend, (c.T, 1, 1))(dx, xo, xw, yo, yw, z, lse, delta, bias, mask, q_offset,
-        o_lengths, w_lengths, oscale, wscale, dxscale, Val(is_causal), own, Val(c);
-        ndrange=(c.T * cld(size(dx, 3), c.BQ), size(dx, 2), size(dx, 4)))
+        o_lengths, w_lengths, o_ends, w_ends, oscale, wscale, dxscale, Val(is_causal), own, Val(c);
+        ndrange=(c.T * cld(maxlen, c.BQ), size(dx, 2), n))
     return dx
 end
 
 function fused_attention_grad(backend::GPU, dout, o, lse, q, k, v, bias, mask, q_offset, q_lengths,
-                              kv_lengths, scale::A, qscale::A, is_causal::Bool) where {A}
+                              kv_lengths, seqs, scale::A, qscale::A, is_causal::Bool) where {A}
+    (; q_ends, kv_ends, n, maxlen_q, maxlen_kv) = seqs
     delta = dropdims(mapreduce(attention_wide_prod, +, dout, o; dims=1); dims=1)
     dq = attention_grad_launch!(backend, similar(q), q, k, dout, v, k, lse, delta, bias, mask, q_offset,
-                                q_lengths, kv_lengths, scale, one(A), qscale, is_causal, Val(:q))
+                                q_lengths, kv_lengths, q_ends, kv_ends, n, maxlen_q, scale, one(A), qscale,
+                                is_causal, Val(:q))
     dk = attention_grad_launch!(backend, similar(k), k, q, v, dout, q, lse, delta, bias, mask, q_offset,
-                                kv_lengths, q_lengths, one(A), scale, scale, is_causal, Val(:k))
+                                kv_lengths, q_lengths, kv_ends, q_ends, n, maxlen_kv, one(A), scale, scale,
+                                is_causal, Val(:k))
     dv = attention_grad_launch!(backend, similar(v), k, q, nothing, nothing, dout, lse, nothing, bias, mask,
-                                q_offset, kv_lengths, q_lengths, one(A), scale, one(A), is_causal, Val(:k))
+                                q_offset, kv_lengths, q_lengths, kv_ends, q_ends, n, maxlen_kv, one(A), scale,
+                                one(A), is_causal, Val(:k))
     return dq, dk, dv
 end
