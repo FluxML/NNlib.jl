@@ -50,6 +50,9 @@ include("attention_fused_grad.jl")
 export scaled_dot_product_attention, scaled_dot_product_attention_with_weights,
        sdpa, sdpa_with_weights, make_causal_mask
 
+include("rotary_embedding.jl")
+export rotary_embedding_table, apply_rotary_embedding
+
 include("dropout.jl")
 export dropout, dropout!
 

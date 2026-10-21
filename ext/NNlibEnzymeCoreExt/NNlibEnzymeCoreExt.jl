@@ -826,26 +826,30 @@ function EnzymeRules.reverse(config::EnzymeRules.RevConfig,
 end
 
 
-# collapse_batch_dims
+# collapse_batch_dims, interleaved_pairs, halved_pairs
 #
-# A reshape, whose result aliases its argument. That of a constant `key` or `value` next
-# to an active `query` is constant memory Enzyme's activity analysis takes for active
-# memory: the shadow of the result is that of the argument reshaped, or scratch memory
-# for a constant argument.
+# Reshapes, whose result aliases their argument. That of a constant `key` or `value` next
+# to an active `query`, or of a constant input of `apply_rotary_embedding` next to active
+# tables, is constant memory Enzyme's activity analysis takes for active memory: the
+# shadow of the result is that of the argument reshaped, or scratch memory for a constant
+# argument.
+
+const AliasingReshape = Union{typeof(NNlib.collapse_batch_dims), typeof(NNlib.interleaved_pairs),
+                              typeof(NNlib.halved_pairs)}
 
 function EnzymeRules.augmented_primal(config::EnzymeRules.RevConfig,
-        func::EnzymeCore.Const{typeof(NNlib.collapse_batch_dims)}, ::Type{RT},
+        func::EnzymeCore.Const{<:AliasingReshape}, ::Type{RT},
         x::EnzymeCore.Annotation{<:AbstractArray}) where {RT}
     y = func.val(x.val)
     shadow = EnzymeRules.needs_shadow(config) ? _collapsed_shadow(config, func.val, x, y) : nothing
     return EnzymeRules.AugmentedReturn(EnzymeRules.needs_primal(config) ? y : nothing, shadow, nothing)
 end
 
-EnzymeRules.reverse(config::EnzymeRules.RevConfig, func::EnzymeCore.Const{typeof(NNlib.collapse_batch_dims)},
+EnzymeRules.reverse(config::EnzymeRules.RevConfig, func::EnzymeCore.Const{<:AliasingReshape},
                     ::Type{RT}, tape, x::EnzymeCore.Annotation{<:AbstractArray}) where {RT} = (nothing,)
 
 function EnzymeRules.forward(config::EnzymeRules.FwdConfig,
-        func::EnzymeCore.Const{typeof(NNlib.collapse_batch_dims)}, ::Type{RT},
+        func::EnzymeCore.Const{<:AliasingReshape}, ::Type{RT},
         x::EnzymeCore.Annotation{<:AbstractArray}) where {RT}
     y = func.val(x.val)
     EnzymeRules.needs_shadow(config) || return EnzymeRules.needs_primal(config) ? y : nothing

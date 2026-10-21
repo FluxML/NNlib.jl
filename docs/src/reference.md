@@ -47,6 +47,13 @@ make_causal_mask
 NNlib.is_fused_attention
 ```
 
+### Rotary position embedding
+
+```@docs
+rotary_embedding_table
+apply_rotary_embedding
+```
+
 ## Softmax
 
 `Flux`'s `logitcrossentropy` uses `NNlib.logsoftmax` internally.
