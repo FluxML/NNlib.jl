@@ -133,7 +133,7 @@ export stft, istft, hann_window, hamming_window, spectrogram, melscale_filterban
 @static if VERSION >= v"1.11.0-DEV.469"
     eval(Meta.parse("public gather, gather!, scatter, scatter!, fold, unfold, glu, within_gradient, " *
                     "is_fused_attention, rotary_embedding_table, apply_rotary_embedding, " *
-                    "normalise, batchnorm, instancenorm, groupnorm, layernorm, rmsnorm" *
+                    "normalise, batchnorm, instancenorm, groupnorm, layernorm, rmsnorm, " *
                     "∇batchnorm, ∇instancenorm, ∇groupnorm, ∇layernorm, ∇rmsnorm"))
 end
 
