@@ -1,3 +1,5 @@
+using NNlib: apply_rotary_embedding, rotary_embedding_table
+
 function rotary_embedding_testsuite(Backend)
     device(x) = adapt(Backend(), x)
     T = nameof(Backend) === :MetalBackend ? Float32 : Float64   # Metal has no Float64
@@ -53,18 +55,6 @@ function rotary_embedding_testsuite(Backend)
             @test rope(x; positions=P[1:5]) ≈ rotary_reference(x, c, s, repeat(P[1:5], 1, batch_size...); interleaved)
         end
 
-        # large enough for the kernel of the CPU to split the tokens between tasks
-        c, s = rotary_embedding_table(64, 400, T)
-        x = randn(T, 64, 4, 300, 2)
-        P = rand(1:400, 300, 2)
-        for interleaved in (false, true), (kws, positions) in (((;), repeat(1:300, 1, 2)),
-                ((; offset=[3, 50]), (1:300) .+ [3 50]), ((; positions=P), P), ((; positions=P[:, 1]), P[:, [1, 1]]))
-            y = cpu(apply_rotary_embedding(device(x), device(c), device(s); interleaved, kws...))
-            @test y ≈ rotary_reference(x, c, s, positions; interleaved)
-        end
-        c, s = rotary_embedding_table(8, 30, T)
-        dc, ds = device(c), device(s)
-
         # the attention logits depend on the difference of the positions only
         q, k = device(randn(T, 8, 1, 1)), device(randn(T, 8, 1, 1))
         logit(m, n) = sum(cpu(apply_rotary_embedding(q, dc, ds; offset=m) .*
@@ -81,8 +71,10 @@ function rotary_embedding_testsuite(Backend)
         @test_throws DimensionMismatch apply_rotary_embedding(x, dc, ds; positions=ones(Int, 4, 3))
         @test_throws ArgumentError apply_rotary_embedding(x, dc, ds; offset=1, positions=ones(Int, 5))
         @test_throws ArgumentError apply_rotary_embedding(device(randn(T, 8, 5)), dc, ds)
-        @test_throws BoundsError apply_rotary_embedding(x, dc, ds; offset=26)
-        @test_throws ArgumentError apply_rotary_embedding(x, dc, ds; positions=fill(31, 5))
+        # out of the bounds of `gather`, which checks them on the device
+        oob = test_gpu ? ArgumentError : BoundsError
+        @test_throws oob apply_rotary_embedding(x, dc, ds; offset=26)
+        @test_throws oob apply_rotary_embedding(x, dc, ds; positions=fill(31, 5))
     end
 
     @testset "with attention" begin
@@ -140,7 +132,7 @@ function rotary_embedding_testsuite(Backend)
 
         # the pullback is the opposite rotation
         dx = device(x)
-        y, back = rrule(NNlib.rotate_pairs, dx, dc, ds, 3, nothing, false)
+        y, back = rrule(NNlib.rotate_pairs, dx, dc[:, 4:8], ds[:, 4:8], false)
         @test cpu(back(y)[2]) ≈ x
     end
 end

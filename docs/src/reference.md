@@ -50,8 +50,8 @@ NNlib.is_fused_attention
 ### Rotary position embedding
 
 ```@docs
-rotary_embedding_table
-apply_rotary_embedding
+NNlib.rotary_embedding_table
+NNlib.apply_rotary_embedding
 ```
 
 ## Softmax
