@@ -423,7 +423,7 @@ end
 # Linear (GPU): parallelization along width dimension.
 
 @kernel function _upsample_linear_kernel!(::B, y::T, x::T, rwidth, align::Val{A}) where {
-    B <: GPU, T <: AbstractArray{<:Any, 3}, A,
+    B <: Backend, T <: AbstractArray{<:Any, 3}, A,
 }
     @uniform in_width, channels, batch = size(x)
     i = @index(Global)
@@ -434,7 +434,7 @@ end
 end
 
 @kernel function _∇upsample_linear_kernel!(::B, dx::T, Δ::T, rwidth, align::Val{A}) where {
-    B <: GPU, T <: AbstractArray{<:Any, 3}, A,
+    B <: Backend, T <: AbstractArray{<:Any, 3}, A,
 }
     @uniform in_width, channels, batch = size(Δ)
     @uniform out_width = size(dx, 1)
@@ -490,7 +490,7 @@ end
 # Bilinear (GPU): parallelization along width, height dimensions.
 
 @kernel function _upsample_linear_kernel!(::B, y::T, x::T, rwidth, rheight, align::Val{A}) where {
-    B <: GPU, T <: AbstractArray{<:Any, 4}, A,
+    B <: Backend, T <: AbstractArray{<:Any, 4}, A,
 }
     @uniform in_width, in_height, channels, batch = size(x)
     i, j = @index(Global, NTuple)
@@ -504,7 +504,7 @@ end
 end
 
 @kernel function _∇upsample_linear_kernel!(::B, dx::T, Δ::T, rwidth, rheight, align::Val{A}) where {
-    B <: GPU, T <: AbstractArray{<:Any, 4}, A,
+    B <: Backend, T <: AbstractArray{<:Any, 4}, A,
 }
     @uniform in_width, in_height, channels, batch = size(Δ)
     @uniform out_width, out_height = size(dx)[1:2]
@@ -580,7 +580,7 @@ end
 # Trilinear (GPU): parallelization along width x height x depth dimensions.
 
 @kernel function _upsample_linear_kernel!(::B, y::T, x::T, rwidth, rheight, rdepth, align::Val{A}) where {
-    B <: GPU, T <: AbstractArray{<:Any, 5}, A,
+    B <: Backend, T <: AbstractArray{<:Any, 5}, A,
 }
     @uniform in_width, in_height, in_depth = size(x)[1:3]
     @uniform channels, batch = size(x, 4), size(x, 5)
@@ -600,7 +600,7 @@ end
 end
 
 @kernel function _∇upsample_linear_kernel!(::B, dx::T, Δ::T, rwidth, rheight, rdepth, align::Val{A}) where {
-    B <: GPU, T <: AbstractArray{<:Any, 5}, A,
+    B <: Backend, T <: AbstractArray{<:Any, 5}, A,
 }
     @uniform in_width, in_height, in_depth = size(Δ)[1:3]
     @uniform channels, batch = size(Δ, 4), size(Δ, 5)

@@ -539,7 +539,7 @@ function attention_grad_launch!(backend, dx, xo, xw, yo, yw, z, lse, delta, bias
     return dx
 end
 
-function fused_attention_grad(backend::GPU, dout, o, lse, q, k, v, bias, mask, q_offset, q_lengths,
+function fused_attention_grad(backend::Backend, dout, o, lse, q, k, v, bias, mask, q_offset, q_lengths,
                               kv_lengths, seqs, scale::A, qscale::A, is_causal::Bool) where {A}
     (; q_ends, kv_ends, n, maxlen_q, maxlen_kv) = seqs
     delta = dropdims(mapreduce(attention_wide_prod, +, dout, o; dims=1); dims=1)

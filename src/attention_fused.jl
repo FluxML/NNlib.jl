@@ -743,7 +743,7 @@ end
     tc == 0 && attention_write_lse!(lse, mx, p_shm, tr, i0, qb, Lq, h, b, til)
 end
 
-function fused_attention!(backend::GPU, o, lse, q, k, v, bias, mask, q_offset, q_lengths, kv_lengths, seqs,
+function fused_attention!(backend::Backend, o, lse, q, k, v, bias, mask, q_offset, q_lengths, kv_lengths, seqs,
                           scale::A, is_causal::Bool) where {A}
     c = attention_tiling(backend, q, v)
     attention_kernel!(backend, (c.T, 1, 1))(o, lse, q, k, v, bias, mask, q_offset, q_lengths, kv_lengths,
