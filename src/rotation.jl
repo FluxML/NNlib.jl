@@ -176,8 +176,8 @@ function imrotate(arr::AbstractArray{T, 4}, θ; method=:bilinear, rotation_cente
     else 
         throw(ArgumentError("No interpolation method such as $method"))
     end
-    kernel!(out, arr, sinθ, cosθ, rotation_center, size(arr, 1), size(arr, 2),
-            ndrange=size(arr))
+    kernel!(out, arr, sinθ, cosθ, rotation_center, size(arr, 1), size(arr, 2), size(arr, 3),
+            ndrange=_imrotate_ndrange(arr))
 	return out
 end
 
@@ -212,14 +212,25 @@ function ∇imrotate(dy, arr::AbstractArray{T, 4}, θ; method=:bilinear,
         throw(ArgumentError("No interpolation method such as $method"))
     end
     # don't pass arr but dy! 
-    kernel!(out, dy, sinθ, cosθ, rotation_center, size(arr, 1), size(arr, 2),
-            ndrange=size(arr))
+    kernel!(out, dy, sinθ, cosθ, rotation_center, size(arr, 1), size(arr, 2), size(arr, 3),
+            ndrange=_imrotate_ndrange(arr))
     return out
 end
 
 
-@kernel function imrotate_kernel_nearest!(out, arr, sinθ, cosθ, rotation_center, imax, jmax)
-    i, j, c, b = @index(Global, NTuple)
+# Channels and batch share one dimension of the launch: the CPU backend of
+# KernelAbstractions 0.10 is slow on 4-D ranges (JuliaGPU/KernelAbstractions.jl#913).
+_imrotate_ndrange(arr) = (size(arr, 1), size(arr, 2), size(arr, 3) * size(arr, 4))
+
+@inline function _channel_batch(cb, nchannels)
+    b, c = divrem(cb - 1, nchannels)
+    return c + 1, b + 1
+end
+
+
+@kernel function imrotate_kernel_nearest!(out, arr, sinθ, cosθ, rotation_center, imax, jmax, nchannels)
+    i, j, cb = @index(Global, NTuple)
+    c, b = _channel_batch(cb, nchannels)
 
     r(x...) = round(x..., RoundNearestTiesAway)
     _, _, _, _, yrot_int, xrot_int = _rotate_coordinates(sinθ, cosθ, i, j, rotation_center, r) 
@@ -229,8 +240,9 @@ end
 end
 
 
-@kernel function imrotate_kernel_bilinear!(out, arr, sinθ, cosθ, rotation_center, imax, jmax)
-    i, j, c, b = @index(Global, NTuple)
+@kernel function imrotate_kernel_bilinear!(out, arr, sinθ, cosθ, rotation_center, imax, jmax, nchannels)
+    i, j, cb = @index(Global, NTuple)
+    c, b = _channel_batch(cb, nchannels)
     
     yrot, xrot, yrot_f, xrot_f, yrot_int, xrot_int = _rotate_coordinates(sinθ, cosθ, i, j, rotation_center, floor) 
     if 1 ≤ yrot_int ≤ imax - 1 && 1 ≤ xrot_int ≤ jmax - 1 
@@ -246,8 +258,9 @@ end
 end
 
 
-@kernel function ∇imrotate_kernel_nearest!(out, arr, sinθ, cosθ, rotation_center, imax, jmax)
-    i, j, c, b = @index(Global, NTuple)
+@kernel function ∇imrotate_kernel_nearest!(out, arr, sinθ, cosθ, rotation_center, imax, jmax, nchannels)
+    i, j, cb = @index(Global, NTuple)
+    c, b = _channel_batch(cb, nchannels)
 
     r(x...) = round(x..., RoundNearestTiesAway)
     _, _, _, _, yrot_int, xrot_int = _rotate_coordinates(sinθ, cosθ, i, j, rotation_center, r) 
@@ -257,8 +270,9 @@ end
 end
 
 
-@kernel function ∇imrotate_kernel_bilinear!(out, arr, sinθ, cosθ, rotation_center, imax, jmax)
-    i, j, c, b = @index(Global, NTuple)
+@kernel function ∇imrotate_kernel_bilinear!(out, arr, sinθ, cosθ, rotation_center, imax, jmax, nchannels)
+    i, j, cb = @index(Global, NTuple)
+    c, b = _channel_batch(cb, nchannels)
 
     yrot, xrot, yrot_f, xrot_f, yrot_int, xrot_int = _rotate_coordinates(sinθ, cosθ, i, j, rotation_center, floor) 
     if 1 ≤ yrot_int ≤ imax - 1 && 1 ≤ xrot_int ≤ jmax - 1
