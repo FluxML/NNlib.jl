@@ -334,7 +334,7 @@ end
 # on the device of the inputs. Packed sequences have a batch dimension of one, an
 # `AttentionSegments`, and the lengths of their segments as `q_lengths` and `kv_lengths`
 # where these are not given. Inlined: Enzyme takes the integer arrays of a returned tuple
-# that also holds active arrays for active memory.
+# that also holds active arrays for active memory (EnzymeAD/Enzyme.jl#3873).
 @inline function collapse_attention_inputs(q, k, v, bias, mask, q_offset, q_lengths, kv_lengths,
                                            q_segments=nothing, kv_segments=nothing, maxlen=nothing)
     batch_size = size(q)[4:end]
@@ -473,6 +473,7 @@ function segment_sizes(x::AA4, segments::AbstractVector, maxlen, name)
     if host === nothing
         sizes = copyto!(similar(x, Int32, n), Int32.(segments))
         # `accumulate` keeps `Int32`, which Reactant's scan needs where `cumsum` widens it
+        # (EnzymeAD/Reactant.jl#3525)
         return sizes, accumulate(+, sizes), maxlen === nothing ? nothing : Int(maxlen)
     end
     sizes = Int32.(host)
@@ -625,7 +626,8 @@ function padded_segments_attention(q::AA4, k::AA4, v::AA4; fdrop, scale, is_caus
 end
 
 # The positions `idx` of `x`, its batch elements taken one after the other. Reactant
-# leaves the reshape lazy, which its `gather` does not take: it is copied there.
+# leaves the reshape lazy, which its `gather` does not take (EnzymeAD/Reactant.jl#3526):
+# it is copied there.
 gather_positions(x::AA4, idx) = gather(unlazy(reshape(x, size(x, 1), size(x, 2), :)), idx)
 
 unlazy(x) = x
