@@ -50,6 +50,8 @@ include("attention_fused_grad.jl")
 export scaled_dot_product_attention, scaled_dot_product_attention_with_weights,
        sdpa, sdpa_with_weights, make_causal_mask
 
+include("rotary_embedding.jl")
+
 include("dropout.jl")
 export dropout, dropout!
 
@@ -130,8 +132,8 @@ export stft, istft, hann_window, hamming_window, spectrogram, melscale_filterban
 # `public` is only valid syntax on Julia 1.11+, so parse it lazily.
 @static if VERSION >= v"1.11.0-DEV.469"
     eval(Meta.parse("public gather, gather!, scatter, scatter!, fold, unfold, glu, within_gradient, " *
-                    "is_fused_attention, " *
-                    "normalise, batchnorm, instancenorm, groupnorm, layernorm, rmsnorm" *
+                    "is_fused_attention, rotary_embedding_table, apply_rotary_embedding, " *
+                    "normalise, batchnorm, instancenorm, groupnorm, layernorm, rmsnorm, " *
                     "∇batchnorm, ∇instancenorm, ∇groupnorm, ∇layernorm, ∇rmsnorm"))
 end
 

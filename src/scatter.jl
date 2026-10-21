@@ -43,7 +43,8 @@ _view(X, colons, k::Union{Integer, CartesianIndex}) = view(X, colons..., k)
 _to_backend(ref::AnyGPUArray, idx::AnyGPUArray) = idx
 function _to_backend(ref::AnyGPUArray, idx::AbstractArray)
     idx_dev = similar(ref, eltype(idx), size(idx))
-    return copyto!(idx_dev, idx)
+    # an `Array` first: a range has no bulk copy to the GPU
+    return copyto!(idx_dev, convert(Array, idx))
 end
 
 # Check that every entry of `idx` is within the `sz` trailing dimensions it indexes
