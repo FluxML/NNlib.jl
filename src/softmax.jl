@@ -130,6 +130,8 @@ function rrule(::typeof(∇softmax), dy, y; dims = 1)
 end
 
 fast_maximum(x::AbstractArray{T}; dims) where {T} = @fastmath reduce(max, x; dims, init = _acc(float(T)(-Inf)))
+# GPUArrays' reductions have no fast kernel for `max_fast` (2–5× slower than `max`).
+fast_maximum(x::AbstractGPUArray{T}; dims) where {T} = reduce(max, x; dims, init = _acc(float(T)(-Inf)))
 
 """
     logsoftmax(x; dims = 1)
@@ -229,11 +231,12 @@ function logsumexp(x::AbstractArray{T}; dims = :) where {T}
 end
 
 function rrule(::typeof(logsumexp), x::AbstractArray{T}; dims = :) where {T}
-    # The gradient is `softmax`, but both compute `tmp` so it's worth saving.
+    # The gradient is `softmax`, but both compute `tmp` and its sum so they are worth saving.
     max_ = fast_maximum(x; dims)
     tmp = _exp.(x .- max_)
-    y = float(T).(max_ .+ log.(sum(tmp; dims)))
-    logsumexp_pullback(dy) = (NoTangent(), float(T).(unthunk(dy) .* tmp ./ sum(tmp; dims)))
+    s = sum(tmp; dims)
+    y = float(T).(max_ .+ log.(s))
+    logsumexp_pullback(dy) = (NoTangent(), float(T).(unthunk(dy) .* tmp ./ s))
     return y, logsumexp_pullback
 end
 
