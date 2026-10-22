@@ -19,9 +19,10 @@ import Mooncake:
 # trace. We intercept at the batchnorm level: run the primal via cuDNN as normal, then
 # use NNlib.∇batchnorm in the pullback, which is safe because pullbacks run as plain Julia.
 #
-# Handles the main 4-D / 5-D cuDNN path. The 2-D case (which reshapes then delegates to 4-D)
-# and the g=Nothing / b=Nothing case are traced through by Mooncake and reach this rule
-# via Core.kwcall after the reshape.
+# Handles the 3-D / 4-D / 5-D cuDNN path, and 2-D input, which runs the generic code in
+# NNlib core (it ignores `cache`). With g=Nothing / b=Nothing, Mooncake traces through the
+# method that fills them in and reaches this rule via Core.kwcall (3-D to 5-D), or traces
+# the generic code (2-D).
 
 # Stores batch mean and ivar from the forward so the backward reads exact saved values
 # rather than recomputing via a non-deterministic GPU parallel reduction (needed for
