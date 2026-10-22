@@ -50,55 +50,61 @@ _check_affine(g, b) = (g === nothing) == (b === nothing) ? nothing : throw(Argum
 # Flux). Extended in `NNlibForwardDiffExt`; identity everywhere else.
 _value(x) = x
 
-# `sum(f.(xs...); dims)` without materialising the broadcast. Nested AD differentiates the
-# materialising form.
-_bsum(f, x::AbstractArray; dims) = sum(f, x; dims)
-function _bsum(f, xs...; dims)
+# `sum(f.(xs...); dims)`, without materialising the broadcast on the CPU. Nested AD
+# differentiates the materialising form.
+_broadcast_sum(f, x::AbstractArray; dims) = sum(f, x; dims)
+function _broadcast_sum(f, xs...; dims)
     bc = Broadcast.instantiate(Broadcast.broadcasted(f, xs...))
-    return sum(bc; dims, init=zero(Broadcast.combine_eltypes(f, xs)))
+    init = zero(Broadcast.combine_eltypes(f, xs))
+    if dims isa Colon || length(dims) == 1 || !(1 in dims)
+        return sum(bc; dims, init)
+    end
+    # Base reduces a lazy broadcast quickly only along the first dimension.
+    return sum(sum(bc; dims=1, init); dims=filter(!=(1), Tuple(dims)))
 end
-_bsum_ad(f, xs...; dims) = sum(f.(xs...); dims)
-rrule(cfg::RuleConfig{>:HasReverseMode}, ::typeof(_bsum), f, xs...; dims) =
-    rrule_via_ad(cfg, _bsum_ad, f, xs...; dims)
+# GPUArrays 12 reduces a lazy broadcast several times more slowly than an array
+# (JuliaGPU/AcceleratedKernels.jl#169).
+_broadcast_sum(f, x::AbstractGPUArray, y, xs...; dims) = _materialized_sum(f, x, y, xs...; dims)
+_materialized_sum(f, xs...; dims) = sum(f.(xs...); dims)
+rrule(cfg::RuleConfig{>:HasReverseMode}, ::typeof(_broadcast_sum), f, xs...; dims) =
+    rrule_via_ad(cfg, _materialized_sum, f, xs...; dims)
 
 # Mean over `dims`, for a full-size `x`.
-_bmean(f, x, xs...; dims) = _bsum(f, x, xs...; dims) ./ _nreduced(x, dims)
-_nreduced(x, dims) = dims isa Colon ? length(x) : prod(d -> size(x, d), dims)
+_broadcast_mean(f, x, xs...; dims) = _broadcast_sum(f, x, xs...; dims) ./ _reduced_length(x, dims)
+_reduced_length(x, dims) = dims isa Colon ? length(x) : prod(d -> size(x, d), dims)
 
 # `sum(f.(x, xs...))` over the dimensions along which the parameter `p` is broadcast, in the
 # shape of `p`.
-function _sum_to(p, f, x, xs...)
-    dims = _bcast_dims(p, x)
+function _broadcast_sum_to(p, f, x, xs...)
+    dims = _broadcast_dims(p, x)
     isempty(dims) && return reshape(f.(x, xs...), size(p))
-    return reshape(_bsum(f, x, xs...; dims), size(p))
+    return reshape(_broadcast_sum(f, x, xs...; dims), size(p))
 end
-_bcast_dims(p, x) = Tuple(d for d in 1:ndims(x) if d > ndims(p) || size(p, d) == 1)
-ChainRulesCore.@non_differentiable _bcast_dims(::Any...)
+_broadcast_dims(p, x) = Tuple(d for d in 1:ndims(x) if d > ndims(p) || size(p, d) == 1)
+ChainRulesCore.@non_differentiable _broadcast_dims(::Any...)
 
 # Mean and variance over `dims` (two passes, as `var`), in Float32 for half-precision `x`.
-function _norm_stats(x, dims)
-    μ = _bmean(_acc, x; dims)
-    return μ, _bmean(_sqdev, x, μ; dims)
+function _mean_var(x, dims)
+    μ = _broadcast_mean(_upcast_half, x; dims)
+    return μ, _broadcast_mean(_squared_deviation, x, μ; dims)
 end
-_sqdev(x, μ) = abs2(_acc(x) - μ)
-_rstd(σ², eps) = @. inv(sqrt(σ² + $(_epsof(σ², eps))))
+_squared_deviation(x, μ) = abs2(_upcast_half(x) - μ)
+_inv_std(σ², eps) = @. inv(sqrt(σ² + $(_epsof(σ², eps))))
 
 # Half-precision results are rounded back to the input eltype; others keep the promoted one.
-_round_half(::Type{T}) where {T} = _stats_type(T) === T ? identity : T
+_back_to_half(::Type{T}) where {T} = _stats_type(T) === T ? identity : T
 
 # The statistics of each slice as one broadcast argument: Base's broadcast stops vectorizing
 # past 6 arguments.
-_slices(xs...) = tuple.(xs...)
-_slices(xs::Number...) = Ref(xs)
+_pack_stats(xs...) = tuple.(xs...)
+_pack_stats(xs::Number...) = Ref(xs)
 
 """
     normalise(x; dims=ndims(x), eps=1f-5)
 
 Normalise `x` to zero mean and unit standard deviation across the dimension(s)
 given by `dims`. Per default, `dims` is the last dimension. `eps` is a small term
-added to the variance for numerical stability.
-
-It is [`layernorm`](@ref) without scale and bias. For half-precision (`Float16`/`BFloat16`)
+added to the variance for numerical stability. For half-precision (`Float16`/`BFloat16`)
 inputs the statistics are computed in `Float32`.
 
 # Examples
@@ -289,14 +295,14 @@ See also [`normalise`](@ref), [`batchnorm`](@ref), [`instancenorm`](@ref),
 function layernorm(g, b, x::AbstractArray{T}; dims=1, eps=1f-5) where {T}
     _check_affine(g, b)
     _check_norm_types(T, g, b, nothing, nothing)
-    μ, σ² = _norm_stats(x, dims)
-    return _layernorm(g, b, x, μ, _rstd(σ², eps))
+    μ, σ² = _mean_var(x, dims)
+    return _layernorm(g, b, x, μ, _inv_std(σ², eps))
 end
 
 function _layernorm(g, b, x::AbstractArray{T}, μ, rσ) where {T}
-    rnd = _round_half(T)
-    g === nothing && return @. rnd((_acc(x) - μ) * rσ)
-    return @. rnd((_acc(x) - μ) * rσ * g + b)
+    rnd = _back_to_half(T)
+    g === nothing && return @. rnd((_upcast_half(x) - μ) * rσ)
+    return @. rnd(g * rσ * (_upcast_half(x) - μ) + b)  # up to 4× faster on CPU than `(x - μ) * rσ * g + b`
 end
 
 """
@@ -332,16 +338,16 @@ true
 """
 function rmsnorm(g, x::AbstractArray{T}; dims=1, eps=1f-5) where {T}
     _check_norm_types(T, g, nothing, nothing, nothing)
-    return _rmsnorm(g, x, _rrms(x, dims, eps))
+    return _rmsnorm(g, x, _inv_rms(x, dims, eps))
 end
 
-_rrms(x, dims, eps) = _rstd(_bmean(_acc_abs2, x; dims), eps)
-_acc_abs2(x) = abs2(_acc(x))
+_inv_rms(x, dims, eps) = _inv_std(_broadcast_mean(_upcast_abs2, x; dims), eps)
+_upcast_abs2(x) = abs2(_upcast_half(x))
 
 function _rmsnorm(g, x::AbstractArray{T}, r) where {T}
-    rnd = _round_half(T)
-    g === nothing && return @. rnd(_acc(x) * r)
-    return @. rnd(_acc(x) * r * g)
+    rnd = _back_to_half(T)
+    g === nothing && return @. rnd(_upcast_half(x) * r)
+    return @. rnd(_upcast_half(x) * r * g)
 end
 
 # --- Gradient operators (VJPs) -----------------------------------------------
@@ -473,47 +479,47 @@ Gradient of [`layernorm`](@ref), returning `(dg, db, dx)`.
 """
 function ∇layernorm(g, b, x::AbstractArray, dy; dims=1, eps=1f-5)
     _check_affine(g, b)
-    μ, σ² = _norm_stats(x, dims)
-    return _∇layernorm(g, b, x, dy, μ, _rstd(σ², eps); dims)
+    μ, σ² = _mean_var(x, dims)
+    return _∇layernorm(g, b, x, dy, μ, _inv_std(σ², eps); dims)
 end
 
 # With `x̂ = (x - μ) ⋅ rσ` and `dx̂ = g ⋅ dy`: `dx = rσ ⋅ (dx̂ - mean(dx̂) - x̂ ⋅ mean(dx̂ ⋅ x̂))`.
 function _∇layernorm(g, b, x::AbstractArray{T}, dy, μ, rσ; dims) where {T}
-    dg = g === nothing ? nothing : _sum_to(g, _dy_x̂, dy, x, μ, rσ)
-    db = b === nothing ? nothing : _sum_to(b, _acc, dy)
+    dg = g === nothing ? nothing : _broadcast_sum_to(g, _dy_x̂, dy, x, μ, rσ)
+    db = b === nothing ? nothing : _broadcast_sum_to(b, _upcast_half, dy)
     if g === nothing
-        m1 = _bmean(_acc, dy; dims)
-        m2 = _bmean(_dy_x̂, dy, x, μ, rσ; dims)
+        m1 = _broadcast_mean(_upcast_half, dy; dims)
+        m2 = _broadcast_mean(_dy_x̂, dy, x, μ, rσ; dims)
     else
-        m1 = _bmean(_dy_g, dy, g; dims)
-        m2 = _bmean(_dy_g_x̂, dy, g, x, μ, rσ; dims)
+        m1 = _broadcast_mean(_dy_g, dy, g; dims)
+        m2 = _broadcast_mean(_dy_g_x̂, dy, g, x, μ, rσ; dims)
     end
-    s = _slices(μ, rσ, m1, m2)
-    dx = _round_half(T).(_dx_layernorm.(dy, something(g, true), x, s))
+    s = _pack_stats(μ, rσ, m1, m2)
+    dx = _back_to_half(T).(_dx_layernorm.(dy, something(g, true), x, s))
     return dg, db, dx
 end
-_dy_g(dy, g) = _acc(dy) * g
-_dy_x̂(dy, x, μ, rσ) = _acc(dy) * (_acc(x) - μ) * rσ
-_dy_g_x̂(dy, g, x, μ, rσ) = _acc(dy) * g * (_acc(x) - μ) * rσ
-_dx_layernorm(dy, g, x, (μ, rσ, m1, m2)) = rσ * (_acc(dy) * g - m1 - (_acc(x) - μ) * rσ * m2)
+_dy_g(dy, g) = _upcast_half(dy) * g
+_dy_x̂(dy, x, μ, rσ) = _upcast_half(dy) * (_upcast_half(x) - μ) * rσ
+_dy_g_x̂(dy, g, x, μ, rσ) = _upcast_half(dy) * g * (_upcast_half(x) - μ) * rσ
+_dx_layernorm(dy, g, x, (μ, rσ, m1, m2)) = rσ * (_upcast_half(dy) * g - m1 - (_upcast_half(x) - μ) * rσ * m2)
 
 """
     ∇rmsnorm(g, x, dy; dims=1, eps=1f-5)
 
 Gradient of [`rmsnorm`](@ref), returning `(dg, dx)`.
 """
-∇rmsnorm(g, x::AbstractArray, dy; dims=1, eps=1f-5) = _∇rmsnorm(g, x, dy, _rrms(x, dims, eps); dims)
+∇rmsnorm(g, x::AbstractArray, dy; dims=1, eps=1f-5) = _∇rmsnorm(g, x, dy, _inv_rms(x, dims, eps); dims)
 
 # With `x̂ = x ⋅ r` and `dx̂ = g ⋅ dy`: `dx = r ⋅ (dx̂ - x̂ ⋅ mean(dx̂ ⋅ x̂))`.
 function _∇rmsnorm(g, x::AbstractArray{T}, dy, r; dims) where {T}
-    dg = g === nothing ? nothing : _sum_to(g, _dy_xr, dy, x, r)
-    m = g === nothing ? _bmean(_dy_xr, dy, x, r; dims) : _bmean(_dy_g_xr, dy, g, x, r; dims)
-    dx = _round_half(T).(_dx_rmsnorm.(dy, something(g, true), x, _slices(r, m)))
+    dg = g === nothing ? nothing : _broadcast_sum_to(g, _dy_xr, dy, x, r)
+    m = g === nothing ? _broadcast_mean(_dy_xr, dy, x, r; dims) : _broadcast_mean(_dy_g_xr, dy, g, x, r; dims)
+    dx = _back_to_half(T).(_dx_rmsnorm.(dy, something(g, true), x, _pack_stats(r, m)))
     return dg, dx
 end
-_dy_xr(dy, x, r) = _acc(dy) * _acc(x) * r
-_dy_g_xr(dy, g, x, r) = _acc(dy) * g * _acc(x) * r
-_dx_rmsnorm(dy, g, x, (r, m)) = r * (_acc(dy) * g - _acc(x) * r * m)
+_dy_xr(dy, x, r) = _upcast_half(dy) * _upcast_half(x) * r
+_dy_g_xr(dy, g, x, r) = _upcast_half(dy) * g * _upcast_half(x) * r
+_dx_rmsnorm(dy, g, x, (r, m)) = r * (_upcast_half(dy) * g - _upcast_half(x) * r * m)
 
 # --- rrules ------------------------------------------------------------------
 # Route reverse-mode AD through the explicit gradient operators above. Because
@@ -560,8 +566,8 @@ end
 function ChainRulesCore.rrule(::typeof(layernorm), g, b, x::AbstractArray; dims=1, eps=1f-5)
     _check_affine(g, b)
     _check_norm_types(eltype(x), g, b, nothing, nothing)
-    μ, σ² = _norm_stats(x, dims)
-    rσ = _rstd(σ², eps)
+    μ, σ² = _mean_var(x, dims)
+    rσ = _inv_std(σ², eps)
     function layernorm_pullback(Δ)
         dg, db, dx = _∇layernorm(g, b, x, unthunk(Δ), μ, rσ; dims)
         (NoTangent(), _tangent(dg), _tangent(db), dx)
@@ -577,7 +583,7 @@ end
 
 function ChainRulesCore.rrule(::typeof(rmsnorm), g, x::AbstractArray; dims=1, eps=1f-5)
     _check_norm_types(eltype(x), g, nothing, nothing, nothing)
-    r = _rrms(x, dims, eps)
+    r = _inv_rms(x, dims, eps)
     function rmsnorm_pullback(Δ)
         dg, dx = _∇rmsnorm(g, x, unthunk(Δ), r; dims)
         (NoTangent(), _tangent(dg), dx)

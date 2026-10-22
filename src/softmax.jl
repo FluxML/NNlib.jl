@@ -69,8 +69,8 @@ softmax!(out::AbstractArray, x::AbstractArray; dims = 1) = _softmax!(out, x; dim
 # Float16 and BFloat16 are summed in Float32: in their own type, the sums lose most of
 # their digits, and Float16 overflows past 65504. `fast_maximum` returns Float32 for them,
 # so `x .- max_` is computed in Float32 too. Results keep the input eltype.
-_acc(x) = x
-_acc(x::HalfFloat) = Float32(x)
+_upcast_half(x) = x
+_upcast_half(x::HalfFloat) = Float32(x)
 
 # Generic implementation, can be overidden by CUDA and other backends.
 function _softmax!(out::AbstractArray{T}, x::AbstractArray; dims = 1) where {T}
@@ -78,10 +78,10 @@ function _softmax!(out::AbstractArray{T}, x::AbstractArray; dims = 1) where {T}
     if all(isfinite, max_)
         out .= _exp.(x .- max_)
     else
-        _zero, _one, _inf = _acc(T(0)), _acc(T(1)), _acc(T(Inf))
+        _zero, _one, _inf = _upcast_half(T(0)), _upcast_half(T(1)), _upcast_half(T(Inf))
         @. out = ifelse(isequal(max_,_inf), ifelse(isequal(x,_inf), _one, _zero), _exp(x - max_))
     end
-    out ./= sum(_acc, out; dims)
+    out ./= sum(_upcast_half, out; dims)
 end
 
 """
@@ -105,7 +105,7 @@ In-place version of [`∇softmax`](@ref), writing the gradient into `dx`.
 
 function _∇softmax!(dx::AbstractArray, dy::AbstractArray{T}, y::AbstractArray{S}; dims = 1) where {T,S}
     dx .= dy .* y
-    dx .= dx .- y .* sum(_acc, dx; dims)
+    dx .= dx .- y .* sum(_upcast_half, dx; dims)
 end
 
 function rrule(::typeof(softmax), x; dims = 1)
@@ -116,20 +116,20 @@ end
 
 # `∇softmax` mutates, and may call a backend kernel, so nested reverse-mode AD
 # differentiates it with this rule. It is linear and self-adjoint in `dy`.
-# Half precision is computed in Float32 (see `_acc`) and rounded back to `T`.
+# Half precision is computed in Float32 (see `_upcast_half`) and rounded back to `T`.
 function rrule(::typeof(∇softmax), dy, y; dims = 1)
     dx = ∇softmax(dy, y; dims)
     function ∇softmax_pullback(Δ)
         Δ = unthunk(Δ)
         ∂dy = ∇softmax(Δ, y; dims)
         T = promote_type(eltype(Δ), eltype(dy), eltype(y))
-        ∂y = T.(Δ .* (dy .- sum(dy .* _acc.(y); dims)) .- dy .* sum(Δ .* _acc.(y); dims))
+        ∂y = T.(Δ .* (dy .- sum(dy .* _upcast_half.(y); dims)) .- dy .* sum(Δ .* _upcast_half.(y); dims))
         return (NoTangent(), ∂dy, ∂y)
     end
     return dx, ∇softmax_pullback
 end
 
-fast_maximum(x::AbstractArray{T}; dims) where {T} = @fastmath reduce(max, x; dims, init = _acc(float(T)(-Inf)))
+fast_maximum(x::AbstractArray{T}; dims) where {T} = @fastmath reduce(max, x; dims, init = _upcast_half(float(T)(-Inf)))
 
 """
     logsoftmax(x; dims = 1)
@@ -163,10 +163,10 @@ function _logsoftmax!(out::AbstractArray{T}, x::AbstractArray; dims = 1) where {
     if all(isfinite, max_)
         out .= x .- max_
     else
-        _zero, _minf, _inf = _acc(T(0)), _acc(T(-Inf)), _acc(T(Inf))
+        _zero, _minf, _inf = _upcast_half(T(0)), _upcast_half(T(-Inf)), _upcast_half(T(Inf))
         @. out = ifelse(isequal(max_,_inf), ifelse(isequal(x,_inf), _zero, _minf), x - max_)
     end
-    log_ = log.(sum(@inline(y -> _exp(_acc(y))), out; dims))  # not vectorized without `@inline`
+    log_ = log.(sum(@inline(y -> _exp(_upcast_half(y))), out; dims))  # not vectorized without `@inline`
     out .-= log_
 end
 
@@ -190,7 +190,7 @@ In-place version of [`∇logsoftmax`](@ref), writing the gradient into `dx`.
 ∇logsoftmax!(dx::AbstractArray, dy::AbstractArray, y::AbstractArray; dims = 1) = _∇logsoftmax!(dx, dy, y; dims)
 
 function _∇logsoftmax!(dx::AbstractArray, dy::AbstractArray, y::AbstractArray; dims = 1)
-    dx .= dy .- sum(_acc, dy; dims) .* _exp.(_acc.(y))
+    dx .= dy .- sum(_upcast_half, dy; dims) .* _exp.(_upcast_half.(y))
 end
 
 function rrule(::typeof(logsoftmax), x; dims = 1)
@@ -206,9 +206,9 @@ function rrule(::typeof(∇logsoftmax), dy, y; dims = 1)
         Δ = unthunk(Δ)
         T = promote_type(eltype(Δ), eltype(y))
         S = promote_type(T, eltype(dy))
-        p = _exp.(_acc.(y))
+        p = _exp.(_upcast_half.(y))
         ∂dy = T.(Δ .- sum(Δ .* p; dims))
-        ∂y = S.(.-sum(_acc, dy; dims) .* p .* Δ)
+        ∂y = S.(.-sum(_upcast_half, dy; dims) .* p .* Δ)
         return (NoTangent(), ∂dy, ∂y)
     end
     return dx, ∇logsoftmax_pullback
