@@ -130,7 +130,8 @@ function rrule(::typeof(∇softmax), dy, y; dims = 1)
 end
 
 fast_maximum(x::AbstractArray{T}; dims) where {T} = @fastmath reduce(max, x; dims, init = _acc(float(T)(-Inf)))
-# GPUArrays' reductions have no fast kernel for `max_fast` (2–5× slower than `max`).
+# GPUArrays 12 reductions have no fast kernel for `max_fast`, 2–5× slower than `max`
+# (JuliaGPU/GPUArrays.jl#833).
 fast_maximum(x::AbstractGPUArray{T}; dims) where {T} = reduce(max, x; dims, init = _acc(float(T)(-Inf)))
 
 """
