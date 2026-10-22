@@ -130,6 +130,9 @@ function rrule(::typeof(∇softmax), dy, y; dims = 1)
 end
 
 fast_maximum(x::AbstractArray{T}; dims) where {T} = @fastmath reduce(max, x; dims, init = _acc(float(T)(-Inf)))
+# GPUArrays 12 reductions have no fast kernel for `max_fast`, 2–5× slower than `max`
+# (JuliaGPU/GPUArrays.jl#833).
+fast_maximum(x::AbstractGPUArray{T}; dims) where {T} = reduce(max, x; dims, init = _acc(float(T)(-Inf)))
 
 """
     logsoftmax(x; dims = 1)
@@ -219,21 +222,22 @@ end
 
 Computes `log.(sum(exp.(x); dims))` in a numerically stable way.
 Without `dims` keyword this returns a scalar.
-For `Float16` and `BFloat16` inputs, it is computed in `Float32` and rounded once.
+For `Float16` and `BFloat16` inputs, it is computed and returned in `Float32`.
 
 See also [`logsoftmax`](@ref).
 """
-function logsumexp(x::AbstractArray{T}; dims = :) where {T}
+function logsumexp(x::AbstractArray; dims = :)
     max_ = fast_maximum(x; dims)
-    return float(T).(max_ .+ log.(sum(_exp.(x .- max_); dims)))
+    return max_ .+ log.(sum(_exp.(x .- max_); dims))
 end
 
 function rrule(::typeof(logsumexp), x::AbstractArray{T}; dims = :) where {T}
-    # The gradient is `softmax`, but both compute `tmp` so it's worth saving.
+    # The gradient is `softmax`, but both compute `tmp` and its sum so they are worth saving.
     max_ = fast_maximum(x; dims)
     tmp = _exp.(x .- max_)
-    y = float(T).(max_ .+ log.(sum(tmp; dims)))
-    logsumexp_pullback(dy) = (NoTangent(), float(T).(unthunk(dy) .* tmp ./ sum(tmp; dims)))
+    s = sum(tmp; dims)
+    y = max_ .+ log.(s)
+    logsumexp_pullback(dy) = (NoTangent(), float(T).(unthunk(dy) .* tmp ./ s))
     return y, logsumexp_pullback
 end
 

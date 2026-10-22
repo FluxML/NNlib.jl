@@ -121,10 +121,11 @@ end
                                             (x2[:, 1], dy2[:, 1], :))
         xd, dyd = Float64.(x), Float64.(dy)
         y, ly, lse = softmax(x; dims = d), logsoftmax(x; dims = d), logsumexp(x; dims = d)
-        @test eltype(y) == eltype(ly) == eltype(lse) == T
+        @test eltype(y) == eltype(ly) == T
+        @test eltype(lse) == Float32  # not rounded to T (#826)
         @test maxerr(sum(Float64, y; dims = d), 1) < eps(T) / 2
         @test maxerr(ly, logsoftmax(xd; dims = d)) <= tol
-        @test maxerr(lse, logsumexp(xd; dims = d)) <= tol
+        @test maxerr(lse, logsumexp(xd; dims = d)) <= 64eps(Float32(log(V)))
         @test softmax!(copy(x); dims = d) == y
         @test logsoftmax!(copy(x); dims = d) == ly
 
@@ -143,8 +144,8 @@ end
     if T == Float16  # past 65504, a Float16 sum overflows
         V = 128256
         x = zeros(T, V, 1)
-        @test logsumexp(x; dims = 1) == fill(T(log(V)), 1, 1)
-        @test logsumexp(x) == T(log(V))
+        @test logsumexp(x; dims = 1) == fill(log(Float32(V)), 1, 1)
+        @test logsumexp(x) == log(Float32(V))
         @test logsoftmax(x) == fill(T(-log(V)), V, 1)
         @test sum(Float64, softmax(x)) ≈ 1 rtol = 3e-3  # 1/V is subnormal
         @test maxerr(∇logsoftmax(ones(T, V, 1), logsoftmax(x)), 0) < 1e-2
