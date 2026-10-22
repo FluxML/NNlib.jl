@@ -130,6 +130,25 @@ function normalization_testsuite(Backend)
         # normalise: zero mean, unit std over `dims`
         z = cpu(normalise(device(x); dims=1))
         @test all(isapprox.(vec(Statistics.std(z; dims=1, corrected=false)), 1; atol=1e-3))
+
+        # half precision: the statistics accumulate in Float32, so scale and bias must be Float32
+        xh = device(Float16.(x)); gd = device(g); bd = device(b)
+        yh = layernorm(gd, bd, xh; dims=1)
+        @test eltype(yh) == Float16
+        @test Float32.(cpu(yh)) ≈ g ./ sqrt.(σ² .+ 1f-5) .* (x .- μ) .+ b rtol=1e-2 atol=1e-2
+        @test eltype(normalise(xh; dims=1)) == Float16
+        @test_throws ArgumentError layernorm(device(Float16.(g)), device(Float16.(b)), xh)
+
+        # the fused kernels: on a GPU, columns of 256 elements or more are shared by lanes
+        @testset for (sz, dims, gsz) in (((260, 3), 1, (260,)), ((20, 15, 2), (1, 2), (20, 15)))
+            xl = randn(T, sz); gl = randn(T, gsz); bl = randn(T, gsz)
+            μl = mean(xl; dims); σ²l = var(xl; mean=μl, dims, corrected=false)
+            @test cpu(layernorm(device(gl), device(bl), device(xl); dims)) ≈
+                gl .* (xl .- μl) ./ sqrt.(σ²l .+ 1f-5) .+ bl atol=atol
+            @test cpu(normalise(device(xl); dims)) ≈ (xl .- μl) ./ sqrt.(σ²l .+ 1f-5) atol=atol
+            @test test_gradients((g, b, x) -> layernorm(g, b, x; dims), gl, bl, xl; test_gpu=gpu, atol, compare=cmp)
+            @test test_gradients(x -> normalise(x; dims), xl; test_gpu=gpu, atol, compare=cmp)
+        end
     end
 
     @testset "rmsnorm" begin

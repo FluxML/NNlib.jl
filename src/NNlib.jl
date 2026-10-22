@@ -9,7 +9,7 @@ using BFloat16s: BFloat16
 using ChainRulesCore
 using GPUArraysCore
 using KernelAbstractions
-using KernelAbstractions: @atomic
+using KernelAbstractions: @atomic, @groupreduce
 using LinearAlgebra
 using LinearAlgebra.BLAS: @blasfunc, BlasInt
 using LinearAlgebra: AdjOrTransAbsMat, Adjoint, BlasFloat, Transpose
@@ -107,6 +107,7 @@ include("sampling.jl")
 include("functions.jl")
 
 include("normalization.jl")
+include("normalization_fused.jl")
 
 ## Include implementations
 include("impl/padding_edges.jl")
