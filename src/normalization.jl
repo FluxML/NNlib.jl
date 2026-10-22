@@ -17,7 +17,7 @@
 
 # `eps` converted to the (real) float eltype of `x`, avoiding Float64 promotion of
 # Float16/Float32 data.
-_epsof(x::AbstractArray, eps) = convert(float(real(eltype(x))), eps)
+_epsof(x, eps) = convert(float(real(eltype(x))), eps)
 
 # Half-precision (Float16/BFloat16) feature maps are normalised in Float32: the
 # reductions and running-statistic updates accumulate in `_stats_type`, and the
@@ -50,6 +50,47 @@ _check_affine(g, b) = (g === nothing) == (b === nothing) ? nothing : throw(Argum
 # Flux). Extended in `NNlibForwardDiffExt`; identity everywhere else.
 _value(x) = x
 
+# `sum(f.(xs...); dims)` without materialising the broadcast. Nested AD differentiates the
+# materialising form.
+_bsum(f, x::AbstractArray; dims) = sum(f, x; dims)
+function _bsum(f, xs...; dims)
+    bc = Broadcast.instantiate(Broadcast.broadcasted(f, xs...))
+    return sum(bc; dims, init=zero(Broadcast.combine_eltypes(f, xs)))
+end
+_bsum_ad(f, xs...; dims) = sum(f.(xs...); dims)
+rrule(cfg::RuleConfig{>:HasReverseMode}, ::typeof(_bsum), f, xs...; dims) =
+    rrule_via_ad(cfg, _bsum_ad, f, xs...; dims)
+
+# Mean over `dims`, for a full-size `x`.
+_bmean(f, x, xs...; dims) = _bsum(f, x, xs...; dims) ./ _nreduced(x, dims)
+_nreduced(x, dims) = dims isa Colon ? length(x) : prod(d -> size(x, d), dims)
+
+# `sum(f.(x, xs...))` over the dimensions along which the parameter `p` is broadcast, in the
+# shape of `p`.
+function _sum_to(p, f, x, xs...)
+    dims = _bcast_dims(p, x)
+    isempty(dims) && return reshape(f.(x, xs...), size(p))
+    return reshape(_bsum(f, x, xs...; dims), size(p))
+end
+_bcast_dims(p, x) = Tuple(d for d in 1:ndims(x) if d > ndims(p) || size(p, d) == 1)
+ChainRulesCore.@non_differentiable _bcast_dims(::Any...)
+
+# Mean and variance over `dims` (two passes, as `var`), in Float32 for half-precision `x`.
+function _norm_stats(x, dims)
+    μ = _bmean(_acc, x; dims)
+    return μ, _bmean(_sqdev, x, μ; dims)
+end
+_sqdev(x, μ) = abs2(_acc(x) - μ)
+_rstd(σ², eps) = @. inv(sqrt(σ² + $(_epsof(σ², eps))))
+
+# Half-precision results are rounded back to the input eltype; others keep the promoted one.
+_round_half(::Type{T}) where {T} = _stats_type(T) === T ? identity : T
+
+# The statistics of each slice as one broadcast argument: Base's broadcast stops vectorizing
+# past 6 arguments.
+_slices(xs...) = tuple.(xs...)
+_slices(xs::Number...) = Ref(xs)
+
 """
     normalise(x; dims=ndims(x), eps=1f-5)
 
@@ -57,8 +98,8 @@ Normalise `x` to zero mean and unit standard deviation across the dimension(s)
 given by `dims`. Per default, `dims` is the last dimension. `eps` is a small term
 added to the variance for numerical stability.
 
-This is the stateless building block behind [`layernorm`](@ref); it applies no
-learnable shift or scale.
+It is [`layernorm`](@ref) without scale and bias. For half-precision (`Float16`/`BFloat16`)
+inputs the statistics are computed in `Float32`.
 
 # Examples
 ```jldoctest
@@ -72,11 +113,7 @@ julia> isapprox(std(y; corrected=false), 1, atol=1e-5)
 true
 ```
 """
-function normalise(x::AbstractArray; dims=ndims(x), eps=1f-5)
-    μ = mean(x; dims)
-    σ² = var(x; dims, mean=μ, corrected=false)
-    return (x .- μ) ./ sqrt.(σ² .+ _epsof(x, eps))
-end
+normalise(x::AbstractArray; dims=ndims(x), eps=1f-5) = layernorm(nothing, nothing, x; dims, eps)
 
 # Core affine-normalize transform: `y = g * (x - μ)/√(σ² + ϵ) + b`.
 # `μ`, `σ²`, `g`, `b` are already reshaped to broadcast against `x`; `g`/`b` may be
@@ -252,12 +289,14 @@ See also [`normalise`](@ref), [`batchnorm`](@ref), [`instancenorm`](@ref),
 function layernorm(g, b, x::AbstractArray{T}; dims=1, eps=1f-5) where {T}
     _check_affine(g, b)
     _check_norm_types(T, g, b, nothing, nothing)
-    Tc = _stats_type(T)
-    xc = Tc === T ? x : Tc.(x)
-    μ = mean(xc; dims)
-    σ² = var(xc; dims, mean=μ, corrected=false)
-    y = _affine_normalize(xc, μ, σ², g, b, _epsof(xc, eps))
-    return Tc === T ? y : T.(y)
+    μ, σ² = _norm_stats(x, dims)
+    return _layernorm(g, b, x, μ, _rstd(σ², eps))
+end
+
+function _layernorm(g, b, x::AbstractArray{T}, μ, rσ) where {T}
+    rnd = _round_half(T)
+    g === nothing && return @. rnd((_acc(x) - μ) * rσ)
+    return @. rnd((_acc(x) - μ) * rσ * g + b)
 end
 
 """
@@ -293,11 +332,16 @@ true
 """
 function rmsnorm(g, x::AbstractArray{T}; dims=1, eps=1f-5) where {T}
     _check_norm_types(T, g, nothing, nothing, nothing)
-    Tc = _stats_type(T)
-    xc = Tc === T ? x : Tc.(x)
-    rms = sqrt.(mean(abs2, xc; dims) .+ _epsof(xc, eps))
-    y = g === nothing ? xc ./ rms : @. g / rms * xc
-    return Tc === T ? y : T.(y)
+    return _rmsnorm(g, x, _rrms(x, dims, eps))
+end
+
+_rrms(x, dims, eps) = _rstd(_bmean(_acc_abs2, x; dims), eps)
+_acc_abs2(x) = abs2(_acc(x))
+
+function _rmsnorm(g, x::AbstractArray{T}, r) where {T}
+    rnd = _round_half(T)
+    g === nothing && return @. rnd(_acc(x) * r)
+    return @. rnd(_acc(x) * r * g)
 end
 
 # --- Gradient operators (VJPs) -----------------------------------------------
@@ -427,39 +471,49 @@ end
 
 Gradient of [`layernorm`](@ref), returning `(dg, db, dx)`.
 """
-function ∇layernorm(g, b, x::AbstractArray{T,N}, dy; dims=1, eps=1f-5) where {T,N}
+function ∇layernorm(g, b, x::AbstractArray, dy; dims=1, eps=1f-5)
     _check_affine(g, b)
-    Tc = _stats_type(T)
-    xc = Tc === T ? x : Tc.(x)
-    dyc = Tc === T ? dy : Tc.(dy)
-    ϵ = _epsof(xc, eps)
-    μ = mean(xc; dims)
-    σ² = var(xc; mean=μ, dims, corrected=false)
-    σ = sqrt.(σ² .+ ϵ)
-    x̂ = (xc .- μ) ./ σ
-    dg = g === nothing ? nothing : _unbroadcast(dyc .* x̂, g)
-    db = b === nothing ? nothing : _unbroadcast(dyc, b)
-    dx̂ = g === nothing ? dyc : dyc .* g
-    dx = (dx̂ .- mean(dx̂; dims) .- x̂ .* mean(dx̂ .* x̂; dims)) ./ σ
-    return dg, db, Tc === T ? dx : T.(dx)
+    μ, σ² = _norm_stats(x, dims)
+    return _∇layernorm(g, b, x, dy, μ, _rstd(σ², eps); dims)
 end
+
+# With `x̂ = (x - μ) ⋅ rσ` and `dx̂ = g ⋅ dy`: `dx = rσ ⋅ (dx̂ - mean(dx̂) - x̂ ⋅ mean(dx̂ ⋅ x̂))`.
+function _∇layernorm(g, b, x::AbstractArray{T}, dy, μ, rσ; dims) where {T}
+    dg = g === nothing ? nothing : _sum_to(g, _dy_x̂, dy, x, μ, rσ)
+    db = b === nothing ? nothing : _sum_to(b, _acc, dy)
+    if g === nothing
+        m1 = _bmean(_acc, dy; dims)
+        m2 = _bmean(_dy_x̂, dy, x, μ, rσ; dims)
+    else
+        m1 = _bmean(_dy_g, dy, g; dims)
+        m2 = _bmean(_dy_g_x̂, dy, g, x, μ, rσ; dims)
+    end
+    s = _slices(μ, rσ, m1, m2)
+    dx = _round_half(T).(_dx_layernorm.(dy, something(g, true), x, s))
+    return dg, db, dx
+end
+_dy_g(dy, g) = _acc(dy) * g
+_dy_x̂(dy, x, μ, rσ) = _acc(dy) * (_acc(x) - μ) * rσ
+_dy_g_x̂(dy, g, x, μ, rσ) = _acc(dy) * g * (_acc(x) - μ) * rσ
+_dx_layernorm(dy, g, x, (μ, rσ, m1, m2)) = rσ * (_acc(dy) * g - m1 - (_acc(x) - μ) * rσ * m2)
 
 """
     ∇rmsnorm(g, x, dy; dims=1, eps=1f-5)
 
 Gradient of [`rmsnorm`](@ref), returning `(dg, dx)`.
 """
-function ∇rmsnorm(g, x::AbstractArray{T}, dy; dims=1, eps=1f-5) where {T}
-    Tc = _stats_type(T)
-    xc = Tc === T ? x : Tc.(x)
-    dyc = Tc === T ? dy : Tc.(dy)
-    rms = sqrt.(mean(abs2, xc; dims) .+ _epsof(xc, eps))
-    x̂ = xc ./ rms
-    dg = g === nothing ? nothing : _unbroadcast(dyc .* x̂, g)
-    dx̂ = g === nothing ? dyc : dyc .* g
-    dx = (dx̂ .- x̂ .* mean(dx̂ .* x̂; dims)) ./ rms
-    return dg, Tc === T ? dx : T.(dx)
+∇rmsnorm(g, x::AbstractArray, dy; dims=1, eps=1f-5) = _∇rmsnorm(g, x, dy, _rrms(x, dims, eps); dims)
+
+# With `x̂ = x ⋅ r` and `dx̂ = g ⋅ dy`: `dx = r ⋅ (dx̂ - x̂ ⋅ mean(dx̂ ⋅ x̂))`.
+function _∇rmsnorm(g, x::AbstractArray{T}, dy, r; dims) where {T}
+    dg = g === nothing ? nothing : _sum_to(g, _dy_xr, dy, x, r)
+    m = g === nothing ? _bmean(_dy_xr, dy, x, r; dims) : _bmean(_dy_g_xr, dy, g, x, r; dims)
+    dx = _round_half(T).(_dx_rmsnorm.(dy, something(g, true), x, _slices(r, m)))
+    return dg, dx
 end
+_dy_xr(dy, x, r) = _acc(dy) * _acc(x) * r
+_dy_g_xr(dy, g, x, r) = _acc(dy) * g * _acc(x) * r
+_dx_rmsnorm(dy, g, x, (r, m)) = r * (_acc(dy) * g - _acc(x) * r * m)
 
 # --- rrules ------------------------------------------------------------------
 # Route reverse-mode AD through the explicit gradient operators above. Because
@@ -502,20 +556,31 @@ function ChainRulesCore.rrule(::typeof(groupnorm), g, b, x::AbstractArray, G::In
     return y, groupnorm_pullback
 end
 
+# `layernorm` and `rmsnorm` keep their statistics for the pullback.
 function ChainRulesCore.rrule(::typeof(layernorm), g, b, x::AbstractArray; dims=1, eps=1f-5)
-    y = layernorm(g, b, x; dims, eps)
+    _check_affine(g, b)
+    _check_norm_types(eltype(x), g, b, nothing, nothing)
+    μ, σ² = _norm_stats(x, dims)
+    rσ = _rstd(σ², eps)
     function layernorm_pullback(Δ)
-        dg, db, dx = ∇layernorm(g, b, x, unthunk(Δ); dims, eps)
+        dg, db, dx = _∇layernorm(g, b, x, unthunk(Δ), μ, rσ; dims)
         (NoTangent(), _tangent(dg), _tangent(db), dx)
     end
-    return y, layernorm_pullback
+    return _layernorm(g, b, x, μ, rσ), layernorm_pullback
+end
+
+function ChainRulesCore.rrule(::typeof(normalise), x::AbstractArray; dims=ndims(x), eps=1f-5)
+    y, back = rrule(layernorm, nothing, nothing, x; dims, eps)
+    normalise_pullback(Δ) = (NoTangent(), back(Δ)[4])
+    return y, normalise_pullback
 end
 
 function ChainRulesCore.rrule(::typeof(rmsnorm), g, x::AbstractArray; dims=1, eps=1f-5)
-    y = rmsnorm(g, x; dims, eps)
+    _check_norm_types(eltype(x), g, nothing, nothing, nothing)
+    r = _rrms(x, dims, eps)
     function rmsnorm_pullback(Δ)
-        dg, dx = ∇rmsnorm(g, x, unthunk(Δ); dims, eps)
+        dg, dx = _∇rmsnorm(g, x, unthunk(Δ), r; dims)
         (NoTangent(), _tangent(dg), dx)
     end
-    return y, rmsnorm_pullback
+    return _rmsnorm(g, x, r), rmsnorm_pullback
 end
