@@ -91,12 +91,12 @@ end
         xd = Float64.(collect(x))
         tol = eps(T(log(V)))  # an ulp of the outputs of `logsoftmax` and `logsumexp`
         for d in (2, :)
-            @test eltype(logsumexp(x; dims = d)) == T
-            @test err(logsumexp(x; dims = d), logsumexp(xd; dims = d)) <= tol
+            @test eltype(logsumexp(x; dims = d)) == Float32  # not rounded to T (#826)
+            @test err(logsumexp(x; dims = d), logsumexp(xd; dims = d)) <= 64eps(Float32(log(V)))
         end
         @test err(logsoftmax(x; dims = 2), logsoftmax(xd; dims = 2)) <= tol
         @test err(sum(Float32.(softmax(x; dims = 2)); dims = 2), 1) < eps(T) / 2
     end
     # Past 65504, a Float16 sum overflows.
-    @test collect(logsumexp(CUDA.zeros(Float16, 128256, 1); dims = 1)) == fill(Float16(log(128256)), 1, 1)
+    @test collect(logsumexp(CUDA.zeros(Float16, 128256, 1); dims = 1)) == fill(log(128256f0), 1, 1)
 end

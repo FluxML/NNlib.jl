@@ -222,13 +222,13 @@ end
 
 Computes `log.(sum(exp.(x); dims))` in a numerically stable way.
 Without `dims` keyword this returns a scalar.
-For `Float16` and `BFloat16` inputs, it is computed in `Float32` and rounded once.
+For `Float16` and `BFloat16` inputs, it is computed and returned in `Float32`.
 
 See also [`logsoftmax`](@ref).
 """
-function logsumexp(x::AbstractArray{T}; dims = :) where {T}
+function logsumexp(x::AbstractArray; dims = :)
     max_ = fast_maximum(x; dims)
-    return float(T).(max_ .+ log.(sum(_exp.(x .- max_); dims)))
+    return max_ .+ log.(sum(_exp.(x .- max_); dims))
 end
 
 function rrule(::typeof(logsumexp), x::AbstractArray{T}; dims = :) where {T}
@@ -236,7 +236,7 @@ function rrule(::typeof(logsumexp), x::AbstractArray{T}; dims = :) where {T}
     max_ = fast_maximum(x; dims)
     tmp = _exp.(x .- max_)
     s = sum(tmp; dims)
-    y = float(T).(max_ .+ log.(s))
+    y = max_ .+ log.(s)
     logsumexp_pullback(dy) = (NoTangent(), float(T).(unthunk(dy) .* tmp ./ s))
     return y, logsumexp_pullback
 end
