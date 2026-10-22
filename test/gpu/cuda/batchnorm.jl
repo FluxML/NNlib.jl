@@ -33,7 +33,16 @@
             @test_throws ArgumentError ∇batchnorm(α, β, m, m, v, v, 1.0; kws...)
             @test_throws ArgumentError batchnorm(v, v, m, α, β, 1.0; kws...)
         end
-    end 
+    end
+    @testset "2D input uses the generic code" begin
+        # cuDNN is slower than the generic code on a (1, 1, C, N) tensor.
+        @test parentmodule(which(batchnorm, typeof.((v, v, m, v, v, 1.0)))) === NNlib
+        @test parentmodule(which(batchnorm, typeof.((nothing, nothing, m, v, v, 1.0)))) === NNlib
+        @test parentmodule(which(∇batchnorm, typeof.((v, v, m, m, v, v, 1.0)))) === NNlib
+        @test parentmodule(which(rrule, typeof.((batchnorm, v, v, m, v, v, 1.0)))) === NNlib
+        # the keywords of the cuDNN methods are accepted (Flux ≤ 0.16.10 passes them)
+        @test batchnorm(v, v, m, nothing, nothing, 1.0; cache=nothing, alpha=1, beta=0) ≈ batchnorm(v, v, m)
+    end
     @testset "3D input (issue #753)" begin
         # cuDNN batchnorm supports only 4D/5D descriptors; a 3D (W, C, N) input is
         # reshaped to 4D (1, W, C, N) on both the forward and backward paths. Guards

@@ -9,7 +9,7 @@
 # All four share the same argument layout as the cuDNN `batchnorm` fast path: the
 # scale `g` and bias `b` (either may be `nothing` for no affine transform) come
 # first, then the feature maps `x`. For `WHCN`-style data the `N-1`th dimension is
-# the channel dimension. On the GPU, `batchnorm` on 2D/4D/5D `CuArray`s is handled
+# the channel dimension. On the GPU, `batchnorm` on 3D/4D/5D `CuArray`s is handled
 # by the cuDNN methods in `NNlibCUDACUDNNExt`; every other case uses the generic
 # code below.
 #
@@ -45,6 +45,8 @@ end
 # cuDNN `batchnorm` methods, which only accept both arrays or both `nothing`).
 _check_affine(g, b) = (g === nothing) == (b === nothing) ? nothing : throw(ArgumentError(
     "both or neither of the scale `g` and bias `b` must be `nothing`"))
+_check_stats(rm, rv) = (rm === nothing) == (rv === nothing) ? nothing : throw(ArgumentError(
+    "both or neither of running_mean and running_var must be `nothing`"))
 
 # Strip `ForwardDiff.Dual`s when writing back into running statistics (see #2122 in
 # Flux). Extended in `NNlibForwardDiffExt`; identity everywhere else.
@@ -118,6 +120,7 @@ ChainRulesCore.@non_differentiable _update_running_stats!(::Any...)
 function _norm_layer(g, b, x::AbstractArray{T,N}, running_mean, running_var,
                      reduce_dims; training, momentum, eps, track_stats) where {T,N}
     _check_affine(g, b)
+    _check_stats(running_mean, running_var)
     _check_norm_types(T, g, b, running_mean, running_var)
     Tc = _stats_type(T)
     xc = Tc === T ? x : Tc.(x)  # half-precision: accumulate statistics in Float32
@@ -155,7 +158,7 @@ If `running_mean`/`running_var` are supplied:
   while statistics of the current batch are used to normalise;
 - with `training=false` they are used to normalise (inference / test mode).
 
-`eps` is added to the variance for numerical stability. On the GPU, 2D/4D/5D
+`eps` is added to the variance for numerical stability. On the GPU, 3D/4D/5D
 `CuArray`s are dispatched to the cuDNN implementation.
 
 For half-precision (`Float16`/`BFloat16`) feature maps the statistics are computed
@@ -166,7 +169,9 @@ See also [`instancenorm`](@ref), [`groupnorm`](@ref), [`layernorm`](@ref).
 """
 function batchnorm(g, b, x::AbstractArray{T,N},
                    running_mean=nothing, running_var=nothing, momentum=0.1f0;
-                   eps=1f-5, training::Bool=true, track_stats::Bool=true) where {T,N}
+                   eps=1f-5, training::Bool=true, track_stats::Bool=true, kws...) where {T,N}
+    # `kws` drops the keywords of the cuDNN methods (`cache`, `alpha`, `beta`), which
+    # callers such as Flux ≤ 0.16.10 and `NNlibMooncakeCUDAExt` pass for any `CuArray`.
     N > 1 || throw(ArgumentError("batchnorm expects an array with at least 2 dimensions, got $N"))
     reduce_dims = (ntuple(identity, N-2)..., N)
     return _norm_layer(g, b, x, running_mean, running_var, reduce_dims;
@@ -370,7 +375,7 @@ end
                eps=1f-5, training=true)
 
 Gradient of [`batchnorm`](@ref): given the upstream gradient `dy`, return
-`(dg, db, dx)`. On the GPU, 2D/4D/5D `CuArray`s are dispatched to the cuDNN
+`(dg, db, dx)`. On the GPU, 3D/4D/5D `CuArray`s are dispatched to the cuDNN
 implementation in `NNlibCUDACUDNNExt`; this generic method is the fallback used
 everywhere else and is itself differentiable (second-order).
 """
@@ -465,7 +470,7 @@ end
 # Route reverse-mode AD through the explicit gradient operators above. Because
 # those are differentiable, the pullbacks are too, so nested AD yields correct
 # second-order derivatives. On the GPU the cuDNN `batchnorm` `rrule` (typed on
-# `DenseCuArray`, in `NNlibCUDACUDNNExt`) is more specific and wins for 2D/4D/5D
+# `DenseCuArray`, in `NNlibCUDACUDNNExt`) is more specific and wins for 3D/4D/5D
 # `CuArray`s.
 
 _tangent(::Nothing) = NoTangent()
@@ -473,7 +478,7 @@ _tangent(x) = x
 
 function ChainRulesCore.rrule(::typeof(batchnorm), g, b, x::AbstractArray,
                               running_mean=nothing, running_var=nothing, momentum=0.1f0;
-                              eps=1f-5, training::Bool=true, track_stats::Bool=true)
+                              eps=1f-5, training::Bool=true, track_stats::Bool=true, kws...)
     y = batchnorm(g, b, x, running_mean, running_var, momentum; eps, training, track_stats)
     function batchnorm_pullback(Δ)
         dg, db, dx = ∇batchnorm(g, b, x, unthunk(Δ), running_mean, running_var, momentum; eps, training)

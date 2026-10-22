@@ -20,6 +20,11 @@ BNCache() = BNCache(nothing, nothing)
 
 @inline _wsize(x::AbstractArray{<:Any,N}) where N = ntuple(i -> i == N-1 ? size(x, N-1) : 1, N)
 
+# cuDNN batchnorm takes 4D and 5D tensors; a 3D one is reshaped to 4D. A 2D `(C, N)`
+# array uses the generic code in NNlib core instead: as a `(1, 1, C, N)` tensor it gets
+# cuDNN kernels up to 40× slower in training and 65× in inference (cuDNN 9.27).
+const BNArray{T} = Union{DenseCuArray{T,3},DenseCuArray{T,4},DenseCuArray{T,5}}
+
 # cuDNN requires the batchnorm affine and statistics tensors (scale `g`, bias `b`,
 # running mean/var, saved mean/ivar) to be Float32 when the feature maps `x` are
 # half precision (Float16/BFloat16), and to share the feature-map type otherwise.
@@ -45,7 +50,7 @@ end
 # Restricted to cuDNN eltypes so that non-CUDNNFloat arrays (notably `ForwardDiff.Dual`
 # under forward-over-reverse) fall through to the generic differentiable `batchnorm`
 # rather than erroring in `bnparam`/cuDNN. See FluxML/Flux.jl#2154.
-function batchnorm(g::Nothing, b::Nothing, x::DenseCuArray{<:CUDNNFloat},
+function batchnorm(g::Nothing, b::Nothing, x::BNArray{<:CUDNNFloat},
                    running_mean, running_var, momentum; kws...)
   affine_sz = _wsize(x)
   P = bnparam(eltype(x))
@@ -54,17 +59,7 @@ function batchnorm(g::Nothing, b::Nothing, x::DenseCuArray{<:CUDNNFloat},
   return batchnorm(g, b, x, running_mean, running_var, momentum; kws...)
 end
 
-# NOTE: CuDNN supports only 4D and 5D Tensors for BatchNorm Operations
-# so reshape a 2D Tensor into 4D
-function batchnorm(g::DenseCuArray{P}, b::DenseCuArray{P}, x::DenseCuArray{T,2},
-                   running_mean, running_var, momentum; kws...) where {T<:CUDNNFloat, P}
-  _check_bn_param_types(T, P, running_mean, running_var)
-  x = reshape(x, 1, 1, size(x, 1), size(x, 2))
-  y = batchnorm(g, b, x, running_mean, running_var, momentum; kws...)
-  return dropdims(y, dims = (1, 2))
-end
-
-# Likewise, reshape a 3D (W, C, N) Tensor into 4D (1, W, C, N) so the feature
+# Reshape a 3D (W, C, N) Tensor into 4D (1, W, C, N) so the feature
 # (channel) dimension stays second-to-last, as cuDNN batchnorm requires.
 function batchnorm(g::DenseCuArray{P}, b::DenseCuArray{P}, x::DenseCuArray{T,3},
                    running_mean, running_var, momentum; kws...) where {T<:CUDNNFloat, P}
@@ -141,22 +136,13 @@ function cudnnBNForward!(y::DenseCuArray{T}, g::DenseCuArray{P}, b::DenseCuArray
 end
 
 # Restricted to cuDNN eltypes, like the forward pass above.
-function ∇batchnorm(g::Nothing, b::Nothing, x::DenseCuArray{T}, dy::DenseCuArray{T},
+function ∇batchnorm(g::Nothing, b::Nothing, x::BNArray{T}, dy::BNArray{T},
                     running_mean, running_var, momentum; kws...) where {T<:CUDNNFloat}
   affine_sz = _wsize(x)
   P = bnparam(T)
   g = fill!(similar(x, P, affine_sz), 1)
   b = fill!(similar(x, P, affine_sz), 0)
   return ∇batchnorm(g, b, x, dy, running_mean, running_var, momentum; kws...)
-end
-
-function ∇batchnorm(g::DenseCuArray{P}, b::DenseCuArray{P}, x::DenseCuArray{T, 2}, dy::DenseCuArray{T, 2},
-            running_mean, running_var, momentum;
-            kws...) where {T<:CUDNNFloat, P}
-  _check_bn_param_types(T, P, running_mean, running_var)
-  dg, db, dx = ∇batchnorm(g, b, reshape(x, 1, 1, size(x, 1), size(x, 2)), reshape(dy, 1, 1, size(dy, 1),
-                          size(dy, 2)), running_mean, running_var, momentum; kws...)
-  (dg, db, dropdims(dx, dims = (1, 2)))
 end
 
 function ∇batchnorm(g::DenseCuArray{P}, b::DenseCuArray{P}, x::DenseCuArray{T, 3}, dy::DenseCuArray{T, 3},
@@ -170,8 +156,8 @@ function ∇batchnorm(g::DenseCuArray{P}, b::DenseCuArray{P}, x::DenseCuArray{T,
 end
 
 
-function ∇batchnorm(g::DenseCuArray{P}, b::DenseCuArray{P}, x::DenseCuArray{T}, dy::DenseCuArray{T},
-                    running_mean, running_var, momentum;
+function ∇batchnorm(g::DenseCuArray{P}, b::DenseCuArray{P}, x::Union{DenseCuArray{T,4},DenseCuArray{T,5}},
+                    dy::Union{DenseCuArray{T,4},DenseCuArray{T,5}}, running_mean, running_var, momentum;
                     affine=true, kws...) where {T<:CUDNNFloat, P}
   _check_bn_param_types(T, P, running_mean, running_var)
   dg = similar(g)
@@ -202,7 +188,7 @@ end
 # (Forward-over-reverse needs no rule: `ForwardDiff.Dual` eltypes miss the `T<:CUDNNFloat`
 # methods above and dispatch straight to the generic `∇batchnorm`.)
 function ChainRulesCore.rrule(cfg::RuleConfig{>:HasReverseMode}, ::typeof(∇batchnorm), g, b,
-                              x::DenseCuArray{T}, dy::DenseCuArray{T},
+                              x::BNArray{T}, dy::BNArray{T},
                               running_mean, running_var, momentum; kws...) where {T<:CUDNNFloat}
   generic = (g, b, x, dy, running_mean, running_var) ->
     _∇batchnorm_generic(g, b, x, dy, running_mean, running_var; kws...)
@@ -266,10 +252,9 @@ function cudnnBNBackward!(dg::DenseCuArray{P}, g::DenseCuArray{P}, db::DenseCuAr
         xd, x, dyd, dy, dxd, dx, gd, g, dg, db, eps, mean, ivar)
 end
 
-# GPU differentiation of the cuDNN fast path. The generic `batchnorm` in NNlib core
-# has no `rrule`, so on the CPU (and other array types) it is differentiated through
-# the standard AD path instead.
-function ChainRulesCore.rrule(::typeof(batchnorm), g, b, x::DenseCuArray,
+# GPU differentiation of the cuDNN fast path. Other arrays, 2D `CuArray`s included, use
+# the `rrule` of the generic `batchnorm` in NNlib core.
+function ChainRulesCore.rrule(::typeof(batchnorm), g, b, x::BNArray,
                               running_mean, running_var, momentum; kw...)
   y = batchnorm(g, b, x, running_mean, running_var, momentum; kw...)
   function batchnorm_pullback(Δ)
