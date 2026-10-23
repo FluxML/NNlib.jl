@@ -1,10 +1,17 @@
 """
     PoolDims(x_size::NTuple{M}, k::Union{NTuple{L, Int}, Int};
-             stride=k, padding=0, dilation=1)  where {M, L}
+             stride=k, padding=0, dilation=1, ceil_mode=false)  where {M, L}
 
 Dimensions for a "pooling" operation that can have an arbitrary input size, kernel size,
 stride, dilation, and channel count.  Used to dispatch onto efficient implementations at
 compile-time.
+
+With `ceil_mode=true` the output size is rounded up instead of down, as with PyTorch's
+`ceil_mode=True`: a last window that runs past the padded input is kept, as long as it
+starts inside the input or the low padding. Its positions past the padded input count
+neither as input nor as padding: max pooling skips them, and mean pooling leaves them out
+of the divisor even with `count_include_pad=true`. `ceil_mode` is dropped when it doesn't
+change the output size.
 """
 struct PoolDims{N, K, S, P, D} <: ConvDims{N}
     input_size::NTuple{N, Int}
@@ -15,11 +22,16 @@ struct PoolDims{N, K, S, P, D} <: ConvDims{N}
     stride::NTuple{S, Int}
     padding::NTuple{P, Int}
     dilation::NTuple{D, Int}
+    ceil_mode::Bool
 end
+
+PoolDims(I, K, C_in, S, P, D) = PoolDims(I, K, C_in, S, P, D, false)
+PoolDims{N, K, S, P, D}(I, Ks, C_in, Ss, Ps, Ds) where {N, K, S, P, D} =
+    PoolDims{N, K, S, P, D}(I, Ks, C_in, Ss, Ps, Ds, false)
 
 function PoolDims(
     x_size::NTuple{M}, k::Union{NTuple{L, Int}, Int};
-    stride = k, padding = 0, dilation = 1,
+    stride = k, padding = 0, dilation = 1, ceil_mode::Bool = false,
 ) where {M, L}
     _check_kernel(k::Number, N::Int) = ntuple(_ -> Int(k), N)
     _check_kernel(k::NTuple, ::Int) = k
@@ -35,9 +47,12 @@ function PoolDims(
 
     sstride, ppadding, ddilation = check_spdf(
         x_size, spdf_kernel, stride, padding, dilation)
-    PoolDims(
+    pdims = PoolDims(
         x_size[1:(end - 2)], kernel, x_size[end - 1],
         sstride, ppadding, ddilation)
+    # Backends without `ceil_mode` support still run where it changes nothing
+    ceil_pdims = PoolDims(pdims; ceil_mode=true)
+    return ceil_mode && output_size(ceil_pdims) != output_size(pdims) ? ceil_pdims : pdims
 end
 
 PoolDims(x::AbstractArray, k; kwargs...) = PoolDims(size(x), k; kwargs...)
@@ -47,7 +62,8 @@ PoolDims(x::AbstractArray, k; kwargs...) = PoolDims(size(x), k; kwargs...)
 PoolDims(
     c::C; I=input_size(c), K=kernel_size(c),
     C_in=channels_in(c), S=stride(c), P=padding(c), D=dilation(c),
-) where C <: ConvDims = PoolDims(I, K, C_in, S, P, D)
+    ceil_mode=ceil_mode(c),
+) where C <: ConvDims = PoolDims(I, K, C_in, S, P, D, ceil_mode)
 
 @inline channels_in(c::PoolDims) = c.channels_in
 @inline channels_out(c::PoolDims) = c.channels_in
@@ -58,6 +74,7 @@ PoolDims(
 @inline stride(c::PoolDims) = c.stride
 @inline padding(c::PoolDims) = c.padding
 @inline dilation(c::PoolDims) = c.dilation
+@inline ceil_mode(c::PoolDims) = c.ceil_mode
 @inline flipkernel(c::PoolDims) = false
 
 function check_dims(x::NTuple{M}, y::NTuple{M}, pdims::PoolDims) where {M}

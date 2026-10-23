@@ -34,6 +34,22 @@
             gputest((dy, y, x) -> ∇meanpool(dy, y, x, pdims_pad; count_include_pad=cip),
                     dym, ym, x, checkgrad=false)
         end
+
+        # ceil_mode (issue #839), which cuDNN supports with symmetric padding
+        xc = rand(Float64, fill(6, num_spatial_dims)..., C_in, 2)
+        for pdims_ceil in (PoolDims(xc, 3; stride=2, ceil_mode=true),
+                           PoolDims(xc, 3; padding=1, stride=2, ceil_mode=true))
+            @test NNlib.ceil_mode(pdims_ceil)
+            gputest(x -> maxpool(x, pdims_ceil), xc)
+            for cip in (true, false)
+                gputest(x -> meanpool(x, pdims_ceil; count_include_pad=cip), xc)
+            end
+        end
+        pdims_ceil = PoolDims(xc, 2; stride=2, ceil_mode=true,
+                              padding=ntuple(i -> isodd(i) ? 1 : 0, 2num_spatial_dims))
+        @test NNlib.ceil_mode(pdims_ceil)
+        @test_throws ArgumentError maxpool(CuArray(xc), pdims_ceil)
+        @test_throws ArgumentError meanpool(CuArray(xc), pdims_ceil)
     end
 end
 

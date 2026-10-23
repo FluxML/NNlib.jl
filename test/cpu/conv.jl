@@ -418,16 +418,14 @@ ddims(x) = dropdims(x, dims=(ndims(x)-1, ndims(x)))
                     # Next, introduce stride:
                     cdims = DenseConvDims(x, w; stride=2)
                     dy = NNlib.conv(x, w, cdims)
-                    flag_ = ∇conv_filter! == NNlib.∇conv_filter_direct! && rank in (1,3)
-                    @test isapprox(ddims(∇conv_filter!(copy(w), x, dy, cdims; alpha=α, beta=β)), α*dw_stride + β*w, rtol = 1.0e-7) broken=flag_
+                    @test isapprox(ddims(∇conv_filter!(copy(w), x, dy, cdims; alpha=α, beta=β)), α*dw_stride + β*w, rtol = 1.0e-7)
                     @test isapprox(ddims(∇conv_data!(copy(x), dy, w,   cdims; alpha=α, beta=β)), α*dx_stride + β*x, rtol = 1.0e-7)
 
                     # Next, introduce dilation:
                     cdims = DenseConvDims(x, w; dilation=2)
                     dy = NNlib.conv(x, w, cdims)
-                    flag_ = ∇conv_data! == NNlib.∇conv_data_direct! && rank == 3
                     @test isapprox(ddims(∇conv_filter!(copy(w), x, dy, cdims; alpha=α, beta=β)), α*dw_dil + β*w, rtol = 1.0e-7)
-                    @test isapprox(ddims(∇conv_data!(copy(x), dy, w,   cdims; alpha=α, beta=β)), α*dx_dil + β*x, rtol = 1.0e-7) broken=flag_
+                    @test isapprox(ddims(∇conv_data!(copy(x), dy, w,   cdims; alpha=α, beta=β)), α*dx_dil + β*x, rtol = 1.0e-7)
 
                     # Next, introduce padding:
                     cdims = DenseConvDims(x, w; padding=1)

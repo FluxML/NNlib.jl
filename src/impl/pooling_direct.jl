@@ -1,3 +1,8 @@
+# How many of the `k` kernel positions from `start` in steps of `dil` are at most `hi`.
+# With `count_include_pad`, the mean divides by those inside the padded input: all of
+# them, except in the last windows that `ceil_mode` adds.
+@inline count_upto(hi, start, k, dil) = clamp(fld(hi - start, dil) + 1, 0, k)
+
 # Pooling is so similar, we abstract over meanpooling and maxpooling, simply replacing
 # the inner loop operation and a few initialization parameters.
 for name in (:max, :mean, :lpnorm)
@@ -24,7 +29,7 @@ for name in (:max, :mean, :lpnorm)
 
         width, height, depth = input_size(pdims)
         kernel_w, kernel_h, kernel_d = K
-        pad_w_lo, _, pad_h_lo, _, pad_d_lo, _ = P
+        pad_w_lo, pad_w_hi, pad_h_lo, pad_h_hi, pad_d_lo, pad_d_hi = P
         dil_w, dil_h, dil_d = D
         stride_w, stride_h, stride_d = S
 
@@ -163,6 +168,12 @@ for name in (:max, :mean, :lpnorm)
                     # Divide by the number of non-padding elements in the window.
                     win_alpha = kernel_count == 0 ? T(0) : T(alpha) / T(kernel_count)
                     y[w, h, d, c, batch_idx] = win_alpha * m
+                elseif $(name == :mean)
+                    win_alpha = T(alpha / (
+                        count_upto(width + pad_w_hi, pw, kernel_w, dil_w) *
+                        count_upto(height + pad_h_hi, ph, kernel_h, dil_h) *
+                        count_upto(depth + pad_d_hi, pd, kernel_d, dil_d)))
+                    y[w, h, d, c, batch_idx] = win_alpha * m
                 else
                     $(name == :lpnorm) && (m = m^(T(1) / p))
                     y[w, h, d, c, batch_idx] = _alpha * m # + _beta * y[w, h, d, c, batch_idx]
@@ -197,7 +208,7 @@ for name in (:max, :mean, :lpnorm)
         width, height, depth = input_size(pdims)
         kernel_w, kernel_h, kernel_d = K
         out_c = channels_out(pdims)
-        pad_w_lo, _, pad_h_lo, _, pad_d_lo, _ = padding(pdims)
+        pad_w_lo, pad_w_hi, pad_h_lo, pad_h_hi, pad_d_lo, pad_d_hi = padding(pdims)
         dil_w, dil_h, dil_d = dilation(pdims)
         stride_w, stride_h, stride_d = stride(pdims)
 
@@ -337,6 +348,11 @@ for name in (:max, :mean, :lpnorm)
                         end
                     end
                     win_alpha = kernel_count == 0 ? T(0) : T(alpha) / T(kernel_count)
+                elseif $(name == :mean)
+                    win_alpha = T(alpha / (
+                        count_upto(width + pad_w_hi, pw, kernel_w, dil_w) *
+                        count_upto(height + pad_h_hi, ph, kernel_h, dil_h) *
+                        count_upto(depth + pad_d_hi, pd, kernel_d, dil_d)))
                 end
 
                 # In these loops, we have to check that we're not reaching off the edge,

@@ -14,10 +14,16 @@ function symmetric_padding(pdims::PoolDims)
     return all(i -> pad[2i-1] == pad[2i], 1:length(pad)÷2)
 end
 
-pool_kwargs(pdims::PoolDims) =
-    (window=NNlib.kernel_size(pdims),
-     padding=NNlib.padding(pdims),
-     stride=NNlib.stride(pdims))
+# The legacy API pools into an output of any size, and so supports `ceil_mode`: it skips
+# the positions of a window past the padding, also in the divisor. The graph API only
+# takes the output size that the padding gives.
+function pool_kwargs(pdims::PoolDims)
+    NNlib.ceil_mode(pdims) && throw(ArgumentError(
+        "cuDNN pooling supports `ceil_mode` only with symmetric padding, got $(NNlib.padding(pdims))"))
+    return (window=NNlib.kernel_size(pdims),
+            padding=NNlib.padding(pdims),
+            stride=NNlib.stride(pdims))
+end
 
 function cudnnPoolingDescriptor(pdims::PoolDims, x::DenseCuArray{T}, mode::cudnnPoolingMode_t) where T
     pad = NNlib.padding(pdims)
@@ -76,7 +82,8 @@ function fix_pooldims_1d(pdims::PoolDims{1,K,S,P,D}) where {K,S,P,D}
                                             NNlib.channels_in(pdims),
                                             (1, NNlib.stride(pdims)...),
                                             (0, 0, NNlib.padding(pdims)...),
-                                            (1, NNlib.dilation(pdims)...))
+                                            (1, NNlib.dilation(pdims)...),
+                                            NNlib.ceil_mode(pdims))
 end
 
 function maxpool!(y::DenseCuArray{T,3}, x::DenseCuArray{T,3}, pdims::PoolDims) where T<:CUDNNFloat
