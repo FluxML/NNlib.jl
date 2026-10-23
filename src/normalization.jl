@@ -459,7 +459,7 @@ function ∇instancenorm(g, b, x::AbstractArray{T,N}, dy,
     _check_affine(g, b)
     if use_fused_instancenorm(g, b, x, running_mean, training)
         groups = NormGroups(size(x, N-1))
-        _, μ, rσ = fused_norm(g, b, x, groups, eps, true; output=false)
+        _, μ, rσ = fused_norm(g, b, x, groups, eps, true; output=Val(false))
         return ∇fused_norm(g, b, x, dy, μ, rσ, groups)
     end
     reduce_dims = ntuple(identity, N-2)
@@ -474,7 +474,7 @@ Gradient of [`groupnorm`](@ref), returning `(dg, db, dx)`.
 function ∇groupnorm(g, b, x::AbstractArray{T,N}, dy, G::Integer; eps=1f-5) where {T,N}
     _check_affine(g, b)
     if use_fused_norm(x, NormGroups(G), g, b)
-        _, μ, rσ = fused_norm(g, b, x, NormGroups(G), eps, true; output=false)
+        _, μ, rσ = fused_norm(g, b, x, NormGroups(G), eps, true; output=Val(false))
         return ∇fused_norm(g, b, x, dy, μ, rσ, NormGroups(G))
     end
     Tc = _stats_type(T)
@@ -506,7 +506,7 @@ Gradient of [`layernorm`](@ref), returning `(dg, db, dx)`.
 function ∇layernorm(g, b, x::AbstractArray{T,N}, dy; dims=1, eps=1f-5) where {T,N}
     _check_affine(g, b)
     if use_fused_norm(x, dims, g, b)
-        _, μ, rσ = fused_norm(g, b, x, dims, eps, true; output=false)
+        _, μ, rσ = fused_norm(g, b, x, dims, eps, true; output=Val(false))
         return ∇fused_norm(g, b, x, dy, μ, rσ, dims)
     end
     Tc = _stats_type(T)
@@ -531,7 +531,7 @@ Gradient of [`rmsnorm`](@ref), returning `(dg, dx)`.
 """
 function ∇rmsnorm(g, x::AbstractArray{T}, dy; dims=1, eps=1f-5) where {T}
     if use_fused_norm(x, dims, g)
-        _, _, rσ = fused_norm(g, nothing, x, dims, eps, false; output=false)
+        _, _, rσ = fused_norm(g, nothing, x, dims, eps, false; output=Val(false))
         dg, _, dx = ∇fused_norm(g, nothing, x, dy, nothing, rσ, dims)
         return dg, dx
     end
