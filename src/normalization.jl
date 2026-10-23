@@ -10,9 +10,9 @@
 # scale `g` and bias `b` (either may be `nothing` for no affine transform) come
 # first, then the feature maps `x`. For `WHCN`-style data the `N-1`th dimension is
 # the channel dimension. On the GPU, `batchnorm` on 3D/4D/5D `CuArray`s is handled
-# by the cuDNN methods in `NNlibCUDACUDNNExt`. `layernorm`, `rmsnorm`, `instancenorm`
-# and `groupnorm` run the fused kernels of `normalization_fused.jl` on dense CPU and GPU
-# arrays. Every other case uses the generic code below.
+# by the cuDNN methods in `NNlibCUDACUDNNExt`. Otherwise, all of them run the fused
+# kernels of `normalization_fused.jl` on dense CPU and GPU arrays (`batchnorm` only with
+# the statistics of the batch). Every other case uses the generic code below.
 #
 # `rmsnorm` has a scale but no bias, so its layout is `(g, x)`.
 
@@ -187,12 +187,12 @@ function fused_batchnorm(g, b, x::AbstractArray{T,N}, running_mean, running_var,
     _check_affine(g, b)
     _check_stats(running_mean, running_var)
     _check_norm_types(T, g, b, running_mean, running_var)
-    μ, rσ = fused_batchnorm_stats(x, eps)
+    μ, rσ, coef = fused_batchnorm_stats(g, b, x, eps)
     if track_stats && running_mean !== nothing
         _update_running_stats_fused!(running_mean, running_var, μ, rσ, momentum, eps,
                                      (ntuple(identity, N-2)..., N), size(x))
     end
-    return fused_batchnorm_apply(g, b, x, μ, rσ), μ, rσ
+    return batchnorm_map!(batchnorm_y, similar(x), coef, x), μ, rσ
 end
 
 # The running statistics updated from the mean and reciprocal deviation of the kernels, with
@@ -440,7 +440,7 @@ function ∇batchnorm(g, b, x::AbstractArray{T,N}, dy,
                     eps=1f-5, training::Bool=true, kws...) where {T,N}
     _check_affine(g, b)
     if use_fused_batchnorm(g, b, x, running_mean, training)
-        μ, rσ = fused_batchnorm_stats(x, eps)
+        μ, rσ, _ = fused_batchnorm_stats(nothing, nothing, x, eps)
         return ∇fused_batchnorm(g, b, x, dy, μ, rσ)
     end
     reduce_dims = (ntuple(identity, N-2)..., N)

@@ -33,6 +33,43 @@ function normalization_testsuite(Backend)
         @test cpu(batchnorm(device(g), device(b), device(x2))) ≈ ref_norm(g, b, x2, (2,)) atol=atol
 
         @test test_gradients(batchnorm, g, b, x; test_gpu=gpu, atol, compare=cmp)
+        @test test_gradients(batchnorm, g, b, x2; test_gpu=gpu, atol, compare=cmp)
+
+        # the fused kernels, called directly as cuDNN takes 3-5-D CuArrays, against the
+        # generic code (which a `view` takes): on the CPU, tiles of 64 rows with a remainder
+        # and across channels; channels of a single row (2-D) or fewer rows than GPU lanes
+        generic(a) = view(a, ntuple(_ -> :, ndims(a))...)
+        @testset "fused $sz" for sz in ((33, 17, 3, 2), (2, 3, 8, 5), (5, 300), (130, 7))
+            N = length(sz); C = sz[N-1]; rdf = (ntuple(identity, N-2)..., N)
+            xf = randn(T, sz) .+ 3; dy = randn(T, sz); gf = randn(T, C); bf = randn(T, C)
+            xd, gd, bd, dyd = device(xf), device(gf), device(bf), device(dy)
+            @test NNlib.use_fused_batchnorm(gd, bd, xd, nothing, true)
+            for (gg, bb) in ((gf, bf), (nothing, nothing))
+                ggd, bbd = gg === nothing ? (nothing, nothing) : (gd, bd)
+                y, μ, rσ = NNlib.fused_batchnorm(ggd, bbd, xd, nothing, nothing, 0.1f0, 1f-5, true)
+                @test cpu(y) ≈ ref_norm(gg, bb, xf, rdf) atol=atol
+                @test cpu(batchnorm(ggd, bbd, xd)) ≈ ref_norm(gg, bb, xf, rdf) atol=atol
+                ref = NNlib.∇batchnorm(gg, bb, generic(xf), generic(dy))
+                for (got, r) in zip(NNlib.∇fused_batchnorm(ggd, bbd, xd, dyd, μ, rσ), ref)
+                    @test got === r === nothing || isapprox(cpu(got), r; atol)
+                end
+            end
+            rm, rv = zeros(T, C), ones(T, C)
+            batchnorm(gf, bf, generic(xf), rm, rv, 0.1f0)
+            rmd, rvd = device(zeros(T, C)), device(ones(T, C))
+            NNlib.fused_batchnorm(gd, bd, xd, rmd, rvd, 0.1f0, 1f-5, true)
+            @test cpu(rmd) ≈ rm atol=atol
+            @test cpu(rvd) ≈ rv atol=atol
+        end
+        # half precision: Float32 statistics and parameters
+        xh = Float16.(x); dyh = Float16.(randn(T, size(x)))
+        yh, μh, rσh = NNlib.fused_batchnorm(device(g), device(b), device(xh), nothing, nothing, 0.1f0, 1f-5, true)
+        @test eltype(yh) == Float16 && eltype(μh) == Float32
+        @test Float32.(cpu(yh)) ≈ ref_norm(g, b, Float32.(xh), rd) rtol=1e-2 atol=1e-2
+        for (got, r) in zip(NNlib.∇fused_batchnorm(device(g), device(b), device(xh), device(dyh), μh, rσh),
+                            NNlib.∇batchnorm(g, b, generic(Float32.(xh)), generic(Float32.(dyh))))
+            @test Float32.(cpu(got)) ≈ r rtol=1e-2 atol=1e-2
+        end
 
         @test_throws ArgumentError batchnorm(nothing, nothing, device(randn(T, 5)))
         # the scale and bias must be given together or not at all
