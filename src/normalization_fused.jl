@@ -350,3 +350,169 @@ function ∇fused_norm(g, b, x::AbstractArray, dy, μ, rσ, dims)
     db = b === nothing ? nothing : reshape(sum(pb; dims=2), size(b))
     return dg, db, reshape(dx, size(x))
 end
+
+# --- Batch normalization -------------------------------------------------------------
+# Seen as a matrix of `Sp·C` rows (`Sp` the spatial size, `C` channels) and a column per
+# sample, batch normalization reduces every block of `Sp` rows (a channel) over all columns.
+# A kernel sums over the columns of every row, as the one of the parameter gradients above;
+# another adds up the rows of every channel; the output and the input gradient are
+# broadcasts with a coefficient per channel. The sums are shifted by an element of each
+# channel (by its mean in the gradient), for accuracy.
+
+function fused_batchnorm_applies(x::Union{Array{T},AbstractGPUArray{T}}, ps...) where {T<:FusedNormFloat}
+    (ndims(x) < 2 || isempty(x)) && return false
+    return all(p -> p === nothing || fused_norm_param(p, x), ps)
+end
+fused_batchnorm_applies(x, ps...) = false
+
+@non_differentiable fused_batchnorm_applies(::Any...)
+
+# `x` as the matrix above, and the rows per channel.
+batchnorm_rows(x) = reshape(x, :, size(x, ndims(x))), prod(d -> size(x, d), 1:ndims(x)-2; init=1)
+
+# The shift of row `i`: the first element of its channel, or the channel's mean `μ`.
+@inline batchnorm_shift(x, ::Nothing, i, Sp, ::Type{A}) where {A} = A(@inbounds x[i - (i - 1) % Sp, 1])
+@inline batchnorm_shift(x, μ, i, Sp, ::Type{A}) where {A} = @inbounds μ[(i - 1) ÷ Sp + 1]
+@inline batchnorm_shifts(x, μ, i0, Sp, ::Type{A}, ::Val{S}, ::Val{R}) where {A,S,R} =
+    ntuple(q -> batchnorm_shift(x, μ, i0 + (q - 1) * S, Sp, A), Val(R))
+
+# `d = x - m` and `d²` added to the sums of `R` rows `S` apart, or `dy` and `dy * d`.
+@inline function batchnorm_tile(s1::NTuple{R,A}, s2::NTuple{R,A}, ::Nothing, x, m, i0, j, ::Val{S}) where {R,A,S}
+    d = ntuple(q -> A(@inbounds x[i0 + (q - 1) * S, j]) - m[q], Val(R))
+    return ntuple(q -> s1[q] + d[q], Val(R)), ntuple(q -> s2[q] + d[q] * d[q], Val(R))
+end
+@inline function batchnorm_tile(s1::NTuple{R,A}, s2::NTuple{R,A}, dy, x, m, i0, j, ::Val{S}) where {R,A,S}
+    e = ntuple(q -> A(@inbounds dy[i0 + (q - 1) * S, j]), Val(R))
+    d = ntuple(q -> A(@inbounds x[i0 + (q - 1) * S, j]) - m[q], Val(R))
+    return ntuple(q -> s1[q] + e[q], Val(R)), ntuple(q -> s2[q] + e[q] * d[q], Val(R))
+end
+
+# The sums over the columns `(k - 1) * L + 1 : k * L` of every row, into `p1[:, k]` and
+# `p2[:, k]`, with the layout of `fused_norm_params_kernel!`.
+@kernel inbounds=true unsafe_indices=true function batchnorm_sums_kernel!(
+        p1, p2, @Const(dy), @Const(x), μ, Sp, L, MR, ::Val{S}, ::Val{R}) where {S,R}
+    t = @index(Local, Linear)
+    w = @index(Group, Linear) - 1
+    M, N = size(x)
+    A = eltype(p1)
+    nblocks = cld(M, MR)
+    k = w ÷ nblocks + 1
+    js = ((k - 1) * L + 1):min(k * L, N)
+    iend = min((w % nblocks + 1) * MR, M)
+    i0 = (w % nblocks) * MR + t
+    while i0 + (R - 1) * S <= iend
+        m = batchnorm_shifts(x, μ, i0, Sp, A, Val(S), Val(R))
+        s1 = ntuple(_ -> zero(A), Val(R))
+        s2 = s1
+        for j in js
+            s1, s2 = batchnorm_tile(s1, s2, dy, x, m, i0, j, Val(S))
+        end
+        for q in 1:R
+            p1[i0 + (q - 1) * S, k] = s1[q]
+            p2[i0 + (q - 1) * S, k] = s2[q]
+        end
+        i0 += R * S
+    end
+    for i in i0:S:iend
+        m = (batchnorm_shift(x, μ, i, Sp, A),)
+        s1 = (zero(A),)
+        s2 = s1
+        for j in js
+            s1, s2 = batchnorm_tile(s1, s2, dy, x, m, i, j, Val(S))
+        end
+        p1[i, k] = s1[1]
+        p2[i, k] = s2[1]
+    end
+end
+
+# The sums of `p1` and `p2` over the rows of channel `c` and all columns, by the `S` lanes of
+# workgroup `c` and every `cstride`-th one after it. With `x`, they become the mean and the
+# reciprocal deviation of the channel over its `n` elements.
+@kernel inbounds=true unsafe_indices=true function batchnorm_channels_kernel!(
+        o1, o2, @Const(p1), @Const(p2), x, n, eps, Sp, cstride, ::Val{S}) where {S}
+    t = @index(Local, Linear)
+    c = @index(Group, Linear)
+    C = length(o1)
+    A = eltype(o1)
+    shared = @localmem NTuple{2,eltype(o1)} (S,)
+    while c <= C
+        o = (c - 1) * Sp
+        s1 = zero(A)
+        s2 = zero(A)
+        for k in axes(p1, 2)
+            @simd for i in t:S:Sp
+                s1 += p1[o + i, k]
+                s2 += p2[o + i, k]
+            end
+        end
+        if S > 1
+            s1, s2 = group_reduce(add_pairs, shared, (s1, s2), t, Val(S))
+        end
+        if t == 1
+            if x === nothing
+                o1[c] = s1
+                o2[c] = s2
+            else
+                o1[c] = A(x[o + 1, 1]) + s1 / n
+                o2[c] = inv(sqrt(max(s2 - s1 * s1 / n, zero(A)) / n + eps))
+            end
+        end
+        c += cstride
+    end
+end
+
+# The per-channel sums over `x` (the statistics, without `dy`) or over `dy` and `x`.
+function batchnorm_sums(dy, x::AbstractArray{T}, μ, eps) where {T}
+    X, Sp = batchnorm_rows(x)
+    M, N = size(X)
+    A = _stats_type(T)
+    backend = get_backend(X)
+    S, R, L, MR = fused_norm_params_layout(backend, M, N)
+    K = cld(N, L)
+    p1 = similar(X, A, M, K)
+    p2 = similar(X, A, M, K)
+    dY = dy === nothing ? nothing : reshape(dy, size(X))
+    batchnorm_sums_kernel!(backend, S)(p1, p2, dY, X, μ, Sp, L, MR, Val(S), Val(R);
+                                       ndrange=S * cld(M, MR) * K)
+    C = M ÷ Sp
+    S, G = fused_norm_layout(backend, Sp, C)
+    o1 = similar(X, A, C)
+    o2 = similar(X, A, C)
+    batchnorm_channels_kernel!(backend, S)(o1, o2, p1, p2, dy === nothing ? X : nothing,
+                                           A(N * Sp), A(eps), Sp, G, Val(S); ndrange=S * G)
+    return o1, o2
+end
+
+# The mean and the reciprocal deviation of every channel.
+fused_batchnorm_stats(x, eps) = batchnorm_sums(nothing, x, nothing, eps)
+
+function fused_batchnorm_apply(g, b, x::AbstractArray{T,N}, μ, rσ) where {T,N}
+    shape = ntuple(i -> i == N-1 ? size(x, N-1) : 1, N)
+    μ, rσ = reshape(μ, shape), reshape(rσ, shape)
+    y = similar(x)
+    if g === nothing
+        y .= (x .- μ) .* rσ
+    else
+        y .= (x .- μ) .* (reshape(g, shape) .* rσ) .+ reshape(b, shape)
+    end
+    return y
+end
+
+# `(dg, db, dx)` from the statistics of `fused_batchnorm_stats`.
+function ∇fused_batchnorm(g, b, x::AbstractArray{T,N}, dy, μ, rσ) where {T,N}
+    dy = same_device(dy, x) ? dy : copyto!(similar(x, eltype(dy)), dy)
+    sdy, sdx = batchnorm_sums(dy, x, μ, 0)
+    n = length(x) ÷ size(x, N-1)
+    dg = g === nothing ? nothing : reshape(sdx .* rσ, size(g))
+    db = b === nothing ? nothing : reshape(sdy, size(b))
+    # `dx = g * rσ * (dy - mean(dy) - (x - μ) * rσ² * mean(dy * (x - μ)))`, in one broadcast
+    # of a packed coefficient per channel
+    gc = g === nothing ? one.(rσ) : vec(g)
+    coef = map((μ, r, g, s1, s2) -> (μ, g * r, g * r * s1 / n, g * r^3 * s2 / n), μ, rσ, gc, sdy, sdx)
+    shape = ntuple(i -> i == N-1 ? size(x, N-1) : 1, N)
+    dx = similar(x)
+    dx .= batchnorm_dx.(dy, x, reshape(coef, shape))
+    return dg, db, dx
+end
+
+@inline batchnorm_dx(dy, x, (μ, a, b, c)) = a * dy - b - c * (x - μ)
