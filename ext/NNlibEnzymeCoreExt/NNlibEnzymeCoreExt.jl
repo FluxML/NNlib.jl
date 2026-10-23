@@ -982,6 +982,10 @@ end
 const AffineNorm = Union{typeof(NNlib.batchnorm), typeof(NNlib.instancenorm),
                          typeof(NNlib.groupnorm), typeof(NNlib.layernorm)}
 
+# `eps` is a number Enzyme cannot prove constant when it is read from a model.
+EnzymeRules.inactive_kwarg(::AffineNorm, args...; kwargs...) = nothing
+EnzymeRules.inactive_kwarg(::typeof(NNlib.rmsnorm), args...; kwargs...) = nothing
+
 # The rules are called, not inlined: Enzyme compiles an inlined rule as code it
 # differentiates, where `within_gradient` is `true` and the `rrule` takes the generic code.
 # `rest` is the running statistics and the momentum, or the number of groups.

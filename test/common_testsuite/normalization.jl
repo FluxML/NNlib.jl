@@ -238,6 +238,21 @@ function normalization_testsuite(Backend)
         @test_throws ArgumentError rmsnorm(device(Float16.(g)), xh)
     end
 
+    # concrete return types for every rank, where constant propagation may not reach
+    @testset "inferred, $N-D" for N in 2:5
+        x = device(randn(T, ntuple(i -> i == N-1 ? 4 : 3, N)))
+        g = device(randn(T, 4)); b = device(randn(T, 4))
+        @inferred normalise(x; dims=1)
+        @inferred rmsnorm(nothing, x)
+        @inferred layernorm(nothing, nothing, x; dims=1)
+        @inferred batchnorm(g, b, x)
+        if N > 2
+            @inferred instancenorm(nothing, nothing, x)
+            @inferred instancenorm(g, b, x)
+            @inferred groupnorm(g, b, x, 2)
+        end
+    end
+
     @testset "gradient operators (∇)" begin
         # The explicit VJPs must agree with the pullback returned by the rrule
         # (which is what `test_gradients` above checks against finite differences).
@@ -347,5 +362,23 @@ function normalization_testsuite(Backend)
         @test enzyme_matches(x -> layernorm(nothing, nothing, x; dims=1:2, eps=1f-3), x)
         @test enzyme_matches(x -> batchnorm(nothing, nothing, x, rm, rv; training=false), x)
         @test enzyme_matches((g, x) -> rmsnorm(g, x; dims=1:2), randn(T, 4, 5), x; consts=(1,))
+
+        # `eps` read from the differentiated model, as in Flux's layers, is not a constant to Enzyme
+        wx = randn(T, size(x))
+        g3 = randn(T, 1, 1, 6); b3 = randn(T, 1, 1, 6)
+        @testset "$name, eps from the model" for (name, f, m) in (
+                ("batchnorm", (m, x) -> batchnorm(m.g, m.b, x; eps=m.eps), (; g, b, eps=1f-3)),
+                ("instancenorm", (m, x) -> instancenorm(m.g, m.b, x; eps=m.eps), (; g, b, eps=1f-3)),
+                ("groupnorm", (m, x) -> groupnorm(m.g, m.b, x, 3; eps=m.eps), (; g, b, eps=1f-3)),
+                ("layernorm", (m, x) -> layernorm(m.g, m.b, x; dims=3, eps=m.eps), (; g=g3, b=b3, eps=1f-3)),
+                ("rmsnorm", (m, x) -> rmsnorm(m.g, x; dims=3, eps=m.eps), (; g=g3, b=nothing, eps=1f-3)))
+            loss(m, x) = sum(wx .* f(m, x))
+            dm = Enzyme.make_zero(m); dx = zero(x)
+            Enzyme.autodiff(Enzyme.Reverse, Const(loss), Active, Duplicated(m, dm), Duplicated(x, dx))
+            (rdm, rdx) = Zygote.gradient(loss, m, x)
+            @test dx ≈ rdx rtol=1e-3 atol=atol
+            @test dm.g ≈ rdm.g rtol=1e-3 atol=atol
+            m.b === nothing || @test dm.b ≈ rdm.b rtol=1e-3 atol=atol
+        end
     end
 end

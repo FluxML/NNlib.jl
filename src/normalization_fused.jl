@@ -302,20 +302,20 @@ end
 
 # The normalization of `x` over its leading dimensions `dims`, or over groups of channels
 # (`dims::NormGroups`), centered (`layernorm`) or not (`rmsnorm`), with the mean (if
-# centering) and the reciprocal deviation of every column. `output=false` computes the
+# centering) and the reciprocal deviation of every column. `output=Val(false)` computes the
 # statistics only.
-function fused_norm(g, b, x::AbstractArray{T}, dims, eps, center::Bool; output::Bool=true) where {T}
+function fused_norm(g, b, x::AbstractArray{T}, dims, eps, center::Bool; output::Val=Val(true)) where {T}
     X, blocks = norm_columns(x, dims)
     M, N = size(X)
     A = _stats_type(T)
     backend = get_backend(X)
     S, G = fused_norm_layout(backend, M, N)
-    y = output ? similar(X) : nothing
+    y = output === Val(true) ? similar(X) : nothing
     μ = center ? similar(X, A, N) : nothing
     rσ = similar(X, A, N)
     fused_norm_kernel!(backend, S)(y, μ, rσ, X, maybe_vec(g), maybe_vec(b), blocks, A(eps), G,
                                    Val(S), Val(center); ndrange=S * G)
-    return output ? reshape(y, size(x)) : nothing, μ, rσ
+    return y === nothing ? nothing : reshape(y, size(x)), μ, rσ
 end
 
 # The sums over every block of every column, for the gradient of a scale or bias per channel.
