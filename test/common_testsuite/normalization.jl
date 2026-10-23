@@ -277,4 +277,38 @@ function normalization_testsuite(Backend)
         @test hvp_match(x -> sum(abs2, batchnorm(g, b, x, nothing, nothing, 0.1f0)), x)
         @test hvp_match(x -> sum(abs2, instancenorm(g, b, x, nothing, nothing, 0.1f0)), x)
     end
+
+    # The Enzyme rules run the `rrule`s: constant arguments, no affine transform, keywords
+    # and running statistics, against Zygote. (GPUs: `test/gpu/cuda/normalization_enzyme.jl`.)
+    Backend == CPU && NNLIB_TEST_ENZYME && @testset "Enzyme rules" begin
+        function enzyme_matches(f, args...; consts=())
+            w = randn(T, size(f(args...)))
+            loss(args...) = sum(w .* f(args...))
+            ann = ntuple(i -> i in consts ? Const(args[i]) : Duplicated(args[i], zero(args[i])), length(args))
+            Enzyme.autodiff(Enzyme.Reverse, Const(loss), Active, ann...)
+            ref = Zygote.gradient(loss, args...)
+            return all(i -> i in consts || isapprox(ann[i].dval, ref[i]; rtol=1e-3, atol), eachindex(args))
+        end
+        x = randn(T, 4, 5, 6, 8); g = randn(T, 6); b = randn(T, 6)
+        rm = randn(T, 6); rv = rand(T, 6) .+ 0.5f0
+        @testset "$name" for (name, f, g, b, x) in (
+                ("batchnorm", (g, b, x) -> batchnorm(g, b, x), g, b, x),
+                ("batchnorm 2-D", (g, b, x) -> batchnorm(g, b, x), g, b, randn(T, 6, 16)),
+                ("instancenorm", (g, b, x) -> instancenorm(g, b, x), g, b, x),
+                ("groupnorm", (g, b, x) -> groupnorm(g, b, x, 3; eps=1f-3), g, b, x),
+                ("layernorm", (g, b, x) -> layernorm(g, b, x; dims=3), randn(T, 1, 1, 6), randn(T, 1, 1, 6), x),
+                ("batchnorm inference", (g, b, x) -> batchnorm(g, b, x, rm, rv; training=false), g, b, x),
+                ("instancenorm inference", (g, b, x) -> instancenorm(g, b, x, rm, rv, 0.1f0; training=false), g, b, x),
+                ("batchnorm untracked", (g, b, x) -> batchnorm(g, b, x, copy(rm), copy(rv), 0.1f0; track_stats=false), g, b, x))
+            @test enzyme_matches(f, g, b, x)
+            @test enzyme_matches(f, g, b, x; consts=(1, 2))
+            @test enzyme_matches(f, g, b, x; consts=(3,))
+        end
+        @test enzyme_matches(x -> batchnorm(nothing, nothing, x), x)
+        @test enzyme_matches(x -> instancenorm(nothing, nothing, x), x)
+        @test enzyme_matches(x -> groupnorm(nothing, nothing, x, 2), x)
+        @test enzyme_matches(x -> layernorm(nothing, nothing, x; dims=1:2, eps=1f-3), x)
+        @test enzyme_matches(x -> batchnorm(nothing, nothing, x, rm, rv; training=false), x)
+        @test enzyme_matches((g, x) -> rmsnorm(g, x; dims=1:2), randn(T, 4, 5), x; consts=(1,))
+    end
 end
