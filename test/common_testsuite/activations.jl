@@ -1,10 +1,10 @@
 # Holomorphic activations that accept complex inputs (see `test/activations.jl`).
-const COMPLEX_ACTS = [σ, swish, softplus, logσ, mish, logcosh,
+const COMPLEX_ACTS = [σ, swish, quick_gelu, softplus, logσ, mish, logcosh,
                       tanh_fast, sigmoid_fast, lisht, tanhshrink]
 
 # Activations that are computed in Float32 for half precision inputs.
-const HALF_ACTS = [σ, hardσ, logσ, leakyrelu, elu, gelu_tanh, gelu_sigmoid, gelu_erf, swish,
-                   hardswish, lisht, selu, celu, softsign, softplus, logcosh, mish, tanhshrink,
+const HALF_ACTS = [σ, hardσ, logσ, leakyrelu, elu, gelu_tanh, gelu_sigmoid, gelu_erf, quick_gelu,
+                   swish, hardswish, lisht, selu, celu, softsign, softplus, logcosh, mish, tanhshrink,
                    tanh_fast, sigmoid_fast]
 
 function activations_testsuite(Backend)

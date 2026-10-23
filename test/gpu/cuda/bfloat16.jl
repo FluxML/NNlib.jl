@@ -107,8 +107,8 @@ BF16_CUDNN && @testset "activations" begin
 
     # The generic broadcast computes these in Float32 and rounds once, so the result is
     # the Float32 one for the same (already rounded) inputs, up to an ulp of BFloat16.
-    @testset "$f" for f in (hardσ, logσ, leakyrelu, gelu_tanh, gelu_sigmoid, gelu_erf, swish,
-                            hardswish, lisht, selu, celu, softsign, softplus, logcosh, mish,
+    @testset "$f" for f in (hardσ, logσ, leakyrelu, gelu_tanh, gelu_sigmoid, gelu_erf, quick_gelu,
+                            swish, hardswish, lisht, selu, celu, softsign, softplus, logcosh, mish,
                             tanhshrink, tanh_fast, sigmoid_fast)
         xb = tobf(8 .* rand(rng, Float32, 64) .- 4)
         out = f.(xb)

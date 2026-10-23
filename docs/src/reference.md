@@ -15,6 +15,7 @@ gelu
 gelu_tanh
 gelu_sigmoid
 gelu_erf
+quick_gelu
 hardsigmoid
 sigmoid_fast
 hardtanh

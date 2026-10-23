@@ -5,8 +5,8 @@
 
 ACTIVATIONS = [
     :σ, :hardσ, :hardtanh, :relu,
-    :leakyrelu, :relu6, :rrelu, :elu, :gelu_tanh, :gelu_sigmoid, :gelu_erf, :swish, :hardswish, :selu,
-    :celu, :softplus, :softsign, :logσ, :logcosh,
+    :leakyrelu, :relu6, :rrelu, :elu, :gelu_tanh, :gelu_sigmoid, :gelu_erf, :quick_gelu,
+    :swish, :hardswish, :selu, :celu, :softplus, :softsign, :logσ, :logcosh,
     :mish, :tanhshrink, :softshrink, :trelu, :lisht,
     :tanh_fast, :sigmoid_fast,
 ]
@@ -503,6 +503,8 @@ This is mathematically equivalent to [`gelu_tanh`](@ref) but may be faster in so
 The sigmoid-based implementation may prevent pattern matching and fusion in some optimizing 
 compilers. Use [`gelu_tanh`](@ref) if you need better compiler optimization support.
 
+Not to be confused with [`quick_gelu`](@ref), the approximation `x * σ(1.702x)` used by CLIP.
+
 See ["Gaussian Error Linear Units"](https://arxiv.org/abs/1606.08415).
 """
 @inline function gelu_sigmoid(x)
@@ -542,6 +544,43 @@ const gelu = gelu_tanh
 # See https://github.com/FluxML/NNlib.jl/issues/631
 const var"#gelu" = typeof(gelu_tanh)
 const deriv_gelu = deriv_gelu_tanh
+
+"""
+    quick_gelu(x) = x * σ(1.702x)
+
+Sigmoid approximation of GELU from ["Gaussian Error Linear Units"](https://arxiv.org/abs/1606.08415),
+called QuickGELU. It is the activation of OpenAI's [CLIP](https://arxiv.org/abs/2103.00020),
+and of the CLIP models trained with it: MetaCLIP, DFN, and those named `*quickgelu*` in
+open_clip and timm.
+
+This is a different function from [`gelu_sigmoid`](@ref), which is the tanh approximation
+written with a sigmoid. The two differ by up to 0.021, near `x = -2.3`.
+
+```julia-repl
+julia> lineplot(-2, 2, quick_gelu, height=7)
+           ┌────────────────────────────────────────┐              
+         2 │⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⡇⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⡠⠔⠊│ quick_gelu(x)
+           │⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⡇⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣀⠤⠊⠁⠀⠀⠀│              
+           │⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⡇⠀⠀⠀⠀⠀⠀⠀⠀⣀⠤⠒⠉⠀⠀⠀⠀⠀⠀⠀│              
+   f(x)    │⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⡇⠀⠀⠀⣀⡠⠔⠒⠉⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀│              
+           │⣤⣤⣤⣤⣤⣤⣤⣤⡤⠤⠤⠤⠤⠤⠤⢤⣤⣤⣤⡤⡧⠶⠶⠭⠥⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤│              
+           │⠀⠀⠀⠀⠀⠀⠀⠀⠈⠉⠉⠉⠉⠉⠉⠁⠀⠀⠀⠀⡇⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀│              
+        -1 │⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⡇⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀│              
+           └────────────────────────────────────────┘              
+           ⠀-2⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀2⠀              
+           ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀x⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀              
+
+julia> quick_gelu(1f0), gelu_sigmoid(1f0)
+(0.84579575f0, 0.841192f0)
+```
+"""
+@inline quick_gelu(x) = x * sigmoid_fast(oftf(x, 1.702) * x)
+
+@inline function deriv_quick_gelu(x)
+    β = oftf(x, 1.702)
+    Ω = sigmoid_fast(β * x)
+    Ω * muladd(β * x, 1 - Ω, 1)
+end
 
 """
     swish(x) = x * σ(x)
@@ -1094,10 +1133,11 @@ end
 
 const HalfFloat = Union{Float16,BFloat16}
 
-for f in (:σ, :hardσ, :logσ, :gelu_tanh, :gelu_sigmoid, :gelu_erf, :swish, :hardswish,
-          :lisht, :selu, :softsign, :softplus, :logcosh, :mish, :tanhshrink,
+for f in (:σ, :hardσ, :logσ, :gelu_tanh, :gelu_sigmoid, :gelu_erf, :quick_gelu, :swish,
+          :hardswish, :lisht, :selu, :softsign, :softplus, :logcosh, :mish, :tanhshrink,
           :tanh_fast, :sigmoid_fast, :deriv_gelu_tanh, :deriv_gelu_sigmoid, :deriv_gelu_erf,
-          :deriv_swish, :deriv_hardswish, :deriv_lisht, :deriv_softsign, :deriv_mish)
+          :deriv_quick_gelu, :deriv_swish, :deriv_hardswish, :deriv_lisht, :deriv_softsign,
+          :deriv_mish)
     @eval @inline $f(x::T) where {T<:HalfFloat} = T($f(Float32(x)))
 end
 
@@ -1148,6 +1188,7 @@ UNARY_ACTS = [ # f, dfdx
     (:gelu_tanh,    :(deriv_gelu_tanh(x))),
     (:gelu_sigmoid, :(deriv_gelu_sigmoid(x))),
     (:gelu_erf,     :(deriv_gelu_erf(x))),
+    (:quick_gelu,   :(deriv_quick_gelu(x))),
     (:swish,        :(deriv_swish(x))),
     (:hardswish,    :(deriv_hardswish(x))),
     (:lisht,        :(deriv_lisht(x))),
