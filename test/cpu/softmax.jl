@@ -123,6 +123,7 @@ end
         y, ly, lse = softmax(x; dims = d), logsoftmax(x; dims = d), logsumexp(x; dims = d)
         @test eltype(y) == eltype(ly) == T
         @test eltype(lse) == Float32  # not rounded to T (#826)
+        @test NNlib.fast_maximum(x; dims = d) == maximum(Float32.(x); dims = d)
         @test maxerr(sum(Float64, y; dims = d), 1) < eps(T) / 2
         @test maxerr(ly, logsoftmax(xd; dims = d)) <= tol
         @test maxerr(lse, logsumexp(xd; dims = d)) <= 64eps(Float32(log(V)))
