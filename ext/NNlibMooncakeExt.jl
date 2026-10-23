@@ -1,8 +1,10 @@
 module NNlibMooncakeExt
 
-using Mooncake: Mooncake, MinimalCtx, DefaultCtx, CoDual, Dual, NoRData, primal, tangent,
-    zero_fcodual, @is_primitive, @zero_adjoint
-using NNlib: NNlib
+using Mooncake: Mooncake, MinimalCtx, DefaultCtx, ReverseMode, CoDual, Dual, NoFData, NoRData,
+    primal, tangent, zero_fcodual, zero_rdata, @is_primitive, @zero_adjoint
+using NNlib: NNlib, batchnorm, instancenorm, groupnorm, layernorm, rmsnorm
+using NNlib.GPUArraysCore: AbstractGPUArray
+using ChainRulesCore: ChainRulesCore
 using Base.Broadcast: Broadcasted, DefaultArrayStyle, broadcasted, materialize
 
 # Mooncake's reverse pass restores every value that was overwritten on the forward pass.
@@ -16,6 +18,58 @@ using Base.Broadcast: Broadcasted, DefaultArrayStyle, broadcasted, materialize
 
 # Mooncake has no predicate to query, so `within_gradient` is replaced in the code it differentiates.
 Mooncake.@mooncake_overlay NNlib.within_gradient(x) = true
+
+# A normalization is one primitive, whose two passes are those of its ChainRules rule. That
+# runs outside the code Mooncake differentiates, where `within_gradient` is false: the fused
+# kernels compute the output and keep the statistics for the reverse pass, the running
+# statistics are updated once, and cuDNN is called rather than traced (its `try`/`catch`
+# cannot be). The gradients are then those of Zygote.
+#
+# Other arrays, and forward mode, differentiate the generic code.
+const NormFunction = Union{typeof(batchnorm),typeof(instancenorm),typeof(groupnorm),
+                           typeof(layernorm),typeof(rmsnorm)}
+const NormArray = Union{Array{<:NNlib.FusedNormFloat},AbstractGPUArray{<:NNlib.FusedNormFloat}}
+const NormParam = Union{Nothing,NormArray}
+
+for (f, args) in ((:batchnorm, :(NormParam, NormParam, NormArray, Vararg)),
+                  (:instancenorm, :(NormParam, NormParam, NormArray, Vararg)),
+                  (:groupnorm, :(NormParam, NormParam, NormArray, Integer)),
+                  (:layernorm, :(NormParam, NormParam, NormArray)),
+                  (:rmsnorm, :(NormParam, NormArray)))
+    @eval begin
+        @is_primitive MinimalCtx ReverseMode Tuple{typeof($f),$(args.args...)}
+        @is_primitive MinimalCtx ReverseMode Tuple{typeof(Core.kwcall),NamedTuple,typeof($f),$(args.args...)}
+    end
+end
+
+function Mooncake.rrule!!(f::CoDual{<:NormFunction}, args::Vararg{CoDual,N}) where {N}
+    y, pullback = _norm_rrule(primal(f), (;), args)
+    return y, ȳ -> (NoRData(), pullback(ȳ)...)
+end
+
+function Mooncake.rrule!!(::CoDual{typeof(Core.kwcall)}, kw::CoDual{<:NamedTuple},
+                          f::CoDual{<:NormFunction}, args::Vararg{CoDual,N}) where {N}
+    y, pullback = _norm_rrule(primal(f), primal(kw), args)
+    kw_rdata = zero_rdata(primal(kw))
+    return y, ȳ -> (NoRData(), kw_rdata, NoRData(), pullback(ȳ)...)
+end
+
+function _norm_rrule(f, kw, args::NTuple{N,CoDual}) where {N}
+    y, cr_pullback = ChainRulesCore.rrule(f, map(primal, args)...; kw...)
+    res = zero_fcodual(y)
+    function pullback(::NoRData)
+        Δ = cr_pullback(tangent(res))
+        foreach(_accumulate!, map(tangent, args), ntuple(i -> Δ[i + 1], Val(N)))
+        return map(zero_rdata ∘ primal, args)
+    end
+    return res, pullback
+end
+
+# The running statistics have no cotangent, and a scale or bias that is `nothing` has
+# nowhere to put the one cuDNN computes.
+_accumulate!(x̄::AbstractArray, Δ::AbstractArray) = (x̄ .+= Δ; nothing)
+_accumulate!(x̄::AbstractArray, ::ChainRulesCore.AbstractZero) = nothing
+_accumulate!(::NoFData, Δ) = nothing
 
 # `_exp` and `_expm1` build a power of two from its bits, which Mooncake refuses to
 # differentiate (a `bitcast` from an integer to a float). As primitives they are called

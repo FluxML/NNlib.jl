@@ -3,7 +3,7 @@ module NNlibEnzymeCoreExt
 using NNlib
 import EnzymeCore
 using Random
-using GPUArraysCore: AbstractGPUArray
+import ChainRulesCore
 
 using EnzymeCore.EnzymeRules
 
@@ -427,9 +427,10 @@ _enz_slice(::Val{W}, s, i) where {W} = s[i]
 # the op's `∇` function and accumulates the result into each differentiable input.
 # These three helpers capture that plumbing so the rules stay a few lines each.
 
-# The shadow of a differentiable input (`nothing` for a `Const` one).
+# The shadow of a differentiable input (`nothing` for a `Const` one, or for one that runtime
+# activity found constant, whose shadow is the input itself).
 _enz_dval(a::EnzymeCore.Const) = nothing
-_enz_dval(a) = a.dval
+_enz_dval(a) = a.dval === a.val ? nothing : a.dval
 
 # Standard augmented pass: expose primal/shadow per `config`, allocate the output
 # shadow, and stash `(shadow, dvals, extra...)` as the reverse-pass cache, where `dvals`
@@ -577,30 +578,6 @@ function EnzymeRules.reverse(config, func::EnzymeCore.Const{typeof(NNlib.ctc_los
         _enz_active_reverse!(config, dval, ŷ, NNlib.∇ctc_loss(ŷ.val, y.val, tmp))
     end
     return (nothing, nothing)
-end
-
-# `batchnorm(g, b, x, running_mean, running_var, momentum)` — the allocating cuDNN
-# fast path routed through `∇batchnorm`, which only exists for GPU arrays. The rule
-# is therefore restricted to GPU `x`; on the CPU the generic `batchnorm` is
-# differentiated through Enzyme directly. Differentiable in `g`, `b`, `x`;
-# `∇batchnorm` returns `(dg, db, dx)` (with `dg`/`db` possibly `nothing` when non-affine).
-function EnzymeRules.augmented_primal(config, func::EnzymeCore.Const{typeof(NNlib.batchnorm)},
-        ::Type{RT}, g, b, x::EnzymeCore.Annotation{<:AbstractGPUArray},
-        running_mean, running_var, momentum; kwargs...) where {RT}
-    y = func.val(g.val, b.val, x.val, running_mean.val, running_var.val, momentum.val; kwargs...)
-    return _enz_alloc_augmented(config, y, (g, b, x), (copy(g.val), copy(b.val), copy(x.val),
-                                                       running_mean.val, running_var.val, momentum.val))
-end
-
-function EnzymeRules.reverse(config, func::EnzymeCore.Const{typeof(NNlib.batchnorm)},
-        ::Type{RT}, cache, g, b, x::EnzymeCore.Annotation{<:AbstractGPUArray},
-        running_mean, running_var, momentum; kwargs...) where {RT}
-    shadow, dvals, gval, bval, xval, rm, rv, mom = cache
-    # `∇batchnorm` returns `(dg, db, dx)` aligned with `(g, b, x)`; `dg`/`db` may be
-    # `nothing` (non-affine), which `_enz_accum!` skips.
-    _enz_alloc_reverse!(config, shadow, dvals,
-        dy -> NNlib.∇batchnorm(gval, bval, xval, dy, rm, rv, mom; kwargs...))
-    return (nothing, nothing, nothing, nothing, nothing, nothing)
 end
 
 # `unfold(x, cdims)` / `fold(y, output_size, cdims)` are adjoints of each other
@@ -965,5 +942,65 @@ function EnzymeRules.forward(config::EnzymeRules.FwdConfig,
     return N == 1 ? EnzymeCore.Duplicated(res[2], shadow) : EnzymeCore.BatchDuplicated(res[2], shadow)
 end
 
+
+# batchnorm, instancenorm, groupnorm, layernorm, rmsnorm
+#
+# Reverse mode runs the ChainRules `rrule`, and its pullback on the reverse pass: the fused
+# kernels with the statistics of the forward pass, cuDNN for `batchnorm` on a GPU, and the
+# running statistics updated once. Without the rules Enzyme differentiates the generic code,
+# which `within_gradient` selects in the code Enzyme differentiates; forward mode still does.
+
+_enz_cached(x, overwritten::Bool) = overwritten && x isa AbstractArray ? copy(x) : x
+
+_enz_cotangent(::ChainRulesCore.AbstractZero) = nothing
+_enz_cotangent(dx) = dx
+
+_enz_zero(config, x::EnzymeCore.Active) =
+    EnzymeRules.width(config) == 1 ? zero(x.val) : ntuple(_ -> zero(x.val), Val(EnzymeRules.width(config)))
+_enz_zero(config, x) = nothing
+
+# `f(args..., rest...; kwargs...)`, differentiable in the arrays `args`.
+function _enz_rrule_augmented(config, ::Type{RT}, f, args::Tuple, rest::Tuple; kwargs...) where {RT}
+    ow = EnzymeRules.overwritten(config)
+    vals = ntuple(i -> _enz_cached(args[i].val, ow[i + 1]), Val(length(args)))
+    y, pullback = ChainRulesCore.rrule(f, vals..., map(a -> a.val, rest)...; kwargs...)
+    # the primal and shadow types must be concrete, which inference may not find
+    return _enz_alloc_augmented(config, y::eltype(RT), args, (pullback,))
+end
+
+function _enz_rrule_reverse!(config, cache, args::Tuple, rest::Tuple)
+    shadow, dvals, pullback = cache
+    if shadow !== nothing
+        _enz_alloc_reverse!(config, shadow, dvals, function (dy)
+            dargs = pullback(dy)
+            ntuple(i -> _enz_cotangent(dargs[i + 1]), Val(length(args)))
+        end)
+    end
+    return (map(_ -> nothing, args)..., map(x -> _enz_zero(config, x), rest)...)
+end
+
+const AffineNorm = Union{typeof(NNlib.batchnorm), typeof(NNlib.instancenorm),
+                         typeof(NNlib.groupnorm), typeof(NNlib.layernorm)}
+
+# The rules are called, not inlined: Enzyme compiles an inlined rule as code it
+# differentiates, where `within_gradient` is `true` and the `rrule` takes the generic code.
+# `rest` is the running statistics and the momentum, or the number of groups.
+@noinline EnzymeRules.augmented_primal(config::EnzymeRules.RevConfig, func::EnzymeCore.Const{<:AffineNorm},
+        ::Type{RT}, g, b, x::EnzymeCore.Annotation{<:AbstractArray},
+        rest::Vararg{EnzymeCore.Annotation,N}; kwargs...) where {RT,N} =
+    _enz_rrule_augmented(config, RT, func.val, (g, b, x), rest; kwargs...)
+
+@noinline EnzymeRules.reverse(config::EnzymeRules.RevConfig, func::EnzymeCore.Const{<:AffineNorm},
+        ::Type{RT}, cache, g, b, x::EnzymeCore.Annotation{<:AbstractArray},
+        rest::Vararg{EnzymeCore.Annotation,N}; kwargs...) where {RT,N} =
+    _enz_rrule_reverse!(config, cache, (g, b, x), rest)
+
+@noinline EnzymeRules.augmented_primal(config::EnzymeRules.RevConfig, func::EnzymeCore.Const{typeof(NNlib.rmsnorm)},
+        ::Type{RT}, g, x::EnzymeCore.Annotation{<:AbstractArray}; kwargs...) where {RT} =
+    _enz_rrule_augmented(config, RT, func.val, (g, x), (); kwargs...)
+
+@noinline EnzymeRules.reverse(config::EnzymeRules.RevConfig, func::EnzymeCore.Const{typeof(NNlib.rmsnorm)},
+        ::Type{RT}, cache, g, x::EnzymeCore.Annotation{<:AbstractArray}; kwargs...) where {RT} =
+    _enz_rrule_reverse!(config, cache, (g, x), ())
 
 end

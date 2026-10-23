@@ -13,7 +13,7 @@ upsampling. Primarily consumed by Flux.jl but usable standalone. Minimum Julia: 
   - `src/dim_helpers/` — `ConvDims`, `DenseConvDims`, `DepthwiseConvDims`, `PoolDims`.
   - `src/impl/` — direct and im2col conv/pooling kernels.
 - `ext/` — package extensions for weak deps: CUDA, cuDNN (`NNlibCUDACUDNNExt`),
-  AMDGPU, Metal, EnzymeCore, Mooncake (`NNlibMooncakeExt`, `NNlibMooncakeCUDAExt`),
+  AMDGPU, Metal, EnzymeCore, Mooncake (`NNlibMooncakeExt`),
   FFTW, ForwardDiff, SpecialFunctions. CPU fallbacks live in `src/`; backend code goes
   in the matching `ext/`.
 - `docs/` — Documenter.jl source (`docs/src/`, `docs/make.jl`).

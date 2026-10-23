@@ -168,7 +168,7 @@ function batchnorm(g, b, x::AbstractArray{T,N},
                    running_mean=nothing, running_var=nothing, momentum=0.1f0;
                    eps=1f-5, training::Bool=true, track_stats::Bool=true, kws...) where {T,N}
     # `kws` drops the keywords of the cuDNN methods (`cache`, `alpha`, `beta`), which
-    # callers such as Flux ≤ 0.16.10 and `NNlibMooncakeCUDAExt` pass for any `CuArray`.
+    # callers such as Flux ≤ 0.16.10 pass for any `CuArray`.
     N > 1 || throw(ArgumentError("batchnorm expects an array with at least 2 dimensions, got $N"))
     reduce_dims = (ntuple(identity, N-2)..., N)
     return _norm_layer(g, b, x, running_mean, running_var, reduce_dims;
