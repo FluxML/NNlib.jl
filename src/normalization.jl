@@ -10,8 +10,9 @@
 # scale `g` and bias `b` (either may be `nothing` for no affine transform) come
 # first, then the feature maps `x`. For `WHCN`-style data the `N-1`th dimension is
 # the channel dimension. On the GPU, `batchnorm` on 3D/4D/5D `CuArray`s is handled
-# by the cuDNN methods in `NNlibCUDACUDNNExt`; every other case uses the generic
-# code below.
+# by the cuDNN methods in `NNlibCUDACUDNNExt`. `layernorm`, `rmsnorm`, `instancenorm`
+# and `groupnorm` run the fused kernels of `normalization_fused.jl` on dense CPU and GPU
+# arrays. Every other case uses the generic code below.
 #
 # `rmsnorm` has a scale but no bias, so its layout is `(g, x)`.
 
@@ -184,8 +185,8 @@ computed over every `D_1×…×D_{N-2}×1×1` slice, so per channel **and** per 
 the batch. When tracked, the running statistics (length `size(x, N-1)`) accumulate
 the per-channel average across the batch.
 
-On the GPU (without running statistics) the standardisation is dispatched to the
-cuDNN `batchnorm` fast path; the running-statistics case uses the generic code.
+Normalising a dense CPU or GPU array with its own statistics, with `g` and `b` of length
+`size(x, N-1)`, runs fused kernels; other cases use the generic code.
 
 See also [`batchnorm`](@ref), [`groupnorm`](@ref), [`layernorm`](@ref).
 """
@@ -193,9 +194,32 @@ function instancenorm(g, b, x::AbstractArray{T,N},
                       running_mean=nothing, running_var=nothing, momentum=0.1f0;
                       eps=1f-5, training::Bool=true, track_stats::Bool=false) where {T,N}
     N > 2 || throw(ArgumentError("instancenorm expects an array with at least 3 dimensions, got $N"))
+    use_fused_instancenorm(g, b, x, running_mean, training) &&
+        return fused_instancenorm(g, b, x, running_mean, running_var, momentum, eps, track_stats)[1]
     reduce_dims = ntuple(identity, N-2)
     return _norm_layer(g, b, x, running_mean, running_var, reduce_dims;
                        training, momentum, eps, track_stats)
+end
+
+# `instancenorm` with the statistics of `x` is `groupnorm` with a group per channel.
+use_fused_instancenorm(g, b, x, running_mean, training) = ndims(x) > 2 &&
+    (training || running_mean === nothing) && use_fused_norm(x, NormGroups(size(x, ndims(x) - 1)), g, b)
+
+# `instancenorm` with the fused kernels, and its statistics for the gradient.
+function fused_instancenorm(g, b, x::AbstractArray{T,N}, running_mean, running_var,
+                            momentum, eps, track_stats) where {T,N}
+    _check_affine(g, b)
+    _check_stats(running_mean, running_var)
+    _check_norm_types(T, g, b, running_mean, running_var)
+    C = size(x, N-1)
+    y, μ, rσ = fused_norm(g, b, x, NormGroups(C), eps, true)
+    if track_stats && running_mean !== nothing
+        shape = (ntuple(_ -> 1, N-2)..., C, size(x, N))
+        σ² = inv.(rσ) .^ 2 .- _epsof(rσ, eps)
+        _update_running_stats!(running_mean, running_var, reshape(μ, shape), reshape(σ², shape),
+                               momentum, ntuple(identity, N-2), size(x))
+    end
+    return y, μ, rσ
 end
 
 """
@@ -208,16 +232,15 @@ its `C = size(x, N-1)` channels are split into `G` groups (`G` must divide `C`) 
 statistics are computed over each group together with the spatial dimensions, per
 sample. `eps` is added to the variance.
 
-On the GPU the standardisation is dispatched to the cuDNN `batchnorm` fast path.
+Normalising a dense CPU or GPU array, with `g` and `b` of length `C`, runs fused kernels;
+other cases use the generic code.
 
 See also [`batchnorm`](@ref), [`instancenorm`](@ref), [`layernorm`](@ref).
 """
 function groupnorm(g, b, x::AbstractArray{T,N}, G::Integer; eps=1f-5) where {T,N}
-    N > 2 || throw(ArgumentError("groupnorm expects an array with at least 3 dimensions, got $N"))
+    _check_groupnorm(g, b, x, G)
+    use_fused_norm(x, NormGroups(G), g, b) && return fused_norm(g, b, x, NormGroups(G), eps, true)[1]
     C = size(x, N-1)
-    C % G == 0 || throw(ArgumentError("the number of groups G=$G must divide the number of channels C=$C"))
-    _check_affine(g, b)
-    _check_norm_types(T, g, b, nothing, nothing)
     Tc = _stats_type(T)
     sz = size(x)
     # Split the channel dimension into (C÷G) × G, giving an (N+1)-dim array.
@@ -232,6 +255,14 @@ function groupnorm(g, b, x::AbstractArray{T,N}, G::Integer; eps=1f-5) where {T,N
     y = _affine_normalize(x2, μ, σ², g2, b2, ϵ)
     y = reshape(y, sz)
     return Tc === T ? y : T.(y)
+end
+
+function _check_groupnorm(g, b, x::AbstractArray{T,N}, G) where {T,N}
+    N > 2 || throw(ArgumentError("groupnorm expects an array with at least 3 dimensions, got $N"))
+    C = size(x, N-1)
+    C % G == 0 || throw(ArgumentError("the number of groups G=$G must divide the number of channels C=$C"))
+    _check_affine(g, b)
+    _check_norm_types(T, g, b, nothing, nothing)
 end
 
 """
@@ -393,6 +424,12 @@ Gradient of [`instancenorm`](@ref), returning `(dg, db, dx)`.
 function ∇instancenorm(g, b, x::AbstractArray{T,N}, dy,
                        running_mean=nothing, running_var=nothing, momentum=0.1f0;
                        eps=1f-5, training::Bool=true, kws...) where {T,N}
+    _check_affine(g, b)
+    if use_fused_instancenorm(g, b, x, running_mean, training)
+        groups = NormGroups(size(x, N-1))
+        _, μ, rσ = fused_norm(g, b, x, groups, eps, true; output=false)
+        return ∇fused_norm(g, b, x, dy, μ, rσ, groups)
+    end
     reduce_dims = ntuple(identity, N-2)
     return _∇norm_channel(g, b, x, dy, running_mean, running_var, reduce_dims; eps, training)
 end
@@ -404,6 +441,10 @@ Gradient of [`groupnorm`](@ref), returning `(dg, db, dx)`.
 """
 function ∇groupnorm(g, b, x::AbstractArray{T,N}, dy, G::Integer; eps=1f-5) where {T,N}
     _check_affine(g, b)
+    if use_fused_norm(x, NormGroups(G), g, b)
+        _, μ, rσ = fused_norm(g, b, x, NormGroups(G), eps, true; output=false)
+        return ∇fused_norm(g, b, x, dy, μ, rσ, NormGroups(G))
+    end
     Tc = _stats_type(T)
     C = size(x, N-1); sz = size(x)
     x2 = reshape(Tc === T ? x : Tc.(x), sz[1:N-2]..., C ÷ G, G, sz[N])
@@ -478,7 +519,8 @@ end
 # those are differentiable, the pullbacks are too, so nested AD yields correct
 # second-order derivatives. On the GPU the cuDNN `batchnorm` `rrule` (typed on
 # `DenseCuArray`, in `NNlibCUDACUDNNExt`) is more specific and wins for 3D/4D/5D
-# `CuArray`s.
+# `CuArray`s. The fused kernels keep the statistics of the forward pass for the
+# pullback.
 
 _tangent(::Nothing) = NoTangent()
 _tangent(x) = x
@@ -497,6 +539,16 @@ end
 function ChainRulesCore.rrule(::typeof(instancenorm), g, b, x::AbstractArray,
                               running_mean=nothing, running_var=nothing, momentum=0.1f0;
                               eps=1f-5, training::Bool=true, track_stats::Bool=false)
+    if use_fused_instancenorm(g, b, x, running_mean, training)
+        y, μ, rσ = fused_instancenorm(g, b, x, running_mean, running_var, momentum, eps, track_stats)
+        function instancenorm_fused_pullback(Δ)
+            Δ = unthunk(Δ)
+            Δ isa AbstractZero && return (NoTangent(), Δ, Δ, Δ, NoTangent(), NoTangent(), NoTangent())
+            dg, db, dx = ∇fused_norm(g, b, x, Δ, μ, rσ, NormGroups(size(x, ndims(x) - 1)))
+            (NoTangent(), _tangent(dg), _tangent(db), dx, NoTangent(), NoTangent(), NoTangent())
+        end
+        return y, instancenorm_fused_pullback
+    end
     y = instancenorm(g, b, x, running_mean, running_var, momentum; eps, training, track_stats)
     function instancenorm_pullback(Δ)
         dg, db, dx = ∇instancenorm(g, b, x, unthunk(Δ), running_mean, running_var, momentum; eps, training)
@@ -506,6 +558,17 @@ function ChainRulesCore.rrule(::typeof(instancenorm), g, b, x::AbstractArray,
 end
 
 function ChainRulesCore.rrule(::typeof(groupnorm), g, b, x::AbstractArray, G::Integer; eps=1f-5)
+    _check_groupnorm(g, b, x, G)
+    if use_fused_norm(x, NormGroups(G), g, b)
+        y, μ, rσ = fused_norm(g, b, x, NormGroups(G), eps, true)
+        function groupnorm_fused_pullback(Δ)
+            Δ = unthunk(Δ)
+            Δ isa AbstractZero && return (NoTangent(), Δ, Δ, Δ, NoTangent())
+            dg, db, dx = ∇fused_norm(g, b, x, Δ, μ, rσ, NormGroups(G))
+            (NoTangent(), _tangent(dg), _tangent(db), dx, NoTangent())
+        end
+        return y, groupnorm_fused_pullback
+    end
     y = groupnorm(g, b, x, G; eps)
     function groupnorm_pullback(Δ)
         dg, db, dx = ∇groupnorm(g, b, x, unthunk(Δ), G; eps)
@@ -514,7 +577,6 @@ function ChainRulesCore.rrule(::typeof(groupnorm), g, b, x::AbstractArray, G::In
     return y, groupnorm_pullback
 end
 
-# The fused kernels keep the statistics of the forward pass for the pullback.
 function ChainRulesCore.rrule(::typeof(layernorm), g, b, x::AbstractArray; dims=1, eps=1f-5)
     _check_affine(g, b)
     _check_norm_types(eltype(x), g, b, nothing, nothing)

@@ -167,10 +167,10 @@ BF16_CUDNN && @testset "batchnorm" begin
 end
 
 # instancenorm/groupnorm/layernorm/rmsnorm (and batchnorm on 2D inputs) have no
-# cuDNN path, so they use the generic NNlib implementation. On half precision it
-# accumulates the statistics in Float32 and casts the result back to BFloat16, and
-# requires Float32 scale/bias/running statistics — matching the cuDNN contract.
-BF16_CUDNN && @testset "generic normalization" begin
+# cuDNN path: they run NNlib's fused kernels (the generic code for 2D batchnorm). On half
+# precision these accumulate the statistics in Float32 and cast the result back to
+# BFloat16, and require Float32 scale/bias/running statistics — matching the cuDNN contract.
+BF16_CUDNN && @testset "normalization without cuDNN" begin
     rng = StableRNG(41)
     gf = CuArray(rand(rng, Float32, 3)); bf = CuArray(rand(rng, Float32, 3))
 

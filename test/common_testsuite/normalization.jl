@@ -116,6 +116,28 @@ function normalization_testsuite(Backend)
         @test cpu(groupnorm(nothing, nothing, device(x), 2)) ≈ ref_gn(ones(T,6), zeros(T,6), x, 2) atol=atol
         @test test_gradients((g,b,x) -> groupnorm(g, b, x, 3), g, b, x; test_gpu=gpu, atol, compare=cmp)
         @test_throws ArgumentError groupnorm(device(g), device(b), device(x), 4)  # 4 ∤ 6
+
+        # the fused kernels, against the generic code (which a `view` takes): on a GPU,
+        # columns of 256 elements or more are shared by lanes, and in small images lanes
+        # outnumber the rows of a channel
+        generic(a) = view(a, ntuple(_ -> :, ndims(a))...)
+        @testset "fused $sz, G=$G" for (sz, G) in (((32, 16, 2, 2), 1), ((2, 2, 8, 2), 2))
+            C = sz[end-1]
+            xf = randn(T, sz); gf = randn(T, C); bf = randn(T, C); dy = randn(T, sz)
+            xd, gd, bd, dyd = device(xf), device(gf), device(bf), device(dy)
+            @test NNlib.use_fused_norm(xd, NNlib.NormGroups(G), gd, bd)
+            @test cpu(groupnorm(gd, bd, xd, G)) ≈ ref_gn(gf, bf, xf, G) atol=atol
+            @test cpu(instancenorm(gd, bd, xd)) ≈ ref_norm(gf, bf, xf, (1, 2)) atol=atol
+            for (got, ref) in zip(NNlib.∇groupnorm(gd, bd, xd, dyd, G),
+                                  NNlib.∇groupnorm(gf, bf, generic(xf), generic(dy), G))
+                @test cpu(got) ≈ ref atol=atol
+            end
+            for (got, ref) in zip(NNlib.∇instancenorm(gd, bd, xd, dyd),
+                                  NNlib.∇instancenorm(gf, bf, generic(xf), generic(dy)))
+                @test cpu(got) ≈ ref atol=atol
+            end
+            @test test_gradients((g, b, x) -> groupnorm(g, b, x, G), gf, bf, xf; test_gpu=gpu, atol, compare=cmp)
+        end
     end
 
     @testset "layernorm / normalise" begin
