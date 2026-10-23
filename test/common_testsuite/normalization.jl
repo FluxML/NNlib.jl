@@ -238,6 +238,29 @@ function normalization_testsuite(Backend)
         @test_throws ArgumentError rmsnorm(device(Float16.(g)), xh)
     end
 
+    # KernelAbstractions 0.10 can't compile the kernels for BFloat16 on the CPU (#841), so
+    # the generic code runs. (CI resolves KernelAbstractions 0.9, which can.)
+    !gpu && @testset "BFloat16 on the CPU" begin
+        rng = StableRNG(841)  # not reset by the inner testsets, unlike the global one
+        x = BFloat16.(randn(rng, T, 6, 4)); x4 = BFloat16.(randn(rng, T, 4, 5, 6, 3))
+        g = randn(rng, T, 6); b = randn(rng, T, 6)
+        @test !NNlib.fused_norm_applies(x, 1) && !NNlib.fused_batchnorm_applies(x4)
+        @testset "$name" for (name, f, xb) in (
+                ("layernorm", x -> layernorm(g, b, x), x),
+                ("normalise", x -> normalise(x), x),
+                ("rmsnorm", x -> rmsnorm(g, x), x),
+                ("groupnorm", x -> groupnorm(g, b, x, 2), x4),
+                ("instancenorm", x -> instancenorm(g, b, x), x4),
+                ("batchnorm", x -> batchnorm(g, b, x), x4))
+            y = f(xb)
+            @test eltype(y) == BFloat16
+            @test Float32.(y) ≈ f(Float32.(xb)) rtol=1e-2
+            w = randn(rng, T, size(y))
+            @test Float32.(gradient(x -> sum(w .* f(x)), xb)[1]) ≈
+                gradient(x -> sum(w .* f(x)), Float32.(xb))[1] rtol=5e-2
+        end
+    end
+
     # concrete return types for every rank, where constant propagation may not reach
     @testset "inferred, $N-D" for N in 2:5
         x = device(randn(T, ntuple(i -> i == N-1 ? 4 : 3, N)))

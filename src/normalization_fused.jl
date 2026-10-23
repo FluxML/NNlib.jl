@@ -13,6 +13,10 @@
 
 const FusedNormFloat = Union{Float16,BFloat16,Float32,Float64}
 
+# The arrays the kernels take: not `BFloat16` ones on the CPU, as KernelAbstractions 0.10
+# compiles CPU kernels with POCL, which rejects `bfloat` (#841).
+const FusedNormArray = Union{Array{<:Union{Float16,Float32,Float64}},AbstractGPUArray{<:FusedNormFloat}}
+
 # The channels of `x` normalized in `G` groups, in place of the `dims` of `layernorm`.
 struct NormGroups
     G::Int
@@ -30,12 +34,12 @@ end
 # automatic differentiation the generic code runs instead, as its rules nest.
 use_fused_norm(x, dims, ps...) = !within_gradient(x) && fused_norm_applies(x, dims, ps...)
 
-function fused_norm_applies(x::Union{Array{T},AbstractGPUArray{T}}, dims, ps...) where {T<:FusedNormFloat}
+function fused_norm_applies(x::FusedNormArray, dims, ps...)
     k = leading_ndims(x, dims)
     (k == 0 || isempty(x)) && return false
     return all(p -> p === nothing || fused_norm_param(p, x, k), ps)
 end
-function fused_norm_applies(x::Union{Array{T},AbstractGPUArray{T}}, ::NormGroups, ps...) where {T<:FusedNormFloat}
+function fused_norm_applies(x::FusedNormArray, ::NormGroups, ps...)
     (ndims(x) < 3 || isempty(x)) && return false
     return all(p -> p === nothing || fused_norm_param(p, x), ps)
 end
@@ -360,7 +364,7 @@ end
 # third kernel, or a broadcast on the CPU, computes elementwise. The sums are shifted by an
 # element of each channel (by its mean in the gradient), for accuracy.
 
-function fused_batchnorm_applies(x::Union{Array{T},AbstractGPUArray{T}}, ps...) where {T<:FusedNormFloat}
+function fused_batchnorm_applies(x::FusedNormArray, ps...)
     (ndims(x) < 2 || isempty(x)) && return false
     return all(p -> p === nothing || fused_norm_param(p, x), ps)
 end
