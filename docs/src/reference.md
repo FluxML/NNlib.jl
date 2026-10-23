@@ -128,6 +128,8 @@ upsample_linear
 ∇upsample_linear
 upsample_bilinear
 ∇upsample_bilinear
+upsample_bicubic
+∇upsample_bicubic
 upsample_trilinear
 ∇upsample_trilinear
 pixel_shuffle

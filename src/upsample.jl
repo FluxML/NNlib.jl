@@ -272,8 +272,8 @@ function rrule(::typeof(upsample_linear), x::AbstractArray{<:Any,N}; size, align
 end
 
 """
-    upsample_bilinear(x::AbstractArray{T,4}, scale::NTuple{2,Real}; align_corners::Bool = true)
-    upsample_bilinear(x::AbstractArray{T,4}; size::NTuple{2,Integer}, align_corners::Bool = true)
+    upsample_bilinear(x::AbstractArray{T,4}, scale::NTuple{2,Real}; align_corners::Bool = true, antialias::Bool = false)
+    upsample_bilinear(x::AbstractArray{T,4}; size::NTuple{2,Integer}, align_corners::Bool = true, antialias::Bool = false)
 
 Upsamples the first 2 dimensions of the array `x` by the upsample factors stored in `scale`,
 using bilinear interpolation. As an alternative to using `scale`, the resulting image `size`
@@ -281,6 +281,11 @@ can be directly specified with a keyword argument.
 
 The size of the output is equal to
 `(scale[1]*S1, scale[2]*S2, S3, S4)`, where `S1, S2, S3, S4 = size(x)`.
+
+With `antialias = true`, the output can also be smaller than the input: as in PyTorch's
+`F.interpolate(x, size, mode="bilinear", antialias=True)` and PIL, the triangle filter is then
+stretched by the downsampling factor and renormalised at the borders. Pass `align_corners = false`
+to match them. See also [`upsample_bicubic`](@ref).
 
 # Examples
 
@@ -312,12 +317,19 @@ julia> upsample_bilinear(x, (2.5, 3.5))  # non-integer scaling factors are allow
  4.0   4.22222  4.44444  4.66667  4.88889     5.33333  5.55556  5.77778  6.0
 ```
 """
-upsample_bilinear(x, scale; align_corners::Bool = true) = upsample_linear(x, scale; align_corners)
-upsample_bilinear(x; size, align_corners::Bool = true)  = upsample_linear(x; size, align_corners)
+function upsample_bilinear(x, scale; align_corners::Bool = true, antialias::Bool = false)
+    antialias || return upsample_linear(x, scale; align_corners)
+    return upsample_bilinear(x; size = _upsample_size(x, scale), align_corners, antialias)
+end
+
+function upsample_bilinear(x; size, align_corners::Bool = true, antialias::Bool = false)
+    antialias || return upsample_linear(x; size, align_corners)
+    return _upsample_separable(x, size, :bilinear, align_corners, antialias)
+end
 
 
 """
-    ∇upsample_bilinear(Δ::AbstractArray{T,4}; size::NTuple{2,Integer}, align_corners::Bool = true) where T
+    ∇upsample_bilinear(Δ::AbstractArray{T,4}; size::NTuple{2,Integer}, align_corners::Bool = true, antialias::Bool = false) where T
 
 # Arguments
 - `Δ`: Incoming gradient array, backpropagated from downstream layers
@@ -326,7 +338,9 @@ upsample_bilinear(x; size, align_corners::Bool = true)  = upsample_linear(x; siz
 # Outputs
 - `dx`: Downsampled version of `Δ`
 """
-∇upsample_bilinear(Δ; size, align_corners::Bool = true) = ∇upsample_linear(Δ; size, align_corners)
+∇upsample_bilinear(Δ; size, align_corners::Bool = true, antialias::Bool = false) =
+    antialias ? ∇_upsample_separable(Δ, size, :bilinear, align_corners, antialias) :
+                ∇upsample_linear(Δ; size, align_corners)
 
 """
     upsample_trilinear(x::AbstractArray{T,5}, scale::NTuple{3,Real}; align_corners::Bool = true)
@@ -641,4 +655,218 @@ end
     w1lambda = real_index - iw0
     w0lambda = one(T) - w1lambda
     return iw0 + 1, iw1, w0lambda, w1lambda
+end
+
+#
+# Bicubic and antialiased resampling: one 1-D pass per resized dimension, each a banded matrix
+# whose rows hold the weights of ATen's `upsample_bicubic2d`, `_upsample_bicubic2d_aa` and
+# `_upsample_bilinear2d_aa` (aten/src/ATen/native/UpSample.h and cpu/UpSampleKernel.cpp),
+# computed on the host in the precision ATen uses. As ATen does, the first dimension (PyTorch's W)
+# is resized first.
+#
+
+"""
+    upsample_bicubic(x::AbstractArray{T,4}, scale::NTuple{2,Real}; align_corners::Bool = false, antialias::Bool = false)
+    upsample_bicubic(x::AbstractArray{T,4}; size::NTuple{2,Integer}, align_corners::Bool = false, antialias::Bool = false)
+
+Resizes the first 2 dimensions of the array `x` with bicubic interpolation, to the image `size`
+given as a keyword argument, or to `floor.(Int, scale .* size(x)[1:2])`. The output can be
+smaller than the input.
+
+This is PyTorch's `F.interpolate(x, size, mode="bicubic", align_corners=..., antialias=...)` on
+the same data in the NCHW layout. Without `antialias`, each output pixel is a weighted sum of 4×4
+input pixels (the cubic convolution kernel with `a = -0.75`, as in OpenCV), and the image is
+extended by repeating its border pixels. With `antialias = true`, the kernel is the one of PIL and
+torchvision's `Resize` (`a = -0.5`): when downsampling, it is stretched by the downsampling factor,
+so that each output pixel averages all the input pixels it covers, and at the borders the weights
+are renormalised over the pixels inside the image.
+
+Unlike [`upsample_bilinear`](@ref), `align_corners` defaults to `false`, as in PyTorch.
+
+# Examples
+
+```jldoctest
+julia> x = reshape(Float32[1 2; 3 4], (2, 2, 1, 1));
+
+julia> upsample_bicubic(x, (2, 2))  # overshoots the range of `x`
+4×4×1×1 Array{Float32, 4}:
+[:, :, 1, 1] =
+ 0.683594  1.01562  1.5625   1.89453
+ 1.34766   1.67969  2.22656  2.55859
+ 2.44141   2.77344  3.32031  3.65234
+ 3.10547   3.4375   3.98438  4.31641
+
+julia> ans == upsample_bicubic(x; size = (4, 4))
+true
+
+julia> x = reshape(Float32.(1:16), (4, 4, 1, 1));
+
+julia> upsample_bicubic(x; size = (2, 2), antialias = true)
+2×2×1×1 Array{Float32, 4}:
+[:, :, 1, 1] =
+ 3.93388  11.2397
+ 5.76033  13.0661
+```
+"""
+upsample_bicubic(x::AbstractArray{<:Any,4}, scale::Union{Real,NTuple{2,Real}};
+                 align_corners::Bool = false, antialias::Bool = false) =
+    upsample_bicubic(x; size = _upsample_size(x, scale), align_corners, antialias)
+
+upsample_bicubic(x::AbstractArray{<:Any,4}; size::NTuple{2,Integer},
+                 align_corners::Bool = false, antialias::Bool = false) =
+    _upsample_separable(x, size, :bicubic, align_corners, antialias)
+
+"""
+    ∇upsample_bicubic(Δ::AbstractArray{T,4}; size::NTuple{2,Integer}, align_corners::Bool = false, antialias::Bool = false)
+
+# Arguments
+- `Δ`: Incoming gradient array, backpropagated from downstream layers
+- `size`: Lateral (W,H) size of the image resized in the first place
+
+# Outputs
+- `dx`: Gradient with respect to the input of [`upsample_bicubic`](@ref)
+"""
+∇upsample_bicubic(Δ::AbstractArray{<:Any,4}; size::NTuple{2,Integer},
+                  align_corners::Bool = false, antialias::Bool = false) =
+    ∇_upsample_separable(Δ, size, :bicubic, align_corners, antialias)
+
+_upsample_size(x::AbstractArray{<:Any,N}, scale::Real) where N = _upsample_size(x, ntuple(_ -> scale, N - 2))
+_upsample_size(x::AbstractArray, scale::Tuple) = map((s, n) -> floor(Int, s * n), scale, size(x)[1:length(scale)])
+
+function _upsample_separable(x::AbstractArray{T,N}, size::NTuple{M,Integer}, mode::Symbol,
+                             align_corners::Bool, antialias::Bool) where {T,N,M}
+    M == N - 2 || throw(ArgumentError("expected a size with $(N - 2) entries, got $size"))
+    all(>(0), size) || throw(ArgumentError("expected a positive output size, got $size"))
+    y = x
+    for d in 1:M
+        Base.size(x, d) == size[d] && continue
+        weights = _upsample_weights(float(real(T)), Base.size(x, d), size[d], mode, align_corners, antialias)
+        y = _resample(y, d, weights...)
+    end
+    return y === x ? copy(x) : y
+end
+
+function ∇_upsample_separable(Δ::AbstractArray{T,N}, size::NTuple{M,Integer}, mode::Symbol,
+                              align_corners::Bool, antialias::Bool) where {T,N,M}
+    dx = Δ
+    for d in M:-1:1
+        Base.size(Δ, d) == size[d] && continue
+        weights = _upsample_weights(float(real(T)), size[d], Base.size(Δ, d), mode, align_corners, antialias)
+        dx = _resample(dx, d, _transpose_weights(weights..., size[d])...)
+    end
+    return dx
+end
+
+function rrule(::typeof(_upsample_separable), x::AbstractArray{<:Any,N}, size, mode, align_corners, antialias) where N
+    y = _upsample_separable(x, size, mode, align_corners, antialias)
+    insize = Base.size(x)[1:N-2]
+    function upsample_separable_pullback(Δ)
+        dx = ∇_upsample_separable(unthunk(Δ), insize, mode, align_corners, antialias)
+        return (NoTangent(), dx, NoTangent(), NoTangent(), NoTangent(), NoTangent())
+    end
+    return y, upsample_separable_pullback
+end
+
+# Resizes dimension `d` of `x`: output `i` is the sum of `weight[t, i] * x[.., index[t, i], ..]`
+# over `t in 1:len[i]`, accumulated in this order.
+function _resample(x::AbstractArray{T,N}, d::Int, index, len, weight) where {T,N}
+    sz = size(x)
+    pre, post = prod(sz[1:d-1]), prod(sz[d+1:N])
+    m = length(len)
+    y = similar(x, T, ntuple(i -> i == d ? m : sz[i], N))
+    isempty(y) && return y
+    on_device(a) = copyto!(similar(y, eltype(a), Base.size(a)), a)
+    backend = get_backend(y)
+    _resample_kernel!(backend)(reshape(y, pre, m, post), reshape(x, pre, sz[d], post),
+        on_device(index), on_device(len), on_device(weight); ndrange = (pre, m, post))
+    return y
+end
+
+@kernel function _resample_kernel!(y, @Const(x), @Const(index), @Const(len), @Const(weight))
+    p, i, q = @index(Global, NTuple)
+    acc = zero(eltype(y))
+    @inbounds for t in 1:len[i]
+        acc = muladd(weight[t, i], x[p, index[t, i], q], acc)
+    end
+    @inbounds y[p, i, q] = acc
+end
+
+# ATen's `cubic_convolution1/2`. Its CPU kernels are compiled with FMA contraction, which fuses
+# other operations in the antialiased filter than in `get_cubic_upsample_coefficients`: these
+# `fma` calls reproduce both sets of weights bit for bit.
+_cubic1(x, a) = fma(fma(a + 2, x, -(a + 3)) * x, x, one(x))
+_cubic2(x, a) = fma(fma(fma(a, x, -5a), x, 8a), x, -4a)
+_cubic1_coeff(x, a) = fma(a + 2, x, -(a + 3)) * x * x + 1
+_cubic2_coeff(x, a) = fma(fma(a, x, -5a), x, 8a) * x - 4a
+
+function _cubic_filter(x, a)
+    x = abs(x)
+    return x < 1 ? _cubic1(x, a) : x < 2 ? _cubic2(x, a) : zero(x)
+end
+
+_linear_filter(x) = (x = abs(x); x < 1 ? 1 - x : zero(x))
+
+# The cubic kernel of the antialiased mode is Keys' (`a = -0.5`), as PIL's.
+_aa_filter(mode, x) = mode === :bicubic ? _cubic_filter(x, oftype(x, -0.5)) : _linear_filter(x)
+
+# The weights of a dimension resized from `n_in` to `n_out` pixels, in the form `_resample` takes.
+# Mixed `W`/Float64 arithmetic follows ATen's (its `double` literals and casts) for `W = Float32`.
+function _upsample_weights(::Type{W}, n_in::Int, n_out::Int, mode::Symbol,
+                           align_corners::Bool, antialias::Bool) where W
+    scale = align_corners ? (n_out > 1 ? W(n_in - 1) / W(n_out - 1) : zero(W)) : W(n_in) / W(n_out)
+    if !antialias
+        mode === :bicubic || throw(ArgumentError("unsupported mode $mode without antialias"))
+        A = W(-0.75)
+        index = Matrix{Int}(undef, 4, n_out)
+        weight = Matrix{W}(undef, 4, n_out)
+        for i in 1:n_out
+            src = align_corners ? scale * W(i - 1) : fma(scale, W(i - 1) + W(0.5), W(-0.5))
+            k = min(floor(Int, Float32(src)), n_in - 1)  # ATen floors in Float32, `floorf`
+            t = clamp(src - W(k), zero(W), one(W))
+            # Inputs k-1:k+2 (from 0), with the second first: ATen's compiled sum starts there.
+            index[:, i] .= clamp.((k + 1, k, k + 2, k + 3), 1, n_in)
+            weight[:, i] .= (_cubic1_coeff(t, A), _cubic2_coeff(t + 1, A),
+                             _cubic1_coeff(1 - t, A), _cubic2_coeff((1 - t) + 1, A))
+        end
+        return index, fill(4, n_out), weight
+    end
+    mode in (:bicubic, :bilinear) || throw(ArgumentError("unsupported mode $mode"))
+    interp_size = mode === :bicubic ? 4 : 2
+    support = scale >= 1 ? W(interp_size * 0.5 * scale) : W(interp_size * 0.5)
+    invscale = scale >= 1 ? W(1 / Float64(scale)) : one(W)
+    taps = ceil(Int, support) * 2 + 1
+    index, len = ones(Int, taps, n_out), Vector{Int}(undef, n_out)
+    weight = zeros(W, taps, n_out)
+    for i in 1:n_out
+        center = W(scale * (i - 0.5))
+        xmin = max(trunc(Int, center - support + 0.5), 0)
+        xsize = clamp(min(trunc(Int, center + support + 0.5), n_in) - xmin, 0, taps)
+        total = zero(W)
+        for j in 1:xsize
+            w = _aa_filter(mode, W((j - 1 + xmin - center + 0.5) * invscale))
+            index[j, i], weight[j, i] = xmin + j, w
+            total += w
+        end
+        total == 0 || (weight[1:xsize, i] ./= total)
+        len[i] = xsize
+    end
+    return index, len, weight
+end
+
+# The weights of the transposed pass, from the outputs back to the `n_in` inputs.
+function _transpose_weights(index, len, weight::AbstractMatrix{W}, n_in) where W
+    n_out = length(len)
+    lo, hi = fill(n_out + 1, n_in), fill(0, n_in)
+    for i in 1:n_out, t in 1:len[i]
+        k = index[t, i]
+        lo[k], hi[k] = min(lo[k], i), max(hi[k], i)
+    end
+    tlen = max.(hi .- lo .+ 1, 0)
+    tindex = [lo[k] + s - 1 for s in 1:maximum(tlen), k in 1:n_in]
+    tweight = zeros(W, size(tindex))
+    for i in 1:n_out, t in 1:len[i]
+        k = index[t, i]
+        tweight[i - lo[k] + 1, k] += weight[t, i]
+    end
+    return tindex, tlen, tweight
 end

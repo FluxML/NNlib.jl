@@ -401,7 +401,8 @@ end
 # ---------------------------------------------------------------------------
 # Allocating ops whose gradient has a dedicated `∇` kernel: `imrotate`,
 # `upsample_nearest`, `upsample_linear` (the latter also covers `upsample_bi/
-# trilinear`, which forward to it). Enzyme cannot differentiate these forward
+# trilinear`, which forward to it), `_upsample_separable` (`upsample_bicubic`, and
+# `upsample_bilinear` with `antialias`). Enzyme cannot differentiate these forward
 # kernels on the GPU ("Active kernel arguments not supported"), so we wrap them:
 # the augmented pass allocates the output shadow, and the reverse pass feeds it to
 # the `∇` kernel and accumulates into the input shadow. This mirrors each op's
@@ -542,6 +543,21 @@ function EnzymeRules.reverse(config, func::EnzymeCore.Const{typeof(NNlib.upsampl
     _enz_alloc_reverse!(config, shadow, dvals,
         dy -> (NNlib.∇upsample_linear(dy; size=insize, align_corners),))
     return (nothing,)
+end
+
+function EnzymeRules.augmented_primal(config, func::EnzymeCore.Const{typeof(NNlib._upsample_separable)},
+        ::Type{RT}, x, size, mode, align_corners, antialias) where {RT}
+    y = func.val(x.val, size.val, mode.val, align_corners.val, antialias.val)
+    insize = Base.size(x.val)[1:ndims(x.val)-2]
+    return _enz_alloc_augmented(config, y, (x,), (insize, mode.val, align_corners.val, antialias.val))
+end
+
+function EnzymeRules.reverse(config, func::EnzymeCore.Const{typeof(NNlib._upsample_separable)},
+        ::Type{RT}, cache, x, size, mode, align_corners, antialias) where {RT}
+    shadow, dvals, insize, mode, align_corners, antialias = cache
+    _enz_alloc_reverse!(config, shadow, dvals,
+        dy -> (NNlib.∇_upsample_separable(dy, insize, mode, align_corners, antialias),))
+    return (nothing, nothing, nothing, nothing, nothing)
 end
 
 # `grid_sample(x, grid)` — allocating, differentiable in both `x` and `grid`;
