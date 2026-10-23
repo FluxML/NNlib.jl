@@ -59,8 +59,8 @@ Normalise `x` to zero mean and unit standard deviation across the dimension(s)
 given by `dims`. Per default, `dims` is the last dimension. `eps` is a small term
 added to the variance for numerical stability.
 
-This is the stateless building block behind [`layernorm`](@ref); it applies no
-learnable shift or scale.
+It is [`layernorm`](@ref) without scale and bias. For half-precision (`Float16`/`BFloat16`)
+inputs the statistics are computed in `Float32`.
 
 # Examples
 ```jldoctest
@@ -74,11 +74,7 @@ julia> isapprox(std(y; corrected=false), 1, atol=1e-5)
 true
 ```
 """
-function normalise(x::AbstractArray; dims=ndims(x), eps=1f-5)
-    μ = mean(x; dims)
-    σ² = var(x; dims, mean=μ, corrected=false)
-    return (x .- μ) ./ sqrt.(σ² .+ _epsof(x, eps))
-end
+normalise(x::AbstractArray; dims=ndims(x), eps=1f-5) = layernorm(nothing, nothing, x; dims, eps)
 
 # Core affine-normalize transform: `y = g * (x - μ)/√(σ² + ϵ) + b`.
 # `μ`, `σ²`, `g`, `b` are already reshaped to broadcast against `x`; `g`/`b` may be
@@ -248,8 +244,8 @@ dimensions `dims` (the leading dimension by default).
 `g` and `b`, when given, must broadcast against the normalised region, e.g. have
 size `size(x)[dims]` with singleton trailing dimensions.
 
-On the GPU, normalising over leading `dims` (`1:k`) dispatches the standardisation to
-the cuDNN `batchnorm` fast path; other `dims` use the generic code.
+Normalising a dense CPU or GPU array over leading `dims` (`1:k`), with `g` and `b` of
+the shape of those dimensions, runs fused kernels; other cases use the generic code.
 
 See also [`normalise`](@ref), [`batchnorm`](@ref), [`instancenorm`](@ref),
 [`groupnorm`](@ref).
@@ -257,6 +253,7 @@ See also [`normalise`](@ref), [`batchnorm`](@ref), [`instancenorm`](@ref),
 function layernorm(g, b, x::AbstractArray{T}; dims=1, eps=1f-5) where {T}
     _check_affine(g, b)
     _check_norm_types(T, g, b, nothing, nothing)
+    use_fused_norm(x, dims, g, b) && return fused_norm(g, b, x, dims, eps, true)[1]
     Tc = _stats_type(T)
     xc = Tc === T ? x : Tc.(x)
     μ = mean(xc; dims)
@@ -298,6 +295,7 @@ true
 """
 function rmsnorm(g, x::AbstractArray{T}; dims=1, eps=1f-5) where {T}
     _check_norm_types(T, g, nothing, nothing, nothing)
+    use_fused_norm(x, dims, g) && return fused_norm(g, nothing, x, dims, eps, false)[1]
     Tc = _stats_type(T)
     xc = Tc === T ? x : Tc.(x)
     rms = sqrt.(mean(abs2, xc; dims) .+ _epsof(xc, eps))
@@ -434,6 +432,10 @@ Gradient of [`layernorm`](@ref), returning `(dg, db, dx)`.
 """
 function ∇layernorm(g, b, x::AbstractArray{T,N}, dy; dims=1, eps=1f-5) where {T,N}
     _check_affine(g, b)
+    if use_fused_norm(x, dims, g, b)
+        _, μ, rσ = fused_norm(g, b, x, dims, eps, true; output=false)
+        return ∇fused_norm(g, b, x, dy, μ, rσ, dims)
+    end
     Tc = _stats_type(T)
     xc = Tc === T ? x : Tc.(x)
     dyc = Tc === T ? dy : Tc.(dy)
@@ -455,6 +457,11 @@ end
 Gradient of [`rmsnorm`](@ref), returning `(dg, dx)`.
 """
 function ∇rmsnorm(g, x::AbstractArray{T}, dy; dims=1, eps=1f-5) where {T}
+    if use_fused_norm(x, dims, g)
+        _, _, rσ = fused_norm(g, nothing, x, dims, eps, false; output=false)
+        dg, _, dx = ∇fused_norm(g, nothing, x, dy, nothing, rσ, dims)
+        return dg, dx
+    end
     Tc = _stats_type(T)
     xc = Tc === T ? x : Tc.(x)
     dyc = Tc === T ? dy : Tc.(dy)
@@ -507,7 +514,20 @@ function ChainRulesCore.rrule(::typeof(groupnorm), g, b, x::AbstractArray, G::In
     return y, groupnorm_pullback
 end
 
+# The fused kernels keep the statistics of the forward pass for the pullback.
 function ChainRulesCore.rrule(::typeof(layernorm), g, b, x::AbstractArray; dims=1, eps=1f-5)
+    _check_affine(g, b)
+    _check_norm_types(eltype(x), g, b, nothing, nothing)
+    if use_fused_norm(x, dims, g, b)
+        y, μ, rσ = fused_norm(g, b, x, dims, eps, true)
+        function layernorm_fused_pullback(Δ)
+            Δ = unthunk(Δ)
+            Δ isa AbstractZero && return (NoTangent(), Δ, Δ, Δ)
+            dg, db, dx = ∇fused_norm(g, b, x, Δ, μ, rσ, dims)
+            (NoTangent(), _tangent(dg), _tangent(db), dx)
+        end
+        return y, layernorm_fused_pullback
+    end
     y = layernorm(g, b, x; dims, eps)
     function layernorm_pullback(Δ)
         dg, db, dx = ∇layernorm(g, b, x, unthunk(Δ); dims, eps)
@@ -517,6 +537,17 @@ function ChainRulesCore.rrule(::typeof(layernorm), g, b, x::AbstractArray; dims=
 end
 
 function ChainRulesCore.rrule(::typeof(rmsnorm), g, x::AbstractArray; dims=1, eps=1f-5)
+    _check_norm_types(eltype(x), g, nothing, nothing, nothing)
+    if use_fused_norm(x, dims, g)
+        y, _, rσ = fused_norm(g, nothing, x, dims, eps, false)
+        function rmsnorm_fused_pullback(Δ)
+            Δ = unthunk(Δ)
+            Δ isa AbstractZero && return (NoTangent(), Δ, Δ)
+            dg, _, dx = ∇fused_norm(g, nothing, x, Δ, nothing, rσ, dims)
+            (NoTangent(), _tangent(dg), dx)
+        end
+        return y, rmsnorm_fused_pullback
+    end
     y = rmsnorm(g, x; dims, eps)
     function rmsnorm_pullback(Δ)
         dg, dx = ∇rmsnorm(g, x, unthunk(Δ); dims, eps)

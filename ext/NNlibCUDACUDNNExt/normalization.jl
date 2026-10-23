@@ -1,10 +1,10 @@
 using ChainRulesCore: ChainRulesCore, NoTangent, unthunk
-using NNlib: _check_affine, _unbroadcast
-import NNlib: instancenorm, groupnorm, layernorm
+using NNlib: _check_affine
+import NNlib: instancenorm, groupnorm
 
-# cuDNN-accelerated instancenorm / groupnorm / layernorm.
+# cuDNN-accelerated instancenorm / groupnorm.
 #
-# cuDNN has no dedicated instance/group/layer-norm kernels, but each is a batch
+# cuDNN has no dedicated instance/group-norm kernels, but each is a batch
 # normalization over a re-grouped view of `x`: reshape so the axes normalised over
 # become the spatial+batch reduction of a `(S, 1, C′, 1)` tensor, and cuDNN's tuned
 # `batchnorm` fast path does the standardisation. The affine transform is then applied
@@ -18,8 +18,7 @@ import NNlib: instancenorm, groupnorm, layernorm
 # Only the pure-normalisation cases route to cuDNN. These fall through to the generic
 # differentiable implementation in NNlib core:
 # - instancenorm with running statistics (`running_mean`/`running_var` given),
-# - half-precision (`Float16`/`BFloat16`) and other non-`_NormFloat` eltypes, and
-# - layernorm over non-leading `dims`.
+# - half-precision (`Float16`/`BFloat16`) and other non-`_NormFloat` eltypes.
 
 # Eltypes for which cuDNN batchnorm's parameter type equals the value type, so the
 # generic affine needs no precision juggling. Half precision uses the generic path.
@@ -126,46 +125,4 @@ function ChainRulesCore.rrule(::typeof(groupnorm), g, b, x::DenseCuArray{T,N}, G
         (NoTangent(), dg, db, dx, NoTangent())
     end
     return y, groupnorm_pullback
-end
-
-# --- layernorm ---------------------------------------------------------------
-# Reduce over the leading `dims`: fold them into the cuDNN spatial dimension and the
-# remaining dims into the cuDNN channel dimension with batch 1. Only leading
-# `dims == 1:k` reshape contiguously; other `dims` fall back to the generic path.
-_leading_dims(dims) = (d = sort!(collect(dims isa Integer ? (dims,) : dims)); d == collect(1:length(d)))
-
-function _ln_reshape(x::AbstractArray, k)
-    S = prod(ntuple(i -> size(x, i), k))
-    return reshape(x, S, 1, length(x) ÷ S, 1)
-end
-
-function layernorm(g, b, x::DenseCuArray{T}; dims=1, eps=1f-5) where {T<:_NormFloat}
-    _leading_dims(dims) || return invoke(layernorm, Tuple{Any,Any,AbstractArray}, g, b, x; dims, eps)
-    _check_affine(g, b)
-    k = dims isa Integer ? 1 : length(dims)
-    x̂ = reshape(batchnorm(nothing, nothing, _ln_reshape(x, k), nothing, nothing, 0.1f0;
-                          eps, training=true, track_stats=false), size(x))
-    g === nothing && return x̂
-    return g .* x̂ .+ b
-end
-
-function ChainRulesCore.rrule(::typeof(layernorm), g, b, x::DenseCuArray{T}; dims=1, eps=1f-5) where {T<:_NormFloat}
-    _leading_dims(dims) ||
-        return invoke(ChainRulesCore.rrule, Tuple{typeof(layernorm),Any,Any,AbstractArray}, layernorm, g, b, x; dims, eps)
-    _check_affine(g, b)
-    k = dims isa Integer ? 1 : length(dims)
-    x̂4, dx4 = _bn_standardize(_ln_reshape(x, k); eps)
-    x̂ = reshape(x̂4, size(x))
-    y = g === nothing ? x̂ : g .* x̂ .+ b
-    function layernorm_pullback(Δraw)
-        Δ = unthunk(Δraw)
-        if g === nothing
-            dg = db = NoTangent(); dx̂ = Δ
-        else
-            dg = _unbroadcast(Δ .* x̂, g); db = _unbroadcast(Δ, b); dx̂ = g .* Δ
-        end
-        dx = reshape(dx4(reshape(dx̂, size(x̂4))), size(x))
-        (NoTangent(), dg, db, dx)
-    end
-    return y, layernorm_pullback
 end

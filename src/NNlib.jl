@@ -107,6 +107,7 @@ include("sampling.jl")
 include("functions.jl")
 
 include("normalization.jl")
+include("normalization_fused.jl")
 
 ## Include implementations
 include("impl/padding_edges.jl")
