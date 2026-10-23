@@ -15,6 +15,7 @@ BINARY_ACTIVATIONS = filter(f -> hasmethod(f, Tuple{Float64, Float64}), ACTIVATI
 @test gelu_tanh(0.0) == 0.0
 @test gelu_sigmoid(0.0) == 0.0
 @test gelu_erf(0.0) == 0.0
+@test quick_gelu(0.0) == 0.0
 @test swish(0.0) == 0.0
 @test hardswish(0.0) == 0.0
 @test lisht(0.0) == 0.0
@@ -46,6 +47,7 @@ BINARY_ACTIVATIONS = filter(f -> hasmethod(f, Tuple{Float64, Float64}), ACTIVATI
 @test gelu_tanh(1.0) ≈ 0.8411919906082768
 @test gelu_sigmoid(1.0) ≈ 0.8411919906082768
 @test gelu_erf(1.0) == 0.8413447460685429
+@test quick_gelu(1.0) ≈ 1 / (1 + exp(-1.702))
 @test swish(1.0) == sigmoid(1.0)
 @test hardswish(1.0) == hardsigmoid(1.0)
 @test lisht(1.0) ≈ 1.0 * tanh(1.0)
@@ -71,6 +73,7 @@ BINARY_ACTIVATIONS = filter(f -> hasmethod(f, Tuple{Float64, Float64}), ACTIVATI
 @test gelu_tanh(-1.0) ≈ -0.15880800939172324
 @test gelu_sigmoid(-1.0) ≈ -0.15880800939172324
 @test gelu_erf(-1.0) == -0.15865525393145707
+@test quick_gelu(-1.0) ≈ -1 / (1 + exp(1.702))
 @test swish(-1.0) == -sigmoid(-1.0)
 @test hardswish(-1.0) == -hardsigmoid(-1.0)
 @test lisht(-1.0) ≈ -1.0 * tanh(-1.0)
@@ -127,7 +130,7 @@ end
         a == softsign && continue
         @test !isnan(a(Inf32))
 
-        a in [gelu, gelu_tanh, gelu_sigmoid, gelu_erf, swish, hardswish, logcosh, mish] && continue
+        a in [gelu, gelu_tanh, gelu_sigmoid, gelu_erf, quick_gelu, swish, hardswish, logcosh, mish] && continue
         @test !isnan(a(-Inf32))
     end
 end
@@ -164,6 +167,18 @@ end
     @test elu(42.) == 42.
 
     @test elu(-4) ≈ (exp(-4) - 1)
+end
+
+@testset "quick_gelu" begin
+    xs = -10:0.01:10
+    @test quick_gelu.(xs) ≈ @. xs / (1 + exp(-1.702xs))
+    x32 = Float32.(xs)
+    @test quick_gelu.(x32) ≈ @. x32 / (1 + exp(-1.702f0 * x32))
+    @test quick_gelu(1e3) == 1e3
+    @test quick_gelu(-1e3) == 0
+    @test quick_gelu(1f3) === 1f3
+    @test quick_gelu(Float16(1)) === Float16(quick_gelu(1f0))
+    @test !(quick_gelu(1.0) ≈ gelu_sigmoid(1.0))  # not the tanh approximation
 end
 
 @testset "mish" begin
@@ -412,7 +427,7 @@ end
     # The counters of code coverage sit in the loop, which is then not vectorized.
     if Sys.ARCH in (:x86_64, :aarch64) && Base.JLOptions().code_coverage == 0
         @testset "$f" for f in [σ, sigmoid_fast, tanh_fast, elu, selu, celu, gelu_tanh, gelu_sigmoid,
-                                swish, softplus, logσ, logcosh, mish, lisht, tanhshrink]
+                                quick_gelu, swish, softplus, logσ, logcosh, mish, lisht, tanhshrink]
             @test is_vectorized(f, Float32)
             @test is_vectorized(f, Float64)
             @test is_vectorized(f, Float16)
@@ -441,8 +456,9 @@ end
 ## Half precision
 
 # The activations that are computed in Float32 for Float16 and BFloat16 inputs
-HALF_ACTIVATIONS = [σ, hardσ, logσ, leakyrelu, elu, gelu_tanh, gelu_sigmoid, gelu_erf, swish, hardswish,
-                    lisht, selu, celu, softsign, softplus, logcosh, mish, tanhshrink, tanh_fast, sigmoid_fast]
+HALF_ACTIVATIONS = [σ, hardσ, logσ, leakyrelu, elu, gelu_tanh, gelu_sigmoid, gelu_erf, quick_gelu, swish,
+                    hardswish, lisht, selu, celu, softsign, softplus, logcosh, mish, tanhshrink, tanh_fast,
+                    sigmoid_fast]
 
 @testset "half precision: $T" for T in [Float16, BFloat16]
     # The Float32 result rounded once, for every input there is. One number at a time:
@@ -476,8 +492,8 @@ end
 
     # The derivatives that are a function of the input are computed in Float32 as well.
     # Those written in terms of the output (`σ`, `tanh_fast`, `elu`, `selu`, `celu`) are not.
-    @testset "derivative of $f" for f in [hardσ, logσ, leakyrelu, gelu_sigmoid, gelu_erf, swish, hardswish,
-                                          lisht, softsign, softplus, logcosh, mish, tanhshrink]
+    @testset "derivative of $f" for f in [hardσ, logσ, leakyrelu, gelu_sigmoid, gelu_erf, quick_gelu, swish,
+                                          hardswish, lisht, softsign, softplus, logcosh, mish, tanhshrink]
         xd = filter(x -> x != 0 && abs(x) != 3, xs)  # not at the kinks
         @test maximum(x -> abs(countepsfrom(gradient(f, x)[1], ForwardDiff.derivative(f, big(x)))), xd) <= 1
     end
@@ -552,7 +568,7 @@ end
 
     @testset "$f with $(nameof(typeof(ad)))" for ad in adtypes,
             f in [σ, sigmoid_fast, tanh_fast, elu, selu, celu, gelu_tanh, gelu_sigmoid,
-                  swish, softplus, logσ, logcosh, mish, lisht, tanhshrink]
+                  quick_gelu, swish, softplus, logσ, logcosh, mish, lisht, tanhshrink]
         for x in T[-3, -0.5, 0.5, 3]
             @test withgradient(f, ad, x).grad[1] ≈ ForwardDiff.derivative(f, x) rtol=rtol
         end
@@ -713,6 +729,7 @@ end
     holo = [
         (σ,          z -> 1 / (1 + exp(-z))),
         (swish,      z -> z / (1 + exp(-z))),
+        (quick_gelu, z -> z / (1 + exp(-1.702z))),
         (softplus,   z -> log(1 + exp(z))),
         (logσ,       z -> -log(1 + exp(-z))),
         (mish,       z -> z * tanh(log(1 + exp(z)))),
