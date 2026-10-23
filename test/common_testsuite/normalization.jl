@@ -8,7 +8,7 @@ function normalization_testsuite(Backend)
     var(a; kws...) = Statistics.var(a; kws...)
     # Enzyme's reverse pass over GPU reductions (mean/var) currently segfaults
     # upstream, so on a GPU backend we compare only against Zygote.
-    cmp = gpu ? AutoZygote() : [AutoZygote(), AutoEnzyme()]
+    cmp = gpu ? AutoZygote() : [AutoZygote(), AutoEnzyme(), AutoMooncake()]
 
     # Reference forward pass (matches Flux's `_norm_layer_forward`) for the
     # channel-wise layers, computed on the CPU.
@@ -231,6 +231,29 @@ function normalization_testsuite(Backend)
         @test cpu(dg) ≈ cpu(dgz) atol=atol
         @test cpu(dx) ≈ cpu(dxz) atol=atol
         @test NNlib.∇rmsnorm(nothing, xd, dyd)[1] === nothing
+    end
+
+    # Mooncake runs the `rrule`s (`NNlibMooncakeExt`), so its gradients are Zygote's, for
+    # every way of calling the functions. On CUDA: `gpu/cuda/normalization_mooncake.jl`.
+    Backend == CPU && @testset "Mooncake" begin
+        x = randn(T, 4, 5, 6, 3); x2 = randn(T, 6, 8); c = randn(T, 6); d = randn(T, 6)
+        rm = randn(T, 6); rv = rand(T, 6) .+ 1
+        @testset "$name" for (name, f, args) in (
+                ("batchnorm 2-D", (g, b, x) -> batchnorm(g, b, x), (c, d, x2)),
+                ("batchnorm nothing", x -> batchnorm(nothing, nothing, x; eps=1f-3), (x,)),
+                ("batchnorm inference", (g, b, x) -> batchnorm(g, b, x, rm, rv, 0.1f0; training=false), (c, d, x)),
+                ("instancenorm nothing", x -> instancenorm(nothing, nothing, x; eps=1f-3), (x,)),
+                ("instancenorm inference", (g, b, x) -> instancenorm(g, b, x, rm, rv, 0.1f0; training=false), (c, d, x)),
+                ("groupnorm nothing", x -> groupnorm(nothing, nothing, x, 2; eps=1f-3), (x,)),
+                ("layernorm generic", (g, b, x) -> layernorm(g, b, x; dims=3), (reshape(c, 1, 1, 6), reshape(d, 1, 1, 6), x)),
+                ("normalise", x -> normalise(x), (x2,)),
+                ("rmsnorm nothing", x -> rmsnorm(nothing, x; dims=1:2), (x,)),
+                ("layernorm Float64", (g, b, x) -> layernorm(g, b, x), (randn(6), randn(6), randn(6, 8))),
+                ("layernorm Float16", (g, b, x) -> layernorm(g, b, x), (c, d, Float16.(x2))))
+            w = randn(T, size(f(args...)))
+            loss(xs...) = sum(w .* f(xs...))
+            @test all(map(≈, withgradient(loss, AutoMooncake(), args...).grad, Zygote.gradient(loss, args...)))
+        end
     end
 
     # Second-order differentiation. The reference HVP below builds a full Jacobian with

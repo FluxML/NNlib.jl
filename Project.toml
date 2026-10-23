@@ -34,7 +34,6 @@ NNlibCUDACUDNNExt = ["CUDA", "cuDNN"]
 NNlibCUDAExt = "CUDA"
 NNlibEnzymeCoreExt = "EnzymeCore"
 NNlibEnzymeCoreCUDNNExt = ["EnzymeCore", "CUDA", "cuDNN"]
-NNlibMooncakeCUDAExt = ["Mooncake", "CUDA"]
 NNlibMooncakeExt = "Mooncake"
 NNlibFFTWExt = "FFTW"
 NNlibForwardDiffExt = "ForwardDiff"
