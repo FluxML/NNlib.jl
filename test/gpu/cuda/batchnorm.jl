@@ -34,8 +34,8 @@
             @test_throws ArgumentError batchnorm(v, v, m, α, β, 1.0; kws...)
         end
     end
-    @testset "2D input uses the generic code" begin
-        # cuDNN is slower than the generic code on a (1, 1, C, N) tensor.
+    @testset "2D input uses NNlib's kernels" begin
+        # cuDNN is slower than them on a (1, 1, C, N) tensor.
         @test parentmodule(which(batchnorm, typeof.((v, v, m, v, v, 1.0)))) === NNlib
         @test parentmodule(which(batchnorm, typeof.((nothing, nothing, m, v, v, 1.0)))) === NNlib
         @test parentmodule(which(∇batchnorm, typeof.((v, v, m, m, v, v, 1.0)))) === NNlib

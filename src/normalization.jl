@@ -10,9 +10,9 @@
 # scale `g` and bias `b` (either may be `nothing` for no affine transform) come
 # first, then the feature maps `x`. For `WHCN`-style data the `N-1`th dimension is
 # the channel dimension. On the GPU, `batchnorm` on 3D/4D/5D `CuArray`s is handled
-# by the cuDNN methods in `NNlibCUDACUDNNExt`. `layernorm`, `rmsnorm`, `instancenorm`
-# and `groupnorm` run the fused kernels of `normalization_fused.jl` on dense CPU and GPU
-# arrays. Every other case uses the generic code below.
+# by the cuDNN methods in `NNlibCUDACUDNNExt`. Otherwise, all of them run the fused
+# kernels of `normalization_fused.jl` on dense CPU and GPU arrays (`batchnorm` only with
+# the statistics of the batch). Every other case uses the generic code below.
 #
 # `rmsnorm` has a scale but no bias, so its layout is `(g, x)`.
 
@@ -170,9 +170,39 @@ function batchnorm(g, b, x::AbstractArray{T,N},
     # `kws` drops the keywords of the cuDNN methods (`cache`, `alpha`, `beta`), which
     # callers such as Flux ≤ 0.16.10 pass for any `CuArray`.
     N > 1 || throw(ArgumentError("batchnorm expects an array with at least 2 dimensions, got $N"))
+    use_fused_batchnorm(g, b, x, running_mean, training) &&
+        return fused_batchnorm(g, b, x, running_mean, running_var, momentum, eps, track_stats)[1]
     reduce_dims = (ntuple(identity, N-2)..., N)
     return _norm_layer(g, b, x, running_mean, running_var, reduce_dims;
                        training, momentum, eps, track_stats)
+end
+
+# `batchnorm` with the statistics of `x` runs the fused kernels.
+use_fused_batchnorm(g, b, x, running_mean, training) =
+    (training || running_mean === nothing) && !within_gradient(x) && fused_batchnorm_applies(x, g, b)
+
+# `batchnorm` with the fused kernels, and its statistics for the gradient.
+function fused_batchnorm(g, b, x::AbstractArray{T,N}, running_mean, running_var,
+                         momentum, eps, track_stats) where {T,N}
+    _check_affine(g, b)
+    _check_stats(running_mean, running_var)
+    _check_norm_types(T, g, b, running_mean, running_var)
+    μ, rσ, coef = fused_batchnorm_stats(g, b, x, eps)
+    if track_stats && running_mean !== nothing
+        _update_running_stats_fused!(running_mean, running_var, μ, rσ, momentum, eps,
+                                     (ntuple(identity, N-2)..., N), size(x))
+    end
+    return batchnorm_map!(batchnorm_y, similar(x), coef, x), μ, rσ
+end
+
+# The running statistics updated from the mean and reciprocal deviation of the kernels, with
+# an entry per channel, or per channel and sample if the batch is not among `reduce_dims`.
+function _update_running_stats_fused!(running_mean, running_var, μ, rσ, momentum, eps, reduce_dims, sz)
+    N = length(sz)
+    shape = ntuple(i -> i == N-1 || (i == N && N ∉ reduce_dims) ? sz[i] : 1, N)
+    σ² = inv.(rσ) .^ 2 .- _epsof(rσ, eps)
+    _update_running_stats!(running_mean, running_var, reshape(μ, shape), reshape(σ², shape),
+                           momentum, reduce_dims, sz)
 end
 
 """
@@ -211,13 +241,10 @@ function fused_instancenorm(g, b, x::AbstractArray{T,N}, running_mean, running_v
     _check_affine(g, b)
     _check_stats(running_mean, running_var)
     _check_norm_types(T, g, b, running_mean, running_var)
-    C = size(x, N-1)
-    y, μ, rσ = fused_norm(g, b, x, NormGroups(C), eps, true)
+    y, μ, rσ = fused_norm(g, b, x, NormGroups(size(x, N-1)), eps, true)
     if track_stats && running_mean !== nothing
-        shape = (ntuple(_ -> 1, N-2)..., C, size(x, N))
-        σ² = inv.(rσ) .^ 2 .- _epsof(rσ, eps)
-        _update_running_stats!(running_mean, running_var, reshape(μ, shape), reshape(σ², shape),
-                               momentum, ntuple(identity, N-2), size(x))
+        _update_running_stats_fused!(running_mean, running_var, μ, rσ, momentum, eps,
+                                     ntuple(identity, N-2), size(x))
     end
     return y, μ, rσ
 end
@@ -411,6 +438,11 @@ everywhere else and is itself differentiable (second-order).
 function ∇batchnorm(g, b, x::AbstractArray{T,N}, dy,
                     running_mean=nothing, running_var=nothing, momentum=0.1f0;
                     eps=1f-5, training::Bool=true, kws...) where {T,N}
+    _check_affine(g, b)
+    if use_fused_batchnorm(g, b, x, running_mean, training)
+        μ, rσ, _ = fused_batchnorm_stats(nothing, nothing, x, eps)
+        return ∇fused_batchnorm(g, b, x, dy, μ, rσ)
+    end
     reduce_dims = (ntuple(identity, N-2)..., N)
     return _∇norm_channel(g, b, x, dy, running_mean, running_var, reduce_dims; eps, training)
 end
@@ -528,6 +560,16 @@ _tangent(x) = x
 function ChainRulesCore.rrule(::typeof(batchnorm), g, b, x::AbstractArray,
                               running_mean=nothing, running_var=nothing, momentum=0.1f0;
                               eps=1f-5, training::Bool=true, track_stats::Bool=true, kws...)
+    if use_fused_batchnorm(g, b, x, running_mean, training)
+        y, μ, rσ = fused_batchnorm(g, b, x, running_mean, running_var, momentum, eps, track_stats)
+        function batchnorm_fused_pullback(Δ)
+            Δ = unthunk(Δ)
+            Δ isa AbstractZero && return (NoTangent(), Δ, Δ, Δ, NoTangent(), NoTangent(), NoTangent())
+            dg, db, dx = ∇fused_batchnorm(g, b, x, Δ, μ, rσ)
+            (NoTangent(), _tangent(dg), _tangent(db), dx, NoTangent(), NoTangent(), NoTangent())
+        end
+        return y, batchnorm_fused_pullback
+    end
     y = batchnorm(g, b, x, running_mean, running_var, momentum; eps, training, track_stats)
     function batchnorm_pullback(Δ)
         dg, db, dx = ∇batchnorm(g, b, x, unthunk(Δ), running_mean, running_var, momentum; eps, training)
