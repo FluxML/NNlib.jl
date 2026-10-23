@@ -9,7 +9,7 @@ using BFloat16s: BFloat16
 using ChainRulesCore
 using GPUArraysCore
 using KernelAbstractions
-using KernelAbstractions: @atomic, @groupreduce
+using KernelAbstractions: @atomic
 using LinearAlgebra
 using LinearAlgebra.BLAS: @blasfunc, BlasInt
 using LinearAlgebra: AdjOrTransAbsMat, Adjoint, BlasFloat, Transpose

@@ -5,7 +5,7 @@
 # another computes the input gradient of a column, a third the gradients of the scale and
 # bias, so that each reads `x` from memory once. The kernels run on the CPU and the GPUs
 # alike, with different layouts: on a GPU the `S` lanes of a workgroup go down a column
-# together and combine their sums with `@groupreduce`; on the CPU a workgroup is a single
+# together and combine their sums in local memory; on the CPU a workgroup is a single
 # work-item, which normalizes whole columns, and whose loops vectorize down them.
 
 const FusedNormFloat = Union{Float16,BFloat16,Float32,Float64}
@@ -56,6 +56,24 @@ maybe_vec(p) = vec(p)
 @inline norm_store!(a, I, v) = (@inbounds a[I] = v; nothing)
 @inline add_pairs(a, b) = (a[1] + b[1], a[2] + b[2])
 
+# `v` reduced with `op` over the `S` lanes of a workgroup (a power of 2), on every lane,
+# through the local memory `shared`. (`@groupreduce` needs KernelAbstractions 0.10.)
+@inline function group_reduce(op, shared, v, t, ::Val{S}) where {S}
+    @inbounds shared[t] = v
+    @synchronize
+    s = S ÷ 2
+    while s > 0
+        if t <= s
+            @inbounds shared[t] = op(shared[t], shared[t + s])
+        end
+        @synchronize
+        s ÷= 2
+    end
+    r = @inbounds shared[1]
+    @synchronize
+    return r
+end
+
 # The `S` lanes of workgroup `j` normalize column `j`, then every `jstride`-th one after it:
 # `y = g * (x - μ) * rσ + b`, with `μ = 0` and no `b` without centering (`rmsnorm`).
 # `y === nothing` computes the statistics only.
@@ -65,6 +83,7 @@ maybe_vec(p) = vec(p)
     j = @index(Group, Linear)
     M, N = size(x)
     A = eltype(rσ)
+    shared = @localmem eltype(rσ) (S,)
     while j <= N
         m = zero(A)
         if center
@@ -73,7 +92,7 @@ maybe_vec(p) = vec(p)
                 s += A(x[i, j])
             end
             if S > 1
-                s = @groupreduce(+, s, zero(A); groupsize = S)
+                s = group_reduce(+, shared, s, t, Val(S))
             end
             m = s / M
         end
@@ -82,7 +101,7 @@ maybe_vec(p) = vec(p)
             v += abs2(A(x[i, j]) - m)
         end
         if S > 1
-            v = @groupreduce(+, v, zero(A); groupsize = S)
+            v = group_reduce(+, shared, v, t, Val(S))
         end
         r = inv(sqrt(v / M + eps))
         if y !== nothing
@@ -106,6 +125,7 @@ end
     j = @index(Group, Linear)
     M, N = size(x)
     A = eltype(rσ)
+    shared = @localmem NTuple{2,eltype(rσ)} (S,)
     while j <= N
         m = norm_load(μ, j, A)
         r = rσ[j]
@@ -117,7 +137,7 @@ end
             c += dyg * (A(x[i, j]) - m)
         end
         if S > 1
-            a, c = @groupreduce(add_pairs, (a, c), (zero(A), zero(A)); groupsize = S)
+            a, c = group_reduce(add_pairs, shared, (a, c), t, Val(S))
         end
         m1 = μ === nothing ? zero(A) : a / M
         m2 = c * r / M
