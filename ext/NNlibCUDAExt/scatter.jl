@@ -24,6 +24,10 @@ const HalfFloat = Union{Float16, BFloat16}
 @inline atomic_update!(::typeof(-), dst::CuDeviceArray{T}, val, I...) where T<:HalfFloat =
     atomic_add_paired!(dst, Base._to_linear_index(dst, I...), -convert(T, val))
 
+# the KernelAbstractions kernels in `src/`, e.g. the backward pass of `upsample_linear`
+@inline NNlib._atomic_scatter!(dst::CuDeviceArray{<:HalfFloat}, idx, op::Union{typeof(+), typeof(-)}, val) =
+    atomic_update!(op, dst, val, idx...)
+
 # 16-bit atomic adds serialize when many threads add to the same element, while the
 # paired f16x2/bf16x2 ones are as fast as Float32 (#854). As PyTorch does, add `val`
 # and a zero to the aligned 32-bit word that holds `dst[i]`. The zero is -0.0, which

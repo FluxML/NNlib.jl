@@ -90,6 +90,15 @@ function upsample_testsuite(Backend)
         @test test_gradients(x -> upsample_linear(x, 2.5), x; test_gpu = Backend != CPU, atol)
     end
 
+    # Float16 positions past 2048 pixels used to be off by whole pixels (BFloat16 is
+    # tested in gpu/cuda/upsample.jl, rounding on the device).
+    Backend == CPU && @testset "Linear upsampling of a long Float16 axis" begin
+        x = Float16.(randn(Float32, 600, 2, 1))
+        @test Float32.(upsample_linear(x; size = 2999)) ≈ upsample_linear(Float32.(x); size = 2999) rtol = 1e-2
+        Δ = Float16.(randn(Float32, 2999, 2, 1))
+        @test Float32.(∇upsample_linear(Δ; size = (600,))) ≈ ∇upsample_linear(Float32.(Δ); size = (600,)) rtol = 1e-2
+    end
+
     @testset "Bilinear upsampling (2D)" begin
         x = Float32[1 2; 3 4][:,:,:,:]
         x = cat(x,x; dims=3)
