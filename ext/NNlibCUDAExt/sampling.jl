@@ -1,5 +1,5 @@
 @inline function NNlib._safe_add!(dx::CuDeviceArray{T, 4}, value, ix, iy, c, n) where T
-    @inbounds CUDA.@atomic dx[ix, iy, c, n] += value
+    @inbounds atomic_update!(+, dx, value, ix, iy, c, n)
 end
 
 function grid_sample_kernel!(n_elem, output::AbstractArray{T, 4}, input::AbstractArray{T, 4}, grid::AbstractArray{V, 4}, padding_mode) where {T,V}
@@ -62,7 +62,7 @@ end
 
 
 @inline function NNlib._safe_add!(dx::CuDeviceArray{T, 5}, value, ix, iy, iz, c, n) where T
-    @inbounds CUDA.@atomic dx[ix, iy, iz, c, n] += value
+    @inbounds atomic_update!(+, dx, value, ix, iy, iz, c, n)
 end
 
 function grid_sample_kernel!(n_elem, output::AbstractArray{T, 5}, input::AbstractArray{T, 5}, grid::AbstractArray{V, 5}, padding_mode) where {T,V}
