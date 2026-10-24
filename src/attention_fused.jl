@@ -49,16 +49,17 @@ attention_broadcasts(x::AbstractArray, sz) =
     ndims(x) <= 4 && all(d -> size(x, d) == 1 || size(x, d) == sz[d], 1:4)
 
 # The output of `scaled_dot_product_attention` for inputs satisfying
-# `fused_attention_applies`, in the layout of `_scaled_dot_product_attention`. An array
-# `lse` receives what the gradient needs of the softmax: the logarithm of the sum of the
-# exponentials of the logits of each query, as `lse[h, i, b]`.
+# `fused_attention_applies`, in the layout of `_scaled_dot_product_attention`, with
+# `window` the band of `attention_band`. An array `lse` receives what the gradient needs
+# of the softmax: the logarithm of the sum of the exponentials of the logits of each
+# query, as `lse[h, i, b]`.
 function fused_attention(q::AA4{T}, k::AA4{T}, v::AA4{T}, bias, mask, scale, is_causal::Bool,
-                         q_offset, q_lengths, kv_lengths, segments; lse=nothing) where {T}
+                         q_offset, q_lengths, kv_lengths, segments, window; lse=nothing) where {T}
     o = similar(q, size(v, 1), size(q, 2), size(q, 3), size(q, 4))
     fused_attention!(get_backend(q), o, lse, q, k, v, attention_pad4(bias), attention_pad4(mask),
                      attention_vec_offsets(q_offset), attention_vec(q_lengths), attention_vec(kv_lengths),
                      attention_seqs(q, k, segments), attention_scale(attention_compute_type(T), q, scale),
-                     is_causal)
+                     is_causal, window)
     return o
 end
 
@@ -93,6 +94,21 @@ attention_vec_offsets(x::AbstractArray) = vec(x)
 @inline attention_offset(o::Nothing, b) = 0
 @inline attention_offset(o::Integer, b) = o
 @inline attention_offset(o, b) = Int(@inbounds o[b])
+# Within a band of `window` keys, the query `i` attends to the keys `j > i + off - window`:
+# the first of them (or the first key, counting from zero or one), how many keys from `j0`
+# on are before it, and whether it is before `j`.
+@inline attention_window_first(window::Nothing, i, off) = 0
+@inline attention_window_first(window, i, off) = i + off - window + 1
+@inline attention_window_skip(window::Nothing, i, off, j0) = 0
+@inline attention_window_skip(window, i, off, j0) = attention_window_first(window, i, off) - j0
+@inline attention_in_window(window::Nothing, j, i, off) = true
+@inline attention_in_window(window, j, i, off) = j >= attention_window_first(window, i, off)
+# the last of the queries up to `imax` attending to the key `j`
+@inline attention_window_last(window::Nothing, imax, j, off) = imax
+@inline attention_window_last(window, imax, j, off) = min(imax, j - off + window - 1)
+# the keys a query attends to at most
+@inline attention_window_keys(window::Nothing, len) = len
+@inline attention_window_keys(window, len) = min(window, len)
 # The first position of the sequence `s` along the sequence dimension of an array of `n`
 # positions, and how many it has; and the batch element of the arrays it is in.
 @inline attention_span(ends::Nothing, s, n) = (0, n)
@@ -219,12 +235,16 @@ end
 
 # One step of the online softmax of the query `i`, held in the slot `ii` of the
 # workspace: turns the logits `s[1:n]` of a tile of keys starting at `j0`, of which the
-# query attends to the first `nvalid`, into weights relative to the running maximum
-# `m[ii]`, and rescales what was accumulated under the previous one.
-function attention_softmax!(s::Vector{A}, n, nvalid, bias, mask, j0, i, h, b, m, l, oacc, ii) where {A}
+# query attends to those after the first `nskip` up to the `nvalid`-th, into weights
+# relative to the running maximum `m[ii]`, and rescales what was accumulated under the
+# previous one.
+function attention_softmax!(s::Vector{A}, n, nskip, nvalid, bias, mask, j0, i, h, b, m, l, oacc, ii) where {A}
     attention_bias!(s, nvalid, bias, j0, i, h, b)
     attention_mask!(s, nvalid, mask, j0, i, h, b)
     @inbounds for j in (nvalid + 1):n
+        s[j] = A(-Inf)
+    end
+    @inbounds for j in 1:min(nskip, n)
         s[j] = A(-Inf)
     end
     mt = A(-Inf)
@@ -287,9 +307,9 @@ end
 
 # The queries `i0:i1` of the head `h` of the batch element `b`, of which the first `qlen`
 # are valid and attend to the first `kvlen` keys, up to `i + off` for the query `i` with
-# a causal mask.
+# a causal mask, from `i + off - window + 1` on within a band.
 function attention_item!(o::AbstractArray{T,4}, lse, q, k, v, bias, mask, qlen, kvlen, off,
-                         scale::A, is_causal::Bool, h, b, i0, i1, ws) where {T,A}
+                         scale::A, is_causal::Bool, window, h, b, i0, i1, ws) where {T,A}
     (; kt, vt, buf, s1, s2, oacc, m, l) = ws
     hk = (h - 1) ÷ (size(q, 2) ÷ size(k, 2)) + 1
     jmax = is_causal ? min(kvlen, i1 + off) : kvlen
@@ -297,7 +317,7 @@ function attention_item!(o::AbstractArray{T,4}, lse, q, k, v, bias, mask, qlen, 
     fill!(oacc, zero(A))
     fill!(m, -floatmax(A))
     fill!(l, zero(A))
-    j0 = 1
+    j0 = max(1, attention_window_first(window, i0, off))
     while j0 <= jmax
         nt = min(nk, jmax - j0 + 1)
         attention_pack!(kt, buf, k, hk, j0, nt, b)
@@ -309,9 +329,12 @@ function attention_item!(o::AbstractArray{T,4}, lse, q, k, v, bias, mask, qlen, 
             n = is_causal ? min(nt, i2 + off - j0 + 1) : nt
             n <= 0 && continue
             n1 = is_causal ? min(nt, i + off - j0 + 1) : nt
+            # within a band the later query of the pair skips one key more
+            skip1, skip2 = attention_window_skip(window, i, off, j0), attention_window_skip(window, i2, off, j0)
+            skip1 >= n1 && skip2 >= n && continue
             attention_logits!(s1, s2, kt, n, q, h, i, i2, b, scale)
-            attention_softmax!(s1, n, n1, bias, mask, j0, i, h, b, m, l, oacc, ii)
-            attention_softmax!(s2, n, n, bias, mask, j0, i2, h, b, m, l, oacc, ii + 1)
+            attention_softmax!(s1, n, skip1, n1, bias, mask, j0, i, h, b, m, l, oacc, ii)
+            attention_softmax!(s2, n, skip2, n, bias, mask, j0, i2, h, b, m, l, oacc, ii + 1)
             attention_outputs!(oacc, ii, s1, s2, vt, n)
         end
         j0 += nt
@@ -334,10 +357,10 @@ function attention_item!(o::AbstractArray{T,4}, lse, q, k, v, bias, mask, qlen, 
 end
 
 function fused_attention!(::CPU, o, lse, q, k, v, bias, mask, q_offset, q_lengths, kv_lengths, seqs,
-                          scale::A, is_causal::Bool) where {A}
+                          scale::A, is_causal::Bool, window) where {A}
     H, Lq, B = size(q, 2), seqs.maxlen_q, seqs.n
     # a task for every 2^16 multiply-adds at least: spawning one costs a few microseconds
-    work = Lq * seqs.maxlen_kv * H * B * (size(q, 1) + size(v, 1))
+    work = Lq * attention_window_keys(window, seqs.maxlen_kv) * H * B * (size(q, 1) + size(v, 1))
     ntasks = should_use_spawn() ? min(Threads.nthreads(:default), cld(work, 2^16)) : 1
     # Queries per item: many, since each item packs every tile of keys it goes through,
     # but leaving several items to each task so that they balance the load.
@@ -361,7 +384,8 @@ function fused_attention!(::CPU, o, lse, q, k, v, bias, mask, q_offset, q_length
             attention_item!(attention_seq(o, seqs.q_ends, s), attention_seq(lse, seqs.q_ends, s), qs, ks,
                             attention_seq(v, seqs.kv_ends, s), bias, mask,
                             attention_len(q_lengths, s, size(qs, 3)), attention_len(kv_lengths, s, size(ks, 3)),
-                            attention_offset(q_offset, s), scale, is_causal, h, attention_batch(seqs.q_ends, s),
+                            attention_offset(q_offset, s), scale, is_causal, window, h,
+                            attention_batch(seqs.q_ends, s),
                             i0, min(i0 + nq - 1, size(qs, 3)), ws)
         end
         return nothing
@@ -548,12 +572,12 @@ end
 end
 
 # the logits of a thread, with the bias added and `-Inf` at the keys not attended to
-@inline function attention_masked(acc::NTuple{MN,A}, mask, bias, i0, j0, tr, tc, h, b, jmax, Lq, off,
+@inline function attention_masked(acc::NTuple{MN,A}, mask, bias, i0, j0, tr, tc, h, b, jmax, Lq, off, window,
                                   ::Val{causal}, ::Val{c}) where {MN,A,causal,c}
     ntuple(Val(MN)) do x
         i = i0 + tr + c.NR * ((x - 1) % c.TM)
         j = j0 + tc + c.NC * ((x - 1) ÷ c.TM)
-        ok = (j < jmax) & (i < Lq) & (!causal | (j <= i + off))
+        ok = (j < jmax) & (i < Lq) & (!causal | (j <= i + off)) & attention_in_window(window, j, i, off)
         ok && attention_allowed(attention_at(mask, j + 1, i + 1, h, b)) ?
             attention_biased(acc[x], attention_at(bias, j + 1, i + 1, h, b)) : A(-Inf)
     end
@@ -653,7 +677,7 @@ end
 # The queries and the keys of the sequence `s` start at `qb` and `kb` in the batch element
 # `b` of the arrays: in a block the positions `i0`, `j0` and their bounds count from there.
 @kernel inbounds=true cpu=false unsafe_indices=true function attention_kernel!(
-        o, lse, @Const(q), @Const(k), @Const(v), bias, mask, q_offset, q_lengths, kv_lengths,
+        o, lse, @Const(q), @Const(k), @Const(v), bias, mask, q_offset, window, q_lengths, kv_lengths,
         q_ends, kv_ends, scale::A, causal::Val, til::Val{c}) where {A,c}
     p_shm = @localmem A (c.PP * c.BK,)
     slab = @localmem A (c.SLAB,)
@@ -671,6 +695,8 @@ end
     off = attention_offset(q_offset, s)
     jmax = attention_live(q_ends, i0, Lq,
                           min(attention_len(kv_lengths, s, Lk), causal === Val(true) ? i0 + c.BQ + off : Lk))
+    # within a band, from the tile of the first key of the first query on
+    jfirst = (max(attention_window_first(window, i0, off), 0) ÷ c.BK) * c.BK
 
     tr, tc = t ÷ c.NC, t % c.NC       # logits tile: queries tr + NR*m, keys tc + NC*n
     ud, uq = t ÷ c.NQ, t % c.NQ       # output tile: dimensions ud + ND*e, queries uq + NQ*m
@@ -681,9 +707,9 @@ end
     oacc = ntuple(_ -> zero(A), Val(c.TD * c.TQ))
 
     qv = attention_fetch_rows(q, scale, dd, h, qb + i0, r0, b, D, qb + Lq, Val(c.BQ), Val(c.RS))
-    kv = attention_fetch_rows(k, one(A), dd, hk, kb, r0, b, D, kb + jmax, Val(c.BK), Val(c.RS))
+    kv = attention_fetch_rows(k, one(A), dd, hk, kb + jfirst, r0, b, D, kb + jmax, Val(c.BK), Val(c.RS))
     vv = ntuple(_ -> zero(A), Val(c.KV * cld(c.DVP, c.T)))
-    j0 = 0
+    j0 = jfirst
     while j0 < jmax
         # ---- logits
         acc = ntuple(_ -> zero(A), Val(c.TM * c.TN))
@@ -704,7 +730,7 @@ end
         end
 
         # ---- online softmax
-        sc = attention_masked(acc, mask, bias, i0, j0, tr, tc, h, b, jmax, Lq, off, causal, til)
+        sc = attention_masked(acc, mask, bias, i0, j0, tr, tc, h, b, jmax, Lq, off, window, causal, til)
         attention_put_rowstat!(p_shm, attention_rowmax(sc, Val(c.TM)), tr, tc, til)
         @synchronize()
         mnew = attention_rows_max(p_shm, mx, tr, til)
@@ -744,9 +770,9 @@ end
 end
 
 function fused_attention!(backend::Backend, o, lse, q, k, v, bias, mask, q_offset, q_lengths, kv_lengths, seqs,
-                          scale::A, is_causal::Bool) where {A}
+                          scale::A, is_causal::Bool, window) where {A}
     c = attention_tiling(backend, q, v)
-    attention_kernel!(backend, (c.T, 1, 1))(o, lse, q, k, v, bias, mask, q_offset, q_lengths, kv_lengths,
+    attention_kernel!(backend, (c.T, 1, 1))(o, lse, q, k, v, bias, mask, q_offset, window, q_lengths, kv_lengths,
         seqs.q_ends, seqs.kv_ends, scale, Val(is_causal), Val(c);
         ndrange=(c.T * cld(seqs.maxlen_q, c.BQ), size(q, 2), seqs.n))
     return o
