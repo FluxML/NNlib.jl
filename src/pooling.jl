@@ -161,7 +161,7 @@ expand(N, i::Integer) = ntuple(_ -> i, N)
 
 
 """
-    maxpool(x, k::NTuple{N, Integer}; pad=0, stride=k)
+    maxpool(x, k::NTuple{N, Integer}; pad=0, stride=k, ceil_mode=false)
 
 Perform max pool operation with window size `k` on input tensor `x`.
 
@@ -170,17 +170,20 @@ Arguments:
 * `x` and `k`: Expects `ndim(x) ∈ 3:5`, and always `length(k) == ndim(x) - 2`
 * `pad`: See [`pad_zeros`](@ref) for details.
 * `stride`: Either a tuple with the same length as `k`, or one integer for all directions. Default is `k`.
+* `ceil_mode`: When `true`, round the output size up instead of down, as PyTorch's
+  `ceil_mode=True`: a last window that runs past the padded input is kept if it starts
+  inside the input or the low padding. See [`PoolDims`](@ref).
 """
-function maxpool(x, k::NTuple{N, Integer}; pad=0, stride=k) where N
+function maxpool(x, k::NTuple{N, Integer}; pad=0, stride=k, ceil_mode::Bool=false) where N
     pad = expand(Val(N), pad)
     stride = expand(Val(N), stride)
-    pdims = PoolDims(x, k; padding=pad, stride=stride)
+    pdims = PoolDims(x, k; padding=pad, stride=stride, ceil_mode)
     return maxpool(x, pdims)
 end
 
 
 """
-    meanpool(x, k::NTuple{N, Integer}; pad=0, stride=k, count_include_pad=true)
+    meanpool(x, k::NTuple{N, Integer}; pad=0, stride=k, count_include_pad=true, ceil_mode=false)
 
 Perform mean pool operation with window size `k` on input tensor `x`.
 
@@ -194,17 +197,22 @@ Arguments:
   When `false`, only the in-bounds (non-padding) elements are counted, matching cuDNN's
   `CUDNN_POOLING_AVERAGE_COUNT_EXCLUDE_PADDING` and PyTorch's `count_include_pad=false`.
   Has no effect when `pad == 0`.
+* `ceil_mode`: When `true`, round the output size up instead of down, as PyTorch's
+  `ceil_mode=True`: a last window that runs past the padded input is kept if it starts
+  inside the input or the low padding. Its positions past the padded input are left out of
+  the denominator also with `count_include_pad=true`, as in PyTorch. See [`PoolDims`](@ref).
 """
-function meanpool(x, k::NTuple{N, Integer}; pad=0, stride=k, count_include_pad=true) where N
+function meanpool(x, k::NTuple{N, Integer}; pad=0, stride=k, count_include_pad=true,
+                  ceil_mode::Bool=false) where N
     pad = expand(Val(N), pad)
     stride = expand(Val(N), stride)
-    pdims = PoolDims(x, k; padding=pad, stride=stride)
+    pdims = PoolDims(x, k; padding=pad, stride=stride, ceil_mode)
     return meanpool(x, pdims; count_include_pad)
 end
 
 
 """
-    lpnormpool(x, p::Real, k::NTuple{N, Integer}; pad=0, stride=k)
+    lpnormpool(x, p::Real, k::NTuple{N, Integer}; pad=0, stride=k, ceil_mode=false)
 
 Perform Lp pool operation with value of the Lp norm `p` and window size `k` on input tensor `x`, also known as LPPool in pytorch.
 This pooling operator from [Learned-Norm Pooling for Deep Feedforward and Recurrent Neural Networks](https://arxiv.org/abs/1311.1780).
@@ -215,15 +223,22 @@ Arguments:
 * `p` is restricted to `0 < p < Inf`.
 * `pad`: See [`pad_zeros`](@ref) for details.
 * `stride`: Either a tuple with the same length as `k`, or one integer for all directions. Default is `k`.
+* `ceil_mode`: When `true`, round the output size up instead of down: a last window that
+  runs past the padded input is kept if it starts inside the input or the low padding.
+  See [`PoolDims`](@ref).
 
 For all elements `x` in a size `k` window, lpnormpool computes `(∑ᵢ xᵢ^p)^(1 / p)` as an element of the output.
 
 Thus `lpnormpool(x, 1, k) ./ prod(k) ≈ meanpool(x, k)` and `lpnormpool(x, 2, k).^2 ./ prod(k) ≈ meanpool(x.^2, k)`.
+With `ceil_mode=true`, the sum of a last window that runs past the input is over its
+elements in the input; PyTorch's `LPPool` instead scales it by `prod(k)` over their number.
 """
-function lpnormpool(x, p::Real, k::NTuple{N, Integer}; pad=0, stride=k) where {N}
+function lpnormpool(x, p::Real, k::NTuple{N, Integer}; pad=0, stride=k,
+                    ceil_mode::Bool=false) where {N}
     pow = p isa Integer ? p : convert(float(eltype(x)), p)
     (isinf(pow) || pow < 0) && error("p value of Lp norm pool expects `0 < p < Inf`, but p is $(pow) now.")
-    pdims = PoolDims(x, k; padding=expand(Val(N), pad), stride=expand(Val(N), stride))
+    pdims = PoolDims(x, k; padding=expand(Val(N), pad), stride=expand(Val(N), stride),
+                     ceil_mode)
     return lpnormpool(x, pdims; p=pow)
 end
 

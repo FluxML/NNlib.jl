@@ -1,7 +1,11 @@
+check_no_ceil_mode(pdims) = NNlib.ceil_mode(pdims) &&
+    throw(ArgumentError("MIOpen pooling does not support `ceil_mode`"))
+
 for poolname in (:maxpool, :meanpool)
     @eval function NNlib.$(poolname)(
         x::ROCArray{T, N}, pdims::PoolDims,
     ) where {T <: MIOPENFloat, N}
+        check_no_ceil_mode(pdims)
         y = similar(x, NNlib.output_size(pdims)..., NNlib.channels_out(pdims), size(x, N))
         nd = max(0, 4 - N)
         npdims = NNlib.insert_singleton_spatial_dimension(pdims, nd)
@@ -16,6 +20,7 @@ for poolname in (:maxpool, :meanpool)
     @eval function ChainRulesCore.rrule(
         ::typeof(NNlib.$(poolname)), x::ROCArray{T, N}, pdims::PoolDims,
     ) where {T <: MIOPENFloat, N}
+        check_no_ceil_mode(pdims)
         y = similar(x, NNlib.output_size(pdims)..., NNlib.channels_out(pdims), size(x, N))
         nd = max(0, 4 - N)
         npdims = NNlib.insert_singleton_spatial_dimension(pdims, nd)

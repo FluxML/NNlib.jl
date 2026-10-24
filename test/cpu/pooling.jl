@@ -1090,6 +1090,135 @@ end
     end
 end
 
+@testset "ceil_mode (issue #839)" begin
+    # Brute-force reference, checked against PyTorch: window `o` starts at
+    # `(o - 1) * stride - pad_lo`, and its positions past the padded input count neither
+    # as input nor as padding. Returns `y` and the gradient of `sum(y .* dy)`.
+    function ref_pool(op, x, dy, pdims, ceil_mode; count_include_pad=true, p=2)
+        N = ndims(x) - 2
+        K, S, D = NNlib.kernel_size(pdims), NNlib.stride(pdims), NNlib.dilation(pdims)
+        lo, hi = NNlib.padding(pdims)[1:2:end], NNlib.padding(pdims)[2:2:end]
+        I = size(x)[1:N]
+        O = ntuple(N) do i
+            m = I[i] + lo[i] + hi[i] - D[i] * (K[i] - 1) - 1
+            ceil_mode || return fld(m, S[i]) + 1
+            o = cld(m, S[i]) + 1
+            return (o - 1) * S[i] >= I[i] + lo[i] ? o - 1 : o
+        end
+        y = zeros(eltype(x), O..., size(x)[N+1:end]...)
+        dx = zero(x)
+        for b in axes(x, N + 2), c in axes(x, N + 1), o in CartesianIndices(O)
+            ps = [ntuple(i -> (o[i] - 1) * S[i] - lo[i] + (kk[i] - 1) * D[i] + 1, N)
+                  for kk in CartesianIndices(K)]
+            inx = [q for q in ps if all(i -> 1 <= q[i] <= I[i], 1:N)]
+            xs = [x[q..., c, b] for q in inx]
+            if op == :max
+                y[o, c, b], imax = findmax(xs)
+                dx[inx[imax]..., c, b] += dy[o, c, b]
+            elseif op == :mean
+                n = count_include_pad ? count(q -> all(i -> q[i] <= I[i] + hi[i], 1:N), ps) : length(inx)
+                y[o, c, b] = sum(xs) / n
+                foreach(q -> dx[q..., c, b] += dy[o, c, b] / n, inx)
+            else
+                y[o, c, b] = sum(xs .^ p)^(1 / p)
+                foreach(q -> dx[q..., c, b] += dy[o, c, b] * (x[q..., c, b] / y[o, c, b])^(p - 1), inx)
+            end
+        end
+        return y, dx
+    end
+
+    # Values from PyTorch
+    x = reshape(Float64.(1:6), 6, 1, 1)
+    @test vec(maxpool(x, (3,); pad=1, stride=2, ceil_mode=true)) == [2, 4, 6, 6]
+    @test vec(meanpool(x, (3,); pad=1, stride=2, ceil_mode=true)) ≈ [1, 3, 5, 3]
+    @test vec(meanpool(x, (3,); pad=1, stride=2, ceil_mode=true, count_include_pad=false)) ≈ [1.5, 3, 5, 6]
+    x = reshape(Float64.(1:30), 5, 6, 1, 1)
+    @test maxpool(x, (3, 3); pad=1, stride=2, ceil_mode=true)[:, :, 1, 1] ==
+          [7 17 27 27; 9 19 29 29; 10 20 30 30]
+    pdims = PoolDims(x, 3; padding=1, stride=2, ceil_mode=true)
+    y = meanpool(x, pdims)
+    @test y[:, :, 1, 1] ≈ [16/9 69/9 129/9 53/6; 33/9 13 23 14; 28/9 87/9 147/9 59/6]
+    @test ∇meanpool(one.(y), y, x, pdims)[:, :, 1, 1] ≈
+          [1 2 1 2 1 2.5; 2 4 2 4 2 5; 1 2 1 2 1 2.5; 2 4 2 4 2 5; 1 2 1 2 1 2.5] ./ 9
+    y = meanpool(x, pdims; count_include_pad=false)
+    @test y[:, :, 1, 1] ≈ [4 11.5 21.5 26.5; 5.5 13 23 28; 7 14.5 24.5 29.5]
+
+    # Output sizes: the last window must start inside the input or the low padding
+    @test NNlib.output_size(PoolDims((5, 1, 1), 2; ceil_mode=true)) == (3,)
+    @test NNlib.output_size(PoolDims((5, 1, 1), 2; padding=1, ceil_mode=true)) == (3,)
+    @test NNlib.output_size(PoolDims((5, 1, 1), 3; stride=3, padding=(2, 0), ceil_mode=true)) == (3,)
+    @test NNlib.output_size(PoolDims((5, 1, 1), 3; stride=3, padding=(0, 2), ceil_mode=true)) == (2,)
+    @test size(maxpool(rand(7, 8, 2, 3), (2, 2); ceil_mode=true)) == (4, 4, 2, 3)
+
+    # `ceil_mode` is kept where it changes the output size, and dropped elsewhere
+    pdims = PoolDims((5, 5, 1, 1), 2; ceil_mode=true)
+    @test NNlib.ceil_mode(pdims)
+    @test pdims != PoolDims((5, 5, 1, 1), 2)
+    @test occursin("ceil_mode: true", sprint(show, pdims))
+    @test NNlib.ceil_mode(NNlib.insert_singleton_spatial_dimension(pdims))
+    @test PoolDims((6, 6, 1, 1), 2; ceil_mode=true) == PoolDims((6, 6, 1, 1), 2)
+    @test !NNlib.ceil_mode(PoolDims((5, 5, 1, 1), 2; ceil_mode=false))
+    @test !occursin("ceil_mode", sprint(show, PoolDims((5, 5, 1, 1), 2)))
+    # The positional constructors keep working, without `ceil_mode`
+    @test PoolDims((5, 5), (2, 2), 1, (2, 2), (0, 0, 0, 0), (1, 1)) == PoolDims((5, 5, 1, 1), 2)
+    @test PoolDims{2, 2, 2, 4, 2}((5, 5), (2, 2), 1, (2, 2), (0, 0, 0, 0), (1, 1)) ==
+          PoolDims((5, 5, 1, 1), 2)
+
+    # Match the brute-force reference, forward and backward, also with asymmetric padding
+    # and dilation (which PyTorch doesn't have for mean and Lp pooling)
+    for nsd in (1, 2, 3), (k, stride, pad, dil) in (
+            (2, 2, 0, 1), (3, 2, 1, 1), (3, 2, (1, 0), 1), (3, 2, (0, 2), 1),
+            (2, 3, 1, 2), (3, 3, 1, 1), (1, 2, 0, 1), (3, 1, (2, 1), 2))
+        sz = (7, 6, 5)[1:nsd]
+        padding = pad isa Tuple ? ntuple(i -> pad[mod1(i, 2)], 2nsd) : pad
+        x = Float64.(reshape(Random.randperm(rng, prod(sz) * 4), sz..., 2, 2))
+        for ceil_mode in (false, true)
+            pdims = PoolDims(x, k; stride, padding, dilation=dil, ceil_mode)
+            y = maxpool(x, pdims)
+            dy = randn(rng, size(y))
+            yr, dxr = ref_pool(:max, x, dy, pdims, ceil_mode)
+            @test y == yr
+            @test ∇maxpool(dy, y, x, pdims) ≈ dxr
+            for cip in (true, false)
+                y = meanpool(x, pdims; count_include_pad=cip)
+                yr, dxr = ref_pool(:mean, x, dy, pdims, ceil_mode; count_include_pad=cip)
+                @test y ≈ yr
+                @test ∇meanpool(dy, y, x, pdims; count_include_pad=cip) ≈ dxr
+            end
+            for p in (1, 2.5)
+                y = lpnormpool(x, pdims; p)
+                yr, dxr = ref_pool(:lp, x, dy, pdims, ceil_mode; p)
+                @test y ≈ yr
+                @test ∇lpnormpool(dy, y, x, pdims; p) ≈ dxr
+            end
+        end
+    end
+
+    # Gradients
+    for nsd in (1, 2)
+        x = Float64.(reshape(Random.randperm(rng, 6^nsd * 4), fill(6, nsd)..., 2, 2))
+        for pdims in (PoolDims(x, 3; stride=2, ceil_mode=true),
+                      PoolDims(x, 3; padding=1, stride=2, ceil_mode=true))
+            @test NNlib.ceil_mode(pdims)
+            @test test_gradients(z -> maxpool(z, pdims), x)
+            @test test_gradients(z -> meanpool(z, pdims), x)
+            @test test_gradients(z -> meanpool(z, pdims; count_include_pad=false), x)
+            @test test_gradients(z -> lpnormpool(z, pdims; p=2), x)
+        end
+        k = ntuple(_ -> 3, nsd)
+        @test test_gradients(z -> meanpool(z, k; pad=1, stride=2, ceil_mode=true), x)
+    end
+end
+
+# The low and high padded regions of `calc_padding_regions` used to overlap when one
+# window spills over both ends, and the gradient went twice into it
+@testset "∇pool with a window wider than the padded input" begin
+    x = reshape([5.0], 1, 1, 1)
+    pdims = PoolDims(x, 3; padding=1, stride=1)
+    @test ∇maxpool(ones(1, 1, 1), maxpool(x, pdims), x, pdims) == ones(1, 1, 1)
+    @test ∇meanpool(ones(1, 1, 1), meanpool(x, pdims), x, pdims) ≈ fill(1/3, 1, 1, 1)
+end
+
 @testset "AutoDiff: spatial_rank=$spatial_rank" for spatial_rank in (1, 2)
   # Use an input with distinct, well-separated values so that every pooling window has
   # a unique maximum. `maxpool` is non-differentiable at ties, where finite differences

@@ -141,7 +141,7 @@ function NNlib.∇conv_filter!(dw::MtlFloatArray{T, 4}, x::MtlFloatArray{T, 4},
 end
 
 function supports_mpsgraph_pool(pdims)
-    return pdims isa NNlib.PoolDims{2}
+    return pdims isa NNlib.PoolDims{2} && !NNlib.ceil_mode(pdims)
 end
 
 function NNlib.maxpool!(y::MtlFloatArray{T, 4}, x::MtlFloatArray{T, 4},

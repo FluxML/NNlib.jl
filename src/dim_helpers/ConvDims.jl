@@ -17,6 +17,7 @@ function stride end
 function padding end
 function dilation end
 function flipkernel end
+@inline ceil_mode(c::ConvDims) = false
 
 # Hack to get rid of type parameters
 function basetype(::Type{C}) where {C <: ConvDims}
@@ -39,7 +40,11 @@ function output_size(c::ConvDims)
     D = dilation(c)
 
     return ntuple(spatial_dims(c)) do i
-        return div(I[i] + P[(i-1)*2 + 1] + P[(i-1)*2 + 2] - (K[i] - 1) * D[i] - 1, S[i]) + 1
+        n = I[i] + P[(i-1)*2 + 1] + P[(i-1)*2 + 2] - (K[i] - 1) * D[i] - 1
+        ceil_mode(c) || return div(n, S[i]) + 1
+        # The last window must start inside the input or the low padding, as in PyTorch
+        o = cld(n, S[i]) + 1
+        return (o - 1) * S[i] < I[i] + P[(i-1)*2 + 1] ? o : o - 1
     end
 end
 
@@ -53,6 +58,7 @@ function Base.show(io::IO, cdims::C) where {C <: ConvDims}
     F = flipkernel(cdims)
     G = groupcount(cdims)
     print(io, "$(basetype(C)): $I * $K -> $O, stride: $S, pad: $P, dil: $D, flip: $F, groups: $G")
+    ceil_mode(cdims) && print(io, ", ceil_mode: true")
 end
 
 """

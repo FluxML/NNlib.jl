@@ -23,21 +23,18 @@ function calc_padding_regions(dims)
     # of its input domain overlapping the padding.  If padding is zero, these values are
     # all trivially zero.  The low spillage is trivially the low padding divided by the
     # stride; literally the number of shifts that overlap some padding.  The high
-    # spillage is slightly more complicated; we first figure out how many elements of
-    # high padding are wasted (e.g. through strides not fitting to the end perfectly)
-    # subtract that from the high padding, then do the same:
+    # spillage is the number of outputs left after those whose kernel ends inside the
+    # input (this also covers the windows that `ceil_mode` adds past the high padding),
+    # leaving out those in the low spillage so that no output is visited twice:
     calc_lo_spill(O, S, P) = max(min(ceil(Int, P/S), O),0)
-    @inline function calc_hi_spill(O, S, Pl, Ph, K, D, I)
-        wasted_Ph = (I + Pl + Ph - (K - 1)*D - 1)%S
-        return max(min(ceil(Int, (Ph - wasted_Ph)/S), O), 0)
-    end
+    calc_hi_spill(O, lo, S, Pl, K, D, I) = O - clamp(fld(I + Pl - (K - 1)*D - 1, S) + 1, lo, O)
 
     spill_w_lo = calc_lo_spill(out_width, stride_w, pad_w_lo)
-    spill_w_hi = calc_hi_spill(out_width, stride_w, pad_w_lo, pad_w_hi, kernel_w, dil_w, width)
+    spill_w_hi = calc_hi_spill(out_width, spill_w_lo, stride_w, pad_w_lo, kernel_w, dil_w, width)
     spill_h_lo = calc_lo_spill(out_height, stride_h, pad_h_lo)
-    spill_h_hi = calc_hi_spill(out_height, stride_h, pad_h_lo, pad_h_hi, kernel_h, dil_h, height)
+    spill_h_hi = calc_hi_spill(out_height, spill_h_lo, stride_h, pad_h_lo, kernel_h, dil_h, height)
     spill_d_lo = calc_lo_spill(out_depth, stride_d, pad_d_lo)
-    spill_d_hi = calc_hi_spill(out_depth, stride_d, pad_d_lo, pad_d_hi, kernel_d, dil_d, depth)
+    spill_d_hi = calc_hi_spill(out_depth, spill_d_lo, stride_d, pad_d_lo, kernel_d, dil_d, depth)
 
     spill_w_hi_abs = out_width  - spill_w_hi + 1
     spill_h_hi_abs = out_height - spill_h_hi + 1
