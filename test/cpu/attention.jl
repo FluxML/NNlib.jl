@@ -492,6 +492,18 @@ end
         y = f(q, k, v; is_causal=true, window=2, q_lengths=[3, 5, 5], kv_lengths=[2, 9, 9])
         @test all(iszero, y[:, :, 4:end, 1])
     end
+    # ... and the padding takes no part in the gradients, which are finite in the
+    # materialized implementation too, unpacked or packed
+    w = randn(Float32, head_dim, nheads, lenq, bs)
+    kws = (; is_causal=true, window=2, q_lengths=[3, 5, 5], kv_lengths=[2, 9, 9])
+    gm = attention_gradients(materialized_attention, w, q, k, v; kws...)
+    @test all(g -> all(isfinite, g), gm)
+    @test all(isapprox.(attention_gradients(scaled_dot_product_attention, w, q, k, v; kws...), gm; rtol=1f-4))
+    xs = map(x -> reshape(x, head_dim, nheads, :), (q, k, v))
+    kws = (; is_causal=true, window=2, q_segments=[5, 5, 5], kv_segments=[9, 9, 9], q_lengths=[3, 5, 5],
+           kv_lengths=[2, 9, 9])
+    gm = attention_gradients(materialized_attention, reshape(w, head_dim, nheads, :), xs...; kws...)
+    @test all(g -> all(isfinite, g), gm)
 
     # within each segment of packed sequences
     x = rand(Float32, head_dim, nheads, 12)

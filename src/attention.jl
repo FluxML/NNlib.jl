@@ -547,7 +547,7 @@ function _attention(q::AA4, k::AA4, v::AA4, bias; fdrop, mask, scale, is_causal,
         x, α = _attention(q, k, v, bias; fdrop, mask, scale, is_causal=false)
         return x .* reshape(valid, 1, 1, :, 1), α .* reshape(valid, 1, :, 1, 1)
     end
-    mask = attention_mask(q, k, mask, is_causal, window, q_offset, kv_lengths)
+    mask = attention_mask(q, k, mask, is_causal, window, q_offset, q_lengths, kv_lengths)
     # grouped-query attention: each group of `r` query heads shares a key/value head
     r = size(q, 2) ÷ size(k, 2)
 
@@ -598,8 +598,10 @@ apply_query_lengths(α, q_lengths) = α .* padding_mask(size(α, 2), q_lengths; 
 
 # The mask of the materialized implementation: the `mask` of the user, the causal one, that
 # of the window and the one of the padded keys, a key being attended to only where all of
-# them allow it.
-function attention_mask(q::AA4, k::AA4, mask, is_causal::Bool, window, q_offset, kv_lengths)
+# them allow it. The padded queries, whose weights are zeroed, attend to every key: one
+# attending to none, as past a window, would have NaN weights, which the softmax passes on
+# to the gradients of every key.
+function attention_mask(q::AA4, k::AA4, mask, is_causal::Bool, window, q_offset, q_lengths, kv_lengths)
     if is_causal
         mask = combine_masks(mask, make_causal_mask(q, size(k, 3), size(q, 3), q_offset))
     end
@@ -608,6 +610,9 @@ function attention_mask(q::AA4, k::AA4, mask, is_causal::Bool, window, q_offset,
     end
     if kv_lengths !== nothing
         mask = combine_masks(mask, padding_mask(size(k, 3), kv_lengths; dims=1))
+    end
+    if mask !== nothing && q_lengths !== nothing
+        mask = mask .| .!padding_mask(size(q, 3), q_lengths; dims=2)
     end
     return mask
 end
@@ -699,7 +704,8 @@ function segment_positions(sizes, ends, len::Int)
 end
 
 # The `(kv_len, q_len, 1, 1)` mask that keeps each query to the valid keys of its
-# segment, and to its causal bound and window, and which of the queries are valid.
+# segment, and to its causal bound and window, and which of the queries are valid. The
+# others attend to every key, as in `attention_mask`.
 function packed_attention_mask(q::AA4, k::AA4, is_causal::Bool, window, q_offset, q_lengths, kv_lengths,
                                s::AttentionSegments)
     qid, qpos = segment_positions(s.q_sizes, s.q_ends, size(q, 3))
@@ -711,7 +717,8 @@ function packed_attention_mask(q::AA4, k::AA4, is_causal::Bool, window, q_offset
     if window !== nothing
         mask = mask .& (kpos .> reshape(qpos .+ per_segment(q_offset, qid) .- window, 1, :))
     end
-    return reshape(mask, size(mask)..., 1, 1), qpos .< vec(q_lengths)[qid]
+    valid = qpos .< vec(q_lengths)[qid]
+    return reshape(mask .| .!reshape(valid, 1, :), size(mask)..., 1, 1), valid
 end
 
 per_segment(x::Integer, id) = x
