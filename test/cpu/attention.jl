@@ -525,6 +525,59 @@ end
     @test test_gradients((x...) -> scaled_dot_product_attention(x...; window=2, q_offset=[0, 4, 1]), qd, kd, vd)
 end
 
+@testset "sliding window: banded materialized implementation" begin
+    # blocks of queries with the keys of their windows, which start and end anywhere
+    head_dim, nheads, lenq, lenkv, bs = 4, 4, 150, 170, 2
+    q = randn(Float32, head_dim, nheads, lenq, bs)
+    k = randn(Float32, head_dim, 2, lenkv, bs)
+    v = randn(Float32, 6, 2, lenkv, bs)
+    window_mask(offsets, window, causal) =
+        reshape([abs(o + i - j) < window && (!causal || j <= o + i) for j in 1:lenkv, i in 1:lenq, o in offsets],
+                lenkv, lenq, 1, bs)
+    keys_mask(kv_lengths) = reshape((1:lenkv) .<= kv_lengths', lenkv, 1, 1, bs)
+
+    for is_causal in (true, false), window in (3, 20, 100), q_offset in (0, -7, [30, 5])
+        mask = window_mask(q_offset isa Integer ? fill(q_offset, bs) : q_offset, window, is_causal)
+        @test isapprox(materialized_attention(q, k, v; is_causal, window, q_offset),
+                       materialized_attention(q, k, v; mask); nans=true)
+    end
+    q_lengths, kv_lengths = [150, 70], [170, 100]
+    mask = window_mask(kv_lengths .- q_lengths, 20, true) .& keys_mask(kv_lengths)
+    @test materialized_attention(q, k, v; is_causal=:bottom_right, window=20, q_lengths, kv_lengths) ≈
+          materialized_attention(q, k, v; mask, q_lengths)
+    # a bias and a mask, broadcast or not, are taken over the band
+    bias = randn(Float32, lenkv, lenq, nheads, bs)
+    mask = window_mask([10, 0], 20, false) .& keys_mask(kv_lengths)
+    for b in (bias, bias[:, :, 1:1, 1:1], bias[:, 1:1, :, :], bias[1:1, :, :, 2:2]),
+            m in (nothing, rand(lenkv, lenq) .< 0.8)
+        kws = (; q_offset=[10, 0], q_lengths, kv_lengths)
+        @test materialized_attention(q, k, v, b; mask=m, window=20, kws...) ≈
+              materialized_attention(q, k, v, b; mask=m === nothing ? mask : mask .& m, q_lengths)
+    end
+
+    w = randn(Float32, 6, nheads, lenq, bs)
+    kws = (; is_causal=true, window=20, q_offset=[30, 5], q_lengths, kv_lengths)
+    mask = window_mask([30, 5], 20, true) .& keys_mask(kv_lengths)
+    gb = attention_gradients(materialized_attention, w, q, k, v, bias; kws...)
+    gd = attention_gradients(materialized_attention, w, q, k, v, bias; mask, q_lengths)
+    @test all(isapprox.(gb, gd; rtol=1f-4))
+    qd, kd, vd = map(x -> Float64.(x[:, :, 1:80, :]), (q, k, v))
+    @test test_gradients((x...) -> materialized_attention(x...; window=10, q_offset=[3, -2]), qd, kd, vd,
+                         Float64.(bias[1:80, 1:80, 1, 1]))
+
+    # memory grows with the band, not with the square of the sequence length
+    x = randn(Float32, 4, 1, 4096, 1)
+    materialized_attention(x, x, x; is_causal=true, window=16)
+    @test (@allocated materialized_attention(x, x, x; is_causal=true, window=16)) < 4096^2
+
+    # packed sequences, in a padded batch
+    x = randn(Float32, head_dim, nheads, 300)
+    for is_causal in (true, false)
+        @test materialized_attention(x, x, x; is_causal, window=9, q_segments=[200, 30, 70]) ≈
+              segment_attention(materialized_attention, x, x, x, [200, 30, 70]; is_causal, window=9)
+    end
+end
+
 @testset "bias and mask with several batch dimensions" begin
     head_dim, nheads, lenq, lenkv = 4, 2, 3, 5
     batch_size = (2, 3)
