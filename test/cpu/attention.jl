@@ -413,7 +413,7 @@ same_attention(y, yref; rtol) =
     packed(segments) = NNlib.attention_segments(reshape(x, size(x)..., 1), reshape(x, size(x)..., 1),
                                                 segments, segments, nothing)
     cheaper(segments) = NNlib.padded_segments_cheaper(reshape(x, size(x)..., 1), reshape(x, size(x)..., 1),
-                                                      packed(segments))
+                                                      packed(segments), nothing)
     @test cheaper([7, 6, 7]) && !cheaper([1, 18, 1])
     for q_segments in ([7, 6, 7], [1, 18, 1])
         @test materialized_attention(x, x, x; is_causal=true, q_segments) ≈
@@ -535,11 +535,13 @@ end
         reshape([abs(o + i - j) < window && (!causal || j <= o + i) for j in 1:lenkv, i in 1:lenq, o in offsets],
                 lenkv, lenq, 1, bs)
     keys_mask(kv_lengths) = reshape((1:lenkv) .<= kv_lengths', lenkv, 1, 1, bs)
+    # the queries before the first key attend to none
+    same_nans(x, y) = isequal(isnan.(x), isnan.(y)) && replace(x, NaN => 0) ≈ replace(y, NaN => 0)
 
     for is_causal in (true, false), window in (3, 20, 100), q_offset in (0, -7, [30, 5])
         mask = window_mask(q_offset isa Integer ? fill(q_offset, bs) : q_offset, window, is_causal)
-        @test isapprox(materialized_attention(q, k, v; is_causal, window, q_offset),
-                       materialized_attention(q, k, v; mask); nans=true)
+        @test same_nans(materialized_attention(q, k, v; is_causal, window, q_offset),
+                        materialized_attention(q, k, v; mask))
     end
     q_lengths, kv_lengths = [150, 70], [170, 100]
     mask = window_mask(kv_lengths .- q_lengths, 20, true) .& keys_mask(kv_lengths)
@@ -570,8 +572,12 @@ end
     materialized_attention(x, x, x; is_causal=true, window=16)
     @test (@allocated materialized_attention(x, x, x; is_causal=true, window=16)) < 4096^2
 
-    # packed sequences, in a padded batch
+    # packed sequences, in a padded batch where the band makes it cheaper
     x = randn(Float32, head_dim, nheads, 300)
+    x4 = reshape(x, size(x)..., 1)
+    segments = NNlib.attention_segments(x4, x4, [200, 30, 70], [200, 30, 70], nothing)
+    @test NNlib.padded_segments_cheaper(x4, x4, segments, 9)
+    @test !NNlib.padded_segments_cheaper(x4, x4, segments, nothing)
     for is_causal in (true, false)
         @test materialized_attention(x, x, x; is_causal, window=9, q_segments=[200, 30, 70]) ≈
               segment_attention(materialized_attention, x, x, x, [200, 30, 70]; is_causal, window=9)
