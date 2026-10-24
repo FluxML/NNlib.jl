@@ -254,7 +254,8 @@ end
 # Outputs
 - `dx`: Downsampled version of `Δ`
 """
-function ∇upsample_linear(Δ::AbstractArray{T,N}; size::NTuple{<:Any,Integer}, align_corners::Bool = true) where {T,N}
+function ∇upsample_linear(Δ::AbstractArray{T,N}; size::Union{Integer, NTuple{<:Any,Integer}}, align_corners::Bool = true) where {T,N}
+    size isa Integer && (size = (size,))
     if Base.size(Δ)[1:N-2] == size
         return Δ
     end
@@ -376,6 +377,14 @@ upsample_trilinear(x; size, align_corners::Bool = true)  = upsample_linear(x; si
 """
 ∇upsample_trilinear(Δ; size, align_corners::Bool = true) = ∇upsample_linear(Δ; size, align_corners)
 
+# The type of the source positions and of the interpolation weights. In Float16 and
+# BFloat16, the positions drift by whole pixels on long axes and can go out of bounds,
+# so they are computed in Float32, as in ATen.
+_weight_type(T) = real(T) <: Union{Float16, BFloat16} ? Float32 : real(T)
+
+# the weights of 16-bit floats are Float32
+@inline _atomic_add!(dx, idx, val) = _atomic_scatter!(dx, idx, +, convert(eltype(dx), val))
+
 function upsample_linear_kernel!(
     y::AbstractArray{T, N}, x::AbstractArray{T, N}; align_corners::Bool = true,
 ) where {T, N}
@@ -384,8 +393,8 @@ function upsample_linear_kernel!(
         size(y)[N - 1:end] : # Parallelization along channel x batch.
         size(y)[1:N - 2] # Parallelization along WHD.
     ratios = align_corners ?
-        ntuple(i -> real(T)((size(x, i) - 1) / (size(y, i) - 1)), N - 2) :
-        ntuple(i -> real(T)(size(x, i) / size(y, i)), N - 2)
+        ntuple(i -> _weight_type(T)((size(x, i) - 1) / (size(y, i) - 1)), N - 2) :
+        ntuple(i -> _weight_type(T)(size(x, i) / size(y, i)), N - 2)
     _upsample_linear_kernel!(backend)(backend, y, x, ratios..., Val(align_corners); ndrange)
     return y
 end
@@ -398,8 +407,8 @@ function ∇upsample_linear_kernel!(
         size(Δ)[N - 1:end] : # Parallelization along channel x batch.
         size(Δ)[1:N - 2] # Parallelization along WHD.
     ratios = align_corners ?
-        ntuple(i -> real(T)((size(dx, i) - 1) / (size(Δ, i) - 1)), N - 2) :
-        ntuple(i -> real(T)(size(dx, i) / size(Δ, i)), N - 2)
+        ntuple(i -> _weight_type(T)((size(dx, i) - 1) / (size(Δ, i) - 1)), N - 2) :
+        ntuple(i -> _weight_type(T)(size(dx, i) / size(Δ, i)), N - 2)
     _∇upsample_linear_kernel!(backend)(backend, dx, Δ, ratios..., Val(align_corners); ndrange)
     return dx
 end
@@ -456,8 +465,8 @@ end
     ow0, ow1, w0λ, w1λ = source_idx_and_λ(rwidth, i - 1, align, out_width)
     @inbounds for n in 1:batch, c in 1:channels
         val = Δ[i, c, n]
-        @atomic dx[ow0, c, n] += w0λ * val
-        @atomic dx[ow1, c, n] += w1λ * val
+        _atomic_add!(dx, (ow0, c, n), w0λ * val)
+        _atomic_add!(dx, (ow1, c, n), w1λ * val)
     end
 end
 
@@ -527,10 +536,10 @@ end
     oh0, oh1, h0λ, h1λ = source_idx_and_λ(rheight, j - 1, align, out_height)
     @inbounds for n in 1:batch, c in 1:channels
         val = Δ[i, j, c, n]
-        @atomic dx[ow0, oh0, c, n] += w0λ * h0λ * val
-        @atomic dx[ow1, oh0, c, n] += w1λ * h0λ * val
-        @atomic dx[ow0, oh1, c, n] += w0λ * h1λ * val
-        @atomic dx[ow1, oh1, c, n] += w1λ * h1λ * val
+        _atomic_add!(dx, (ow0, oh0, c, n), w0λ * h0λ * val)
+        _atomic_add!(dx, (ow1, oh0, c, n), w1λ * h0λ * val)
+        _atomic_add!(dx, (ow0, oh1, c, n), w0λ * h1λ * val)
+        _atomic_add!(dx, (ow1, oh1, c, n), w1λ * h1λ * val)
     end
 end
 
@@ -625,15 +634,15 @@ end
     od0, od1, d0λ, d1λ = source_idx_and_λ(rdepth, k - 1, align, out_depth)
     @inbounds for n in 1:batch, c in 1:channels
         val = Δ[i, j, k, c, n]
-        @atomic dx[ow0, oh0, od0, c, n] += w0λ * h0λ * d0λ * val
-        @atomic dx[ow1, oh0, od0, c, n] += w1λ * h0λ * d0λ * val
-        @atomic dx[ow0, oh1, od0, c, n] += w0λ * h1λ * d0λ * val
-        @atomic dx[ow1, oh1, od0, c, n] += w1λ * h1λ * d0λ * val
+        _atomic_add!(dx, (ow0, oh0, od0, c, n), w0λ * h0λ * d0λ * val)
+        _atomic_add!(dx, (ow1, oh0, od0, c, n), w1λ * h0λ * d0λ * val)
+        _atomic_add!(dx, (ow0, oh1, od0, c, n), w0λ * h1λ * d0λ * val)
+        _atomic_add!(dx, (ow1, oh1, od0, c, n), w1λ * h1λ * d0λ * val)
 
-        @atomic dx[ow0, oh0, od1, c, n] += w0λ * h0λ * d1λ * val
-        @atomic dx[ow1, oh0, od1, c, n] += w1λ * h0λ * d1λ * val
-        @atomic dx[ow0, oh1, od1, c, n] += w0λ * h1λ * d1λ * val
-        @atomic dx[ow1, oh1, od1, c, n] += w1λ * h1λ * d1λ * val
+        _atomic_add!(dx, (ow0, oh0, od1, c, n), w0λ * h0λ * d1λ * val)
+        _atomic_add!(dx, (ow1, oh0, od1, c, n), w1λ * h0λ * d1λ * val)
+        _atomic_add!(dx, (ow0, oh1, od1, c, n), w0λ * h1λ * d1λ * val)
+        _atomic_add!(dx, (ow1, oh1, od1, c, n), w1λ * h1λ * d1λ * val)
     end
 end
 
@@ -740,7 +749,7 @@ function _upsample_separable(x::AbstractArray{T,N}, size::NTuple{M,Integer}, mod
     y = x
     for d in 1:M
         Base.size(x, d) == size[d] && continue
-        weights = _upsample_weights(float(real(T)), Base.size(x, d), size[d], mode, align_corners, antialias)
+        weights = _upsample_weights(float(_weight_type(T)), Base.size(x, d), size[d], mode, align_corners, antialias)
         y = _resample(y, d, weights...)
     end
     return y === x ? copy(x) : y
@@ -751,7 +760,7 @@ function ∇_upsample_separable(Δ::AbstractArray{T,N}, size::NTuple{M,Integer},
     dx = Δ
     for d in M:-1:1
         Base.size(Δ, d) == size[d] && continue
-        weights = _upsample_weights(float(real(T)), size[d], Base.size(Δ, d), mode, align_corners, antialias)
+        weights = _upsample_weights(float(_weight_type(T)), size[d], Base.size(Δ, d), mode, align_corners, antialias)
         dx = _resample(dx, d, _transpose_weights(weights..., size[d])...)
     end
     return dx
@@ -784,7 +793,7 @@ end
 
 @kernel function _resample_kernel!(y, @Const(x), @Const(index), @Const(len), @Const(weight))
     p, i, q = @index(Global, NTuple)
-    acc = zero(eltype(y))
+    acc = zero(promote_type(eltype(weight), eltype(x)))
     @inbounds for t in 1:len[i]
         acc = muladd(weight[t, i], x[p, index[t, i], q], acc)
     end

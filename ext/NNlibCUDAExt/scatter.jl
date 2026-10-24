@@ -11,11 +11,55 @@
 #     }
 # const AnyCuSparseArray{Tv,Ti} = Union{AnyCuSparseVector{Tv,Ti},AnyCuSparseMatrix{Tv,Ti}}
 
+# `dst[I...] = op(dst[I...], val)`, atomically
+@inline function atomic_update!(op::OP, dst, val, I...) where OP
+    CUDA.@atomic dst[I...] = op(dst[I...], val)
+    return nothing
+end
+
+const HalfFloat = Union{Float16, BFloat16}
+
+@inline atomic_update!(::typeof(+), dst::CuDeviceArray{T}, val, I...) where T<:HalfFloat =
+    atomic_add_paired!(dst, Base._to_linear_index(dst, I...), convert(T, val))
+@inline atomic_update!(::typeof(-), dst::CuDeviceArray{T}, val, I...) where T<:HalfFloat =
+    atomic_add_paired!(dst, Base._to_linear_index(dst, I...), -convert(T, val))
+
+# the KernelAbstractions kernels in `src/`, e.g. the backward pass of `upsample_linear`
+@inline NNlib._atomic_scatter!(dst::CuDeviceArray{<:HalfFloat}, idx, op::Union{typeof(+), typeof(-)}, val) =
+    atomic_update!(op, dst, val, idx...)
+
+# 16-bit atomic adds serialize when many threads add to the same element, while the
+# paired f16x2/bf16x2 ones are as fast as Float32 (#854). As PyTorch does, add `val`
+# and a zero to the aligned 32-bit word that holds `dst[i]`. The zero is -0.0, which
+# leaves every neighbour unchanged (+0.0 would turn a -0.0 into +0.0).
+@inline function atomic_add_paired!(dst::CuDeviceArray{T}, i::Integer, val::T) where T
+    p = reinterpret(UInt64, pointer(dst, i))
+    low = iszero(p % 4)
+    if has_paired_add(T) && (low ? i < length(dst) : i > 1)
+        bits = UInt32(reinterpret(UInt16, val))
+        word = low ? bits | 0x8000_0000 : bits << 16 | 0x0000_8000
+        red_add_x2!(T, low ? p : p - 2, word)
+    else
+        CUDA.@atomic dst[i] += val
+    end
+    return nothing
+end
+
+@inline has_paired_add(::Type{Float16}) = CUDA.compute_capability().major >= 6
+@inline has_paired_add(::Type{BFloat16}) = CUDA.compute_capability().major >= 9
+
+for (T, ptx_type) in ((Float16, "f16x2"), (BFloat16, "bf16x2"))
+    asm = "red.global.add.noftz.$ptx_type [\$0], \$1;"
+    @eval @inline red_add_x2!(::Type{$T}, p::UInt64, word::UInt32) = Base.llvmcall(
+        $("""call void asm sideeffect "$asm", "l,r,~{memory}"(i64 %0, i32 %1)
+             ret void"""), Cvoid, Tuple{UInt64, UInt32}, p, word)
+end
+
 function scatter_kernel!(op::OP, dst, src, idx) where OP
     index = threadIdx().x + (blockIdx().x - 1) * blockDim().x
 
     @inbounds if index <= length(idx)
-        CUDA.@atomic dst[idx[index]...] = op(dst[idx[index]...], src[index])
+        atomic_update!(op, dst, src[index], idx[index]...)
     end
     return nothing
 end
@@ -25,7 +69,7 @@ function scatter_kernel!(op::OP, dst, src, idx::CUDA.CuDeviceArray{<:CartesianIn
 
     @inbounds if index <= length(idx)
         li = Base._to_linear_index(dst, Tuple(idx[index])...)
-        CUDA.@atomic dst[li] = op(dst[li], src[index])
+        atomic_update!(op, dst, src[index], li)
     end
     return nothing
 end
@@ -36,7 +80,7 @@ function scatter_kernel!(op::OP, dst, src, idx, max_idx, max_dims_idx, dims_size
     @inbounds if index <= max_idx
         j, k = divrem(index-1, max_dims_idx)
         dims_i = CartesianIndices(dims_size)[k+1]
-        CUDA.@atomic dst[Tuple(dims_i)..., idx[j+1]...] = op(dst[Tuple(dims_i)..., idx[j+1]...], src[index])
+        atomic_update!(op, dst, src[index], Tuple(dims_i)..., idx[j+1]...)
     end
     return nothing
 end
@@ -49,7 +93,7 @@ function scatter_kernel!(op::OP, dst, src, idx::CUDA.CuDeviceArray{<:CartesianIn
         j, k = divrem(index-1, max_dims_idx)
         dims_i = CartesianIndices(dims_size)[k+1]
         li = Base._to_linear_index(dst, Tuple(dims_i)..., Tuple(idx[j+1])...)
-        CUDA.@atomic dst[li] = op(dst[li], src[index])
+        atomic_update!(op, dst, src[index], li)
     end
     return nothing
 end

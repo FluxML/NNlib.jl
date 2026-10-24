@@ -125,4 +125,30 @@ types = [CuArray{Int32}, CuArray{Int64}, CuArray{Float32}, CuArray{Float64}]
         @test_throws ArgumentError NNlib.scatter!(+, cu(Float32[1, 2, 3]), cu(Float32[1, 2]), [2, 9])
         @test_throws ArgumentError NNlib.scatter!(+, CUDA.zeros(Float32, 2, 3), cu(Float32[1 2 3 4; 5 6 7 8]), cu([2, 1, 1, 9]))
     end
+
+    # Paired 16-bit atomics. Sums of small integers are exact in 16 bits, and the
+    # BFloat16 rounding happens on the GPU (see bfloat16.jl).
+    @testset "$T with colliding indices (#854)" for T in (Float16, BFloat16)
+        for n in (1, 2, 7, 8)  # the first and last elements are alone in their word or not
+            idx = cu(repeat(1:n, 100))
+            src = CUDA.ones(T, length(idx))
+            @test Float32.(Array(NNlib.scatter(+, src, idx; dstsize = n))) == fill(100f0, n)
+            @test Float32.(Array(NNlib.scatter(-, src, idx; dstsize = n))) == fill(-100f0, n)
+        end
+        i = repeat(1:5, 20)
+        src = repeat(Float32[1, 2, 3], 1, 100)
+        for idx in (cu(i), cu(Tuple.(i)), cu(CartesianIndex.(i)))
+            @test Float32.(Array(NNlib.scatter(+, T.(cu(src)), idx))) == repeat(Float32[20, 40, 60], 1, 5)
+            @test Float32.(Array(NNlib.scatter!(+, CUDA.zeros(T, 3, 5), cu(src), idx))) == repeat(Float32[20, 40, 60], 1, 5)
+        end
+        # a destination that starts halfway through a 32-bit word
+        for off in (0, 1)
+            buf = CUDA.fill(T(-0.0), 13)
+            NNlib.scatter!(+, view(buf, (1 + off):(12 + off)), T.(cu(Float32[1, 2, 3, 4, 5])), cu([1, 3, 12, 12, 1]))
+            expected = fill(-0f0, 13)
+            expected[off .+ [1, 3, 12]] .= [6, 2, 7]
+            @test Float32.(Array(buf)) == expected
+            @test signbit.(Float32.(Array(buf))) == signbit.(expected)  # the -0.0 neighbours too
+        end
+    end
 end

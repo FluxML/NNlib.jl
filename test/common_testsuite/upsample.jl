@@ -88,6 +88,23 @@ function upsample_testsuite(Backend)
         @test y ≈ cpu(upsample_linear(xd, 2.5))
         @test y ≈ cpu(upsample_linear(xd; size=10))
         @test test_gradients(x -> upsample_linear(x, 2.5), x; test_gpu = Backend != CPU, atol)
+        @test cpu(∇upsample_linear(xd; size = 2)) == cpu(∇upsample_linear(xd; size = (2,)))
+    end
+
+    # Float16 positions past 2048 pixels used to be off by whole pixels (BFloat16 is
+    # tested in gpu/cuda/upsample.jl, rounding on the device).
+    Backend == CPU && @testset "Resizing a long Float16 axis" begin
+        short, long = randn(Float32, 600, 5, 2, 1), randn(Float32, 2999, 5, 2, 1)
+        for (f, x) in ((x -> upsample_bilinear(x; size = (2999, 5)), short),
+                       (x -> ∇upsample_bilinear(x; size = (600, 5)), long),
+                       (x -> upsample_bicubic(x; size = (2999, 5)), short),
+                       (x -> ∇upsample_bicubic(x; size = (600, 5)), long),
+                       (x -> upsample_bicubic(x; size = (600, 5), antialias = true), long),
+                       (x -> ∇upsample_bicubic(x; size = (2999, 5), antialias = true), short),
+                       (x -> upsample_bilinear(x; size = (600, 5), align_corners = false, antialias = true), long))
+            x16 = Float16.(x)
+            @test Float32.(f(x16)) ≈ f(Float32.(x16)) rtol = 1e-2
+        end
     end
 
     @testset "Bilinear upsampling (2D)" begin

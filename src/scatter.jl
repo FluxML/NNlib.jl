@@ -165,6 +165,7 @@ end
 # AMDGPU. Metal is special-cased in NNlibMetalExt because Atomix's Metal atomics
 # only support a subset of ops (e.g. they error on float `max`/`min` and silently
 # no-op on `*`/`/`); see https://github.com/FluxML/NNlib.jl/issues/534.
+# NNlibCUDAExt adds 16-bit floats in pairs (#854). Also used by `∇upsample_linear`.
 @inline _atomic_scatter!(dst, idx, op::OP, val) where OP =
     Atomix.modify!(Atomix.IndexableRef(dst, idx), op, val)
 

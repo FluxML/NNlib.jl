@@ -3,6 +3,7 @@ module NNlibCUDAExt
 using NNlib
 using NNlib: BatchedAdjoint, BatchedTranspose, BatchedAdjOrTrans
 using CUDA
+using BFloat16s: BFloat16
 using Random, Statistics
 using Adapt
 using Adapt: WrappedArray

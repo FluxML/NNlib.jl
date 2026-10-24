@@ -1,5 +1,5 @@
 @testset "Grid Sampling" begin
-    for T in (Float32, Float64)
+    for T in (Float16, Float32, Float64)
         x = ones(T, (2, 2, 1, 1))
         grid = Array{T}(undef, 2, 2, 2, 1)
         grid[:, 1, 1, 1] .= (-1, -1)
@@ -53,7 +53,7 @@ end
 end
 
 @testset "Grid Sampling 3D" begin
-    for T in (Float32, Float64)
+    for T in (Float16, Float32, Float64)
         x = ones(T, (2, 2, 2, 1, 1))  # 3D input with depth=2
         grid = Array{T}(undef, 3, 2, 2, 2, 1)  # 3D grid with depth=2
         grid[:, 1, 1, 1, 1] .= (-1, -1, -1)
