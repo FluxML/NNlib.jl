@@ -13,7 +13,8 @@ makedocs(modules = [NNlib],
         canonical = "https://fluxml.ai/NNlib.jl/stable/",
         # analytics = "UA-36890222-9",
         assets = ["assets/flux.css"],
-        prettyurls = get(ENV, "CI", nothing) == "true"),
+        prettyurls = get(ENV, "CI", nothing) == "true",
+        size_threshold = 300 * 2^10),
     warnonly=[:missing_docs,]
 )
 
