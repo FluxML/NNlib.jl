@@ -3,7 +3,7 @@ const AA4{T} = AbstractArray{T,4}
 const AA{N,T} = AbstractArray{T,N}
 
 """
-    scaled_dot_product_attention(query, key, value, [bias]; [fdrop, mask, scale, is_causal, q_offset, q_lengths, kv_lengths, q_segments, kv_segments, maxlen])
+    scaled_dot_product_attention(query, key, value, [bias]; [fdrop, mask, scale, is_causal, window, q_offset, q_lengths, kv_lengths, q_segments, kv_segments, maxlen])
     sdpa(query, key, value, [bias]; kws...)
 
 Multihead dot product attention used in transformer architectures, with an explicit
@@ -53,11 +53,20 @@ weights too.
           decoding with a KV cache, and `q_offset` is `kv_lengths .- q_lengths`, these
           being the sizes of the arrays where not given. This is the causal mask of
           FlashAttention and PyTorch's `causal_lower_right`. Default `false`.
+- `window`: Either `nothing` or a positive integer, the size of a sliding window: the
+          query `i` attends only to the keys `j` with `|q_offset + i - j| < window`. With
+          `is_causal`, these are the last `window` keys up to its own position,
+          `q_offset + i - window < j ≤ q_offset + i`, as in the sliding-window layers of
+          Mistral, Gemma or gpt-oss. This is the `sliding_window` of transformers, and the
+          `window_size` of FlashAttention is `(window - 1, 0)` with `is_causal`,
+          `(window - 1, window - 1)` without. A fused implementation only goes through
+          the keys of the windows. Default `nothing`.
 - `q_offset`: With `is_causal=true`, the number of keys that precede the first query:
           the query `i` attends to the keys `j ≤ q_offset + i`. An integer, or an integer
           array with one entry for each batch element. It counts the keys given, which
           with a sliding-window cache is not the absolute position. It has no effect
-          without `is_causal`, and is set by `is_causal=:bottom_right`. Default `0`.
+          without `is_causal` or `window`, and is set by `is_causal=:bottom_right`.
+          Default `0`.
 - `q_lengths`, `kv_lengths`: Either `nothing` or the number of valid positions of each
           query and of each key/value sequence in the batch, the following ones being
           padding: an integer array with one entry for each batch element, or an
@@ -72,8 +81,9 @@ weights too.
           are on a GPU, which waits for the device, and stands in for them where they
           cannot be read, as the traced ones of Reactant. Default `nothing`.
 
-`mask`, `is_causal` and `kv_lengths` can be combined: a key is then attended to only
-where all of them allow it.
+`mask`, `is_causal`, `window` and `kv_lengths` can be combined: a key is then attended to
+only where all of them allow it. A query that attends to no key, as a padding query past
+the window of every valid key, has a `NaN` output, unless `q_lengths` makes it zero.
 
 # Packed sequences
 
@@ -81,9 +91,10 @@ With `q_segments`, the inputs hold sequences of different lengths one after the 
 without padding: they have size `(head_dim, nheads, total_len)`, without batch
 dimensions, and the output has the size of `query`. The `s`-th segment of `query`
 attends to the `s`-th segment of `key` and `value` only, as a batch element does in a
-padded batch: `is_causal` applies within each segment, and `q_offset`, `q_lengths` and
-`kv_lengths` take one entry for each segment. The lengths of the segments have to add up
-to the sequence lengths of the arrays. A `bias` or a `mask` is not supported.
+padded batch: `is_causal` and `window` apply within each segment, and `q_offset`,
+`q_lengths` and `kv_lengths` take one entry for each segment. The lengths of the segments
+have to add up to the sequence lengths of the arrays. A `bias` or a `mask` is not
+supported.
 
 This is how documents packed in a sequence are kept from attending to each other, and
 how a batch of sequences of different lengths avoids padding: layers other than the
@@ -114,7 +125,8 @@ own fused kernel has an engine for are handed to it: it runs on tensor cores, an
 gradient. It supports `scale`, `is_causal`, `q_lengths`, `kv_lengths` and grouped-query
 attention, and requires:
 
-- no `bias`, `fdrop` or `mask` (that is `nothing`, `identity` and `nothing`);
+- no `bias`, `fdrop`, `mask` or `window` (that is `nothing`, `identity`, `nothing` and
+  `nothing`);
 - with `is_causal`, a causal mask aligned with the first key: the default `q_offset` of
   zero, and for `:bottom_right` as many queries as keys, without `q_lengths` or
   `kv_lengths`;
@@ -147,6 +159,10 @@ y = scaled_dot_product_attention(q, k, v; is_causal=:bottom_right, kv_lengths=[1
 y = scaled_dot_product_attention(q, k, v; is_causal=true, q_offset=[10, 20, 30, 40],
                                  kv_lengths=[13, 23, 33, 43])
 
+# sliding-window attention: each query attends to its last 8 keys, its own included
+x = rand(Float32, 16, 8, 100, 4)
+y = scaled_dot_product_attention(x, x, x; is_causal=true, window=8)
+
 # three documents of 5, 12 and 3 positions packed in one sequence, each attending
 # causally to itself only
 x = rand(Float32, 16, 8, 20)
@@ -156,15 +172,16 @@ y = scaled_dot_product_attention(x, x, x; is_causal=true, q_segments=[5, 12, 3])
 """
 function scaled_dot_product_attention(q::AbstractArray, k::AbstractArray, v::AbstractArray,
             bias=nothing; fdrop=identity, mask=nothing, scale=nothing,
-            is_causal::Union{Bool,Symbol}=false, q_offset=0, q_lengths=nothing, kv_lengths=nothing,
-            q_segments=nothing, kv_segments=q_segments, maxlen=nothing)
+            is_causal::Union{Bool,Symbol}=false, window=nothing, q_offset=0, q_lengths=nothing,
+            kv_lengths=nothing, q_segments=nothing, kv_segments=q_segments, maxlen=nothing)
     check_attention_inputs(q, k, v)
     check_causal(is_causal, q_offset)
+    check_window(window)
     batch_size = size(q)[4:end]
     q, k, v, bias, mask, q_offset, q_lengths, kv_lengths, segments =
         collapse_attention_inputs(q, k, v, bias, mask, q_offset, q_lengths, kv_lengths,
                                   q_segments, kv_segments, maxlen)
-    x = _scaled_dot_product_attention(q, k, v, bias; fdrop, mask, scale, is_causal,
+    x = _scaled_dot_product_attention(q, k, v, bias; fdrop, mask, scale, is_causal, window,
                                       q_offset, q_lengths, kv_lengths, segments)
     return reshape(x, size(x, 1), size(x, 2), size(x, 3), batch_size...)
 end
@@ -176,9 +193,9 @@ const sdpa = scaled_dot_product_attention
 # array or an `Int`. With `segments`, an `AttentionSegments`, the arrays hold packed
 # sequences, and those arguments have an entry for each segment. This is the method for
 # backends to overload: it receives the arguments as the user gave them,
-# `is_causal=:bottom_right` included, before the materialized implementation builds the
-# causal and padding masks, the repeated key/value heads of grouped-query attention and
-# the attention weights, none of which a fused kernel needs.
+# `is_causal=:bottom_right` and `window` included, before the materialized implementation
+# builds the causal, window and padding masks, the repeated key/value heads of
+# grouped-query attention and the attention weights, none of which a fused kernel needs.
 #
 _scaled_dot_product_attention(q::AA4, k::AA4, v::AA4, bias; kws...) =
     generic_attention(q, k, v, bias; kws...)
@@ -188,15 +205,19 @@ _scaled_dot_product_attention(q::AA4, k::AA4, v::AA4, bias; kws...) =
 # materialized one. Under automatic differentiation the latter is also taken, and
 # differentiated, where the fused one has no rule.
 function generic_attention(q::AA4, k::AA4, v::AA4, bias;
-            fdrop, mask, scale, is_causal, q_offset, q_lengths, kv_lengths, segments=nothing)
+            fdrop, mask, scale, is_causal, q_offset, q_lengths, kv_lengths, segments=nothing,
+            window=nothing)
     is_causal, q_offset = causal_offsets(q, k, is_causal, q_offset, q_lengths, kv_lengths)
+    is_causal, q_offset, window = attention_band(is_causal, q_offset, window)
     if fused_attention_applies(q, k, v, bias, fdrop, mask) && fused_attention_differentiable(q, bias) &&
             fused_attention_segments(segments)
-        return fused_attention(q, k, v, bias, mask, scale, is_causal, q_offset, q_lengths, kv_lengths, segments)
+        return fused_attention(q, k, v, bias, mask, scale, is_causal, q_offset, q_lengths, kv_lengths,
+                               segments, window)
     end
     segments === nothing ||
-        return packed_attention(q, k, v; fdrop, scale, is_causal, q_offset, q_lengths, kv_lengths, segments)
-    x, _ = _attention(q, k, v, bias; fdrop, mask, scale, is_causal, q_offset, q_lengths, kv_lengths)
+        return packed_attention(q, k, v; fdrop, scale, is_causal, window, q_offset, q_lengths, kv_lengths,
+                                segments)
+    x, _ = _attention(q, k, v, bias; fdrop, mask, scale, is_causal, window, q_offset, q_lengths, kv_lengths)
     return x
 end
 
@@ -229,16 +250,17 @@ y, α = scaled_dot_product_attention_with_weights(q, k, v)
 """
 function scaled_dot_product_attention_with_weights(q::AbstractArray, k::AbstractArray,
             v::AbstractArray, bias=nothing; fdrop=identity, mask=nothing, scale=nothing,
-            is_causal::Union{Bool,Symbol}=false, q_offset=0, q_lengths=nothing, kv_lengths=nothing,
-            q_segments=nothing, kv_segments=q_segments, maxlen=nothing)
+            is_causal::Union{Bool,Symbol}=false, window=nothing, q_offset=0, q_lengths=nothing,
+            kv_lengths=nothing, q_segments=nothing, kv_segments=q_segments, maxlen=nothing)
     check_attention_inputs(q, k, v)
     check_causal(is_causal, q_offset)
+    check_window(window)
     batch_size = size(q)[4:end]
     q, k, v, bias, mask, q_offset, q_lengths, kv_lengths, segments =
         collapse_attention_inputs(q, k, v, bias, mask, q_offset, q_lengths, kv_lengths,
                                   q_segments, kv_segments, maxlen)
-    x, α = _attention(q, k, v, bias; fdrop, mask, scale, is_causal, q_offset, q_lengths, kv_lengths,
-                      segments)
+    x, α = _attention(q, k, v, bias; fdrop, mask, scale, is_causal, window, q_offset, q_lengths,
+                      kv_lengths, segments)
     x = reshape(x, size(x, 1), size(x, 2), size(x, 3), batch_size...)
     α = reshape(α, size(α, 1), size(α, 2), size(α, 3), batch_size...)
     return x, α
@@ -258,14 +280,15 @@ implementation is differentiated where the fused one has no gradient, as with a 
 """
 function is_fused_attention(q::AbstractArray, k::AbstractArray, v::AbstractArray,
             bias=nothing; fdrop=identity, mask=nothing, scale=nothing,
-            is_causal::Union{Bool,Symbol}=false, q_offset=0, q_lengths=nothing, kv_lengths=nothing,
-            q_segments=nothing, kv_segments=q_segments, maxlen=nothing)
+            is_causal::Union{Bool,Symbol}=false, window=nothing, q_offset=0, q_lengths=nothing,
+            kv_lengths=nothing, q_segments=nothing, kv_segments=q_segments, maxlen=nothing)
     check_attention_inputs(q, k, v)
     check_causal(is_causal, q_offset)
+    check_window(window)
     q, k, v, bias, mask, q_offset, q_lengths, kv_lengths, segments =
         collapse_attention_inputs(q, k, v, bias, mask, q_offset, q_lengths, kv_lengths,
                                   q_segments, kv_segments, maxlen)
-    return _is_fused_attention(q, k, v, bias; fdrop, mask, scale, is_causal,
+    return _is_fused_attention(q, k, v, bias; fdrop, mask, scale, is_causal, window,
                                q_offset, q_lengths, kv_lengths, segments)
 end
 
@@ -327,6 +350,14 @@ function check_causal(is_causal::Symbol, q_offset)
 end
 
 @non_differentiable check_causal(::Any...)
+
+check_window(window::Nothing) = nothing
+check_window(window::Integer) = window >= 1 ? nothing : throw(ArgumentError(
+    "`window` must be a positive integer, got $window."))
+check_window(window) = throw(ArgumentError(
+    "`window` must be `nothing` or a positive integer, got $(typeof(window))."))
+
+@non_differentiable check_window(::Any...)
 
 # Bring the arguments of the public functions to the layout of the implementations:
 # `q`, `k` and `v` with a single batch dimension, `bias` and `mask` broadcastable against
@@ -503,18 +534,20 @@ fused_attention_segments(segments::AttentionSegments) =
 @non_differentiable fused_attention_segments(::Any...)
 
 # Materialized implementation, returning both the attention output and the weights `α`.
-function _attention(q::AA4, k::AA4, v::AA4, bias; fdrop, mask, scale, is_causal,
+function _attention(q::AA4, k::AA4, v::AA4, bias; fdrop, mask, scale, is_causal, window=nothing,
                     q_offset=0, q_lengths=nothing, kv_lengths=nothing, segments=nothing)
     # [q] = [qk_head_dim, nheads, q_len, batch_size]
     # [k] = [qk_head_dim, nkvheads, kv_len, batch_size]
     # [v] = [v_head_dim,  nkvheads, kv_len, batch_size]
     is_causal, q_offset = causal_offsets(q, k, is_causal, q_offset, q_lengths, kv_lengths)
+    is_causal, q_offset, window = attention_band(is_causal, q_offset, window)
     if segments !== nothing
-        mask, valid = packed_attention_mask(q, k, is_causal, q_offset, q_lengths, kv_lengths, segments)
+        mask, valid = packed_attention_mask(q, k, is_causal, window, q_offset, q_lengths, kv_lengths,
+                                            segments)
         x, α = _attention(q, k, v, bias; fdrop, mask, scale, is_causal=false)
         return x .* reshape(valid, 1, 1, :, 1), α .* reshape(valid, 1, :, 1, 1)
     end
-    mask = attention_mask(q, k, mask, is_causal, q_offset, kv_lengths)
+    mask = attention_mask(q, k, mask, is_causal, window, q_offset, q_lengths, kv_lengths)
     # grouped-query attention: each group of `r` query heads shares a key/value head
     r = size(q, 2) ÷ size(k, 2)
 
@@ -563,14 +596,23 @@ apply_query_lengths(α, q_lengths::Nothing) = α
 
 apply_query_lengths(α, q_lengths) = α .* padding_mask(size(α, 2), q_lengths; dims=2)
 
-# The mask of the materialized implementation: the `mask` of the user, the causal one
-# and the one of the padded keys, a key being attended to only where all of them allow it.
-function attention_mask(q::AA4, k::AA4, mask, is_causal::Bool, q_offset, kv_lengths)
+# The mask of the materialized implementation: the `mask` of the user, the causal one, that
+# of the window and the one of the padded keys, a key being attended to only where all of
+# them allow it. The padded queries, whose weights are zeroed, attend to every key: one
+# attending to none, as past a window, would have NaN weights, which the softmax passes on
+# to the gradients of every key.
+function attention_mask(q::AA4, k::AA4, mask, is_causal::Bool, window, q_offset, q_lengths, kv_lengths)
     if is_causal
         mask = combine_masks(mask, make_causal_mask(q, size(k, 3), size(q, 3), q_offset))
     end
+    if window !== nothing
+        mask = combine_masks(mask, make_window_mask(q, size(k, 3), size(q, 3), q_offset, window))
+    end
     if kv_lengths !== nothing
         mask = combine_masks(mask, padding_mask(size(k, 3), kv_lengths; dims=1))
+    end
+    if mask !== nothing && q_lengths !== nothing
+        mask = mask .| .!padding_mask(size(q, 3), q_lengths; dims=2)
     end
     return mask
 end
@@ -587,6 +629,20 @@ bottom_right_offsets(q, k, q_lengths, kv_lengths) =
 
 @non_differentiable causal_offsets(::Any...)
 
+# The window as the implementations take it, the band of the `window` keys that end at
+# the causal bound: the query `i` attends to the keys `q_offset + i - window < j ≤ q_offset + i`.
+# Without `is_causal`, the band of `|q_offset + i - j| < window` has `2 * window - 1` keys
+# and ends `window - 1` keys later.
+attention_band(is_causal::Bool, q_offset, window::Nothing) = is_causal, q_offset, window
+attention_band(is_causal::Bool, q_offset, window::Integer) =
+    is_causal ? (true, q_offset, Int(window)) :
+                (true, attention_shift(q_offset, window - 1), 2 * Int(window) - 1)
+
+attention_shift(q_offset::Integer, n) = q_offset + Int(n)
+attention_shift(q_offset::AbstractArray, n) = q_offset .+ Int32(n)
+
+@non_differentiable attention_band(::Any...)
+
 combine_masks(mask::Nothing, m) = m
 combine_masks(mask, m) = mask .& m
 
@@ -594,15 +650,15 @@ combine_masks(mask, m) = mask .& m
 # batch element, or over the whole packed sequence with a mask that keeps each query to
 # the keys of its segment, whichever attends to fewer pairs. Long segments among short
 # ones pad to many times the positions they have.
-function packed_attention(q::AA4, k::AA4, v::AA4; fdrop, scale, is_causal::Bool, q_offset,
+function packed_attention(q::AA4, k::AA4, v::AA4; fdrop, scale, is_causal::Bool, window, q_offset,
                           q_lengths, kv_lengths, segments::AttentionSegments)
     padded_segments_cheaper(q, k, segments) &&
-        return padded_segments_attention(q, k, v; fdrop, scale, is_causal, q_offset, q_lengths,
+        return padded_segments_attention(q, k, v; fdrop, scale, is_causal, window, q_offset, q_lengths,
                                          kv_lengths, segments)
-    mask, valid = packed_attention_mask(q, k, is_causal, q_offset, q_lengths, kv_lengths, segments)
+    mask, valid = packed_attention_mask(q, k, is_causal, window, q_offset, q_lengths, kv_lengths, segments)
     x = _scaled_dot_product_attention(q, k, v, nothing; fdrop, mask, scale, is_causal=false,
-                                      q_offset=0, q_lengths=nothing, kv_lengths=nothing,
-                                      segments=nothing)
+                                      window=nothing, q_offset=0, q_lengths=nothing,
+                                      kv_lengths=nothing, segments=nothing)
     return x .* reshape(valid, 1, 1, :, 1)
 end
 
@@ -611,14 +667,15 @@ function padded_segments_cheaper(q::AA4, k::AA4, s::AttentionSegments)
     return length(s.q_ends) * s.maxlen_q * s.maxlen_kv <= size(q, 3) * size(k, 3)
 end
 
-function padded_segments_attention(q::AA4, k::AA4, v::AA4; fdrop, scale, is_causal, q_offset,
+function padded_segments_attention(q::AA4, k::AA4, v::AA4; fdrop, scale, is_causal, window, q_offset,
                                    q_lengths, kv_lengths, segments::AttentionSegments)
     (; maxlen_q, maxlen_kv) = segments
     qi = padded_segment_indices(segments.q_sizes, segments.q_ends, maxlen_q)
     ki = padded_segment_indices(segments.kv_sizes, segments.kv_ends, maxlen_kv)
     x = _scaled_dot_product_attention(gather_positions(q, qi), gather_positions(k, ki),
                                       gather_positions(v, ki), nothing; fdrop, mask=nothing,
-                                      scale, is_causal, q_offset, q_lengths, kv_lengths, segments=nothing)
+                                      scale, is_causal, window, q_offset, q_lengths, kv_lengths,
+                                      segments=nothing)
     # [x] = [v_head_dim, nheads, maxlen_q, nsegments]
     id, pos = segment_positions(segments.q_sizes, segments.q_ends, size(q, 3))
     x = gather_positions(x, pos .+ maxlen_q .* (id .- 1) .+ 1)
@@ -647,8 +704,9 @@ function segment_positions(sizes, ends, len::Int)
 end
 
 # The `(kv_len, q_len, 1, 1)` mask that keeps each query to the valid keys of its
-# segment, and to its causal bound, and which of the queries are valid.
-function packed_attention_mask(q::AA4, k::AA4, is_causal::Bool, q_offset, q_lengths, kv_lengths,
+# segment, and to its causal bound and window, and which of the queries are valid. The
+# others attend to every key, as in `attention_mask`.
+function packed_attention_mask(q::AA4, k::AA4, is_causal::Bool, window, q_offset, q_lengths, kv_lengths,
                                s::AttentionSegments)
     qid, qpos = segment_positions(s.q_sizes, s.q_ends, size(q, 3))
     kid, kpos = segment_positions(s.kv_sizes, s.kv_ends, size(k, 3))
@@ -656,7 +714,11 @@ function packed_attention_mask(q::AA4, k::AA4, is_causal::Bool, q_offset, q_leng
     if is_causal
         mask = mask .& (kpos .<= reshape(qpos .+ per_segment(q_offset, qid), 1, :))
     end
-    return reshape(mask, size(mask)..., 1, 1), qpos .< vec(q_lengths)[qid]
+    if window !== nothing
+        mask = mask .& (kpos .> reshape(qpos .+ per_segment(q_offset, qid) .- window, 1, :))
+    end
+    valid = qpos .< vec(q_lengths)[qid]
+    return reshape(mask .| .!reshape(valid, 1, :), size(mask)..., 1, 1), valid
 end
 
 per_segment(x::Integer, id) = x
@@ -710,6 +772,12 @@ make_causal_mask(x::AbstractArray, kvlen::Int, qlen::Int, offset::Integer=0) =
 make_causal_mask(x::AbstractArray, kvlen::Int, qlen::Int, offset::AbstractArray) =
     (1:kvlen) .<= (1:qlen)' .+ offset
 
+# The mask of a band of `window` keys ending at the causal bound, `m[j, i] == j > offset + i - window`.
+make_window_mask(x::AbstractArray, kvlen::Int, qlen::Int, offset::Integer, window::Int) =
+    tril(trues_like(x, (kvlen, qlen)), clamp(window - offset - 1, -kvlen - 1, qlen - 1))
+make_window_mask(x::AbstractArray, kvlen::Int, qlen::Int, offset::AbstractArray, window::Int) =
+    (1:kvlen) .> (1:qlen)' .+ (offset .- window)
+
 trues_like(x::AbstractArray, sz=size(x)) = fill!(similar(x, Bool, sz), true)
 falses_like(x::AbstractArray, sz=size(x)) = fill!(similar(x, Bool, sz), false)
 
@@ -741,5 +809,6 @@ function rrule(::typeof(repeat_kv_heads), x::AA4, r::Int)
 end
 
 @non_differentiable make_causal_mask(::Any...)
+@non_differentiable make_window_mask(::Any...)
 @non_differentiable trues_like(::Any...)
 @non_differentiable falses_like(::Any...)

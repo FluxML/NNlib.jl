@@ -38,14 +38,15 @@ function cudnn_sdpa_output(q, k, v, bias, fdrop, mask, is_causal, q_offset, seq_
 end
 ChainRulesCore.@non_differentiable cudnn_sdpa_output(::Any...)
 
-# Packed sequences need cuDNN's ragged offsets, which cuDNN.jl does not expose
-# (JuliaGPU/CUDA.jl#3435): NNlib's kernel takes them.
+# Packed sequences need cuDNN's ragged offsets (JuliaGPU/CUDA.jl#3435) and sliding windows
+# its diagonal-band bounds (JuliaGPU/CUDA.jl#3461), which the released cuDNN.jl does not
+# expose: NNlib's kernel takes them.
 function _scaled_dot_product_attention(q::DenseCuArray{T,4}, k::DenseCuArray{T,4},
                                        v::DenseCuArray{T,4}, bias;
-                                       fdrop, mask, scale, is_causal,
+                                       fdrop, mask, scale, is_causal, window,
                                        q_offset, q_lengths, kv_lengths, segments) where {T<:CUDNNSDPAFloat}
-    segments === nothing ||
-        return NNlib.generic_attention(q, k, v, bias; fdrop, mask, scale, is_causal,
+    segments === nothing && window === nothing ||
+        return NNlib.generic_attention(q, k, v, bias; fdrop, mask, scale, is_causal, window,
                                        q_offset, q_lengths, kv_lengths, segments)
     seq_len_q, seq_len_kv = cudnn_sdpa_lengths(q, k, q_lengths, kv_lengths)
     causal, offset = NNlib.causal_offsets(q, k, is_causal, q_offset, q_lengths, kv_lengths)
@@ -59,9 +60,9 @@ end
 
 function _is_fused_attention(q::DenseCuArray{T,4}, k::DenseCuArray{T,4},
                              v::DenseCuArray{T,4}, bias;
-                             fdrop, mask, scale, is_causal,
+                             fdrop, mask, scale, is_causal, window,
                              q_offset, q_lengths, kv_lengths, segments) where {T<:CUDNNSDPAFloat}
-    segments === nothing ||
+    segments === nothing && window === nothing ||
         return NNlib.fused_attention_applies(q, k, v, bias, fdrop, mask) &&
                NNlib.fused_attention_segments(segments)
     seq_len_q, seq_len_kv = cudnn_sdpa_lengths(q, k, q_lengths, kv_lengths)
