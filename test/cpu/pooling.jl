@@ -411,6 +411,11 @@ end
     @test size(meanpool(x, (2, 2); pad=(1, 1), stride=(2, 2))) == (6, 6, 3, 10)
 end
 
+# An unbound type parameter makes GPUCompiler, and so Reactant, reject the method (issue #849)
+@testset "PoolDims has no unbound type parameters" begin
+    @test !any(m -> occursin("PoolDims", String(m.name)), Test.detect_unbound_args(NNlib))
+end
+
 # Add another test for 2d maxpool that uses an odd-length size:
 @testset "Issue #133" begin
     x = reshape([(1.:9.)...], 3, 3, 1, 1)
