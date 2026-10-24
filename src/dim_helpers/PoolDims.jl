@@ -1,6 +1,6 @@
 """
-    PoolDims(x_size::NTuple{M}, k::Union{NTuple{L, Int}, Int};
-             stride=k, padding=0, dilation=1, ceil_mode=false)  where {M, L}
+    PoolDims(x_size::NTuple{M}, k::Union{NTuple{<:Any, Int}, Int};
+             stride=k, padding=0, dilation=1, ceil_mode=false)  where M
 
 Dimensions for a "pooling" operation that can have an arbitrary input size, kernel size,
 stride, dilation, and channel count.  Used to dispatch onto efficient implementations at
@@ -30,9 +30,9 @@ PoolDims{N, K, S, P, D}(I, Ks, C_in, Ss, Ps, Ds) where {N, K, S, P, D} =
     PoolDims{N, K, S, P, D}(I, Ks, C_in, Ss, Ps, Ds, false)
 
 function PoolDims(
-    x_size::NTuple{M}, k::Union{NTuple{L, Int}, Int};
+    x_size::NTuple{M}, k::Union{NTuple{<:Any, Int}, Int};
     stride = k, padding = 0, dilation = 1, ceil_mode::Bool = false,
-) where {M, L}
+) where M
     _check_kernel(k::Number, N::Int) = ntuple(_ -> Int(k), N)
     _check_kernel(k::NTuple, ::Int) = k
 
