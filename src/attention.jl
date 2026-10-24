@@ -110,7 +110,10 @@ and GPU arrays of `Float16`, `Float32` and `Float64` take, and on the GPU those 
 be on the device of the inputs.
 
 Any other call takes the materialized implementation, which forms the weights.
-[`NNlib.is_fused_attention`](@ref) tells which of the two a call takes.
+[`NNlib.is_fused_attention`](@ref) tells which of the two a call takes. With a `window`,
+it forms them over the band of the window only, for blocks of queries with the keys of
+their windows, so that memory grows linearly with the sequence length there too. `fdrop`
+is then given these blocks of weights rather than the whole array.
 
 The fused implementation has a gradient with respect to `query`, `key`, `value` and
 `scale`, which recomputes the weights tile by tile and does not materialize them either.
@@ -217,7 +220,20 @@ function generic_attention(q::AA4, k::AA4, v::AA4, bias;
     segments === nothing ||
         return packed_attention(q, k, v; fdrop, scale, is_causal, window, q_offset, q_lengths, kv_lengths,
                                 segments)
-    x, _ = _attention(q, k, v, bias; fdrop, mask, scale, is_causal, window, q_offset, q_lengths, kv_lengths)
+    return materialized_attention(q, k, v, bias; fdrop, mask, scale, is_causal, window, q_offset, q_lengths,
+                                  kv_lengths)
+end
+
+# The output of the materialized implementation, over the band of the window only where
+# that has fewer pairs of a query and a key than the whole.
+function materialized_attention(q::AA4, k::AA4, v::AA4, bias; fdrop, mask, scale, is_causal, window=nothing,
+                                q_offset=0, q_lengths=nothing, kv_lengths=nothing, segments=nothing)
+    is_causal, q_offset = causal_offsets(q, k, is_causal, q_offset, q_lengths, kv_lengths)
+    is_causal, q_offset, window = attention_band(is_causal, q_offset, window)
+    segments === nothing && banded_attention_cheaper(size(q, 1) + size(v, 1), size(q, 3), size(k, 3), window) &&
+        return banded_attention(q, k, v, bias; fdrop, mask, scale, window, q_offset, q_lengths, kv_lengths)
+    x, _ = _attention(q, k, v, bias; fdrop, mask, scale, is_causal, window, q_offset, q_lengths, kv_lengths,
+                      segments)
     return x
 end
 
@@ -646,13 +662,94 @@ attention_shift(q_offset::AbstractArray, n) = q_offset .+ Int32(n)
 combine_masks(mask::Nothing, m) = m
 combine_masks(mask, m) = mask .& m
 
+# The materialized implementation over the band of a window, the queries in blocks of `C`.
+# The queries of a block attend to at most `C + window - 1` keys, from the first of the
+# window of its first query to its last query: the blocks with their keys make a batch of
+# problems, each with the band as a causal mask, which the materialized implementation
+# takes. Memory and compute then grow as `q_len * (C + window)` rather than as
+# `q_len * kv_len`.
+function banded_attention(q::AA4, k::AA4, v::AA4, bias; fdrop, mask, scale, window::Int, q_offset,
+                          q_lengths, kv_lengths)
+    C = attention_block_size(size(q, 1) + size(v, 1), window, size(q, 3))
+    blocks = attention_blocks(q, k, C, window, q_offset, q_lengths, kv_lengths)
+    mask = combine_masks(attention_mask_band(mask, blocks), blocks.kv_valid)
+    x, _ = _attention(gather_positions(q, blocks.q), gather_positions(k, blocks.kv),
+                      gather_positions(v, blocks.kv), attention_band_of(bias, blocks); fdrop, mask, scale,
+                      is_causal=true, window, q_offset=window - 1, q_lengths=blocks.q_lengths)
+    # [x] = [v_head_dim, nheads, C, nblocks]: the blocks of a batch element are consecutive
+    x = reshape(x, size(x, 1), size(x, 2), :, size(q, 4))
+    return x[:, :, 1:size(q, 3), :]
+end
+
+# A query goes through `C + window - 1` keys in a block of `C`, which copies the keys and
+# the values `1 + (window - 1) / C` times: their sum is least near `C = √(head_dims * window)`.
+attention_block_size(head_dims::Int, window::Int, q_len::Int) =
+    min(max(isqrt(head_dims * window), 32), q_len)
+
+# The pairs of a query and a key the materialized implementation goes through.
+banded_attention_pairs(head_dims::Int, q_len::Int, kv_len::Int, window::Nothing) = q_len * kv_len
+
+function banded_attention_pairs(head_dims::Int, q_len::Int, kv_len::Int, window::Int)
+    C = attention_block_size(head_dims, window, q_len)
+    return min(cld(q_len, C) * C * (C + window - 1), q_len * kv_len)
+end
+
+banded_attention_cheaper(head_dims::Int, q_len::Int, kv_len::Int, window) =
+    banded_attention_pairs(head_dims, q_len, kv_len, window) < q_len * kv_len
+
+# The blocks of `C` queries of each batch element, one after the other, with the keys they
+# attend to: the block that starts after the query `i0` has the queries `i0 .+ (1:C)` and
+# the keys `j0 .+ (1:C + window - 1)`, with `j0 = q_offset + i0 - window + 1`. Returns their
+# positions in `q` and `k`, those past the ends of the sequence clamped to them, the mask
+# of the keys in the sequence and in its `kv_lengths`, the number of valid queries of each
+# block, and for `attention_band_of` the positions and the batch element of each block.
+function attention_blocks(q::AA4, k::AA4, C::Int, window::Int, q_offset, q_lengths, kv_lengths)
+    q_len, kv_len = size(q, 3), size(k, 3)
+    nblocks = cld(q_len, C)
+    n = nblocks * size(q, 4)
+    blk = copyto!(similar(q, Int32, n), collect(Int32(0):Int32(n - 1)))
+    b = blk .÷ Int32(nblocks) .+ Int32(1)
+    i0 = Int32(C) .* (blk .% Int32(nblocks))
+    j0 = i0 .+ per_segment(q_offset, b) .- Int32(window - 1)
+    nvalid = clamp.(per_segment(something(q_lengths, q_len), b) .- i0, 0, C)
+    jmax = per_segment(something(kv_lengths, kv_len), b) .- j0
+    i = (1:C) .+ reshape(i0, 1, :)
+    j = (1:(C + window - 1)) .+ reshape(j0, 1, :)
+    kv_valid = (j .>= 1) .& ((1:(C + window - 1)) .<= reshape(jmax, 1, :))
+    i, j, b = min.(i, q_len), clamp.(j, 1, kv_len), reshape(b, 1, :)
+    return (; q=i .+ q_len .* (b .- 1), kv=j .+ kv_len .* (b .- 1),
+            kv_valid=reshape(kv_valid, size(j, 1), 1, 1, :), q_lengths=reshape(nvalid, 1, 1, 1, :),
+            i=reshape(i, 1, C, 1, :), j=reshape(j, size(j, 1), 1, 1, :), b=reshape(b, 1, 1, 1, :))
+end
+
+# The band of a `bias` or a `mask` broadcastable to `(kv_len, q_len, nheads, batch_size)`,
+# for the blocks of `attention_blocks`, as their logits.
+attention_band_of(x::Nothing, blocks) = nothing
+
+function attention_band_of(x::AbstractArray, blocks)
+    nk, nq, nh, nb = size(x, 1), size(x, 2), size(x, 3), size(x, 4)
+    idx = min.(blocks.j, nk) .+
+          nk .* (min.(blocks.i, nq) .- 1 .+ nq .* (reshape(0:(nh - 1), 1, 1, :) .+ nh .* (min.(blocks.b, nb) .- 1)))
+    return gather(unlazy(flat_logits(x)), idx)
+end
+
+# An alias of `x`, as the reshapes of the inputs (see the Enzyme extension).
+flat_logits(x::AbstractArray) = vec(x)
+
+attention_mask_band(mask, blocks) = attention_band_of(mask, blocks)
+
+@non_differentiable banded_attention_cheaper(::Any...)
+@non_differentiable attention_blocks(::Any...)
+@non_differentiable attention_mask_band(::Any...)
+
 # Packed sequences outside of the fused kernels: in a padded batch with a segment in each
 # batch element, or over the whole packed sequence with a mask that keeps each query to
-# the keys of its segment, whichever attends to fewer pairs. Long segments among short
-# ones pad to many times the positions they have.
+# the keys of its segment, whichever attends to fewer pairs, those of the band of a window
+# in the padded batch. Long segments among short ones pad to many times the positions they
+# have.
 function packed_attention(q::AA4, k::AA4, v::AA4; fdrop, scale, is_causal::Bool, window, q_offset,
                           q_lengths, kv_lengths, segments::AttentionSegments)
-    padded_segments_cheaper(q, k, segments) &&
+    padded_segments_cheaper(q, v, segments, window) &&
         return padded_segments_attention(q, k, v; fdrop, scale, is_causal, window, q_offset, q_lengths,
                                          kv_lengths, segments)
     mask, valid = packed_attention_mask(q, k, is_causal, window, q_offset, q_lengths, kv_lengths, segments)
@@ -662,9 +759,10 @@ function packed_attention(q::AA4, k::AA4, v::AA4; fdrop, scale, is_causal::Bool,
     return x .* reshape(valid, 1, 1, :, 1)
 end
 
-function padded_segments_cheaper(q::AA4, k::AA4, s::AttentionSegments)
+function padded_segments_cheaper(q::AA4, v::AA4, s::AttentionSegments, window)
     (s.maxlen_q === nothing || s.maxlen_kv === nothing) && return false
-    return length(s.q_ends) * s.maxlen_q * s.maxlen_kv <= size(q, 3) * size(k, 3)
+    pairs = banded_attention_pairs(size(q, 1) + size(v, 1), s.maxlen_q, s.maxlen_kv, window)
+    return length(s.q_ends) * pairs <= size(q, 3) * size(v, 3)
 end
 
 function padded_segments_attention(q::AA4, k::AA4, v::AA4; fdrop, scale, is_causal, window, q_offset,

@@ -819,16 +819,16 @@ function EnzymeRules.reverse(config::EnzymeRules.RevConfig,
 end
 
 
-# collapse_batch_dims, interleaved_pairs, halved_pairs
+# collapse_batch_dims, flat_logits, interleaved_pairs, halved_pairs
 #
-# Reshapes, whose result aliases their argument. That of a constant `key` or `value` next
-# to an active `query`, or of a constant input of `apply_rotary_embedding` next to active
-# tables, is constant memory Enzyme's activity analysis takes for active memory: the
-# shadow of the result is that of the argument reshaped, or scratch memory for a constant
-# argument.
+# Reshapes, whose result aliases their argument. That of a constant `key`, `value` or
+# `bias` next to an active `query`, or of a constant input of `apply_rotary_embedding` next
+# to active tables, is constant memory Enzyme's activity analysis takes for active memory:
+# the shadow of the result is that of the argument reshaped, or scratch memory for a
+# constant argument.
 
-const AliasingReshape = Union{typeof(NNlib.collapse_batch_dims), typeof(NNlib.interleaved_pairs),
-                              typeof(NNlib.halved_pairs)}
+const AliasingReshape = Union{typeof(NNlib.collapse_batch_dims), typeof(NNlib.flat_logits),
+                              typeof(NNlib.interleaved_pairs), typeof(NNlib.halved_pairs)}
 
 function EnzymeRules.augmented_primal(config::EnzymeRules.RevConfig,
         func::EnzymeCore.Const{<:AliasingReshape}, ::Type{RT},
@@ -939,10 +939,10 @@ _attention_per_batch(x::AbstractArray) = reshape(x, 1, 1, 1, :)
 
 _materialized_attention(q, k, v, bias, mask, scale, is_causal, q_offset, q_lengths, kv_lengths, segments,
                         window) =
-    first(NNlib._attention(q, k, v, bias; fdrop=identity, mask, scale, is_causal, window,
-                           q_offset=_attention_per_batch(q_offset),
-                           q_lengths=_attention_per_batch(q_lengths),
-                           kv_lengths=_attention_per_batch(kv_lengths), segments))
+    NNlib.materialized_attention(q, k, v, bias; fdrop=identity, mask, scale, is_causal, window,
+                                 q_offset=_attention_per_batch(q_offset),
+                                 q_lengths=_attention_per_batch(q_lengths),
+                                 kv_lengths=_attention_per_batch(kv_lengths), segments)
 
 function EnzymeRules.forward(config::EnzymeRules.FwdConfig,
         func::EnzymeCore.Const{typeof(NNlib.fused_attention)}, ::Type{RT},
