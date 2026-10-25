@@ -365,36 +365,26 @@ function ∇conv_data_im2col!(
 end
 
 
-# Output positions `first:last` of an image, flattened over `(w, h, d)`, which a tile
-# holds in its rows `1:last-first+1`. Its output lines `(:, h, d)` run from
-# `(h_lo, d_lo)` to `(h_hi, d_hi)`.
-struct Im2colTile
-    first::Int
-    last::Int
-    out_w::Int
-    out_h::Int
-    h_lo::Int
-    d_lo::Int
-    h_hi::Int
-    d_hi::Int
-end
-
-function Im2colTile(rows::UnitRange{Int}, out_w, out_h)
-    l_lo, l_hi = fld1(first(rows), out_w), fld1(last(rows), out_w)
-    return Im2colTile(first(rows), last(rows), out_w, out_h,
-                      mod1(l_lo, out_h), fld1(l_lo, out_h), mod1(l_hi, out_h), fld1(l_hi, out_h))
-end
-
 _isect(a, b) = max(first(a), first(b)):min(last(a), last(b))
 
-# The parts of the ranges of an output region in the tile, and the tile row of `(w, h, d)`.
-@inline tile_ds(t::Im2colTile, ds) = _isect(ds, t.d_lo:t.d_hi)
-@inline tile_hs(t::Im2colTile, hs, d) =
-    _isect(hs, (d == t.d_lo ? t.h_lo : 1):(d == t.d_hi ? t.h_hi : t.out_h))
-@inline tile_row(t::Im2colTile, w, h, d) = w + (h - 1 + (d - 1)*t.out_h)*t.out_w - t.first + 1
-@inline function tile_ws(t::Im2colTile, ws, h, d)
-    row0 = tile_row(t, 0, h, d)
-    return _isect(ws, (1 - row0):(t.last - t.first + 1 - row0))
+const EMPTY_BOX = (1:0, 1:0, 1:0)
+
+# The output positions `rows` of an image, flattened over `(w, h, d)`, as five boxes of
+# `(w, h, d)` ranges, some empty: the rest of the first line, the rest of its plane, the
+# planes in between, the start of the last plane, and the start of the last line.
+function tile_boxes(rows::UnitRange{Int}, out_w, out_h)
+    l_lo, l_hi = fld1(first(rows), out_w), fld1(last(rows), out_w)
+    h_lo, d_lo = mod1(l_lo, out_h), fld1(l_lo, out_h)
+    h_hi, d_hi = mod1(l_hi, out_h), fld1(l_hi, out_h)
+    w_lo, w_hi = first(rows) - (l_lo - 1)*out_w, last(rows) - (l_hi - 1)*out_w
+    l_lo == l_hi && return ((w_lo:w_hi, h_lo:h_lo, d_lo:d_lo),
+                            EMPTY_BOX, EMPTY_BOX, EMPTY_BOX, EMPTY_BOX)
+    first_line = (w_lo:out_w, h_lo:h_lo, d_lo:d_lo)
+    last_line = (1:w_hi, h_hi:h_hi, d_hi:d_hi)
+    d_lo == d_hi && return (first_line, (1:out_w, h_lo+1:h_hi-1, d_lo:d_lo),
+                            EMPTY_BOX, EMPTY_BOX, last_line)
+    return (first_line, (1:out_w, h_lo+1:out_h, d_lo:d_lo),
+            (1:out_w, 1:out_h, d_lo+1:d_hi-1), (1:out_w, 1:h_hi-1, d_hi:d_hi), last_line)
 end
 
 """
@@ -421,7 +411,7 @@ function im2col!(col::AbstractArray{T,2}, x::AbstractArray{T,4}, cdims::ConvDims
     dil_w, dil_h, dil_d = dilation(cdims)
     stride_w, stride_h, stride_d = stride(cdims)
     out_width, out_height, out_depth = output_size(cdims)
-    tile = Im2colTile(rows, out_width, out_height)
+    boxes = tile_boxes(rows, out_width, out_height)
 
     # Reshape col for easy access, by output pixel and input patch element.
     col_reshaped = reshape(col, (size(col, 1), kernel_w, kernel_h, kernel_d, C_in))
@@ -430,21 +420,23 @@ function im2col!(col::AbstractArray{T,2}, x::AbstractArray{T,4}, cdims::ConvDims
 
     # A helper function to project from output (w, h) to input (input_w, input_h)
     @inline project(idx, stride, pad) = (idx - 1)*stride - pad + 1
+    # The row of output pixel (w, h, d) in `col`
+    @inline row(w, h, d) = w + (h - 1 + (d - 1)*out_height)*out_width - first(rows) + 1
 
 
     # We begin by copying the central region of the image which requires no padding at all.
     # Eliminating the branches of the fully generalized version below gives us a nice
     # speedup on the majority of the data.
-    @inbounds for c in 1:C_in
+    @inbounds for (box_w, box_h, box_d) in boxes, c in 1:C_in
         # Unpack "central region"
         w_region, h_region, d_region = central_region
 
         for kd in 1:kernel_d,
             kh in 1:kernel_h,
             kw in 1:kernel_w,
-            d in tile_ds(tile, d_region),
-            h in tile_hs(tile, h_region, d),
-            w in tile_ws(tile, w_region, h, d)
+            d in _isect(d_region, box_d),
+            h in _isect(h_region, box_h),
+            w in _isect(w_region, box_w)
 
             input_kd = project(d, stride_d, pad_d_lo) + (kd - 1)*dil_d
             input_kh = project(h, stride_h, pad_h_lo) + (kh - 1)*dil_h
@@ -452,17 +444,17 @@ function im2col!(col::AbstractArray{T,2}, x::AbstractArray{T,4}, cdims::ConvDims
             kidxs = kernel_index(kw, kh, kd, cdims)
 
             xval::T = x[input_kw, input_kh, input_kd, c]
-            col_reshaped[tile_row(tile, w, h, d), kidxs..., c] = xval
+            col_reshaped[row(w, h, d), kidxs..., c] = xval
         end
     end
 
 
     # For each "padded region", we run the fully general version
-    @inbounds for (w_region, h_region, d_region) in padded_regions
+    @inbounds for (box_w, box_h, box_d) in boxes, (w_region, h_region, d_region) in padded_regions
         for c in 1:C_in,
-            d in tile_ds(tile, d_region),
-            h in tile_hs(tile, h_region, d),
-            w in tile_ws(tile, w_region, h, d),
+            d in _isect(d_region, box_d),
+            h in _isect(h_region, box_h),
+            w in _isect(w_region, box_w),
             kd in 1:kernel_d,
             kh in 1:kernel_h,
             kw in 1:kernel_w
@@ -479,13 +471,13 @@ function im2col!(col::AbstractArray{T,2}, x::AbstractArray{T,4}, cdims::ConvDims
                 input_kw <= 0 || input_kw > width
             )
             if out_of_bounds
-                col_reshaped[tile_row(tile, w, h, d), kidxs..., c] = T(0)
+                col_reshaped[row(w, h, d), kidxs..., c] = T(0)
                 continue
             end
 
             # Copy the data over
             xval::T = x[input_kw, input_kh, input_kd, c]
-            col_reshaped[tile_row(tile, w, h, d), kidxs..., c] = xval
+            col_reshaped[row(w, h, d), kidxs..., c] = xval
         end
     end
 end
@@ -518,7 +510,7 @@ function col2im!(x::AbstractArray{T,4}, col::AbstractArray{T,2}, cdims::ConvDims
     dil_w, dil_h, dil_d = dilation(cdims)
     stride_w, stride_h, stride_d = stride(cdims)
     out_width, out_height, out_depth = output_size(cdims)
-    tile = Im2colTile(rows, out_width, out_height)
+    boxes = tile_boxes(rows, out_width, out_height)
 
     # TODO: Rewrite this method so we don't have this fill!() at the beginning!
     # Calculate each output pixel once rather than accumulating into it?
@@ -535,13 +527,15 @@ function col2im!(x::AbstractArray{T,4}, col::AbstractArray{T,2}, cdims::ConvDims
 
     # A helper function to project from output (w, h) to input (input_w, input_h)
     @inline project(idx, stride, pad) = (idx - 1)*stride - pad + 1
+    # The row of output pixel (w, h, d) in `col`
+    @inline row(w, h, d) = w + (h - 1 + (d - 1)*out_height)*out_width - first(rows) + 1
 
-    @inbounds for c in 1:C_in
+    @inbounds for (box_w, box_h, box_d) in boxes, c in 1:C_in
         for kd in 1:kernel_d,
             kh in 1:kernel_h,
             kw in 1:kernel_w
 
-            for d in tile_ds(tile, 1:out_depth)
+            for d in box_d
                 input_kd = project(d, stride_d, pad_d_lo) + (kd - 1)*dil_d
 
                 # If this d is off the edge, then deal with the entire plane
@@ -550,7 +544,7 @@ function col2im!(x::AbstractArray{T,4}, col::AbstractArray{T,2}, cdims::ConvDims
                     continue
                 end
 
-                for h in tile_hs(tile, 1:out_height, d)
+                for h in box_h
                     input_kh = project(h, stride_h, pad_h_lo) + (kh - 1)*dil_h
 
                     # Same for `h`, but in this case it's only a line, not a plane.
@@ -559,7 +553,7 @@ function col2im!(x::AbstractArray{T,4}, col::AbstractArray{T,2}, cdims::ConvDims
                         continue
                     end
 
-                    for w in tile_ws(tile, 1:out_width, h, d)
+                    for w in box_w
                         input_kw = project(w, stride_w, pad_w_lo) + (kw - 1)*dil_w
 
                         # If this `w` is off the edge, only it gets cleared out.
@@ -569,7 +563,7 @@ function col2im!(x::AbstractArray{T,4}, col::AbstractArray{T,2}, cdims::ConvDims
 
                         # Copy the data over
                         kidxs = kernel_index(kw, kh, kd, cdims)
-                        cval::T = col_reshaped[tile_row(tile, w, h, d), kidxs..., c]
+                        cval::T = col_reshaped[row(w, h, d), kidxs..., c]
                         x[input_kw, input_kh, input_kd, c] += cval
                     end
                 end
