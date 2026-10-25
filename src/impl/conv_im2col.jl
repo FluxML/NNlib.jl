@@ -10,15 +10,18 @@ end
 
 # The im2col matrix of an image has one row per output position, too many to hold once
 # per task on large images (#864). It is filled and multiplied in tiles of consecutive
-# rows instead, each task reusing one `(rows, K)` slice of the workspace `col`. A tile
-# gets `IM2COL_TILE_BYTES` per thread working on it: tasks pin BLAS to one thread and
-# keep their tiles in cache, while a lone task leaves its GEMMs to BLAS threads, which
-# need bigger ones. The floor amortizes BLAS packing the other operand for every tile.
+# rows instead, each task reusing one `(rows, K)` slice of the workspace `col`. Tasks pin
+# BLAS to one thread and keep their tiles of `IM2COL_TILE_BYTES` in cache, while a lone
+# task leaves its GEMMs to BLAS threads, which need much bigger ones. The floor amortizes
+# BLAS packing the other operand for every tile.
 const IM2COL_TILE_BYTES = 2^19
+const IM2COL_BLAS_TILE_BYTES = 2^27
 const IM2COL_MIN_TILE_ROWS = 64
 
-im2col_tile_rows(M, K, ::Type{T}, nthreads) where {T} =
-    min(max(nthreads * IM2COL_TILE_BYTES ÷ (K * sizeof(T)), IM2COL_MIN_TILE_ROWS), M)
+function im2col_tile_rows(M, K, ::Type{T}, nt) where {T}
+    bytes = nt > 1 || get_num_threads() == 1 ? IM2COL_TILE_BYTES : IM2COL_BLAS_TILE_BYTES
+    return min(max(bytes ÷ (K * sizeof(T)), IM2COL_MIN_TILE_ROWS), M)
+end
 
 # Tasks for an im2col op on `cdims` over `nbatch` images: at most `ntasks`, each with at
 # least `IM2COL_MIN_TASK_WORK` multiply-adds to pay for spawning it.
@@ -37,12 +40,12 @@ function conv_im2col_dims(cdims::ConvDims, ::Type{T}, nbatch, ntasks) where {T}
     M = prod(output_size(cdims))
     K = prod(kernel_size(cdims)) * channels_in(cdims)
     ntasks = im2col_ntasks(cdims, nbatch, ntasks)
-    rows = im2col_tile_rows(M, K, T, 1)
+    rows = im2col_tile_rows(M, K, T, ntasks)
     if ntasks > nbatch > 0
         rows = min(rows, cld(M, cld(ntasks, nbatch)))
     end
     nt = clamp(nbatch * cld(M, rows), 1, ntasks)
-    return nt > 1 ? (rows, K, nt) : (im2col_tile_rows(M, K, T, get_num_threads()), K, 1)
+    return nt > 1 ? (rows, K, nt) : (im2col_tile_rows(M, K, T, 1), K, 1)
 end
 
 # `∇conv_data_im2col!` threads over slabs of `blk` indices along the outermost output
@@ -66,7 +69,7 @@ function ∇conv_data_im2col_dims(cdims::ConvDims, ::Type{T}, nbatch, ntasks) wh
     K = prod(kernel_size(cdims)) * channels_in(cdims)
     ax, blk, nslab = ∇conv_data_im2col_slabs(cdims, nbatch, ntasks)
     nt = clamp(nbatch * cld(nslab, 2), 1, im2col_ntasks(cdims, nbatch, ntasks))
-    rows = im2col_tile_rows(blk * axis_stride(out, ax), K, T, nt > 1 ? 1 : get_num_threads())
+    rows = im2col_tile_rows(blk * axis_stride(out, ax), K, T, nt)
     return rows, K, nt
 end
 
@@ -81,8 +84,8 @@ function ∇conv_filter_im2col_dims(cdims::ConvDims, ::Type{T}, nbatch, ntasks) 
     K = prod(kernel_size(cdims)) * channels_in(cdims)
     nt = clamp(nbatch * M ÷ max(IM2COL_MIN_TASK_ROWS, channels_out(cdims)), 1,
                im2col_ntasks(cdims, nbatch, ntasks))
-    nt == 1 && return im2col_tile_rows(M, K, T, get_num_threads()), K, 1
-    rows = im2col_tile_rows(M, K, T, 1)
+    nt == 1 && return im2col_tile_rows(M, K, T, 1), K, 1
+    rows = im2col_tile_rows(M, K, T, nt)
     if nt > nbatch
         rows = min(rows, cld(M, cld(nt, nbatch)))
     end
