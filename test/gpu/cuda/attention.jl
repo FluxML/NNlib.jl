@@ -31,14 +31,17 @@ half(T, x) = T.(CuArray(x))    # round on the device (JuliaMath/BFloat16s.jl#107
               scaled_dot_product_attention(q, k, v; is_causal=true) rtol=2f-2
 
         # cuDNN aligns the causal mask with the first key: an offset takes NNlib's kernel,
-        # and so does a bottom-right mask, but for as many queries as keys
+        # and so does a bottom-right mask, but for as many queries as keys. cuDNN's fused
+        # attention needs compute capability 8.0.
         ext = Base.get_extension(NNlib, :NNlibCUDACUDNNExt)
         cudnn(q, k, is_causal, q_offset=0) = ext.cudnn_sdpa_output(q, k, k, nothing, identity, nothing,
             NNlib.causal_offsets(q, k, is_causal, NNlib.attention_offsets(q, q_offset), nothing, nothing)...,
             nothing, nothing)
-        @test cudnn(qd, kd, true) !== nothing
+        no_cudnn = CUDA.capability(CUDA.device()) < v"8.0"
+        @test cudnn(qd, kd, true) !== nothing skip=no_cudnn
         @test cudnn(qd, kd, true, 2) === nothing && cudnn(qd, kd, true, [2, 0, 5]) === nothing
-        @test cudnn(qd, qd, :bottom_right) !== nothing && cudnn(qd, kd, :bottom_right) === nothing
+        @test cudnn(qd, qd, :bottom_right) !== nothing skip=no_cudnn
+        @test cudnn(qd, kd, :bottom_right) === nothing
         @test sdpa_fused(qd, kd, vd; is_causal=true, q_offset=[2, 0, 5])
         @test Float32.(Array(scaled_dot_product_attention(qd, kd, vd; is_causal=true, q_offset=[2, 0, 5]))) ≈
               scaled_dot_product_attention(q, k, v; is_causal=true, q_offset=[2, 0, 5]) rtol=2f-2
