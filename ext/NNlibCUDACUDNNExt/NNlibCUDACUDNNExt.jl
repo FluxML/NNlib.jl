@@ -12,5 +12,6 @@ include("softmax.jl")
 include("activations.jl")
 include("attention.jl")
 include("batchnorm.jl")
+include("precompile.jl")
 
 end # module

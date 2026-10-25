@@ -139,4 +139,6 @@ export stft, istft, hann_window, hamming_window, spectrogram, melscale_filterban
                     "∇batchnorm, ∇instancenorm, ∇groupnorm, ∇layernorm, ∇rmsnorm"))
 end
 
+include("precompile.jl")
+
 end # module NNlib

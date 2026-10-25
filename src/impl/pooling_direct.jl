@@ -11,8 +11,8 @@ for name in (:max, :mean, :lpnorm)
                     pdims::PoolDims; alpha=1, beta=0, kwargs...) 
         $((Symbol("$(name)pool_direct!")))(
             y, x, pdims,
-            Val(kernel_size(pdims)), Val(channels_out(pdims)),
-            Val(padding(pdims)), Val(dilation(pdims)), Val(stride(pdims));
+            Val(kernel_size(pdims)), Val(padding(pdims)), Val(dilation(pdims)),
+            Val(stride(pdims));
             alpha, beta, kwargs...)
         return y
     end
@@ -20,14 +20,15 @@ for name in (:max, :mean, :lpnorm)
     @eval function $((Symbol("$(name)pool_direct!")))(
         y::AbstractArray{T,5}, x::AbstractArray{<:Any,5},
         pdims::PoolDims,
-        # kernel size, channels out, padding, dilation, stride
-        ::Val{K}, ::Val{C}, ::Val{P}, ::Val{D}, ::Val{S};
+        # kernel size, padding, dilation, stride
+        ::Val{K}, ::Val{P}, ::Val{D}, ::Val{S};
         alpha=1, beta=0, count_include_pad::Bool=true, kwargs...
-    ) where {T, K, C, P, D, S}
+    ) where {T, K, P, D, S}
         @assert iszero(beta) "beta not supported yet"
         check_dims(size(x), size(y), pdims)
 
         width, height, depth = input_size(pdims)
+        C = channels_out(pdims)
         kernel_w, kernel_h, kernel_d = K
         pad_w_lo, pad_w_hi, pad_h_lo, pad_h_hi, pad_d_lo, pad_d_hi = P
         dil_w, dil_h, dil_d = D
