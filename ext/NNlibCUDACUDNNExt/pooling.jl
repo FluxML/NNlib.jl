@@ -72,6 +72,21 @@ function ∇meanpool!(dx::DenseCuArray{T}, dy::DenseCuArray{T}, y::DenseCuArray{
     return dx
 end
 
+# Non-dense inputs (see `dense`)
+maxpool!(y::DenseCuArray{T}, x::AnyCuArray{T}, pdims::PoolDims) where T<:CUDNNFloat =
+    maxpool!(y, dense(x), pdims)
+
+meanpool!(y::DenseCuArray{T}, x::AnyCuArray{T}, pdims::PoolDims; kwargs...) where T<:CUDNNFloat =
+    meanpool!(y, dense(x), pdims; kwargs...)
+
+∇maxpool!(dx::DenseCuArray{T}, dy::AnyCuArray{T}, y::AnyCuArray{T}, x::AnyCuArray{T},
+          pdims::PoolDims; kwargs...) where T<:CUDNNFloat =
+    ∇maxpool!(dx, dense(dy), dense(y), dense(x), pdims; kwargs...)
+
+∇meanpool!(dx::DenseCuArray{T}, dy::AnyCuArray{T}, y::AnyCuArray{T}, x::AnyCuArray{T},
+           pdims::PoolDims; kwargs...) where T<:CUDNNFloat =
+    ∇meanpool!(dx, dense(dy), dense(y), dense(x), pdims; kwargs...)
+
 ### Since CUDA.jl does not support 1D pooling, we have to convert to 2d
 
 add1d(x) = reshape(x, 1, size(x)...)

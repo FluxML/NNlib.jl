@@ -153,3 +153,31 @@ end
         @test size(NNlib.∇conv_filter(x, dy, cdims)) == size(w)
     end
 end
+
+@testset "non-dense views (issue #863)" begin
+    # cuDNN takes dense arrays, so views are copied: compare with the dense copies.
+    @testset "$T, $(nd)d" for T in (Float32, ComplexF32), nd in (1, 2, 3)
+        cs = ntuple(_ -> Colon(), nd)
+        x = CUDA.randn(T, fill(7, nd)..., 6, 2)
+        w = CUDA.randn(T, fill(3, nd)..., 2, 4)
+        wv = view(cat(w, w; dims=nd+2), cs..., :, 5:8)
+        # a channel chunk, and a view that is not contiguous in the first dimension
+        @testset "$I" for I in ((cs..., 3:4, :), (2:6, cs[2:end]..., 1:2, :))
+            v = view(x, I...)
+            cdims = DenseConvDims(v, w; padding=1)
+            dy = CUDA.randn(T, NNlib.output_size(cdims)..., 4, 2)
+            dyv = view(cat(dy, dy; dims=nd+1), cs..., 5:8, :)
+            @test NNlib.conv(v, wv, cdims) ≈ NNlib.conv(x[I...], w, cdims)
+            @test ∇conv_data(dyv, wv, cdims) ≈ ∇conv_data(dy, w, cdims)
+            @test ∇conv_filter(v, dyv, cdims) ≈ ∇conv_filter(x[I...], dy, cdims)
+            b = CUDA.randn(T, fill(1, nd)..., 4, 1)
+            act = T <: Complex ? identity : relu
+            @test conv_bias_act(v, w, cdims, b, act) ≈ conv_bias_act(x[I...], w, cdims, b, act)
+            T <: Complex && continue
+            wd = CUDA.randn(T, fill(3, nd)..., 1, 2)
+            @test depthwiseconv(v, wd; pad=1) ≈ depthwiseconv(x[I...], wd; pad=1)
+            @test gradient(x -> sum(abs2, NNlib.conv(view(x, I...), w, cdims)), x)[1] ≈
+                  gradient(x -> sum(abs2, NNlib.conv(x[I...], w, cdims)), x)[1]
+        end
+    end
+end
