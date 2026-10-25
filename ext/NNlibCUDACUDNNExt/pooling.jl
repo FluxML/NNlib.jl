@@ -1,7 +1,7 @@
 using cuDNN: cudnnPoolingMode_t, CUDNN_POOLING_MAX,
              CUDNN_POOLING_AVERAGE_COUNT_INCLUDE_PADDING,
              CUDNN_POOLING_AVERAGE_COUNT_EXCLUDE_PADDING,
-             cudnnPoolingForward!, pooldims, cudnnPoolingBackward,
+             cudnnPoolingForward!, cudnnPoolingBackward,
              cudnnTensorDescriptor, handle, scalingParameter, CUDNN_NOT_PROPAGATE_NAN
 
 import NNlib: maxpool!, ∇maxpool!, meanpool!, ∇meanpool!
@@ -29,7 +29,9 @@ function cudnnPoolingDescriptor(pdims::PoolDims, x::DenseCuArray{T}, mode::cudnn
     pad = NNlib.padding(pdims)
     window, padding, stride = NNlib.kernel_size(pdims), ntuple(i -> pad[2i-1], length(pad)÷2), NNlib.stride(pdims)
     nanOpt = CUDNN_NOT_PROPAGATE_NAN
-    cudnnPoolingDescriptor(mode, nanOpt, Cint(ndims(x)-2), pooldims(window,size(x)), pooldims(padding,size(x)), pooldims(stride,size(x)))
+    # not `cuDNN.pooldims`, which clamps each value to the input size (issue #862)
+    cudnn_order(v) = Cint[reverse(v)...]
+    cudnnPoolingDescriptor(mode, nanOpt, Cint(ndims(x)-2), cudnn_order(window), cudnn_order(padding), cudnn_order(stride))
 end
 
 function maxpool!(y::DenseCuArray{T}, x::DenseCuArray{T}, pdims::PoolDims) where T<:CUDNNFloat

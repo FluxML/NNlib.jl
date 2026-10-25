@@ -53,6 +53,22 @@
     end
 end
 
+@testset "window, padding or stride larger than the input (issue #862)" begin
+    for num_spatial_dims in (1, 2, 3), (n, k, pad, stride) in ((1, 3, 1, 1), (2, 3, 1, 1), (2, 3, 1, 2),
+                                                                (4, 5, 2, 1), (1, 2, 1, 1), (2, 3, 2, 3))
+        x = rand(Float64, fill(n, num_spatial_dims)..., 3, 2)
+        pdims = PoolDims(x, k; padding=pad, stride)
+        gputest(x -> maxpool(x, pdims), x)
+        for cip in (true, false)
+            gputest(x -> meanpool(x, pdims; count_include_pad=cip), x)
+        end
+    end
+    x = rand(Float64, 1, 5, 3, 2)
+    pdims = PoolDims(x, 3; padding=1, stride=1)
+    gputest(x -> maxpool(x, pdims), x)
+    gputest(x -> meanpool(x, pdims), x)
+end
+
 @testset "complex meanpool (issue #610)" begin
 
     # Complex `meanpool` is implemented once in core (NNlib pools the real and
