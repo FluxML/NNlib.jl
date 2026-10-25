@@ -385,6 +385,11 @@ _weight_type(T) = real(T) <: Union{Float16, BFloat16} ? Float32 : real(T)
 # the weights of 16-bit floats are Float32
 @inline _atomic_add!(dx, idx, val) = _atomic_scatter!(dx, idx, +, convert(eltype(dx), val))
 
+# The step between the source positions of consecutive outputs. With `align_corners`, a single
+# output takes the first input, as in PyTorch, instead of dividing by `n_out - 1 == 0`.
+_linear_ratio(::Type{W}, n_in, n_out, align_corners) where {W} = align_corners ?
+    (n_out > 1 ? W((n_in - 1) / (n_out - 1)) : zero(W)) : W(n_in / n_out)
+
 function upsample_linear_kernel!(
     y::AbstractArray{T, N}, x::AbstractArray{T, N}; align_corners::Bool = true,
 ) where {T, N}
@@ -392,9 +397,7 @@ function upsample_linear_kernel!(
     ndrange = backend isa CPU ?
         size(y)[N - 1:end] : # Parallelization along channel x batch.
         size(y)[1:N - 2] # Parallelization along WHD.
-    ratios = align_corners ?
-        ntuple(i -> _weight_type(T)((size(x, i) - 1) / (size(y, i) - 1)), N - 2) :
-        ntuple(i -> _weight_type(T)(size(x, i) / size(y, i)), N - 2)
+    ratios = ntuple(i -> _linear_ratio(_weight_type(T), size(x, i), size(y, i), align_corners), N - 2)
     _upsample_linear_kernel!(backend)(backend, y, x, ratios..., Val(align_corners); ndrange)
     return y
 end
@@ -406,9 +409,7 @@ function ∇upsample_linear_kernel!(
     ndrange = backend isa CPU ?
         size(Δ)[N - 1:end] : # Parallelization along channel x batch.
         size(Δ)[1:N - 2] # Parallelization along WHD.
-    ratios = align_corners ?
-        ntuple(i -> _weight_type(T)((size(dx, i) - 1) / (size(Δ, i) - 1)), N - 2) :
-        ntuple(i -> _weight_type(T)(size(dx, i) / size(Δ, i)), N - 2)
+    ratios = ntuple(i -> _linear_ratio(_weight_type(T), size(dx, i), size(Δ, i), align_corners), N - 2)
     _∇upsample_linear_kernel!(backend)(backend, dx, Δ, ratios..., Val(align_corners); ndrange)
     return dx
 end
