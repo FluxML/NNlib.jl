@@ -248,6 +248,22 @@ function upsample_testsuite(Backend)
         @test cpu(∇upsample_trilinear(o; size=(4,4,4), align_corners=false)) ≈ grad_true
     end
 
+    @testset "Linear resizing to a single output with align_corners" begin
+        # As in PyTorch, one output along a dimension takes the first input there.
+        x = reshape(T[1 2 3; 4 5 6; 7 8 9], 3, 3, 1, 1)
+        @test cpu(upsample_bilinear(device(x); size = (1, 1))) == x[1:1, 1:1, :, :]
+        @test cpu(upsample_bilinear(device(x); size = (1, 3))) == x[1:1, :, :, :]
+        @test cpu(upsample_bilinear(device(x); size = (3, 1))) == x[:, 1:1, :, :]
+        @test cpu(upsample_linear(device(T[1, 2, 3][:, :, :]); size = 1)) == T[1][:, :, :]
+        x3 = rand(T, 2, 3, 4, 1, 1)
+        @test cpu(upsample_trilinear(device(x3); size = (1, 3, 4))) ≈ x3[1:1, :, :, :, :]
+
+        dx = cpu(∇upsample_bilinear(device(ones(T, 1, 1, 1, 1)); size = (3, 3)))
+        @test dx == reshape(T[1 0 0; 0 0 0; 0 0 0], 3, 3, 1, 1)
+        @test test_gradients(x -> upsample_bilinear(x; size = (1, 2)), rand(T, 3, 4, 1, 1);
+                             test_gpu = Backend != CPU, atol)
+    end
+
     @testset "pixel_shuffle" begin
         x = reshape(1:16, (2, 2, 4, 1))
         # [:, :, 1, 1] =
