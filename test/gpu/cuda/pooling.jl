@@ -88,3 +88,21 @@ end
         @test_throws Exception maxpool(CuArray(x), PoolDims(x, 2))
     end
 end
+
+@testset "non-dense views (issue #863)" begin
+    # cuDNN takes dense arrays, so views are copied: compare with the dense copies.
+    @testset "$(nd)d" for nd in (1, 2, 3)
+        cs = ntuple(_ -> Colon(), nd)
+        x = CUDA.randn(Float32, fill(7, nd)..., 6, 2)
+        @testset "$I" for I in ((cs..., 3:4, :), (2:6, cs[2:end]..., 1:2, :))
+            v = view(x, I...)
+            # symmetric padding goes through the fixed-function API, asymmetric through the graph API
+            for pdims in (PoolDims(v, 2), PoolDims(v, 2; padding=ntuple(i -> isodd(i) ? 1 : 0, 2nd))),
+                pool in (maxpool, meanpool)
+                @test pool(v, pdims) ≈ pool(x[I...], pdims)
+                @test gradient(x -> sum(abs2, pool(view(x, I...), pdims)), x)[1] ≈
+                      gradient(x -> sum(abs2, pool(x[I...], pdims)), x)[1]
+            end
+        end
+    end
+end

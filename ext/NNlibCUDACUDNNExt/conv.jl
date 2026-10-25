@@ -8,6 +8,11 @@ using cuDNN: CUDNN_CONVOLUTION, CUDNN_CROSS_CORRELATION, convolution!,
 const CUDNNFloat = Union{Float16,BFloat16,Float32,Float64}
 const CUDNNComplexFloat = Union{ComplexF16,ComplexF32,ComplexF64}
 
+# cuDNN takes dense arrays, so views and other wrappers of a `CuArray` are copied into one
+# (#863). Not with `copy`, whose `getindex` is up to 17× slower (JuliaGPU/GPUArrays.jl#837).
+dense(x::DenseCuArray) = x
+dense(x::AnyCuArray) = copyto!(similar(x), x)
+
 # Compute (accumulation) type for the convolution. cuDNN's TRUE_HALF_CONFIG (compute
 # in Float16) is only supported for a narrow set of 2D shapes; in particular it is
 # unsupported for 3D convolutions and for many backward-filter shapes, surfacing as
@@ -194,3 +199,23 @@ function ∇conv_filter!(dw::DenseCuArray{T1}, x::DenseCuArray{T2}, dy::DenseCuA
     dwi = ∇conv_filter!(similar(dwr), x, dyi, cdims; alpha=1, beta=0, algo=algo)
     return combine_complex!(dw, dwr, dwi; alpha, beta)
 end
+
+# Non-dense inputs. The dense methods above are more specific, so dense arrays never land here.
+const CUDNNEltype = Union{CUDNNFloat,CUDNNComplexFloat}
+
+conv!(y::DenseCuArray{T}, x::AnyCuArray{T}, w::AnyCuArray{T}, cdims::DenseConvDims;
+      kwargs...) where T<:CUDNNEltype =
+    conv!(y, dense(x), dense(w), cdims; kwargs...)
+
+conv_bias_act!(y::DenseCuArray{T}, x::AnyCuArray{T}, w::AnyCuArray{T}, cdims::DenseConvDims,
+               bias::AnyCuArray{T}, σ=identity; z::AnyCuArray{T}=y,
+               kwargs...) where T<:CUDNNEltype =
+    conv_bias_act!(y, dense(x), dense(w), cdims, dense(bias), σ; z=dense(z), kwargs...)
+
+∇conv_data!(dx::DenseCuArray{T}, dy::AnyCuArray{T}, w::AnyCuArray{T}, cdims::DenseConvDims;
+            kwargs...) where T<:CUDNNEltype =
+    ∇conv_data!(dx, dense(dy), dense(w), cdims; kwargs...)
+
+∇conv_filter!(dw::DenseCuArray{T}, x::AnyCuArray{T}, dy::AnyCuArray{T}, cdims::DenseConvDims;
+              kwargs...) where T<:CUDNNEltype =
+    ∇conv_filter!(dw, dense(x), dense(dy), cdims; kwargs...)
