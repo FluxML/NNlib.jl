@@ -108,6 +108,8 @@ function foreach_im2col_chunk(f, nunits, nt)
     return length(chunks)
 end
 
+scale!(x, beta) = iszero(beta) ? fill!(x, zero(beta)) : isone(beta) ? x : (x .*= beta)
+
 # Tasks that each run their own GEMMs pin BLAS to one thread to avoid oversubscription.
 function with_single_threaded_blas(f)
     old = get_num_threads()
@@ -331,11 +333,10 @@ function ∇conv_data_im2col!(
             # of this one's (or of the image): all of `dx`, before the even slabs run.
             lo = j == 1 ? 1 : last_input(j - 2) + 1
             hi = j + 2 > nslab ? in_len : last_input(j)
-            region = view(dxn, ntuple(i -> i == ax ? (lo:hi) : (1:size(dxn, i)), 4)...)
-            if iszero(beta)
-                fill!(region, zero(T))
-            elseif !isone(beta)
-                region .*= beta
+            if lo == 1 && hi == in_len
+                scale!(dxn, beta)
+            else
+                scale!(view(dxn, ntuple(i -> i == ax ? (lo:hi) : (1:size(dxn, i)), 4)...), beta)
             end
         end
         ms = (j - 1)*blk*stride_ax + 1 : min(j*blk, out_len)*stride_ax
