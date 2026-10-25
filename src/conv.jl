@@ -193,53 +193,48 @@ const G = Union{[x[2] for x in gemm_datatype_mappings]...}
 # per-group workspace allocation that made grouped/depthwise convs allocate
 # `O(groups)` buffers (FluxML/NNlib.jl#520). `worker(gi, col, ntasks)` computes
 # group `gi` (1 ≤ gi ≤ ngroups), writing its own disjoint output channels, using
-# the `(M, K, ·)` workspace `col` and `ntasks` inner tasks. `refarr` provides the
-# element type/device for the workspace.
+# the workspace `col` and `ntasks` inner tasks. `refarr` provides the element
+# type/device for the workspace, and `wsdims(ntasks)` its size for one group.
 #
 # Because groups are independent we pick a single level of threading rather than
-# nesting group-parallelism inside the per-image threading of #697:
-#
-#   * `inner_threaded` ops (forward and ∇data) can thread *within* one image. With
-#     at least as many groups as threads we parallelize over groups -- each gets a
-#     thin workspace slice and runs single-tasked. With fewer groups we run them
-#     serially and let the inner threading fill the cores, reusing one workspace.
-#   * the ∇filter op has no inner threading, so we parallelize over groups whenever
-#     there is more than one.
+# nesting group-parallelism inside the per-image threading of #697: with at least as
+# many groups as threads we parallelize over groups -- each gets a thin workspace slice
+# and runs single-tasked. With fewer groups we run them serially and let the inner
+# threading fill the cores, reusing one workspace.
 #
 # Either way the workspace is allocated once and concurrent groups touch disjoint
 # slices, so the result is identical to the serial path.
-function run_grouped_im2col!(worker, ngroups::Int, refarr, M::Int, K::Int,
-                             inner_threaded::Bool)
+function run_grouped_im2col!(worker, ngroups::Int, refarr, wsdims)
     nt = Threads.nthreads(:default)
-    group_parallel = should_use_spawn() && ngroups > 1 &&
-                     (inner_threaded ? ngroups >= nt : true)
-    if group_parallel
+    if should_use_spawn() && ngroups > 1 && ngroups >= nt
         # Spawn one task per thread (not per group) and let each task sweep a
         # contiguous block of groups, reusing its own workspace slice. This keeps
-        # the workspace at `(M, K, nchunks)` and the task count at `nchunks`,
+        # the workspace at `nchunks` slices and the task count at `nchunks`,
         # rather than `O(groups)` of either. Kept in its own function so the
         # `col` workspace has a single assignment site and is not boxed when the
         # spawned closures capture it.
-        run_grouped_im2col_parallel!(worker, ngroups, refarr, M, K, min(nt, ngroups))
+        run_grouped_im2col_parallel!(worker, ngroups, refarr, wsdims, nt)
     else
-        ntasks = inner_threaded ? nt : 1
-        col = similar(refarr, M, K, ntasks)
+        col = similar(refarr, wsdims(nt))
         for gi in 1:ngroups
-            worker(gi, col, ntasks)
+            worker(gi, col, nt)
         end
     end
     return nothing
 end
 
-function run_grouped_im2col_parallel!(worker, ngroups::Int, refarr, M::Int, K::Int,
+function run_grouped_im2col_parallel!(worker, ngroups::Int, refarr, wsdims,
                                       nchunks::Int)
-    col = similar(refarr, M, K, nchunks)
-    Threads.@sync for (ci, chunk) in
-            enumerate(Iterators.partition(1:ngroups, cld(ngroups, nchunks)))
-        Threads.@spawn begin
-            cs = view(col, :, :, ci:ci)
-            for gi in chunk
-                worker(gi, cs, 1)
+    with_single_threaded_blas() do
+        rows, K, _ = wsdims(1)
+        col = similar(refarr, rows, K, nchunks)
+        Threads.@sync for (ci, chunk) in
+                enumerate(Iterators.partition(1:ngroups, cld(ngroups, nchunks)))
+            Threads.@spawn begin
+                cs = view(col, :, :, ci:ci)
+                for gi in chunk
+                    worker(gi, cs, 1)
+                end
             end
         end
     end
@@ -261,7 +256,8 @@ for (front_name, backend, signature) in (
                                     channels_in(cdims) ÷ groupcount(cdims)))
             w_cs = collect(Iterators.partition(1:size(in2, 5),
                                     channels_out(cdims) ÷ groupcount(cdims)))
-            wsd = im2col_dims(cdims2)
+            nbatch = size(in1, 5)
+            wsdims(ntasks) = conv_im2col_dims(cdims2, T, nbatch, ntasks)
             function conv_group(gi, col, ntasks)
                 xc = x_cs[gi]; wc = w_cs[gi]
                 x = @view in1[:, :, :, xc, :]
@@ -270,7 +266,7 @@ for (front_name, backend, signature) in (
                 $(Symbol("$(front_name)_$(backend)!"))(y, x, w, cdims2;
                                                        col=col, ntasks=ntasks, kwargs...)
             end
-            run_grouped_im2col!(conv_group, length(x_cs), in1, wsd[1], wsd[2], true)
+            run_grouped_im2col!(conv_group, length(x_cs), in1, wsdims)
         end
     else
         quote
@@ -336,7 +332,8 @@ for (front_name, backend, signature) in (
                                     channels_out(cdims) ÷ groupcount(cdims)))
             dy_cs = collect(Iterators.partition(1:size(in1, 4),
                                         channels_out(cdims) ÷ groupcount(cdims)))
-            wsd = im2col_dims(cdims2)
+            nbatch = size(out, 5)
+            wsdims(ntasks) = ∇conv_data_im2col_dims(cdims2, T, nbatch, ntasks)
             function ∇conv_data_group(gi, col, ntasks)
                 xc = dx_cs[gi]; yc = dy_cs[gi]; wc = w_cs[gi]
                 dxv = @view out[:, :, :, xc, :]
@@ -345,7 +342,7 @@ for (front_name, backend, signature) in (
                 $(Symbol("$(front_name)_$(backend)!"))(dxv, dyv, wv, cdims2;
                                                        col=col, ntasks=ntasks, kwargs...)
             end
-            run_grouped_im2col!(∇conv_data_group, length(dx_cs), out, wsd[1], wsd[2], true)
+            run_grouped_im2col!(∇conv_data_group, length(dx_cs), out, wsdims)
         end
     else
         quote
@@ -402,9 +399,7 @@ for (front_name, backend, signature) in (
     (:∇conv_filter, :direct, ((:yT, :N), (:T1, :N), (:T2, :N), :C, (:yT, :T1, :T2, :N, :(C <: ConvDims)))),
 )
     # The im2col backend shares one col workspace across groups (see
-    # `run_grouped_im2col!`). ∇conv_filter has no per-image threading, so groups are
-    # the only parallelism (`inner_threaded=false`). The direct backend keeps the
-    # original per-group loop.
+    # `run_grouped_im2col!`); the direct backend keeps the original per-group loop.
     group_exec = if backend === :im2col
         quote
             dw_cs = collect(Iterators.partition(1:size(out, 5),
@@ -413,15 +408,17 @@ for (front_name, backend, signature) in (
                                         channels_out(cdims) ÷ groupcount(cdims)))
             x_cs = collect(Iterators.partition(1:size(in1, 4),
                                     channels_in(cdims) ÷ groupcount(cdims)))
-            wsd = ∇filter_im2col_dims(cdims2)
+            nbatch = size(in1, 5)
+            wsdims(ntasks) = ∇conv_filter_im2col_dims(cdims2, T, nbatch, ntasks)
             function ∇conv_filter_group(gi, col, ntasks)
                 wc = dw_cs[gi]; xc = x_cs[gi]; yc = dy_cs[gi]
                 x = @view in1[:, :, :, xc, :]
                 dy = @view in2[:, :, :, yc, :]
                 dw = @view out[:, :, :, :, wc]
-                $(Symbol("$(front_name)_$(backend)!"))(dw, x, dy, cdims2; col=col, kwargs...)
+                $(Symbol("$(front_name)_$(backend)!"))(dw, x, dy, cdims2;
+                                                       col=col, ntasks=ntasks, kwargs...)
             end
-            run_grouped_im2col!(∇conv_filter_group, length(dw_cs), out, wsd[1], wsd[2], false)
+            run_grouped_im2col!(∇conv_filter_group, length(dw_cs), out, wsdims)
         end
     else
         quote

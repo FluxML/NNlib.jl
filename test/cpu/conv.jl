@@ -882,6 +882,59 @@ end
     @test size(conv(x[:, :, :, 3:2], w)) == (8, 8, 4, 0)
 end
 
+# https://github.com/FluxML/NNlib.jl/issues/864
+@testset "im2col in tiles" begin
+    # A workspace of few rows cuts each image into many tiles, some ending mid-line.
+    # `ntasks` beyond the thread count still exercises the split into slabs, given
+    # enough work per task.
+    for (xs, ks, cin, cout, kw) in [
+            ((2000,), (4,), 16, 64, (; stride=2, padding=(3, 1))),
+            ((40, 36), (3, 3), 16, 32, (; padding=1)),
+            ((15, 4), (3, 3), 2, 4, (; padding=5, flipkernel=true)),
+            ((24, 22, 20), (2, 3, 3), 8, 16, (; stride=(1, 2, 2), dilation=(2, 1, 1),
+                                               padding=(0, 1, 2, 2, 1, 0)))]
+        x = randn(rng, xs..., cin, 3)
+        w = randn(rng, ks..., cin, cout)
+        cdims = DenseConvDims(x, w; kw...)
+        y0 = NNlib.conv_direct(x, w, cdims)
+        dy = randn(rng, size(y0))
+        dx0 = NNlib.∇conv_data_direct(dy, w, cdims)
+        dw0 = NNlib.∇conv_filter_direct(x, dy, cdims)
+        for rows in (1, 7, 1000), ntasks in (1, 3, 8)
+            col = similar(x, rows, prod(ks) * cin, ntasks)
+            @test NNlib.conv_im2col(x, w, cdims; col, ntasks) ≈ y0
+            @test NNlib.∇conv_data_im2col(dy, w, cdims; col, ntasks) ≈ dx0
+            @test NNlib.∇conv_filter_im2col(x, dy, cdims; col, ntasks) ≈ dw0
+            y, dx, dw = randn(rng, size(y0)), randn(rng, size(x)), randn(rng, size(w))
+            @test NNlib.conv_im2col!(copy(y), x, w, cdims; col, ntasks,
+                                     alpha=2.0, beta=3.0) ≈ 2y0 + 3y
+            @test NNlib.∇conv_data_im2col!(copy(dx), dy, w, cdims; col, ntasks,
+                                           alpha=2.0, beta=3.0) ≈ 2dx0 + 3dx
+            @test NNlib.∇conv_filter_im2col!(copy(dw), x, dy, cdims; col, ntasks,
+                                             alpha=2.0, beta=3.0) ≈ 2dw0 + 3dw
+        end
+    end
+
+    # The workspace holds a tile per task, not an image's whole im2col matrix (18 MiB
+    # here). BLAS is pinned, as a lone task sizes its tiles by the BLAS threads.
+    blas_threads = LinearAlgebra.BLAS.get_num_threads()
+    LinearAlgebra.BLAS.set_num_threads(1)
+    try
+        x = randn(Float32, 128, 128, 32, 2)
+        w = randn(Float32, 3, 3, 32, 32)
+        cdims = DenseConvDims(x, w; padding=1)
+        y = conv(x, w, cdims)
+        ∇conv_data(y, w, cdims); ∇conv_filter(x, y, cdims)
+        tiles = Threads.nthreads(:default) * NNlib.IM2COL_TILE_BYTES + 2^20
+        @test @allocated(conv(x, w, cdims)) < sizeof(y) + tiles
+        @test @allocated(∇conv_data(y, w, cdims)) < sizeof(x) + tiles
+        @test @allocated(∇conv_filter(x, y, cdims)) <
+              Threads.nthreads(:default) * sizeof(w) + tiles
+    finally
+        LinearAlgebra.BLAS.set_num_threads(blas_threads)
+    end
+end
+
 # https://github.com/FluxML/NNlib.jl/pull/171
 @testset "conv_direct! - Check Sizes" begin
     x_size = (6, 7, 8, 5, 3)

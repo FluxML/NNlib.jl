@@ -65,12 +65,11 @@ end
     im2col_dims(c::ConvDims)
 
 im2col calculates, for each output pixel, the "convolution" of N kernels where N is the
-number of output channels, by doing a matrix multiply.  The dimensions of that matrix
-are given by this function.
+number of output channels, by doing a matrix multiply.  This function gives the
+dimensions of that matrix, with one copy per thread along the third.
 
-Note that because im2col is multithreaded, we need to allocate a separate workspace of
-memory per-thread; hence the dimensions returned by this will depend on the number of
-threads Julia is currently running with.
+The im2col convolutions only hold a tile of this matrix per task, so an array of these
+dimensions is a valid, but oversized, `col` workspace for them.
 """
 function im2col_dims(c::ConvDims)
     return (
@@ -86,8 +85,7 @@ end
 """
     ∇filter_im2col_dims(c::ConvDims)
 
-Like [`im2col_dims`](@ref), but saves some memory because multiple (Julia) threads are
-not required for the filter gradient calculation.
+Like [`im2col_dims`](@ref), for a single thread.
 
 Note: in the future, this may return `Dims{2}` instead of `Dims{3}`.
 """
@@ -97,7 +95,7 @@ function ∇filter_im2col_dims(c::ConvDims)
         prod(output_size(c)),
         # Size of single dotproduct within convolution
         prod(kernel_size(c))*channels_in(c),
-        # No threading, this is just here for backwards compat
+        # One workspace, this is just here for backwards compat
         1
     )
 end
