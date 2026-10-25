@@ -22,4 +22,6 @@ include("utils.jl")
 # stays a little under, for the alignment of its arrays.
 NNlib.attention_shmem_budget(::CUDABackend) = 47 * 1024
 
+include("precompile.jl")
+
 end # module
