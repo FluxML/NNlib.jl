@@ -200,16 +200,23 @@ const sdpa = scaled_dot_product_attention
 # builds the causal, window and padding masks, the repeated key/value heads of
 # grouped-query attention and the attention weights, none of which a fused kernel needs.
 #
+# With no backend taking these arrays, packed sequences go on to `unsegmented_attention`,
+# not back here: inference gives up on the return type of a method that it meets again
+# while inferring it.
 _scaled_dot_product_attention(q::AA4, k::AA4, v::AA4, bias; kws...) =
-    generic_attention(q, k, v, bias; kws...)
+    generic_attention(q, k, v, bias; kws..., unsegmented=unsegmented_attention)
 
 # The implementation for every backend, which those with a kernel of their own fall back
 # to for the calls it does not take: the fused one where it applies, else the
 # materialized one. Under automatic differentiation the latter is also taken, and
-# differentiated, where the fused one has no rule.
+# differentiated, where the fused one has no rule. The materialized implementation of
+# packed sequences calls `unsegmented` without segments.
 function generic_attention(q::AA4, k::AA4, v::AA4, bias;
             fdrop, mask, scale, is_causal, q_offset, q_lengths, kv_lengths, segments=nothing,
-            window=nothing)
+            window=nothing, unsegmented=_scaled_dot_product_attention)
+    segments === nothing &&
+        return unsegmented_attention(q, k, v, bias; fdrop, mask, scale, is_causal, q_offset,
+                                     q_lengths, kv_lengths, window)
     is_causal, q_offset = causal_offsets(q, k, is_causal, q_offset, q_lengths, kv_lengths)
     is_causal, q_offset, window = attention_band(is_causal, q_offset, window)
     if fused_attention_applies(q, k, v, bias, fdrop, mask) && fused_attention_differentiable(q, bias) &&
@@ -217,9 +224,18 @@ function generic_attention(q::AA4, k::AA4, v::AA4, bias;
         return fused_attention(q, k, v, bias, mask, scale, is_causal, q_offset, q_lengths, kv_lengths,
                                segments, window)
     end
-    segments === nothing ||
-        return packed_attention(q, k, v; fdrop, scale, is_causal, window, q_offset, q_lengths, kv_lengths,
-                                segments)
+    return packed_attention(q, k, v; fdrop, scale, is_causal, window, q_offset, q_lengths, kv_lengths,
+                            segments, unsegmented)
+end
+
+function unsegmented_attention(q::AA4, k::AA4, v::AA4, bias;
+            fdrop, mask, scale, is_causal, q_offset, q_lengths, kv_lengths, segments::Nothing=nothing,
+            window=nothing)
+    is_causal, q_offset = causal_offsets(q, k, is_causal, q_offset, q_lengths, kv_lengths)
+    is_causal, q_offset, window = attention_band(is_causal, q_offset, window)
+    fused_attention_applies(q, k, v, bias, fdrop, mask) && fused_attention_differentiable(q, bias) &&
+        return fused_attention(q, k, v, bias, mask, scale, is_causal, q_offset, q_lengths, kv_lengths,
+                               nothing, window)
     return materialized_attention(q, k, v, bias; fdrop, mask, scale, is_causal, window, q_offset, q_lengths,
                                   kv_lengths)
 end
@@ -748,14 +764,14 @@ attention_mask_band(mask, blocks) = attention_band_of(mask, blocks)
 # in the padded batch. Long segments among short ones pad to many times the positions they
 # have.
 function packed_attention(q::AA4, k::AA4, v::AA4; fdrop, scale, is_causal::Bool, window, q_offset,
-                          q_lengths, kv_lengths, segments::AttentionSegments)
+                          q_lengths, kv_lengths, segments::AttentionSegments,
+                          unsegmented=_scaled_dot_product_attention)
     padded_segments_cheaper(q, v, segments, window) &&
         return padded_segments_attention(q, k, v; fdrop, scale, is_causal, window, q_offset, q_lengths,
-                                         kv_lengths, segments)
+                                         kv_lengths, segments, unsegmented)
     mask, valid = packed_attention_mask(q, k, is_causal, window, q_offset, q_lengths, kv_lengths, segments)
-    x = _scaled_dot_product_attention(q, k, v, nothing; fdrop, mask, scale, is_causal=false,
-                                      window=nothing, q_offset=0, q_lengths=nothing,
-                                      kv_lengths=nothing, segments=nothing)
+    x = unsegmented(q, k, v, nothing; fdrop, mask, scale, is_causal=false, window=nothing, q_offset=0,
+                    q_lengths=nothing, kv_lengths=nothing, segments=nothing)
     return x .* reshape(valid, 1, 1, :, 1)
 end
 
@@ -766,14 +782,14 @@ function padded_segments_cheaper(q::AA4, v::AA4, s::AttentionSegments, window)
 end
 
 function padded_segments_attention(q::AA4, k::AA4, v::AA4; fdrop, scale, is_causal, window, q_offset,
-                                   q_lengths, kv_lengths, segments::AttentionSegments)
+                                   q_lengths, kv_lengths, segments::AttentionSegments,
+                                   unsegmented=_scaled_dot_product_attention)
     (; maxlen_q, maxlen_kv) = segments
     qi = padded_segment_indices(segments.q_sizes, segments.q_ends, maxlen_q)
     ki = padded_segment_indices(segments.kv_sizes, segments.kv_ends, maxlen_kv)
-    x = _scaled_dot_product_attention(gather_positions(q, qi), gather_positions(k, ki),
-                                      gather_positions(v, ki), nothing; fdrop, mask=nothing,
-                                      scale, is_causal, window, q_offset, q_lengths, kv_lengths,
-                                      segments=nothing)
+    x = unsegmented(gather_positions(q, qi), gather_positions(k, ki), gather_positions(v, ki), nothing;
+                    fdrop, mask=nothing, scale, is_causal, window, q_offset, q_lengths, kv_lengths,
+                    segments=nothing)
     # [x] = [v_head_dim, nheads, maxlen_q, nsegments]
     id, pos = segment_positions(segments.q_sizes, segments.q_ends, size(q, 3))
     x = gather_positions(x, pos .+ maxlen_q .* (id .- 1) .+ 1)
