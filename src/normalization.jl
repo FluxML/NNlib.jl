@@ -24,6 +24,7 @@ _epsof(x::AbstractArray, eps) = convert(float(real(eltype(x))), eps)
 # reductions and running-statistic updates accumulate in `_stats_type`, and the
 # result is cast back to the input eltype. This mirrors the cuDNN contract, which
 # requires Float32 affine parameters and running statistics for half-precision data.
+# `NNlibReactantExt` extends it to Reactant's traced numbers.
 _stats_type(::Type{T}) where {T} = T
 _stats_type(::Type{Float16}) = Float32
 _stats_type(::Type{BFloat16}) = Float32
@@ -31,12 +32,13 @@ _stats_type(::Type{BFloat16}) = Float32
 # Enforce the Float32-parameter contract for half-precision inputs so a mismatch
 # surfaces as a clear error rather than a silent precision loss.
 function _check_norm_types(::Type{T}, g, b, running_mean, running_var) where {T}
-    _stats_type(T) === T && return nothing  # full-precision: parameters may promote freely
+    Tc = _stats_type(T)
+    Tc === T && return nothing  # full-precision: parameters may promote freely
     for (name, a) in (("scale g", g), ("bias b", b),
                       ("running_mean", running_mean), ("running_var", running_var))
         a === nothing && continue
-        eltype(a) === Float32 || throw(ArgumentError(
-            "$T normalization requires Float32 $name, got $(eltype(a)); " *
+        eltype(a) === Tc || throw(ArgumentError(
+            "$T normalization requires $Tc $name, got $(eltype(a)); " *
             "half-precision statistics are numerically unstable."))
     end
     return nothing
