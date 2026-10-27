@@ -148,9 +148,15 @@ function upsample_testsuite(Backend)
         y_true_2 = cat(y_true_2, y_true_2; dims=4)
 
         # check for real-valued single-number argument and type stability for rationals
-        y_rational = upsample_bilinear(Rational{Int}.(x), 2.5)
-        @test eltype(y_rational) == Rational{Int}
-        @test y_rational == y_true_2
+        if pkgversion(KernelAbstractions) < v"0.10"
+            y_rational = upsample_bilinear(Rational{Int}.(x), 2.5)
+            @test eltype(y_rational) == Rational{Int}
+            @test y_rational == y_true_2
+        else
+            # Rational's checked multiplication doesn't build on the PoCL CPU backend
+            # (JuliaGPU/KernelAbstractions.jl#916)
+            @test_broken upsample_bilinear(Rational{Int}.(x), 2.5) == y_true_2
+        end
 
         # check Integer support for forward pass
         # grads are always assumed to be floats, so no extension there
