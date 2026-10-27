@@ -15,6 +15,7 @@ const NNLIB_TEST_CUDA     = get(ENV, "NNLIB_TEST_CUDA",     "false") == "true"
 const NNLIB_TEST_AMDGPU   = get(ENV, "NNLIB_TEST_AMDGPU",   "false") == "true"
 const NNLIB_TEST_METAL    = get(ENV, "NNLIB_TEST_METAL",    "false") == "true"
 const NNLIB_TEST_THREADED = get(ENV, "NNLIB_TEST_THREADED", "false") == "true"
+const NNLIB_TEST_REACTANT = get(ENV, "NNLIB_TEST_REACTANT", "false") == "true"
 
 const NNLIB_TEST_ENZYME =   if haskey(ENV, "NNLIB_TEST_ENZYME") 
                                 ENV["NNLIB_TEST_ENZYME"] == "true"
@@ -46,6 +47,8 @@ testsuite = find_tests(@__DIR__)
 
 # Library / setup files picked up by discovery that are not tests themselves.
 delete!(testsuite, "test_module")
+# Reactant is not in test/Project.toml: the job that sets `NNLIB_TEST_REACTANT` adds it.
+NNLIB_TEST_REACTANT || delete!(testsuite, "reactant")
 for gpu in ("gpu/cuda", "gpu/amdgpu", "gpu/metal")
     delete!(testsuite, "$gpu/test_setup")
 end

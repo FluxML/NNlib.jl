@@ -89,3 +89,25 @@ jobs:
       - uses: julia-actions/julia-runtest@v1
         with:
           coverage: false
+
+  test-reactant:
+    name: Julia 1 - ubuntu-latest - Reactant
+    runs-on: ubuntu-latest
+    env:
+      NNLIB_TEST_REACTANT: 'true'
+    steps:
+      - uses: actions/checkout@v7
+      - uses: julia-actions/setup-julia@v3
+        with:
+          version: '1'
+      - uses: julia-actions/cache@v3
+      # Reactant is heavy, so only this job adds it to test/Project.toml [deps], then updates
+      # the shared [workspace] manifest (as the Buildkite GPU jobs do).
+      - run: |
+          echo 'Reactant = "3c362404-f566-11ee-1572-e11a4b42c853"' >> test/Project.toml
+          julia --project=. -e 'using Pkg; Pkg.update()'
+      - uses: julia-actions/julia-buildpkg@v1
+      - uses: julia-actions/julia-runtest@v1
+        with:
+          coverage: false
+          test_args: 'reactant'
