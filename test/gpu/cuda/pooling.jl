@@ -53,6 +53,21 @@
     end
 end
 
+@testset "asymmetric padding: NaN, and padding past `pre`" begin
+    # Before cuDNN.jl 6.5, the graph API propagates NaN in max pooling, unlike the CPU and
+    # the fixed-function API, and mean pooling counts the padding past `pre` wrong
+    # (JuliaGPU/CUDA.jl#3473).
+    broken = pkgversion(cuDNN) < v"6.5"
+    for num_spatial_dims in (1, 2, 3)
+        x = rand(Float64, fill(7, num_spatial_dims)..., 3, 2)
+        pdims = PoolDims(x, 3; stride=2, padding=ntuple(i -> isodd(i) ? 0 : 2, 2num_spatial_dims))
+        gputest(x -> meanpool(x, pdims), x; broken, broken_grad=broken)
+        x[3, ntuple(Returns(1), num_spatial_dims + 1)...] = NaN
+        pdims = PoolDims(x, 3; stride=2, padding=ntuple(i -> isodd(i) ? 1 : 0, 2num_spatial_dims))
+        gputest(x -> maxpool(x, pdims), x; broken, broken_grad=broken)
+    end
+end
+
 @testset "window, padding or stride larger than the input (issue #862)" begin
     for num_spatial_dims in (1, 2, 3), (n, k, pad, stride) in ((1, 3, 1, 1), (2, 3, 1, 1), (2, 3, 1, 2),
                                                                 (4, 5, 2, 1), (1, 2, 1, 1), (2, 3, 2, 3))
@@ -106,11 +121,13 @@ end
 end
 
 @testset "non-dense views (issue #863)" begin
-    # cuDNN takes dense arrays, so views are copied: compare with the dense copies.
+    # cuDNN.jl 6.5 takes views with positive strides, older versions copy them (and the
+    # gradients always do): compare with the dense copies.
     @testset "$(nd)d" for nd in (1, 2, 3)
         cs = ntuple(_ -> Colon(), nd)
         x = CUDA.randn(Float32, fill(7, nd)..., 6, 2)
-        @testset "$I" for I in ((cs..., 3:4, :), (2:6, cs[2:end]..., 1:2, :))
+        @testset "$I" for I in ((cs..., 3:4, :), (2:6, cs[2:end]..., 1:2, :),
+                                (6:-1:2, cs[2:end]..., 1:2, :))
             v = view(x, I...)
             # symmetric padding goes through the fixed-function API, asymmetric through the graph API
             for pdims in (PoolDims(v, 2), PoolDims(v, 2; padding=ntuple(i -> isodd(i) ? 1 : 0, 2nd))),
