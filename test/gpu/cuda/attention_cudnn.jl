@@ -3,6 +3,8 @@ const cudnn_ext = Base.get_extension(NNlib, :NNlibCUDACUDNNExt)
 function attention_options(q, k; is_causal=false, window=nothing, q_offset=0,
                            q_lengths=nothing, kv_lengths=nothing,
                            q_segments=nothing, kv_segments=q_segments, maxlen=nothing)
+    is_causal = NNlib.attention_causal_mask(q, k, is_causal, window, q_offset, kv_lengths,
+                                          q_segments, kv_segments)
     q, k, _, _, _, q_offset, q_lengths, kv_lengths, segments =
         NNlib.collapse_attention_inputs(q, k, k, nothing, nothing, q_offset, q_lengths, kv_lengths,
                                         q_segments, kv_segments, maxlen)
@@ -46,9 +48,37 @@ end
         q1 = q[:, :, 1:1, :]
         for kws in ((; is_causal=:bottom_right), (; is_causal=true, q_offset=15))
             _, _, opts, _ = attention_options(q1, k; kws...)
-            @test (opts !== nothing && opts.causal === false) == cudnn_ext.CUDNN_6_5
+            @test (opts !== nothing && opts.causal === false) ==
+                  (kws.is_causal === true || cudnn_ext.CUDNN_6_5)
             @test same(Array(scaled_dot_product_attention(q1, k, v; kws...)),
                        scaled_dot_product_attention(qc[:, :, 1:1, :], kc, vc))
+        end
+    end
+    @testset "inactive causal masks with valid key lengths" begin
+        for (nq, offsets, lengths) in
+                ((1, [7, 11, 15], [8, 12, 16]),
+                 (4, [7, 11, 15], [8, 12, 16]),
+                 (4, 7, [8, 7, 6]))
+            qi, qci = q[:, :, 1:nq, :], qc[:, :, 1:nq, :]
+            kws = (; is_causal=true, q_offset=offsets, kv_lengths=lengths,
+                   q_lengths=[nq, nq - 1, 0])
+            _, _, opts, _ = attention_options(qi, k; kws...)
+            @test opts !== nothing && opts.causal === false
+            @test uses_cudnn(qi, k; kws...)
+            @test same(Array(scaled_dot_product_attention(qi, k, v; kws...)),
+                       scaled_dot_product_attention(qci, kc, vc; kws.q_lengths, kws.kv_lengths))
+            g = gradient((q, k, v) -> sum(scaled_dot_product_attention(q, k, v; kws...)), qi, k, v)
+            ref = gradient((q, k, v) -> sum(scaled_dot_product_attention(q, k, v;
+                kws.q_lengths, kws.kv_lengths)), qci, kc, vc)
+            @test all(isapprox.(map(x -> Float64.(Array(x)), g), ref; rtol=5f-2, atol=1f-4))
+        end
+        for kws in ((; is_causal=true, q_offset=[7, 10, 15], kv_lengths=[8, 12, 16]),
+                    (; is_causal=true, q_offset=[7, 11, 15], kv_lengths=[8, 12, 16], window=4))
+            q1, qc1 = q[:, :, 1:1, :], qc[:, :, 1:1, :]
+            _, _, opts, _ = attention_options(q1, k; kws...)
+            @test opts === nothing || opts.causal !== false
+            @test same(Array(scaled_dot_product_attention(q1, k, v; kws...)),
+                       scaled_dot_product_attention(qc1, kc, vc; kws...))
         end
     end
     @testset "empty and padded queries" begin
@@ -88,6 +118,11 @@ end
             ref = gradient((q, k, v) -> sum(scaled_dot_product_attention(q, k, v; segs..., kws...)), qpc, kpc, vpc)
             @test all(isapprox.(map(x -> Float64.(Array(x)), g), ref; rtol=5f-2, atol=1f-4))
         end
+        inactive = (; is_causal=true, q_offset=ks .- 1)
+        _, _, opts, _ = attention_options(qp, kp; segs..., inactive...)
+        @test (opts !== nothing && opts.causal === false) == cudnn_ext.CUDNN_6_5
+        @test same(Array(scaled_dot_product_attention(qp, kp, vp; segs..., inactive...)),
+                   scaled_dot_product_attention(qpc, kpc, vpc; segs...))
         @test !uses_cudnn(qp, kp; segs..., q_lengths=[10, 0, 7, 1])
         @test uses_cudnn(qp, kp; q_segments=CuArray(qs), kv_segments=CuArray(ks), maxlen=16) == cudnn_ext.CUDNN_6_5
         @test same(Array(scaled_dot_product_attention(qp, kp, vp;
