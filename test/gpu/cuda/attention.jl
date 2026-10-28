@@ -30,18 +30,17 @@ half(T, x) = T.(CuArray(x))    # round on the device (JuliaMath/BFloat16s.jl#107
         @test Float32.(Array(scaled_dot_product_attention(qd, kd, vd; is_causal=true))) ≈
               scaled_dot_product_attention(q, k, v; is_causal=true) rtol=2f-2
 
-        # cuDNN aligns the causal mask with the first key: an offset takes NNlib's kernel,
-        # and so does a bottom-right mask, but for as many queries as keys. cuDNN's fused
-        # attention needs compute capability 8.0.
         ext = Base.get_extension(NNlib, :NNlibCUDACUDNNExt)
-        cudnn(q, k, is_causal, q_offset=0) = ext.cudnn_sdpa_output(q, k, k, nothing, identity, nothing,
-            NNlib.causal_offsets(q, k, is_causal, NNlib.attention_offsets(q, q_offset), nothing, nothing)...,
-            nothing, nothing)
+        function cudnn(q, k, is_causal, q_offset=0)
+            options = ext.cudnn_sdpa_options(q, k; is_causal, q_offset=NNlib.attention_offsets(q, q_offset),
+                window=nothing, q_lengths=nothing, kv_lengths=nothing, segments=nothing)
+            return ext.cudnn_sdpa_output(q, k, k, nothing, identity, nothing, options, nothing)
+        end
         no_cudnn = CUDA.capability(CUDA.device()) < v"8.0"
         @test cudnn(qd, kd, true) !== nothing skip=no_cudnn
         @test cudnn(qd, kd, true, 2) === nothing && cudnn(qd, kd, true, [2, 0, 5]) === nothing
         @test cudnn(qd, qd, :bottom_right) !== nothing skip=no_cudnn
-        @test cudnn(qd, kd, :bottom_right) === nothing
+        @test (cudnn(qd, kd, :bottom_right) !== nothing) == ext.CUDNN_6_5 skip=no_cudnn
         @test sdpa_fused(qd, kd, vd; is_causal=true, q_offset=[2, 0, 5])
         @test Float32.(Array(scaled_dot_product_attention(qd, kd, vd; is_causal=true, q_offset=[2, 0, 5]))) ≈
               scaled_dot_product_attention(q, k, v; is_causal=true, q_offset=[2, 0, 5]) rtol=2f-2
@@ -52,7 +51,6 @@ half(T, x) = T.(CuArray(x))    # round on the device (JuliaMath/BFloat16s.jl#107
         @test Float32.(Array(scaled_dot_product_attention(kd, qd, qd; br...))) ≈
               scaled_dot_product_attention(k, q, q; br...) rtol=2f-2
 
-        # a sliding window takes NNlib's kernel
         @test sdpa_fused(qd, qd, qd; is_causal=true, window=4)
         @test Float32.(Array(scaled_dot_product_attention(qd, qd, qd; is_causal=true, window=4))) ≈
               scaled_dot_product_attention(q, q, q; is_causal=true, window=4) rtol=2f-2
@@ -447,8 +445,7 @@ end
     end
 end
 
-# Packed sequences take NNlib's kernel in every precision, and the materialized
-# implementation pads them into a batch or masks the whole sequence; against the
+# These different query/value head dimensions take NNlib's kernel; compare with the
 # materialized implementation on the CPU.
 @testset "packed sequences ($T)" for T in (Float32, Float64, Float16, BFloat16)
     T == BFloat16 && CUDA.capability(CUDA.device()) < v"8.0" && continue
