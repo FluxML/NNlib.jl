@@ -1,6 +1,6 @@
 name = "NNlib"
 uuid = "872c559c-99b0-510c-b3b7-b6c96a88d5cd"
-version = "0.9.55"
+version = "0.9.56"
 
 [workspace]
 projects = ["test", "docs"]
