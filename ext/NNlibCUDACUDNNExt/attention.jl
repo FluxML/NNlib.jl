@@ -26,7 +26,7 @@ function cudnn_sdpa_options(q, k; is_causal, window, q_offset, q_lengths, kv_len
             causal = false
         elseif is_causal === :bottom_right
             causal = offset isa Integer && iszero(offset) ? true : :bottom_right
-        elseif !(offset isa Integer && iszero(offset))
+        elseif (causal || window !== nothing) && !(offset isa Integer && iszero(offset))
             if cudnn_sdpa_equal(offset, 0)
                 causal = is_causal
             elseif causal && cudnn_sdpa_equal(offset, NNlib.bottom_right_offsets(q, k, q_lengths, kv_lengths))

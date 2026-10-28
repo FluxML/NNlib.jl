@@ -238,6 +238,14 @@ end
     # queries without a key
     @test scaled_dot_product_attention(q, k, v; is_causal=true, q_offset=lenkv) ≈
           scaled_dot_product_attention(q, k, v)
+    for q_offset in ([2, 6, 4], 6)
+        kv_lengths = [3, 7, 5]
+        @test scaled_dot_product_attention(q, k, v; is_causal=true, q_offset, kv_lengths) ≈
+              scaled_dot_product_attention(q, k, v; kv_lengths)
+        @test attention_weights(q, k; is_causal=true, q_offset, kv_lengths) ≈
+              attention_weights(q, k; kv_lengths)
+        @test NNlib.is_fused_attention(q, k, v; is_causal=true, q_offset, kv_lengths)
+    end
     y = scaled_dot_product_attention(q, k, v; is_causal=true, q_offset=-1)
     @test all(isnan, y[:, :, 1, :])
     @test y[:, :, 2:end, :] ≈ scaled_dot_product_attention(q, k, v; mask=offset_mask(fill(-1, bs)))[:, :, 2:end, :]

@@ -128,15 +128,17 @@ whose output is `NaN`, takes no part in the fused gradient.
 With CUDA.jl and cuDNN.jl loaded, the `Float16` and `BFloat16` `CuArray`s that cuDNN's
 own fused kernel has an engine for are handed to it: it runs on tensor cores, and has a
 gradient. It supports `scale`, `is_causal`, `q_lengths`, `kv_lengths` and grouped-query
-attention, and requires:
+attention. cuDNN.jl 6.5 also supports bottom-right causal masks, sliding windows and packed
+sequences. It requires:
 
-- no `bias`, `fdrop`, `mask` or `window` (that is `nothing`, `identity`, `nothing` and
-  `nothing`);
-- with `is_causal`, a causal mask aligned with the first key: the default `q_offset` of
-  zero, and for `:bottom_right` as many queries as keys, without `q_lengths` or
-  `kv_lengths`;
+- no `bias`, `fdrop` or `mask` (that is `nothing`, `identity` and `nothing`);
+- with an active causal mask, top-left or bottom-right alignment; without one, a
+  window must be top-left aligned;
 - a head dimension that is a multiple of 8 and at most 256;
 - a `value` with the same head dimension as `query`.
+
+Earlier cuDNN.jl versions require no window or packed sequences, and a top-left causal
+mask when it excludes any keys. Unsupported calls use NNlib's own implementation.
 
 # Examples
 
@@ -182,6 +184,8 @@ function scaled_dot_product_attention(q::AbstractArray, k::AbstractArray, v::Abs
     check_attention_inputs(q, k, v)
     check_causal(is_causal, q_offset)
     check_window(window)
+    is_causal = attention_causal_mask(q, k, is_causal, window, q_offset, kv_lengths,
+                                     q_segments, kv_segments)
     batch_size = size(q)[4:end]
     q, k, v, bias, mask, q_offset, q_lengths, kv_lengths, segments =
         collapse_attention_inputs(q, k, v, bias, mask, q_offset, q_lengths, kv_lengths,
@@ -289,6 +293,8 @@ function scaled_dot_product_attention_with_weights(q::AbstractArray, k::Abstract
     check_attention_inputs(q, k, v)
     check_causal(is_causal, q_offset)
     check_window(window)
+    is_causal = attention_causal_mask(q, k, is_causal, window, q_offset, kv_lengths,
+                                     q_segments, kv_segments)
     batch_size = size(q)[4:end]
     q, k, v, bias, mask, q_offset, q_lengths, kv_lengths, segments =
         collapse_attention_inputs(q, k, v, bias, mask, q_offset, q_lengths, kv_lengths,
@@ -319,6 +325,8 @@ function is_fused_attention(q::AbstractArray, k::AbstractArray, v::AbstractArray
     check_attention_inputs(q, k, v)
     check_causal(is_causal, q_offset)
     check_window(window)
+    is_causal = attention_causal_mask(q, k, is_causal, window, q_offset, kv_lengths,
+                                     q_segments, kv_segments)
     q, k, v, bias, mask, q_offset, q_lengths, kv_lengths, segments =
         collapse_attention_inputs(q, k, v, bias, mask, q_offset, q_lengths, kv_lengths,
                                   q_segments, kv_segments, maxlen)
@@ -392,6 +400,33 @@ check_window(window) = throw(ArgumentError(
     "`window` must be `nothing` or a positive integer, got $(typeof(window))."))
 
 @non_differentiable check_window(::Any...)
+
+# Check host metadata before collapse_attention_inputs copies it to the device.
+function attention_causal_mask(q, k, is_causal, window, q_offset, kv_lengths, q_segments, kv_segments)
+    is_causal === true && window === nothing || return is_causal
+    q_offset isa Union{Integer,Array{<:Integer}} || return is_causal
+    kv_lengths isa Union{Nothing,Integer,Array{<:Integer}} || return is_causal
+    if q_segments === nothing
+        kv_segments === nothing || return is_causal
+        n = prod(size(q)[4:end])
+    else
+        kv_segments isa Array{<:Integer} || return is_causal
+        n = length(kv_segments)
+    end
+    q_offset isa Integer || length(q_offset) == n || return is_causal
+    kv_lengths isa Array && length(kv_lengths) != n && return is_causal
+    for i in 1:n
+        nk = q_segments === nothing ? size(k, 3) : kv_segments[i]
+        nk >= 0 || return is_causal
+        len = kv_lengths === nothing ? nk :
+              clamp(kv_lengths isa Integer ? kv_lengths : kv_lengths[i], 0, nk)
+        offset = q_offset isa Integer ? q_offset : q_offset[i]
+        offset >= Int(len) - 1 || return is_causal
+    end
+    return false
+end
+
+@non_differentiable attention_causal_mask(::Any...)
 
 # Bring the arguments of the public functions to the layout of the implementations:
 # `q`, `k` and `v` with a single batch dimension, `bias` and `mask` broadcastable against
