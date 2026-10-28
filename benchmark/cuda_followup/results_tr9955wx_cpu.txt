@@ -1,7 +1,0 @@
-Julia 1.13.2, 1 CPU thread(s), logsumexp µs
-type, size, dims                                          current         lazy
-Float32 (1000, 4096) dims=1                              1396.1        674.0
-Float32 (8192, 768) dims=2                               2743.6       1947.4
-Float32 (64, 64, 32, 16) dims=(1, 2)                      532.5        389.2
-Float32 (1000, 4096) dims=Colon()                        1318.5       9484.9
-Float16 (1000, 4096) dims=1                              1162.7      10032.1
