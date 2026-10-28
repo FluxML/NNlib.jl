@@ -8,7 +8,7 @@ steps:
       - echo 'cuDNN = "02a925ec-e4fe-4b08-9a7e-0d78e3d38ccd"' >> test/Project.toml
       # Enzyme holds back the GPU stack (LLVM 9 and GPUArrays 11, EnzymeAD/Enzyme.jl#3741:
       # CUDA.jl 6.4, KernelAbstractions 0.9), so only the Enzyme jobs keep it.
-      - if [ "{{matrix.enzyme}}" = "false" ]; then sed -i -E '/^(Enzyme|EnzymeTestUtils) = /d' test/Project.toml; fi
+      - if [ "{{matrix.enzyme}}" = "false" ]; then sed -i.bak -E '/^(Enzyme|EnzymeTestUtils) = /d' test/Project.toml; fi
       - julia --project=. -e 'using Pkg; Pkg.update()'
     plugins:
       - JuliaCI/julia#v1:
@@ -51,7 +51,7 @@ steps:
       - echo 'AMDGPU = "21141c5a-9bdb-4563-92ae-f87d6854732e"' >> test/Project.toml
       # Enzyme holds back the GPU stack (LLVM 9 and GPUArrays 11, EnzymeAD/Enzyme.jl#3741:
       # CUDA.jl 6.4, KernelAbstractions 0.9), so only the Enzyme jobs keep it.
-      - if [ "{{matrix.enzyme}}" = "false" ]; then sed -i -E '/^(Enzyme|EnzymeTestUtils) = /d' test/Project.toml; fi
+      - if [ "{{matrix.enzyme}}" = "false" ]; then sed -i.bak -E '/^(Enzyme|EnzymeTestUtils) = /d' test/Project.toml; fi
       - julia --project=. -e 'using Pkg; Pkg.update()'
     plugins:
       - JuliaCI/julia#v1:
@@ -107,7 +107,7 @@ steps:
       - echo 'Metal = "dde4c033-4e86-420c-a63e-0dd931031962"' >> test/Project.toml
       # Enzyme holds back the GPU stack (LLVM 9 and GPUArrays 11, EnzymeAD/Enzyme.jl#3741:
       # CUDA.jl 6.4, KernelAbstractions 0.9), so only the Enzyme jobs keep it.
-      - if [ "{{matrix.enzyme}}" = "false" ]; then sed -i -E '/^(Enzyme|EnzymeTestUtils) = /d' test/Project.toml; fi
+      - if [ "{{matrix.enzyme}}" = "false" ]; then sed -i.bak -E '/^(Enzyme|EnzymeTestUtils) = /d' test/Project.toml; fi
       - julia --project=. -e 'using Pkg; Pkg.update()'
     plugins:
       - JuliaCI/julia#v1:
