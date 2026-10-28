@@ -44,6 +44,10 @@ using EnzymeCore: EnzymeCore, Active, Const, Duplicated, ReverseWithPrimal, Reve
 @static if HAS_ENZYME
     using Enzyme: Enzyme
     using EnzymeTestUtils: EnzymeTestUtils
+    @static if VERSION < v"1.11-"
+        # Avoid LLVM 15 compilation blowups: https://github.com/EnzymeAD/Enzyme.jl/issues/3883
+        Enzyme.Compiler.LLVM.clopts("-unswitch-threshold=0")
+    end
 end
 using Mooncake: Mooncake
 
