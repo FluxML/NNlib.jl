@@ -229,8 +229,14 @@ For `Float16` and `BFloat16` inputs, it is computed and returned in `Float32`.
 See also [`logsoftmax`](@ref).
 """
 function logsumexp(x::AbstractArray; dims = :)
+    # Base's lazy reductions regress for scalar/Float16 sums and fail on Julia 1.10.
     max_ = fast_maximum(x; dims)
     return max_ .+ log.(sum(_exp.(x .- max_); dims))
+end
+
+function logsumexp(x::AbstractGPUArray; dims = :)
+    max_ = fast_maximum(x; dims)
+    return max_ .+ log.(sum(_exp, broadcasted(-, x, max_); dims))
 end
 
 function rrule(::typeof(logsumexp), x::AbstractArray{T}; dims = :) where {T}

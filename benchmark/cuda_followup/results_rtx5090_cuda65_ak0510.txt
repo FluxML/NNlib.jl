@@ -1,0 +1,44 @@
+Julia 1.13.2, NVIDIA GeForce RTX 5090
+CUDA 6.5.0, cuDNN 6.5.0, AcceleratedKernels 0.5.10
+CUDA runtime 13.4.0, cuDNN runtime 9.27.0
+
+Reduction: materialized / lazy (µs), ratio materialized/lazy
+logsumexp Float32 (50304, 8192) dims=1                                4135.6     2053.5     2.01
+logsumexp Float32 (32000, 1024) dims=1                                 334.9      176.5     1.90
+logsumexp Float32 (512, 512, 64) dims=1                                139.6       35.2     3.96
+logsumexp Float32 (8192, 768) dims=2                                    34.6       22.3     1.55
+logsumexp BFloat16 (50304, 8192) dims=1                               3383.9     1416.8     2.39
+logsumexp BFloat16 (32000, 1024) dims=1                                272.7       67.1     4.06
+logsumexp BFloat16 (512, 512, 64) dims=1                                79.2       30.6     2.59
+logsumexp BFloat16 (8192, 768) dims=2                                   33.1       22.2     1.49
+square Float32 (768, 1024, 8) dims=1                                    25.4       12.6     2.01
+centered square Float32 (768, 1024, 8) dims=1                           29.5       13.8     2.14
+square Float32 (4096, 2048) dims=1                                      29.5       14.1     2.09
+centered square Float32 (4096, 2048) dims=1                             33.2       15.5     2.14
+square Float32 (4096, 2048) dims=2                                      33.7       18.4     1.83
+centered square Float32 (4096, 2048) dims=2                             36.4       18.3     2.00
+square Float32 (64, 64, 32, 16) dims=(1, 2)                             18.3       13.1     1.39
+centered square Float32 (64, 64, 32, 16) dims=(1, 2)                    20.9       14.1     1.48
+square BFloat16 (768, 1024, 8) dims=1                                   25.1       10.3     2.43
+centered square BFloat16 (768, 1024, 8) dims=1                          29.1       13.8     2.11
+square BFloat16 (4096, 2048) dims=1                                     29.2       13.2     2.21
+centered square BFloat16 (4096, 2048) dims=1                            32.0       15.3     2.10
+square BFloat16 (4096, 2048) dims=2                                     33.4       17.9     1.87
+centered square BFloat16 (4096, 2048) dims=2                            36.1       18.4     1.96
+square BFloat16 (64, 64, 32, 16) dims=(1, 2)                            18.4       12.9     1.42
+centered square BFloat16 (64, 64, 32, 16) dims=(1, 2)                   20.8       14.4     1.44
+
+Batched multiplication: per-slice / batched cuBLAS (µs), ratio
+Float16 (32, 32, 32) batch=128                                         995.4       11.4    87.11
+Float16 (128, 128, 128) batch=32                                       245.0       12.7    19.35
+Float16 (64, 512, 64) batch=64                                         489.5       15.0    32.54
+BFloat16 (32, 32, 32) batch=128                                       1014.6       11.4    88.71
+BFloat16 (128, 128, 128) batch=32                                      249.8       13.0    19.26
+BFloat16 (64, 512, 64) batch=64                                        513.3       15.3    33.65
+
+Attention: NNlib kernel / cuDNN dispatch (µs), ratio
+decode                                                                3382.7       28.1   120.46
+decode batch 8                                                        5584.5      335.7    16.64
+chunked prefill                                                       1640.7      218.3     7.52
+window                                                                5450.2      690.9     7.89
+packed                                                                3351.4      479.6     6.99
