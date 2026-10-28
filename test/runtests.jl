@@ -38,6 +38,7 @@ const THREADED_TESTS = [
     "cpu/conv",
     "cpu/conv_bias_act",
     "cpu/batchedmul",
+    "common_testsuite/groupedmul",
     "cpu/sampling",
     "common_testsuite/fold",
     "common_testsuite/normalization",

@@ -62,8 +62,10 @@ export softmax, softmax!, ∇softmax, ∇softmax!,
 
 include("batched/batchedadjtrans.jl")
 include("batched/batchedmul.jl")
+include("batched/groupedmul.jl")
 export batched_mul, batched_mul!, ⊠,  batched_vec,
     batched_transpose, batched_adjoint
+export grouped_mul, grouped_mul!
 
 include("gemm.jl")
 export grid_sample, ∇grid_sample

@@ -154,6 +154,8 @@ batched_mul!
 batched_adjoint
 batched_transpose
 batched_vec
+grouped_mul
+grouped_mul!
 ```
 
 ## Gather and Scatter

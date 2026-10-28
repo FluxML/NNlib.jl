@@ -5,6 +5,7 @@ using NNlib: BatchedAdjoint, BatchedTranspose, BatchedAdjOrTrans
 using CUDA
 using BFloat16s: BFloat16
 using Random, Statistics
+import LinearAlgebra
 using Adapt
 using Adapt: WrappedArray
 
@@ -14,6 +15,7 @@ include("sampling.jl")
 include("activations.jl")
 include("batchedadjtrans.jl")
 include("batchedmul.jl")
+include("groupedmul.jl")
 include("ctc.jl")
 include("scatter.jl")
 include("utils.jl")
