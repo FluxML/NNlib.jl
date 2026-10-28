@@ -771,9 +771,388 @@ end
 
 function fused_attention!(backend::Backend, o, lse, q, k, v, bias, mask, q_offset, q_lengths, kv_lengths, seqs,
                           scale::A, is_causal::Bool, window) where {A}
+    d = attention_decode_tiling(backend, q, k, v, seqs)
+    d === nothing || return attention_decode!(backend, d, o, lse, q, k, v, bias, mask, q_offset, q_lengths,
+                                              kv_lengths, seqs, scale, is_causal, window)
     c = attention_tiling(backend, q, v)
     attention_kernel!(backend, (c.T, 1, 1))(o, lse, q, k, v, bias, mask, q_offset, window, q_lengths, kv_lengths,
         seqs.q_ends, seqs.kv_ends, scale, Val(is_causal), Val(c);
         ndrange=(c.T * cld(seqs.maxlen_q, c.BQ), size(q, 2), seqs.n))
     return o
 end
+
+
+# Decoding: few queries per sequence, as with a key-value cache. The kernel above gives a
+# block `BQ` queries of one head, most of them idle with one query, and the block walks
+# all the keys of the sequence: only `nheads × batch_size` blocks, each reading every
+# tile of keys and values once for each query head sharing it. Here, as in
+# Flash-Decoding, the rows of a sequence are its queries for each of the heads sharing a
+# key/value head, `r = g + G*i` for the head `g` of the group and the query `i`. A block
+# owns `R` of them, and a share of the keys: a split. Each split writes its output
+# normalized by its own sum of exponentials, and the logarithm of that sum, which a
+# second kernel combines.
+#
+# For each tile of `BK` keys:
+#
+#   1. logits  every thread holds `TRL` rows × `TN` keys, reading the queries and a tile
+#              of keys from shared memory;
+#   2. online softmax, the maximum of each row taken over the `NC` threads holding it
+#              through shared memory, the weights written to a shared tile;
+#   3. output  every thread holds `TD` head dimensions × `TRO` rows, reading the values
+#              straight from global memory, a warp reading consecutive head dimensions.
+#
+# The keys and the values of the next tile are loaded during the current one.
+
+# Rows of a sequence at most. Beyond, the kernel above is as fast where it has enough
+# blocks: its tiles of queries fill up, and those of keys are read from the L2 cache.
+const ATTENTION_DECODE_ROWS = 64
+
+function attention_decode_tiling(D::Int, Dv::Int, G::Int, R::Int)
+    T = R >= 32 ? 256 : 128
+    BK = 32
+    NC = 32                         # logits: NRL row slots × NC key slots
+    NRL = T ÷ NC
+    ND = min(T, nextpow(2, max(Dv, 32)))   # output: ND dimension slots × NRO row slots
+    NRO = T ÷ ND
+    return (; T, D, Dv, G, R, BK, NC, NRL, TRL = R ÷ NRL, TN = BK ÷ NC, ND, NRO, TRO = R ÷ NRO,
+              TD = cld(Dv, ND), NKL = cld(D * BK, T), PK = D + iseven(D))
+end
+
+# floats of shared memory: queries, keys, weights, row statistics
+attention_decode_shmem(c) = c.D * c.R + c.PK * c.BK + c.R * c.BK + c.R * c.NC + c.R
+
+# The tiling of the decoding kernel for these arrays, or `nothing` where it does not apply.
+function attention_decode_tiling(backend, q::AbstractArray{T}, k, v, seqs) where {T}
+    D, Dv, G = size(q, 1), size(v, 1), size(q, 2) ÷ size(k, 2)
+    G * seqs.maxlen_q <= ATTENTION_DECODE_ROWS || return nothing
+    Dv <= 256 || return nothing
+    budget = attention_shmem_budget(backend) ÷ sizeof(attention_compute_type(T))
+    R = clamp(nextpow(2, G * seqs.maxlen_q), 4, 32)
+    while R >= 4
+        c = attention_decode_tiling(D, Dv, G, R)
+        attention_decode_shmem(c) <= budget && return c
+        R ÷= 2
+    end
+    return nothing
+end
+
+# Streaming multiprocessors (CUDA) or compute units of the device: an extension sets it.
+attention_compute_units(backend) = 64
+
+# Splits of the keys, where the blocks are fewer than the multiprocessors: a block for
+# each multiprocessor at least, and up to eight while the splits stay long.
+function attention_splits(backend, c, nblocks::Int, nkeys::Int)
+    nsm = attention_compute_units(backend)
+    nblocks >= nsm && return 1
+    ntiles = cld(nkeys, c.BK)
+    return max(1, min(cld(nsm, nblocks), ntiles ÷ 4), min(cld(8 * nsm, nblocks), ntiles ÷ 16))
+end
+
+function attention_decode!(backend::Backend, c, o, lse, q, k, v, bias, mask, q_offset, q_lengths, kv_lengths, seqs,
+                           scale::A, is_causal::Bool, window) where {A}
+    # the keys of a sequence the queries attend to at most
+    nkeys = min(seqs.maxlen_kv, attention_window_keys(window, seqs.maxlen_kv) + seqs.maxlen_q - 1)
+    nrb = cld(size(q, 2) ÷ size(k, 2) * seqs.maxlen_q, c.R)
+    nsplit = attention_splits(backend, c, nrb * size(k, 2) * seqs.n, nkeys)
+    if nsplit == 1
+        oo, ll = o, lse
+    else
+        oo = similar(o, A, size(o, 1), size(o, 2), size(o, 3), nsplit, size(o, 4))
+        ll = similar(o, A, size(o, 2), size(o, 3), nsplit, size(o, 4))
+    end
+    attention_decode_kernel!(backend, (c.T, 1, 1))(oo, ll, q, k, v, bias, mask, q_offset, window, q_lengths,
+        kv_lengths, seqs.q_ends, seqs.kv_ends, scale, nsplit, Val(is_causal), Val(c);
+        ndrange=(c.T * nsplit * nrb, size(k, 2), seqs.n))
+    nsplit == 1 && return o
+    attention_combine_kernel!(backend)(o, lse, oo, ll, q_lengths, seqs.q_ends, Val(8);
+                                       ndrange=(size(o, 1) * size(o, 2), seqs.maxlen_q, seqs.n))
+    return o
+end
+
+# the query and the head of the row `r` of the key/value head `hk`
+@inline attention_decode_row(r, hk, ::Val{c}) where {c} = r ÷ c.G, (hk - 1) * c.G + r % c.G + 1
+
+# The scaled queries of the rows `r0 + r` as `qs[d + D*r]`, zero from the row `nrows` on.
+@inline function attention_decode_queries!(qs, q, scale::A, hk, qb, b, r0, nrows, t, til::Val{c}) where {A,c}
+    ntuple(Val(cld(c.D * c.R, c.T))) do x
+        @inline
+        e = t + (x - 1) * c.T
+        d, r = e % c.D, e ÷ c.D
+        if r < c.R
+            i, h = attention_decode_row(r0 + r, hk, til)
+            val = A(@inbounds q[d + 1, h, qb + min(i, size(q, 3) - 1 - qb) + 1, b]) * scale
+            @inbounds qs[e + 1] = ifelse(r0 + r < nrows, val, zero(A))
+        end
+        nothing
+    end
+    return nothing
+end
+
+# The tile of the keys `j:j+BK-1` (zero from `jlim` on), in registers, with the head
+# dimensions of a key in consecutive threads ...
+@inline function attention_decode_fetch_keys(k, ::Type{A}, hk, j, b, jlim, t, ::Val{c}) where {A,c}
+    ntuple(Val(c.NKL)) do x
+        e = t + (x - 1) * c.T
+        d, jj = e % c.D, e ÷ c.D
+        val = A(@inbounds k[d + 1, hk, min(j + jj, size(k, 3) - 1) + 1, b])
+        ifelse(j + jj < jlim, val, zero(A))
+    end
+end
+
+# ... and from there to `ks[d + PK*jj]`
+@inline function attention_decode_put_keys!(ks, vals::NTuple{N}, t, ::Val{c}) where {N,c}
+    ntuple(Val(N)) do x
+        e = t + (x - 1) * c.T
+        d, jj = e % c.D, e ÷ c.D
+        if jj < c.BK
+            @inbounds ks[d + c.PK * jj + 1] = vals[x]
+        end
+        nothing
+    end
+    return nothing
+end
+
+# The dimensions `ud + ND*e` of the values of the keys `j:j+BK-1`, as `vals[e + TD*jj]`.
+@inline function attention_decode_fetch_values(v, ::Type{A}, hk, j, b, jlim, ud, ::Val{c}) where {A,c}
+    ntuple(Val(c.BK * c.TD)) do x
+        jj, e = (x - 1) ÷ c.TD, (x - 1) % c.TD
+        d = ud + c.ND * e
+        val = A(@inbounds v[min(d, c.Dv - 1) + 1, hk, min(j + jj, size(v, 3) - 1) + 1, b])
+        ifelse((d < c.Dv) & (j + jj < jlim), val, zero(A))
+    end
+end
+
+@inline function attention_decode_logits(qs, ks, tr, kc, ::Type{A}, ::Val{c}) where {A,c}
+    acc = ntuple(_ -> zero(A), Val(c.TRL * c.TN))
+    for d in 0:(c.D - 1)
+        a = ntuple(m -> @inbounds(qs[d + c.D * (tr + c.NRL * (m - 1)) + 1]), Val(c.TRL))
+        kk = ntuple(n -> @inbounds(ks[d + c.PK * (kc + c.NC * (n - 1)) + 1]), Val(c.TN))
+        acc = attention_mma(acc, a, kk)
+    end
+    return acc
+end
+
+# the logits of a thread, with the bias added and `-Inf` at the keys not attended to
+@inline function attention_decode_masked(acc::NTuple{MN,A}, mask, bias, j0, tr, kc, hk, b, jend, r0, nrows, off,
+                                         window, ::Val{causal}, til::Val{c}) where {MN,A,causal,c}
+    ntuple(Val(MN)) do x
+        r = r0 + tr + c.NRL * ((x - 1) % c.TRL)
+        j = j0 + kc + c.NC * ((x - 1) ÷ c.TRL)
+        i, h = attention_decode_row(r, hk, til)
+        ok = (j < jend) & (r < nrows) & (!causal | (j <= i + off)) & attention_in_window(window, j, i, off)
+        ok && attention_allowed(attention_at(mask, j + 1, i + 1, h, b)) ?
+            attention_biased(acc[x], attention_at(bias, j + 1, i + 1, h, b)) : A(-Inf)
+    end
+end
+
+# one value for each row of a thread, as `pm[kc + NC*r]`
+@inline function attention_decode_put_rowstat!(pm, x::NTuple{TRL}, tr, kc, ::Val{c}) where {TRL,c}
+    ntuple(Val(TRL)) do m
+        @inbounds pm[kc + c.NC * (tr + c.NRL * (m - 1)) + 1] = x[m]
+        nothing
+    end
+    return nothing
+end
+
+@inline function attention_decode_rows_max(pm, mx::NTuple{TRL,A}, tr, ::Val{c}) where {TRL,A,c}
+    ntuple(Val(TRL)) do m
+        r = tr + c.NRL * (m - 1)
+        x = mx[m]
+        for cc in 0:(c.NC - 1)
+            x = max(x, @inbounds pm[cc + c.NC * r + 1])
+        end
+        x
+    end
+end
+
+@inline function attention_decode_put_weights!(pw, pr::NTuple{MN}, tr, kc, ::Val{c}) where {MN,c}
+    ntuple(Val(MN)) do x
+        r = tr + c.NRL * ((x - 1) % c.TRL)
+        jj = kc + c.NC * ((x - 1) ÷ c.TRL)
+        @inbounds pw[jj + c.BK * r + 1] = pr[x]
+        nothing
+    end
+    return nothing
+end
+
+@inline function attention_decode_put_stat!(st, x::NTuple{TRL}, tr, ::Val{c}) where {TRL,c}
+    ntuple(Val(TRL)) do m
+        @inbounds st[tr + c.NRL * (m - 1) + 1] = x[m]
+        nothing
+    end
+    return nothing
+end
+
+@inline attention_decode_get_stat(st, uo, ::Val{c}) where {c} =
+    ntuple(m -> @inbounds(st[uo + c.NRO * (m - 1) + 1]), Val(c.TRO))
+
+# oacc[e, m] += Σ_jj vals[e, jj] * pw[jj, uo + NRO*m], unrolled: `vals` is in registers
+@generated function attention_decode_output(oacc::NTuple{MN,A}, pw, vals::NTuple{N,A}, uo,
+                                                    ::Val{c}) where {MN,A,N,c}
+    body = Any[Expr(:meta, :inline), Expr(:inbounds, true)]
+    for jj in 0:(c.BK - 1)
+        p = Expr(:tuple, [:(pw[$(jj + 1) + $(c.BK) * (uo + $(c.NRO * (m - 1)))]) for m in 1:c.TRO]...)
+        a = Expr(:tuple, [:(vals[$(jj * c.TD + e)]) for e in 1:c.TD]...)
+        push!(body, :(oacc = attention_mma(oacc, $a, $p)))
+    end
+    push!(body, Expr(:inbounds, :pop), :(return oacc))
+    return Expr(:block, body...)
+end
+
+@inline function attention_decode_row_sum(pm, r, ::Type{A}, ::Val{c}) where {A,c}
+    l = zero(A)
+    for cc in 0:(c.NC - 1)
+        l += @inbounds pm[cc + c.NC * r + 1]
+    end
+    return l
+end
+
+# The output and the `lse` of the rows of a thread: in the arrays of the outputs, or with
+# a split, in those of the split, normalized by its own sum.
+@inline attention_decode_store!(o::AbstractArray{<:Any,4}, d, h, pos, sp, b, x, i, qlen) =
+    @inbounds o[d, h, pos, b] = ifelse(i < qlen, x, zero(x))
+@inline attention_decode_store!(o::AbstractArray{<:Any,5}, d, h, pos, sp, b, x, i, qlen) =
+    @inbounds o[d, h, pos, sp, b] = x
+@inline attention_decode_store_lse!(lse::Nothing, h, pos, sp, b, m, l) = nothing
+@inline attention_decode_store_lse!(lse::AbstractArray{<:Any,3}, h, pos, sp, b, m, l) =
+    @inbounds lse[h, pos, b] = m + log(l)
+@inline attention_decode_store_lse!(lse::AbstractArray{<:Any,4}, h, pos, sp, b, m::A, l) where {A} =
+    @inbounds lse[h, pos, sp, b] = l > 0 ? m + log(l) : A(-Inf)
+@inline attention_decode_scale(o::AbstractArray{<:Any,4}, l) = inv(l)
+@inline attention_decode_scale(o::AbstractArray{<:Any,5}, l) = l > 0 ? inv(l) : zero(l)
+
+@inline function attention_decode_write!(o, lse, oacc::NTuple{MN,A}, pm, st, ud, uo, hk, qb, sp, b, r0, nrows,
+                                         qlen, til::Val{c}) where {MN,A,c}
+    ntuple(Val(c.TRO)) do m
+        @inline
+        r = uo + c.NRO * (m - 1)
+        i, h = attention_decode_row(r0 + r, hk, til)
+        if r0 + r < nrows
+            l = attention_decode_row_sum(pm, r, A, Val(c))
+            il = attention_decode_scale(o, l)
+            ntuple(Val(c.TD)) do e
+                @inline
+                d = ud + c.ND * (e - 1)
+                d < c.Dv && attention_decode_store!(o, d + 1, h, qb + i + 1, sp, b, oacc[(m - 1) * c.TD + e] * il,
+                                                    i, qlen)
+                nothing
+            end
+            ud == 0 && attention_decode_store_lse!(lse, h, qb + i + 1, sp, b, @inbounds(st[r + 1]), l)
+        end
+        nothing
+    end
+    return nothing
+end
+
+@kernel inbounds=true cpu=false unsafe_indices=true function attention_decode_kernel!(
+        o, lse, @Const(q), @Const(k), @Const(v), bias, mask, q_offset, window, q_lengths, kv_lengths,
+        q_ends, kv_ends, scale::A, nsplit, causal::Val, til::Val{c}) where {A,c}
+    qs = @localmem A (c.D * c.R,)
+    ks = @localmem A (c.PK * c.BK,)
+    pw = @localmem A (c.R * c.BK,)
+    pm = @localmem A (c.R * c.NC,)
+    st = @localmem A (c.R,)
+
+    t = @index(Local, Linear) - 1
+    gx, hk, s = @index(Group, NTuple)
+    sp, r0 = (gx - 1) % nsplit + 1, (gx - 1) ÷ nsplit * c.R
+    qb, Lq = attention_span(q_ends, s, size(q, 3))
+    kb, Lk = attention_span(kv_ends, s, size(k, 3))
+    b = attention_batch(q_ends, s)
+    qlen = attention_len(q_lengths, s, Lq)
+    off = attention_offset(q_offset, s)
+    # the rows of the sequence, and the queries of those of the block
+    nrows = c.G * Lq
+    i0, i1 = r0 ÷ c.G, (min(r0 + c.R, nrows) - 1) ÷ c.G
+    jmax = ifelse(r0 < nrows, min(attention_len(kv_lengths, s, Lk), causal === Val(true) ? i1 + off + 1 : Lk), 0)
+    jfirst = max(attention_window_first(window, i0, off), 0)
+    # the keys of the split, in whole tiles
+    chunk = cld(cld(max(jmax - jfirst, 0), nsplit), c.BK) * c.BK
+    jstart = jfirst + (sp - 1) * chunk
+    jend = min(jstart + chunk, jmax)
+
+    tr, kc = t ÷ c.NC, t % c.NC       # logits: rows tr + NRL*m, keys kc + NC*n
+    ud, uo = t % c.ND, t ÷ c.ND       # output: dimensions ud + ND*e, rows uo + NRO*m
+
+    mx = ntuple(_ -> -floatmax(A), Val(c.TRL))
+    ls = ntuple(_ -> zero(A), Val(c.TRL))
+    oacc = ntuple(_ -> zero(A), Val(c.TD * c.TRO))
+
+    attention_decode_queries!(qs, q, scale, hk, qb, b, r0, nrows, t, til)
+    kr = attention_decode_fetch_keys(k, A, hk, kb + jstart, b, kb + jend, t, til)
+    vr = attention_decode_fetch_values(v, A, hk, kb + jstart, b, kb + jend, ud, til)
+    attention_decode_put_keys!(ks, kr, t, til)
+    @synchronize()
+    j0 = jstart
+    while j0 < jend
+        # ---- logits
+        acc = attention_decode_logits(qs, ks, tr, kc, A, til)
+        sc = attention_decode_masked(acc, mask, bias, j0, tr, kc, hk, b, jend, r0, nrows, off, window, causal, til)
+        attention_decode_put_rowstat!(pm, attention_rowmax(sc, Val(c.TRL)), tr, kc, til)
+        @synchronize()
+        if j0 + c.BK < jend
+            kr = attention_decode_fetch_keys(k, A, hk, kb + j0 + c.BK, b, kb + jend, t, til)
+        end
+
+        # ---- online softmax
+        mnew = attention_decode_rows_max(pm, mx, tr, til)
+        alpha = attention_rescale(mx, mnew)
+        pr = attention_weights(sc, mnew)
+        ls = attention_fold(ls, alpha, attention_rowsum(pr, Val(c.TRL)))
+        mx = mnew
+        attention_decode_put_weights!(pw, pr, tr, kc, til)
+        kc == 0 && attention_decode_put_stat!(st, alpha, tr, til)
+        @synchronize()
+
+        # ---- output
+        oacc = attention_colscale(oacc, attention_decode_get_stat(st, uo, til))
+        oacc = attention_decode_output(oacc, pw, vr, uo, til)
+        if j0 + c.BK < jend
+            attention_decode_put_keys!(ks, kr, t, til)
+            vr = attention_decode_fetch_values(v, A, hk, kb + j0 + c.BK, b, kb + jend, ud, til)
+        end
+        @synchronize()
+        j0 += c.BK
+    end
+
+    # ---- normalization
+    attention_decode_put_rowstat!(pm, ls, tr, kc, til)
+    kc == 0 && attention_decode_put_stat!(st, mx, tr, til)
+    @synchronize()
+    attention_decode_write!(o, lse, oacc, pm, st, ud, uo, hk, qb, sp, b, r0, nrows, qlen, til)
+end
+
+# The output and the `lse` of a query from those of the splits, taken `NS` at a time with
+# an online maximum, so that their loads are issued together. A query attending to no key
+# gets `0 / 0`, and an `lse` of `-Inf`.
+@kernel inbounds=true cpu=false function attention_combine_kernel!(o, lse, @Const(os), @Const(ls), q_lengths, q_ends,
+                                                                  ::Val{NS}) where {NS}
+    dh, i, s = @index(Global, NTuple)
+    Dv = size(o, 1)
+    d, h = (dh - 1) % Dv + 1, (dh - 1) ÷ Dv + 1
+    qb, Lq = attention_span(q_ends, s, size(o, 3))
+    b = attention_batch(q_ends, s)
+    pos = qb + i
+    if i <= Lq
+        A = eltype(os)
+        n = size(ls, 3)
+        m, x, l = -floatmax(A), zero(A), zero(A)
+        for sp0 in 0:NS:(n - 1)
+            ws = ntuple(u -> sp0 + u <= n ? ls[h, pos, min(sp0 + u, n), b] : A(-Inf), Val(NS))
+            xs = ntuple(u -> os[d, h, pos, min(sp0 + u, n), b], Val(NS))
+            m, x, l = attention_combine_step(m, x, l, ws, xs)
+        end
+        o[d, h, pos, b] = i <= attention_len(q_lengths, s, Lq) ? x / l : zero(A)
+        d == 1 && attention_combine_lse!(lse, h, pos, b, m, l)
+    end
+end
+
+@inline function attention_combine_step(m::A, x::A, l::A, ws::NTuple{N,A}, xs::NTuple{N,A}) where {N,A}
+    mnew = max(m, maximum(ws))
+    a = exp(m - mnew)
+    es = ntuple(u -> exp(ws[u] - mnew), Val(N))
+    return mnew, muladd(x, a, sum(ntuple(u -> es[u] * xs[u], Val(N)))), muladd(l, a, sum(es))
+end
+
+@inline attention_combine_lse!(lse::Nothing, h, pos, b, m, l) = nothing
+@inline attention_combine_lse!(lse, h, pos, b, m, l) = @inbounds lse[h, pos, b] = m + log(l)

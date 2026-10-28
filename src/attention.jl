@@ -107,7 +107,9 @@ over the tiles of keys: the attention weights are never materialized, so that me
 grows linearly rather than quadratically with the sequence length. This is what `Array`s
 and GPU arrays of `Float16`, `Float32` and `Float64` take, and on the GPU those of
 `BFloat16`, with any of the arguments above. The `bias` and the `mask`, if any, have to
-be on the device of the inputs.
+be on the device of the inputs. On the GPU, a call with few queries per sequence, as in
+decoding with a key-value cache, splits the keys of each sequence over several blocks,
+and reads them once for all the query heads sharing them.
 
 Any other call takes the materialized implementation, which forms the weights.
 [`NNlib.is_fused_attention`](@ref) tells which of the two a call takes. With a `window`,
@@ -537,7 +539,7 @@ function segment_sizes(x::AA4, segments::AbstractVector, maxlen, name)
         sizes = copyto!(similar(x, Int32, n), Int32.(segments))
         # `accumulate` keeps `Int32`, which Reactant's scan needs where `cumsum` widens it
         # (EnzymeAD/Reactant.jl#3525)
-        return sizes, accumulate(+, sizes), maxlen === nothing ? nothing : Int(maxlen)
+        return sizes, accumulate(+, sizes), maxlen === nothing ? nothing : min(Int(maxlen), size(x, 3))
     end
     sizes = Int32.(host)
     all(>=(0), sizes) && sum(sizes; init=0) == size(x, 3) || throw(ArgumentError(
