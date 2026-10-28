@@ -26,7 +26,6 @@ using BFloat16s: BFloat16
 using ChainRulesCore: rrule
 using ChainRulesTestUtils: ChainRulesTestUtils
 using Base.Broadcast: broadcasted
-using EnzymeTestUtils: EnzymeTestUtils
 using FiniteDifferences: FiniteDifferences
 using ForwardDiff: ForwardDiff
 using Zygote: Zygote, gradient
@@ -41,7 +40,11 @@ using SpecialFunctions: SpecialFunctions  # loads NNlibSpecialFunctionsExt (gelu
 using ADTypes: AbstractADType, AutoZygote, AutoFiniteDifferences, AutoEnzyme, AutoMooncake
 using Functors: Functors
 using MLDataDevices: cpu_device, gpu_device
-using Enzyme: Enzyme, EnzymeCore, Active, Const, Duplicated, ReverseWithPrimal, ReverseSplitWithPrimal
+using EnzymeCore: EnzymeCore, Active, Const, Duplicated, ReverseWithPrimal, ReverseSplitWithPrimal
+@static if HAS_ENZYME
+    using Enzyme: Enzyme
+    using EnzymeTestUtils: EnzymeTestUtils
+end
 using Mooncake: Mooncake
 
 const rng = StableRNG(123)

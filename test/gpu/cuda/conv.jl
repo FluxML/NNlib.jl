@@ -155,14 +155,16 @@ end
 end
 
 @testset "non-dense views (issue #863)" begin
-    # cuDNN takes dense arrays, so views are copied: compare with the dense copies.
+    # cuDNN.jl 6.5 takes views with positive strides, older versions copy them: compare
+    # with the dense copies.
     @testset "$T, $(nd)d" for T in (Float32, ComplexF32), nd in (1, 2, 3)
         cs = ntuple(_ -> Colon(), nd)
         x = CUDA.randn(T, fill(7, nd)..., 6, 2)
         w = CUDA.randn(T, fill(3, nd)..., 2, 4)
         wv = view(cat(w, w; dims=nd+2), cs..., :, 5:8)
-        # a channel chunk, and a view that is not contiguous in the first dimension
-        @testset "$I" for I in ((cs..., 3:4, :), (2:6, cs[2:end]..., 1:2, :))
+        # a channel chunk, and views that are not contiguous in the first dimension
+        @testset "$I" for I in ((cs..., 3:4, :), (2:6, cs[2:end]..., 1:2, :),
+                                (6:-1:2, cs[2:end]..., 1:2, :))
             v = view(x, I...)
             cdims = DenseConvDims(v, w; padding=1)
             dy = CUDA.randn(T, NNlib.output_size(cdims)..., 4, 2)

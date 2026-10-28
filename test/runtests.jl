@@ -17,9 +17,14 @@ const NNLIB_TEST_METAL    = get(ENV, "NNLIB_TEST_METAL",    "false") == "true"
 const NNLIB_TEST_THREADED = get(ENV, "NNLIB_TEST_THREADED", "false") == "true"
 const NNLIB_TEST_REACTANT = get(ENV, "NNLIB_TEST_REACTANT", "false") == "true"
 
-const NNLIB_TEST_ENZYME =   if haskey(ENV, "NNLIB_TEST_ENZYME") 
+# Some GPU jobs remove Enzyme from the test env, to resolve newer GPU packages (see
+# .buildkite/pipeline.yml).
+const HAS_ENZYME = Base.find_package("Enzyme") !== nothing
+
+const NNLIB_TEST_ENZYME =   if haskey(ENV, "NNLIB_TEST_ENZYME")
                                 ENV["NNLIB_TEST_ENZYME"] == "true"
                             else
+                                HAS_ENZYME &&
                                 VERSION < v"1.14-" && # Enzyme does not precompile on nightly
                                 !NNLIB_TEST_AMDGPU && !NNLIB_TEST_METAL && !NNLIB_TEST_CUDA # TODO fails on GPU backends
                             end
@@ -49,6 +54,7 @@ testsuite = find_tests(@__DIR__)
 delete!(testsuite, "test_module")
 # Reactant is not in test/Project.toml: the job that sets `NNLIB_TEST_REACTANT` adds it.
 NNLIB_TEST_REACTANT || delete!(testsuite, "reactant")
+HAS_ENZYME || delete!(testsuite, "gpu/cuda/normalization_enzyme")
 for gpu in ("gpu/cuda", "gpu/amdgpu", "gpu/metal")
     delete!(testsuite, "$gpu/test_setup")
 end
@@ -119,8 +125,9 @@ end
 # `common_testsuite/` suites use `test_gradients` (from test_module.jl) instead, so
 # the two never collide.
 init_code = quote
-    include($(joinpath(@__DIR__, "test_module.jl")))
+    const HAS_ENZYME = $HAS_ENZYME
     const NNLIB_TEST_ENZYME = $NNLIB_TEST_ENZYME
+    include($(joinpath(@__DIR__, "test_module.jl")))
     $(NNLIB_TEST_CUDA   ? :(include($(joinpath(@__DIR__, "gpu", "cuda",   "test_setup.jl")))) : nothing)
     $(NNLIB_TEST_AMDGPU ? :(include($(joinpath(@__DIR__, "gpu", "amdgpu", "test_setup.jl")))) : nothing)
     $(NNLIB_TEST_METAL  ? :(include($(joinpath(@__DIR__, "gpu", "metal",  "test_setup.jl")))) : nothing)

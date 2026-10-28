@@ -8,10 +8,19 @@ using cuDNN: CUDNN_CONVOLUTION, CUDNN_CROSS_CORRELATION, convolution!,
 const CUDNNFloat = Union{Float16,BFloat16,Float32,Float64}
 const CUDNNComplexFloat = Union{ComplexF16,ComplexF32,ComplexF64}
 
-# cuDNN takes dense arrays, so views and other wrappers of a `CuArray` are copied into one
-# (#863). Not with `copy`, whose `getindex` is up to 17× slower (JuliaGPU/GPUArrays.jl#837).
+# cuDNN.jl takes dense arrays, and since 6.5 strided views (JuliaGPU/CUDA.jl#3476) but not
+# negative strides: those indexed by integers and unit ranges. Other wrappers of a `CuArray`
+# are copied into one (#863), not with `copy`, whose `getindex` is up to 17× slower
+# (JuliaGPU/GPUArrays.jl#837).
+const UnitRangeSubCuArray{T,N} =
+    SubArray{T,N,<:CuArray{T},<:Tuple{Vararg{Union{Int,AbstractUnitRange{Int}}}}}
+const CuDNNArray{T,N} =
+    CUDNN_6_5 ? Union{CuArray{T,N}, UnitRangeSubCuArray{T,N}} : DenseCuArray{T,N}
+
 dense(x::DenseCuArray) = x
 dense(x::AnyCuArray) = copyto!(similar(x), x)
+cudnn_array(x::CuDNNArray) = x
+cudnn_array(x::AnyCuArray) = dense(x)
 
 # Compute (accumulation) type for the convolution. cuDNN's TRUE_HALF_CONFIG (compute
 # in Float16) is only supported for a narrow set of 2D shapes; in particular it is
@@ -42,7 +51,7 @@ conv_bias_activation(::Any) = nothing
 
 # Zero-pad `x` by the asymmetric part of the padding of `cdims`. Returns the padded array
 # and the symmetric padding that remains, or `x` itself if the padding is symmetric.
-function symmetric_padded_input(x::DenseCuArray, cdims::DenseConvDims)
+function symmetric_padded_input(x::CuDNNArray, cdims::DenseConvDims)
     pad = NNlib.padding(cdims)
     nd = NNlib.spatial_dims(cdims)
     lo = ntuple(i -> pad[2i-1], nd)
@@ -56,8 +65,8 @@ function symmetric_padded_input(x::DenseCuArray, cdims::DenseConvDims)
     return xp, sym
 end
 
-@inline function combine_complex!(y::DenseCuArray{T1}, yr::DenseCuArray{T2},
-                                  yi::DenseCuArray{T2}; bias=zero(T1), alpha=one(T1),
+@inline function combine_complex!(y::CuDNNArray{T1}, yr::CuDNNArray{T2},
+                                  yi::CuDNNArray{T2}; bias=zero(T1), alpha=one(T1),
                                   beta=zero(T1), σ=identity,
 ) where {T1<:CUDNNComplexFloat,T2<:CUDNNFloat}
     # if y is from similar(), it may have NaNs, and beta*NaN will propagate.
@@ -69,7 +78,7 @@ end
     return y
 end
 
-function conv!(y::DenseCuArray{T}, x::DenseCuArray{T}, w::DenseCuArray{T}, cdims::DenseConvDims;
+function conv!(y::CuDNNArray{T}, x::CuDNNArray{T}, w::CuDNNArray{T}, cdims::DenseConvDims;
                alpha=1, beta=0, algo=-1) where T<:CUDNNFloat
     if algo != -1
         @warn "algo option has been deprecated, the fastest algo is computed automatically" maxlog=1
@@ -86,7 +95,7 @@ end
 # Then,
 # x*y = (a - b) + im*(c - a - b).
 # Convolution is linear so this multiplication trick translates to convolution.
-function conv!(y::DenseCuArray{T}, x::DenseCuArray{T}, w::DenseCuArray{T}, cdims::DenseConvDims;
+function conv!(y::CuDNNArray{T}, x::CuDNNArray{T}, w::CuDNNArray{T}, cdims::DenseConvDims;
                alpha=1, beta=0, algo=-1) where T<:CUDNNComplexFloat
     xr, xi = reim(x)
     wr, wi = reim(w)
@@ -97,7 +106,7 @@ function conv!(y::DenseCuArray{T}, x::DenseCuArray{T}, w::DenseCuArray{T}, cdims
 end
 
 # (xr + im*xi) * w = xr*w + im*(xi*w)
-function conv!(y::DenseCuArray{T1}, x::DenseCuArray{T1}, w::DenseCuArray{T2}, cdims::DenseConvDims;
+function conv!(y::CuDNNArray{T1}, x::CuDNNArray{T1}, w::CuDNNArray{T2}, cdims::DenseConvDims;
                alpha=1, beta=0, algo=-1) where {T1<:CUDNNComplexFloat, T2<:CUDNNFloat}
     xr, xi = reim(x)
     yr = conv!(similar(real(y)), xr, w, cdims; algo=algo)
@@ -106,7 +115,7 @@ function conv!(y::DenseCuArray{T1}, x::DenseCuArray{T1}, w::DenseCuArray{T2}, cd
 end
 
 # x * (wr + im*wi) = x*wr + im*(x*wi)
-function conv!(y::DenseCuArray{T1}, x::DenseCuArray{T2}, w::DenseCuArray{T1}, cdims::DenseConvDims;
+function conv!(y::CuDNNArray{T1}, x::CuDNNArray{T2}, w::CuDNNArray{T1}, cdims::DenseConvDims;
                alpha=1, beta=0, algo=-1) where {T1<:CUDNNComplexFloat, T2<:CUDNNFloat}
     wr, wi = reim(w)
     yr = conv!(similar(real(y)), x, wr, cdims; algo=algo)
@@ -114,9 +123,9 @@ function conv!(y::DenseCuArray{T1}, x::DenseCuArray{T2}, w::DenseCuArray{T1}, cd
     return combine_complex!(y, yr, yi; alpha, beta)
 end
 
-function conv_bias_act!(y::DenseCuArray{T}, x::DenseCuArray{T}, w::DenseCuArray{T},
-                        cdims::DenseConvDims, bias::DenseCuArray{T}, σ=identity;
-                        z::DenseCuArray{T}=y, alpha=1, beta=0, algo=-1) where T<:CUDNNFloat
+function conv_bias_act!(y::CuDNNArray{T}, x::CuDNNArray{T}, w::CuDNNArray{T},
+                        cdims::DenseConvDims, bias::CuDNNArray{T}, σ=identity;
+                        z::CuDNNArray{T}=y, alpha=1, beta=0, algo=-1) where T<:CUDNNFloat
     if algo != -1
         @warn "The algo option has been deprecated, the fastest algo is computed automatically" maxlog=1
     end
@@ -129,9 +138,9 @@ function conv_bias_act!(y::DenseCuArray{T}, x::DenseCuArray{T}, w::DenseCuArray{
     return y
 end
 
-function conv_bias_act!(y::DenseCuArray{T}, x::DenseCuArray{T}, w::DenseCuArray{T},
-                        cdims::DenseConvDims, bias::DenseCuArray{T}, σ=identity;
-                        z::DenseCuArray{T}=y, alpha=1, beta=0, algo=-1) where T<:CUDNNComplexFloat
+function conv_bias_act!(y::CuDNNArray{T}, x::CuDNNArray{T}, w::CuDNNArray{T},
+                        cdims::DenseConvDims, bias::CuDNNArray{T}, σ=identity;
+                        z::CuDNNArray{T}=y, alpha=1, beta=0, algo=-1) where T<:CUDNNComplexFloat
     xr, xi = reim(x)
     wr, wi = reim(w)
     a = conv!(similar(real(y)), xr, wr, cdims; alpha=1, beta=0, algo=algo)
@@ -140,7 +149,7 @@ function conv_bias_act!(y::DenseCuArray{T}, x::DenseCuArray{T}, w::DenseCuArray{
     return combine_complex!(y, a - b, c - a - b; bias, alpha, beta, σ)
 end
 
-function ∇conv_data!(dx::DenseCuArray{T}, dy::DenseCuArray{T}, w::DenseCuArray{T},
+function ∇conv_data!(dx::CuDNNArray{T}, dy::CuDNNArray{T}, w::CuDNNArray{T},
                      cdims::DenseConvDims; alpha=1, beta=0, algo=-1) where T<:CUDNNFloat
     if algo != -1
         @warn "The algo option has been deprecated, the fastest algo is computed automatically" maxlog=1
@@ -148,7 +157,7 @@ function ∇conv_data!(dx::DenseCuArray{T}, dy::DenseCuArray{T}, w::DenseCuArray
     convolution_data_gradient!(dx, dy, w; conv_kwargs(cdims, T)..., alpha, beta)
 end
 
-function ∇conv_data!(dx::DenseCuArray{T}, dy::DenseCuArray{T}, w::DenseCuArray{T},
+function ∇conv_data!(dx::CuDNNArray{T}, dy::CuDNNArray{T}, w::CuDNNArray{T},
                      cdims::DenseConvDims; alpha=1, beta=0, algo=-1) where T<:CUDNNComplexFloat
     dyr, dyi = reim(dy)
     wr, wi = reim(w)
@@ -160,7 +169,7 @@ function ∇conv_data!(dx::DenseCuArray{T}, dy::DenseCuArray{T}, w::DenseCuArray
 end
 
 # dx = (dyr + im*dyi)*w = dyr*w + im*(dyi*w)
-function ∇conv_data!(dx::DenseCuArray{T1}, dy::DenseCuArray{T1}, w::DenseCuArray{T2},
+function ∇conv_data!(dx::CuDNNArray{T1}, dy::CuDNNArray{T1}, w::CuDNNArray{T2},
                      cdims::DenseConvDims; alpha=1, beta=0, algo=-1) where {T1<:CUDNNComplexFloat, T2<:CUDNNFloat}
     dyr, dyi = reim(dy)
     dxr = ∇conv_data!(similar(real(dx)), dyr, w, cdims; alpha=1, beta=0, algo=algo)
@@ -168,7 +177,7 @@ function ∇conv_data!(dx::DenseCuArray{T1}, dy::DenseCuArray{T1}, w::DenseCuArr
     return combine_complex!(dx, dxr, dxi; alpha, beta)
 end
 
-function ∇conv_filter!(dw::DenseCuArray{T}, x::DenseCuArray{T}, dy::DenseCuArray{T},
+function ∇conv_filter!(dw::CuDNNArray{T}, x::CuDNNArray{T}, dy::CuDNNArray{T},
                        cdims::DenseConvDims; alpha=1, beta=0, algo=-1) where T<:CUDNNFloat
     if algo != -1
         @warn "The algo option has been deprecated, the fastest algo is computed automatically" maxlog=1
@@ -180,7 +189,7 @@ function ∇conv_filter!(dw::DenseCuArray{T}, x::DenseCuArray{T}, dy::DenseCuArr
     convolution_filter_gradient!(dw, x, dy; conv_kwargs(cdims, T)..., padding, alpha, beta)
 end
 
-function ∇conv_filter!(dw::DenseCuArray{T}, x::DenseCuArray{T}, dy::DenseCuArray{T},
+function ∇conv_filter!(dw::CuDNNArray{T}, x::CuDNNArray{T}, dy::CuDNNArray{T},
                        cdims::DenseConvDims; alpha=1, beta=0, algo=-1) where T<:CUDNNComplexFloat
     xr, xi = reim(x)
     dyr, dyi = reim(dy)
@@ -192,7 +201,7 @@ function ∇conv_filter!(dw::DenseCuArray{T}, x::DenseCuArray{T}, dy::DenseCuArr
 end
 
 # dw = x*(dyr + im*dyi) = x*dyr + im*(x*dyi)
-function ∇conv_filter!(dw::DenseCuArray{T1}, x::DenseCuArray{T2}, dy::DenseCuArray{T1},
+function ∇conv_filter!(dw::CuDNNArray{T1}, x::CuDNNArray{T2}, dy::CuDNNArray{T1},
                        cdims::DenseConvDims; alpha=1, beta=0, algo=-1) where {T1<:CUDNNComplexFloat, T2<:CUDNNFloat}
     dyr, dyi = reim(dy)
     dwr = ∇conv_filter!(similar(real(dw)), x, dyr, cdims; alpha=1, beta=0, algo=algo)
@@ -200,22 +209,22 @@ function ∇conv_filter!(dw::DenseCuArray{T1}, x::DenseCuArray{T2}, dy::DenseCuA
     return combine_complex!(dw, dwr, dwi; alpha, beta)
 end
 
-# Non-dense inputs. The dense methods above are more specific, so dense arrays never land here.
+# Other wrappers. The methods above are more specific, so `CuDNNArray`s never land here.
 const CUDNNEltype = Union{CUDNNFloat,CUDNNComplexFloat}
 
-conv!(y::DenseCuArray{T}, x::AnyCuArray{T}, w::AnyCuArray{T}, cdims::DenseConvDims;
+conv!(y::CuDNNArray{T}, x::AnyCuArray{T}, w::AnyCuArray{T}, cdims::DenseConvDims;
       kwargs...) where T<:CUDNNEltype =
-    conv!(y, dense(x), dense(w), cdims; kwargs...)
+    conv!(y, cudnn_array(x), cudnn_array(w), cdims; kwargs...)
 
-conv_bias_act!(y::DenseCuArray{T}, x::AnyCuArray{T}, w::AnyCuArray{T}, cdims::DenseConvDims,
+conv_bias_act!(y::CuDNNArray{T}, x::AnyCuArray{T}, w::AnyCuArray{T}, cdims::DenseConvDims,
                bias::AnyCuArray{T}, σ=identity; z::AnyCuArray{T}=y,
                kwargs...) where T<:CUDNNEltype =
-    conv_bias_act!(y, dense(x), dense(w), cdims, dense(bias), σ; z=dense(z), kwargs...)
+    conv_bias_act!(y, cudnn_array(x), cudnn_array(w), cdims, cudnn_array(bias), σ; z=cudnn_array(z), kwargs...)
 
-∇conv_data!(dx::DenseCuArray{T}, dy::AnyCuArray{T}, w::AnyCuArray{T}, cdims::DenseConvDims;
+∇conv_data!(dx::CuDNNArray{T}, dy::AnyCuArray{T}, w::AnyCuArray{T}, cdims::DenseConvDims;
             kwargs...) where T<:CUDNNEltype =
-    ∇conv_data!(dx, dense(dy), dense(w), cdims; kwargs...)
+    ∇conv_data!(dx, cudnn_array(dy), cudnn_array(w), cdims; kwargs...)
 
-∇conv_filter!(dw::DenseCuArray{T}, x::AnyCuArray{T}, dy::AnyCuArray{T}, cdims::DenseConvDims;
+∇conv_filter!(dw::CuDNNArray{T}, x::AnyCuArray{T}, dy::AnyCuArray{T}, cdims::DenseConvDims;
               kwargs...) where T<:CUDNNEltype =
-    ∇conv_filter!(dw, dense(x), dense(dy), cdims; kwargs...)
+    ∇conv_filter!(dw, cudnn_array(x), cudnn_array(dy), cdims; kwargs...)
