@@ -236,7 +236,8 @@ end
 
 function logsumexp(x::AbstractGPUArray; dims = :)
     max_ = fast_maximum(x; dims)
-    return max_ .+ log.(sum(_exp, broadcasted(-, x, max_); dims))
+    shifted = Base.Broadcast.instantiate(broadcasted(-, x, max_))
+    return max_ .+ log.(sum(_exp, shifted; dims))
 end
 
 function rrule(::typeof(logsumexp), x::AbstractArray{T}; dims = :) where {T}
