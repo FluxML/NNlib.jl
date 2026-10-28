@@ -22,6 +22,9 @@ include("utils.jl")
 # stays a little under, for the alignment of its arrays.
 NNlib.attention_shmem_budget(::CUDABackend) = 47 * 1024
 
+NNlib.attention_compute_units(::CUDABackend) =
+    CUDA.attribute(CUDA.device(), CUDA.DEVICE_ATTRIBUTE_MULTIPROCESSOR_COUNT)
+
 include("precompile.jl")
 
 end # module

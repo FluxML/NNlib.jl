@@ -331,6 +331,87 @@ end
     @test size(scaled_dot_product_attention(q, q, v)) == (4096, 1, 4, 1)
 end
 
+# Few queries per sequence take a kernel of their own, whose blocks hold the query heads
+# sharing a key/value head and split the keys of long sequences: here with one block of
+# rows or several, a group of heads that is not a power of two, and short sequences. The
+# reference is computed on the CPU, where a query attending to no key gives `NaN` too.
+@testset "decoding kernel ($T)" for T in (Float32, Float64)
+    rtol = sqrt(eps(T))
+    same(y, yref) = isequal(isnan.(y), isnan.(yref)) && isapprox(y[.!isnan.(y)], yref[.!isnan.(yref)]; rtol)
+    host(kws) = map(x -> x isa CuArray ? Array(x) : x, kws)
+    shapes = ((64, 64, 8, 2, 1, 3000), (12, 44, 6, 2, 3, 177), (128, 128, 32, 4, 2, 513), (5, 3, 2, 2, 1, 20),
+              (64, 64, 32, 8, 12, 700), (32, 32, 7, 1, 5, 300))
+    @testset "$nheads heads, $kv_heads key/value heads, $lenq queries, $lenkv keys" for
+            (head_dim, v_head_dim, nheads, kv_heads, lenq, lenkv) in (T == Float32 ? shapes : shapes[[1, 5]])
+        bs = 3
+        q = CUDA.randn(T, head_dim, nheads, lenq, bs)
+        k = CUDA.randn(T, head_dim, kv_heads, lenkv, bs) ./ 2
+        v = CUDA.randn(T, v_head_dim, kv_heads, lenkv, bs)
+        qh, kh, vh = Array(q), Array(k), Array(v)
+        @test NNlib.attention_decode_tiling(NNlib.get_backend(q), q, k, v, NNlib.attention_seqs(q, k, nothing)) !== nothing
+        # with a bottom-right causal mask, the first queries of the last sequence attend to no key
+        kv_lengths = [lenkv, lenkv ÷ 2, 1]
+        mask = CUDA.rand(Bool, lenkv, lenq, 1, bs)
+        mask[1, :, :, :] .= true
+        for kws in ((;), (; scale=0.3), (; is_causal=:bottom_right, kv_lengths), (; kv_lengths, q_lengths=[lenq, 1, 1]),
+                    (; is_causal=true, q_offset=[lenkv - lenq, 2, 0]), (; is_causal=:bottom_right, kv_lengths, window=16),
+                    (; mask, kv_lengths), (; mask, is_causal=true))
+            @test same(Array(scaled_dot_product_attention(q, k, v; kws...)), materialized_attention(qh, kh, vh; host(kws)...))
+        end
+        bias = randn(T, lenkv, lenq)
+        @test Array(scaled_dot_product_attention(q, k, v, CuArray(bias))) ≈ materialized_attention(qh, kh, vh, bias) rtol=rtol
+
+        # the gradient, whose forward pass saves the `lse` of the splits combined
+        w = CUDA.randn(T, v_head_dim, nheads, lenq, bs)
+        for kws in ((;), (; is_causal=:bottom_right, kv_lengths=[lenkv, lenkv ÷ 2, lenq]))
+            loss(f) = (x...) -> sum(w .* f(x...; kws...))
+            g = gradient(loss(scaled_dot_product_attention), q, k, v)
+            gm = gradient(loss(materialized_attention), q, k, v)
+            @test all(isapprox.(map(Array, g), map(Array, gm); rtol=T == Float32 ? 1f-3 : 1e-8))
+        end
+    end
+
+    # packed sequences, one query each, and an empty one
+    kv_segments = [1000, 0, 37, 2500]
+    q = CUDA.randn(T, 64, 8, 4)
+    k = CUDA.randn(T, 64, 2, sum(kv_segments)) ./ 2
+    v = CUDA.randn(T, 64, 2, sum(kv_segments))
+    qh, kh, vh = Array(q), Array(k), Array(v)
+    segs = (; q_segments=[1, 1, 1, 1], kv_segments)
+    for kws in ((;), (; is_causal=:bottom_right), (; is_causal=:bottom_right, window=100))
+        @test same(Array(scaled_dot_product_attention(q, k, v; segs..., kws...)),
+                   materialized_attention(qh, kh, vh; segs..., kws...))
+    end
+    # the lengths on the device, bounded by `maxlen` and by the length of the arrays
+    segs_d = (; q_segments=CuArray(segs.q_segments), kv_segments=CuArray(kv_segments), maxlen=2500)
+    q4, k4 = reshape(q, size(q)..., 1), reshape(k, size(k)..., 1)
+    @test NNlib.attention_decode_tiling(NNlib.get_backend(q), q4, k4, k4,
+        NNlib.attention_seqs(q4, k4, NNlib.attention_segments(q4, k4, segs_d...))) !== nothing
+    @test same(Array(scaled_dot_product_attention(q, k, v; segs_d..., is_causal=:bottom_right)),
+               materialized_attention(qh, kh, vh; segs..., is_causal=:bottom_right))
+
+    # many queries take the other kernel
+    q = CUDA.randn(T, 64, 4, NNlib.ATTENTION_DECODE_ROWS ÷ 4 + 1, 2)
+    k = CUDA.randn(T, 64, 1, 100, 2)
+    @test NNlib.attention_decode_tiling(NNlib.get_backend(q), q, k, k, NNlib.attention_seqs(q, k, nothing)) === nothing
+    @test Array(scaled_dot_product_attention(q, k, k)) ≈ materialized_attention(Array(q), Array(k), Array(k)) rtol=rtol
+end
+
+# Half precision with a mask, which cuDNN does not take.
+@testset "decoding kernel ($T)" for T in (Float16, BFloat16)
+    T == BFloat16 && CUDA.capability(CUDA.device()) < v"8.0" && continue
+    q = randn(Float32, 128, 32, 1, 2)
+    k = randn(Float32, 128, 8, 2000, 2) ./ 2
+    v = randn(Float32, 128, 8, 2000, 2)
+    mask = rand(Bool, 2000, 1, 1, 2)
+    mask[1, :, :, :] .= true
+    yref = scaled_dot_product_attention(q, k, v; mask, kv_lengths=[2000, 999])
+    qd, kd, vd = half(T, q), half(T, k), half(T, v)
+    y = scaled_dot_product_attention(qd, kd, vd; mask=CuArray(mask), kv_lengths=[2000, 999])
+    @test y isa CuArray{T,4}
+    @test Float32.(Array(y)) ≈ yref rtol=2f-2
+end
+
 # The gradient of NNlib's kernel, against that of the materialized implementation on the CPU.
 @testset "fused gradient ($T)" for T in (Float32, Float64)
     rtol = T == Float32 ? 1f-3 : 1e-8
