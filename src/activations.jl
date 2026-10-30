@@ -1021,15 +1021,17 @@ for f in ACTIVATIONS
   @eval $(f)(x::AbstractArray, args...) = $(f).(x, args...)
 end
 
-# Base does not specialize a call `(f ∘ g)(x...)` on the number of arguments, which costs
+# Base does not specialize a call `(f ∘ g)(x, y...)` on the number of arguments, which costs
 # nothing as long as that call is inlined. With an inlined activation inside it is too
 # large for that, and every call would box its arguments, or fail to compile on a GPU
-# (#597). These methods take such calls instead, for numbers, and are inlined.
-# `act ∘ +` is what `bias_act!` broadcasts.
+# (#597). These methods take such calls instead, for numbers, and are inlined (LuxLib
+# broadcasts `σ ∘ +`). A call with one argument is specialized, and a method taking one
+# would invalidate every call compiled for `(::ComposedFunction)(::Any)` (#884).
 const Activation = Union{map(f -> typeof(getfield(@__MODULE__, f)), ACTIVATIONS)...}
 const ComposedActivation = Union{ComposedFunction{<:Activation}, ComposedFunction{<:Any,<:Activation}}
 
-@inline (c::ComposedActivation)(x::Vararg{Number,N}) where {N} = c.outer(c.inner(x...))
+@inline (c::ComposedActivation)(x::Number, y::Number, z::Vararg{Number,N}) where {N} =
+    c.outer(c.inner(x, y, z...))
 
 ## Faster, less accurate, versions of some.
 

@@ -109,3 +109,10 @@ ACTIVATION_FUNCTIONS =
     end
 end
 
+# A call that is not inlined boxes its arguments: a box per element would be 1600 bytes or more.
+bias_act_allocs(f, x, b) = (bias_act!(f, x, b); @allocated bias_act!(f, x, b))
+
+@testset "bias_act! allocations: $f" for f in [ACTIVATION_FUNCTIONS; σ ∘ abs]
+    @test bias_act_allocs(f, randn(Float32, 100), randn(Float32, 100)) < 100
+end
+

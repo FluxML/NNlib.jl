@@ -31,8 +31,10 @@ contains only `Ω` (the output) not `x`.
     It is intended mainly for Flux layers, in which the previous operation is
     known to be safe, e.g. `bias_act!(σ, weight * input, bias)` for a `Dense` layer.
 """
-bias_act!(σ::Function, x::StridedArray{<:AbstractFloat}, b::AbstractArray{<:Union{Bool, AbstractFloat}}) =
-    _fast_broadcast!(fast_act(σ, x)∘(+), x, b)  # works around a SIMD bug
+function bias_act!(σ::Function, x::StridedArray{<:AbstractFloat}, b::AbstractArray{<:Union{Bool, AbstractFloat}})
+    act = fast_act(σ, x)  # not `act ∘ +`, which boxes its arguments for an `act` such as `σ ∘ abs`
+    _fast_broadcast!(@inline((xi, bi) -> act(xi + bi)), x, b)  # works around a SIMD bug
+end
 
 function bias_act!(σ::Function, x::StridedArray{<:AbstractFloat}, b::Bool)
     b === true && error("bias=true is not accepted; layer constructors shoud guarantee this")
