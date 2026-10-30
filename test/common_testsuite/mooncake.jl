@@ -74,6 +74,9 @@ function mooncake_testsuite(Backend)
             (true, :none, false, dropout_tester_1, Trng, _rand(rng, 2, 2), T(0.5)),
             (true, :none, false, dropout_tester_2, Trng, _rand(rng, 2, 2), T(0.1)),
             (true, :none, false, dropout_tester_3, Trng, _rand(rng, 2, 2), T(0.4)),
+            # `p` may be any `Real`; on CUDA this also checks Float64-to-Float32 conversion.
+            (true, :none, false, dropout_tester_1, Trng, _rand(rng, 2, 2), 0.1),
+            (true, :none, false, dropout_tester_2, Trng, _rand(rng, 2, 2), 1 // 10),
             (false, :none, false, dropout_alias_tester, Trng, _rand(rng, 2, 2)),
             (false, :none, false, dropout_alias_tester_dims, Trng, _rand(rng, 2, 2)),
             # The aliasing arm, `p ≤ 0`, which returns the input `CoDual`. On a device these
