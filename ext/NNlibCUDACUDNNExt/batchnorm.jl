@@ -108,8 +108,8 @@ function cudnnBNForward!(y::DenseCuArray{T}, g::DenseCuArray{P}, b::DenseCuArray
     end
 
     if cache !== nothing
-      mean = fill!(similar(x, P, dims), 0)
-      ivar = fill!(similar(x, P, dims), 1)
+      mean = similar(x, P, dims)
+      ivar = similar(x, P, dims)
     else
       mean = CU_NULL
       ivar = CU_NULL
@@ -240,7 +240,7 @@ function cudnnBNBackward!(dg::DenseCuArray{P}, g::DenseCuArray{P}, db::DenseCuAr
   dyd = cudnnTensorDescriptor(dy)
   dxd = cudnnTensorDescriptor(dx)
   gd = cudnnTensorDescriptor(CUDNN_TENSOR_NCHW, cudnnDataType(P), Cint(length(_wsize(x))), dim4(_wsize(x),Val(CUDNN_TENSOR_NCHW)))
-  if cache !== nothing
+  if cache !== nothing && cache.mean !== nothing
     @debug "fetching mean and ivar from the cache"
     mean, ivar = cache.mean, cache.ivar
   else
@@ -255,10 +255,14 @@ end
 # GPU differentiation of the cuDNN fast path. Other arrays, 2D `CuArray`s included, use
 # the `rrule` of the generic `batchnorm` in NNlib core.
 function ChainRulesCore.rrule(::typeof(batchnorm), g, b, x::BNArray,
-                              running_mean, running_var, momentum; kw...)
-  y = batchnorm(g, b, x, running_mean, running_var, momentum; kw...)
+                              running_mean, running_var, momentum;
+                              cache = nothing, training::Bool = true, kw...)
+  # The forward pass saves the batch mean and inverse variance for the backward pass.
+  saved = training && cache === nothing ? BNCache() : cache
+  y = batchnorm(g, b, x, running_mean, running_var, momentum; cache = saved, training, kw...)
   function batchnorm_pullback(Δ)
-    grad = ∇batchnorm(g, b, x, unthunk(Δ), running_mean, running_var, momentum; kw...)
+    grad = ∇batchnorm(g, b, x, unthunk(Δ), running_mean, running_var, momentum;
+                      cache = saved, training, kw...)
     (NoTangent(), grad..., NoTangent(), NoTangent(), NoTangent())
   end
   y, batchnorm_pullback
