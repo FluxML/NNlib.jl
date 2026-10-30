@@ -1,13 +1,18 @@
 # Tests for `ext/NNlibMooncakeExt/rules.jl`. Ported from `test/ext/nnlib/nnlib.jl` in
 # Mooncake.jl, without the cases that belong to its LuxLib extension.
 
-using Mooncake.TestUtils: test_rule
+using Mooncake.TestUtils: test_rule, test_rule_throws
 using Mooncake.Nfwd: NDual, ndual_partial, ndual_value
 using JET: JET  # `test_rule`'s stability checks need Mooncake's JET extension
 
 dropout_tester_1(Trng, x, p) = dropout(Trng(1), x, p; dims=1)
 dropout_tester_2(Trng, x, p) = dropout(Trng(1), x, p; dims=2)
 dropout_tester_3(Trng, x, p) = dropout(Trng(1), x, p; dims=(1, 2))
+
+# Fix p so finite differences test the input gradient, not the sampling probability.
+function dropout_mixed_tester(Trng, x, ::Val{p}, ::Val{dims}) where {p,dims}
+    return dims === nothing ? dropout(Trng(1), x, p) : dropout(Trng(1), x, p; dims)
+end
 
 # At p == 0 `dropout` returns its input itself, so mutating the result doubles the sum. `p`
 # is fixed inside because `test_rule` would perturb it to `-ε`, outside `dropout`'s domain.
@@ -30,6 +35,27 @@ function mooncake_testsuite(Backend)
     _rand(rng, size...) = device(randn(rng, T, size...))
     _ones(d...) = device(ones(T, d...))
     Trng = gpu ? typeof(NNlib._rng_from_array(_ones(1))) : StableRNG
+    # CUDA.jl#2886 is fixed after 5.9.6, allowing these checks on the GPU.
+    cuda = gpu && CUDA.functional() && pkgversion(CUDA) > v"5.9.6"
+
+    if !gpu || cuda
+        @testset "dropout rejects invalid mixed-precision probabilities" begin
+            for p in (-eps(Float64), nextfloat(1.0), Inf, NaN), kw in (false, true)
+                rng = Trng(123)
+                x = device(ones(Float32, 4))
+                args = kw ? (Core.kwcall, (dims=1,), dropout, rng, x, p) : (dropout, rng, x, p)
+                test_rule_throws(
+                    StableRNG(123),
+                    args...;
+                    err=ArgumentError,
+                    msg="dropout expects a probability 0 <= p <= 1",
+                    mode=Mooncake.ReverseMode,
+                    primal=true,
+                )
+                @test rand(rng, Float32, 8) == rand(Trng(123), Float32, 8)
+            end
+        end
+    end
 
     gpu || @testset "batched_mul with a singleton batch" for batches in ((3, 3), (1, 3), (3, 1))
         rng = StableRNG(123)
@@ -74,8 +100,7 @@ function mooncake_testsuite(Backend)
             (true, :none, false, dropout_tester_1, Trng, _rand(rng, 2, 2), T(0.5)),
             (true, :none, false, dropout_tester_2, Trng, _rand(rng, 2, 2), T(0.1)),
             (true, :none, false, dropout_tester_3, Trng, _rand(rng, 2, 2), T(0.4)),
-            # `p` may be any `Real`; on CUDA this also checks Float64-to-Float32 conversion.
-            (true, :none, false, dropout_tester_1, Trng, _rand(rng, 2, 2), 0.1),
+            # `p` may be a non-floating `Real` as well.
             (true, :none, false, dropout_tester_2, Trng, _rand(rng, 2, 2), 1 // 10),
             (false, :none, false, dropout_alias_tester, Trng, _rand(rng, 2, 2)),
             (false, :none, false, dropout_alias_tester_dims, Trng, _rand(rng, 2, 2)),
@@ -206,6 +231,21 @@ function mooncake_testsuite(Backend)
             (false, :stability, true, bias_act!, identity, _rand(rng, 8, 4), _rand(rng, 8)),
             (false, :stability, true, bias_act!, identity, _rand(rng, 8), _rand(rng, 8)),
         ]
+        if !gpu || cuda
+            append!(test_cases, [
+                (
+                    false,
+                    :none,
+                    false,
+                    dropout_mixed_tester,
+                    Trng,
+                    wrap(device(ones(S, 32, 4))),
+                    Val(p),
+                    Val(dims),
+                ) for (S, p) in ((Float32, 0.9), (Float64, 0.1f0), (Float32, 0.0)) for
+                dims in (nothing, 1) for wrap in (identity, adjoint, transpose)
+            ])
+        end
         if gpu
             push!(test_cases,
                 (false, :none, true, bias_act!, tanh, _rand(rng, 8, 4), _rand(rng, 8)),
