@@ -78,6 +78,10 @@ _accumulate!(::NoFData, Δ) = nothing
 #
 # The rules are inlined into the code Mooncake derives, like the kernels into NNlib's:
 # left as a call, each costs some 2 ns more per element.
+#
+# A zero cotangent stays zero: `elu` and its relatives call `_expm1` on any input, large
+# positive ones included, where it and its derivative overflow to `Inf`. The `ifelse` that
+# discards it gives it a zero cotangent, and `0 * Inf` is `NaN`.
 for (f, ctx, dydx) in ((:_exp, :MinimalCtx, :y), (:_expm1, :MinimalCtx, :(y + 1)),
                        (:_log1p_unit, :DefaultCtx, :(inv(1 + x))))
     @eval begin
@@ -91,7 +95,7 @@ for (f, ctx, dydx) in ((:_exp, :MinimalCtx, :y), (:_expm1, :MinimalCtx, :(y + 1)
             x = primal(x_x̄)
             y = NNlib.$f(x)
             dydx = $dydx
-            pullback(ȳ::P) = NoRData(), dydx * ȳ
+            pullback(ȳ::P) = NoRData(), ifelse(iszero(ȳ), ȳ, dydx * ȳ)
             return zero_fcodual(y), pullback
         end
     end

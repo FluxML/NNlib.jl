@@ -463,6 +463,43 @@ function mooncake_testsuite(Backend)
         @test Float64(pb16(one(Float16))[2]) ≈ ref16 rtol = 1e-2
     end
 
+    # `elu`, `celu` and `selu` compute `_expm1` whatever the sign of the input. Where it overflows
+    # (`x > 88.7` for `Float32`, `709.8` for `Float64`) its derivative is `Inf` too, and a zero
+    # cotangent times it was `NaN`. For `celu` the argument is `x / α`, which does so much earlier.
+    @testset "elu, celu and selu above the overflow of expm1: $T" for (T, large) in (
+            gpu ? [(Float32, 100.0f0)] : [(Float32, 100.0f0), (Float64, 1000.0)]
+        )
+        grad(f, x) = Mooncake.value_and_gradient!!(Mooncake.prepare_gradient_cache(f, x), f, x)[2][2]
+        elu2(x) = elu(x, 2)
+        celu_half(x) = celu(x, 0.5)
+        celu_small(x) = celu(x, 0.01)
+        small = T === Float32 ? T(5) : T(8)  # `small / 0.01` is past the overflow
+
+        gpu || @testset "scalar $f" for (f, x, d) in (
+                (elu, large, 1), (celu, large, 1), (selu, large, T(NNlib.selu_λ)),
+                (elu2, large, 1), (celu_half, large, 1), (celu_small, small, 1),
+                (elu, T(-1), exp(T(-1))), (selu, T(-1), T(NNlib.selu_λ * NNlib.selu_α) * exp(T(-1))),
+            )
+            @test grad(f, x) ≈ d
+            frule = Mooncake.build_frule(f, x)
+            @test Mooncake.tangent(frule(Mooncake.zero_dual(f), Mooncake.Dual(x, one(T)))) ≈ d
+        end
+
+        xs = device(T[1, large, -1, large, 0])
+        xsmall = device(T[1, small, -1, small, 0])
+        # Through the rules for NNlib's activations, and through the code of the others
+        @testset "broadcast and bias_act!: $f" for (f, x) in (
+                (elu, xs), (celu, xs), (selu, xs),
+                (elu2, xs), (celu_half, xs), (celu_small, xsmall),
+            )
+            expected = gradient(x -> sum(f.(x)), cpu(x))[1]
+            @test all(isfinite, expected)
+            @test cpu(grad(x -> sum(f.(x)), x)) ≈ expected
+            gbias(x) = sum(bias_act!(f, reshape(copy(x), 1, :), device(zeros(T, 1))))
+            @test cpu(grad(gbias, x)) ≈ expected
+        end
+    end
+
     # These rules are reverse-only primitives, so forward mode traces the primal; declared for
     # both modes it would find no `frule!!` and raise. CPU arrays only: a traced GPU kernel
     # launch is a foreigncall, raising `MissingForeigncallRuleError`.
