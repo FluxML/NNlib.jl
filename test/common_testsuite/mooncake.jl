@@ -28,12 +28,30 @@ function dropout_alias_tester_dims(Trng, x)
     return sum(x)
 end
 
+# Every activation `bias_act!` has a rule for, but `identity`. `tanh` is among them as `bias_act!`
+# computes `tanh_fast` for it.
+const bias_act_activations = [getfield(NNlib, f) for (f, _) in NNlib.UNARY_ACTS]
+push!(bias_act_activations, tanh)
+
 function mooncake_testsuite(Backend)
     gpu = Backend != CPU
     device(x) = adapt(Backend(), x)
     T = gpu ? Float32 : Float64
     _rand(rng, size...) = device(randn(rng, T, size...))
     _ones(d...) = device(ones(T, d...))
+    # Random `x` and `b` (`false` if `bsize` is `nothing`), with `x .+ b` kept off the kinks of the
+    # piecewise activations, that finite differences cannot cross.
+    function bias_act_args(rng, xsize, bsize)
+        x = randn(rng, T, xsize...)
+        b = bsize === nothing ? zeros(T, 1) : randn(rng, T, bsize...)
+        kinks = T[-3, -1, -0.5, 0, 0.5, 1, 3, 6]
+        while true
+            near = [minimum(abs.(z .- kinks)) < 0.1 for z in x .+ b]
+            any(near) || break
+            x .+= T(0.23) .* near
+        end
+        return device(x), bsize === nothing ? false : device(b)
+    end
     Trng = gpu ? typeof(NNlib._rng_from_array(_ones(1))) : StableRNG
     # CUDA.jl#2886 is fixed after 5.9.6, allowing these checks on the GPU.
     cuda = gpu && CUDA.functional() && pkgversion(CUDA) > v"5.9.6"
@@ -227,9 +245,17 @@ function mooncake_testsuite(Backend)
             (false, :none, false, x -> pad_constant(x, 1, T(2.0)), x),
             (false, :none, false, x -> pad_constant(x, 1, T(2.0); dims=:), x),
 
-            # bias_act!(identity, x, b): modifies x in-place
+            # bias_act!(σ, x, b): modifies x in-place
             (false, :stability, true, bias_act!, identity, _rand(rng, 8, 4), _rand(rng, 8)),
             (false, :stability, true, bias_act!, identity, _rand(rng, 8), _rand(rng, 8)),
+            (false, :none, true, bias_act!, relu, bias_act_args(rng, (3, 3, 4, 2), (1, 1, 4, 1))...),
+            (false, :none, true, bias_act!, swish, bias_act_args(rng, (3, 3, 4, 2), (1, 1, 4, 1))...),
+            (false, :none, true, bias_act!, relu, bias_act_args(rng, (8, 4), (1,))...),
+            (false, :none, true, bias_act!, relu, bias_act_args(rng, (8, 4), nothing)...),
+            (false, :none, true, bias_act!, swish, bias_act_args(rng, (8, 4), nothing)...),
+            (false, :none, true, bias_act!, tanh, bias_act_args(rng, (8, 4), nothing)...),
+            [(false, :none, true, bias_act!, σ, bias_act_args(rng, (8, 4), (8,))...)
+             for σ in bias_act_activations]...,
         ]
         if !gpu || cuda
             append!(test_cases, [
@@ -248,7 +274,6 @@ function mooncake_testsuite(Backend)
         end
         if gpu
             push!(test_cases,
-                (false, :none, true, bias_act!, tanh, _rand(rng, 8, 4), _rand(rng, 8)),
                 (false, :none, true, bias_act!, tanh, device(fill(20.0f0, 8)), device(zeros(Float32, 8))),
             )
         else
@@ -269,9 +294,11 @@ function mooncake_testsuite(Backend)
         end
     end
 
-    gpu && @testset "saturated bias activations" begin
-        ref = 4 * exp(-40.0f0) / (1 + exp(-40.0f0))^2
-        for activation in (tanh, tanh_fast)
+    @testset "saturated bias activations" begin
+        ref_tanh = 4 * exp(-40.0f0) / (1 + exp(-40.0f0))^2
+        ref_sigmoid = exp(-20.0f0) / (1 + exp(-20.0f0))^2
+        for (activation, ref) in ((tanh, ref_tanh), (tanh_fast, ref_tanh),
+                                  (NNlib.σ, ref_sigmoid), (sigmoid_fast, ref_sigmoid))
             x = device(fill(20.0f0, 1))
             b = device(zeros(Float32, 1))
             out = Mooncake.frule!!(
@@ -296,6 +323,35 @@ function mooncake_testsuite(Backend)
             pullback(Mooncake.NoRData())
             @test only(cpu(dx)) ≈ ref
             @test only(cpu(db)) ≈ ref
+        end
+    end
+
+    # The pullback has to leave `x` as it found it, whatever its own output was overwritten with,
+    # and its gradients are those of NNlib's `rrule`.
+    @testset "bias_act! restores x: $σ, $(b isa Bool ? b : size(b))" for σ in (identity, relu, elu, tanh, swish),
+                                                         (xs, b) in (((8, 4), _rand(rng, 8)),
+                                                                     ((8, 4), false),
+                                                                     ((3, 3, 4, 2), _rand(rng, 1, 1, 4, 1)))
+        x0 = _rand(rng, xs...)
+        x, dx, db = copy(x0), zero(x0), b isa Bool ? Mooncake.NoFData() : zero(b)
+        out, pullback = Mooncake.rrule!!(
+            Mooncake.zero_fcodual(bias_act!), Mooncake.zero_fcodual(σ),
+            Mooncake.CoDual(x, dx), Mooncake.CoDual(b, db),
+        )
+        @test Mooncake.primal(out) === x
+        @test cpu(x) == cpu(bias_act!(σ, copy(x0), b))
+        fill!(Mooncake.tangent(out), 1)
+        pullback(Mooncake.NoRData())
+        @test x == x0
+        ref_dx, ref_db = gradient((x, b) -> sum(bias_act!(σ, copy(x), b)), x0, b)
+        @test cpu(dx) ≈ cpu(ref_dx)
+        b isa Bool || @test cpu(db) ≈ cpu(ref_db)
+    end
+
+    @testset "bias_act! forward mode: $σ" for σ in (identity, bias_act_activations...)
+        for bsize in ((8,), nothing)
+            test_rule(StableRNG(123), bias_act!, σ, bias_act_args(rng, (8, 4), bsize)...;
+                perf_flag=:none, is_primitive=true, mode=Mooncake.ForwardMode)
         end
     end
 
