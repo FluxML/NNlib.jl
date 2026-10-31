@@ -424,6 +424,101 @@ function mooncake_testsuite(Backend)
         @test ndual_partial(y_nd_neg, 1) ≈ 0.5f0
     end
 
+    # NNlib sums half precision in Float32, and `logsumexp` returns it. The rules must too: summed in
+    # `T`, Float16 overflows past 65504 entries and BFloat16 stops growing at 256.
+    # Mooncake takes BFloat16 for a primitive float only on Julia ≥ 1.11, and for a `CuArray` not at all.
+    bfloat16 = !gpu && Mooncake.tangent_type(BFloat16) === BFloat16
+    half_types = bfloat16 ? (Float16, BFloat16) : (Float16,)
+    @testset "half-precision softmax family: $T" for T in half_types
+        # The output of the rule for `f(x; kw...)` and the cotangent it adds to `x`, given `ȳ`.
+        function rule_pullback(f, x, ȳ; kw...)
+            fs = isempty(kw) ? (f,) : (Core.kwcall, NamedTuple(kw), f)
+            cx = Mooncake.zero_fcodual(x)
+            y, pb = Mooncake.rrule!!(map(Mooncake.zero_fcodual, fs)..., cx)
+            if ȳ isa Number
+                pb(ȳ)
+            else
+                Mooncake.tangent(y) .= ȳ
+                pb(Mooncake.NoRData())
+            end
+            return Mooncake.primal(y), cpu(Mooncake.arrayify(cx)[2])
+        end
+
+        X = device(randn(StableRNG(123), T, 4, 3))
+        @testset "$f $kw $(typeof(x).name.name)" for f in (softmax, logsoftmax, logsumexp),
+            kw in ((;), (dims=1,), (dims=2,)), x in (X, X')
+
+            y_ref, pb_ref = rrule(f, x; kw...)
+            ȳ = y_ref isa Number ? one(y_ref) : device(randn(StableRNG(1), eltype(y_ref), size(y_ref)))
+            y, dx = rule_pullback(f, x, ȳ; kw...)
+            @test typeof(y) == typeof(y_ref)
+            @test cpu(y) ≈ cpu(y_ref) rtol = 1e-5
+            @test dx ≈ cpu(pb_ref(ȳ)[2]) rtol = 4eps(T)
+        end
+
+        @testset "large reduction" begin
+            n = 100_000
+            lse = Float32(log(n))
+            x = device(zeros(T, n))
+            y, dx = rule_pullback(logsumexp, x, 1.0f0)
+            @test y isa Float32
+            @test y ≈ lse
+            @test all(≈(1 / n; rtol=2e-2), dx)
+
+            X = device(zeros(T, n, 2))
+            y, dx = rule_pullback(logsumexp, X, device(ones(Float32, 1, 2)); dims=1)
+            @test cpu(y) isa Matrix{Float32}
+            @test all(≈(lse), cpu(y))
+            @test all(≈(1 / n; rtol=2e-2), dx)
+
+            # The issue's reproducer, through Mooncake's interface.
+            gpu || for (f, x) in ((logsumexp, zeros(T, n)), (X -> sum(logsumexp(X; dims=1)), zeros(T, n, 2)))
+                val, (_, dx) = Mooncake.value_and_gradient!!(Mooncake.prepare_gradient_cache(f, x), f, x)
+                val_ref, (dx_ref,) = Zygote.withgradient(f, x)
+                @test typeof(val) == typeof(f(x))
+                @test val ≈ val_ref
+                @test dx ≈ dx_ref rtol = 4eps(T)
+            end
+        end
+
+        @testset "infinite entries" begin
+            y, dx = rule_pullback(logsumexp, device(T[Inf, 1]), 1.0f0)
+            @test y == Inf32
+            @test dx == T[1, 0]
+            y, dx = rule_pullback(logsumexp, device(T[-Inf -Inf; 1 -Inf]), device(ones(Float32, 1, 2)); dims=1)
+            @test cpu(y) == Float32[1 -Inf]
+            @test dx == T[0 0.5; 1 0.5]
+        end
+    end
+
+    # The same in forward mode, where `logsumexp` is evaluated on `NDual`s. NDual has no BFloat16.
+    gpu || @testset "half-precision logsumexp on NDual" begin
+        n = 100_000
+        xs = [NDual{Float16,2}(Float16(0), (Float16(1), Float16(i % 2))) for i in 1:n]
+        y = logsumexp(xs)
+        @test y isa NDual{Float32,2}
+        @test ndual_value(y) ≈ log(Float32(n))
+        @test ndual_partial(y, 1) ≈ 1
+        @test ndual_partial(y, 2) ≈ 0.5
+
+        y = logsumexp(NDual{Float16,1}[NDual{Float16,1}(Inf16, (1,)), NDual{Float16,1}(Inf16, (0,))])
+        @test y isa NDual{Float32,1}
+        @test ndual_value(y) == Inf32
+        @test ndual_partial(y, 1) ≈ 0.5
+        y = logsumexp(NDual{Float16,1}[])
+        @test y isa NDual{Float32,1}
+        @test ndual_value(y) == -Inf32
+
+        # A vector of up to eight entries is lifted to `NDual`s by the derivative cache.
+        x = randn(StableRNG(123), Float16, 5)
+        val, (_, dx) = Mooncake.value_and_gradient!!(
+            Mooncake.prepare_derivative_cache(logsumexp, x), logsumexp, x
+        )
+        @test val isa Float32
+        @test val ≈ logsumexp(x)
+        @test dx ≈ softmax(Float32.(x)) rtol = 4eps(Float16)
+    end
+
     # NNlib's `exp(-abs(x))` form of σ has a kink at zero that the function itself does not.
     @testset "sigmoid at zero and saturation: $f" for f in (NNlib.σ, NNlib.sigmoid_fast)
         if gpu
