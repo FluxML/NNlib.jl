@@ -17,7 +17,9 @@ import Mooncake:
     @is_primitive,
     rrule!!,
     CoDual,
+    NoFData,
     NoRData,
+    NoTangent,
     zero_fcodual,
     primal,
     tangent,
@@ -902,103 +904,100 @@ end
     MinimalCtx, Tuple{typeof(pad_constant),SupportedArray{P,N},Any,Any} where {P,N}, true,
 )
 
-# Direct rules for bias_act!(identity, x, b) on CPU and GPU arrays.
-# bias_act! modifies x in-place (x .+= b), so we save x's primal before mutation,
-# compute in-place, return x as output, and restore x's primal in the pullback.
-@is_primitive(
-    MinimalCtx,
-    Tuple{
-        typeof(bias_act!),
-        typeof(identity),
-        SupportedArray{<:IEEEFloat,N} where {N},
-        SupportedArray{<:IEEEFloat,M} where {M},
-    },
-)
-function frule!!(
-    ::Dual{typeof(bias_act!)},
-    ::Dual{typeof(identity)},
-    x::Dual{<:SupportedArray{<:IEEEFloat,N}},
-    b::Dual{<:SupportedArray{<:IEEEFloat,M}},
-) where {N,M}
-    primal(x) .+= primal(b)
-    tangent(x) .+= tangent(b)
-    return x
-end
-function rrule!!(
-    ::CoDual{typeof(bias_act!)},
-    ::CoDual{typeof(identity)},
-    x::CoDual{<:SupportedArray{P}},
-    b::CoDual{<:SupportedArray{<:IEEEFloat}},
-) where {P<:IEEEFloat}
-    px, dx = arrayify(x)
-    pb, db = arrayify(b)
-    px_copy = copy(px)
-    px .+= pb
-    # Dims over which b is broadcast (size 1 in b but potentially larger in x).
-    broadcast_dims = Tuple(filter(d -> size(pb, d) == 1, 1:ndims(px)))
-    function bias_act_id_pb!!(::NoRData)
-        if isempty(broadcast_dims)
-            db .+= dx
-        else
-            db .+= reshape(sum(dx; dims=broadcast_dims), size(pb))
-        end
-        copyto!(px, px_copy)
-        return NoRData(), NoRData(), NoRData(), NoRData()
-    end
-    return x, bias_act_id_pb!!
-end
+# `bias_act!` overwrites the dense array `x` and returns it. The rules save the old `x` and have
+# the pullback restore it, as Mooncake's reverse pass has to. The element types are bounded in
+# `BiasActFloat` alone. The bias is `false` for a layer without one.
+const BiasActFloat = IEEEFloat
+const BiasActArray{P} = Union{Array{P},AbstractGPUArray{P}}
+const BiasActBias{P} = Union{BiasActArray{P},Bool}
 
-# Handle Flux's common non-identity activations directly to avoid the generic NDual broadcast
-# machinery. Like the identity rule above, these rules restore `x` during the pullback.
-const GPUFastActivation = Union{typeof(tanh),typeof(tanh_fast)}
+# `fast_act` turns `tanh` and `sigmoid` (`σ`) into the fast variants, which have rules of their own.
+const BiasActivation = Union{typeof(identity),typeof(tanh),Activation}
+
 @is_primitive MinimalCtx Tuple{
-    typeof(bias_act!),GPUFastActivation,AbstractGPUArray{P},AbstractGPUArray{P}
-} where {P<:IEEEFloat}
+    typeof(bias_act!),BiasActivation,BiasActArray{P},BiasActBias{P}
+} where {P<:BiasActFloat}
 
-@inline function _tanh_fast_derivative(x)
-    u = exp(-2 * abs(x))
-    return 4u / (one(x) + u)^2
+# The derivative at the pre-activation `z`, `Ω` being the output. These are NNlib's, except for
+# `tanh` and `σ` where `Ω` collapses to `±1` and `Ω * (1 - Ω)` to `0` long before the derivative
+# does (see the rules for `σ` and `tanh_fast` below).
+@inline _bias_act_derivative(Ω, σ, z) = NNlib.only_derivative(Ω, σ, z)
+@inline _bias_act_derivative(_, ::typeof(identity), z) = one(z)
+@inline _bias_act_derivative(_, ::Union{typeof(tanh),typeof(tanh_fast)}, z) =
+    _tanh_fast_derivative(z)
+@inline _bias_act_derivative(_, ::Union{typeof(NNlib.σ),typeof(sigmoid_fast)}, z) =
+    _sigmoid_derivative(z)
+
+# Whether the derivative is a function of the output alone, as that of `relu` is.
+_derivative_of_output(σ::F, ::Type{P}) where {F,P} =
+    isconcretetype(Core.Compiler.return_type(_bias_act_derivative, Tuple{P,F,NNlib.NotaNumber}))
+
+# `dx .*= σ'.(x .+ b)`, with the output `Ω` in `px` and the input in `x`. A derivative that
+# needs `x` is formed first, apart from `dx`: with `dx` read inside the broadcast, that of
+# `swish` and the like is not compiled to SIMD code, and neither is it in `_fast_broadcast!`
+# with more than one array besides `dx`.
+_scale_by_derivative!(dx, ::typeof(identity), Ω, x, b) = dx
+function _scale_by_derivative!(dx, σ, Ω, x, b)
+    if _derivative_of_output(σ, eltype(dx))
+        return NNlib._fast_broadcast!(
+            (d, Ω) -> d * _bias_act_derivative(Ω, σ, NNlib.NotaNumber()), dx, Ω
+        )
+    end
+    d = similar(dx)  # a `BitArray` otherwise, for a `Bool` derivative
+    d .= _bias_act_derivative.(Ω, σ, x .+ b)
+    return NNlib._fast_broadcast!(*, dx, d)
 end
 
-@inline _bias_act_derivative(::GPUFastActivation, x) = _tanh_fast_derivative(x)
+# `db .+= sum(dx)` over the dimensions along which `b` is broadcast.
+_add_bias_gradient!(::NoFData, dx) = nothing
+function _add_bias_gradient!(db, dx)
+    if size(db) == size(dx)
+        db .+= dx
+    else
+        N = ndims(dx)
+        # Summing over `N + 1` is NNlib's trick to keep the dimensions type-stable.
+        dims = ntuple(d -> size(db, d) == 1 ? d : N + 1, N)
+        db .+= reshape(sum(dx; dims), size(db))
+    end
+    return nothing
+end
+
+_add_tangent(dx, db) = dx .+ db
+_add_tangent(dx, ::NoTangent) = dx
 
 function frule!!(
     ::Dual{typeof(bias_act!)},
-    σ::Dual{<:GPUFastActivation},
-    x::Dual{<:AbstractGPUArray{P}},
-    b::Dual{<:AbstractGPUArray{P}},
-) where {P<:IEEEFloat}
-    px, dx = arrayify(x)
-    pb, db = arrayify(b)
+    σ::Dual{<:BiasActivation},
+    x::Dual{<:BiasActArray{P}},
+    b::Dual{<:BiasActBias{P}},
+) where {P<:BiasActFloat}
+    px, dx = primal(x), tangent(x)
+    pb, db = primal(b), tangent(b)
     pσ = primal(σ)
-    dx .= _bias_act_derivative.(pσ, px .+ pb) .* (dx .+ db)
+    z = px .+ pb
     bias_act!(pσ, px, pb)
+    dx .= _add_tangent(dx, db) .* _bias_act_derivative.(px, pσ, z)
     return x
 end
 
 function rrule!!(
     ::CoDual{typeof(bias_act!)},
-    σ::CoDual{<:GPUFastActivation},
-    x::CoDual{<:AbstractGPUArray{P}},
-    b::CoDual{<:AbstractGPUArray{P}},
-) where {P<:IEEEFloat}
-    px, dx = arrayify(x)
-    pb, db = arrayify(b)
+    σ::CoDual{<:BiasActivation},
+    x::CoDual{<:BiasActArray{P}},
+    b::CoDual{<:BiasActBias{P}},
+) where {P<:BiasActFloat}
+    px, dx = primal(x), tangent(x)
+    pb, db = primal(b), tangent(b)
     pσ = primal(σ)
     old_px = copy(px)
     bias_act!(pσ, px, pb)
-    broadcast_dims = Tuple(filter(d -> size(pb, d) == 1, 1:ndims(px)))
-    function gpu_bias_act_pb!!(::NoRData)
-        dx .*= _bias_act_derivative.(pσ, old_px .+ pb)
-        if isempty(broadcast_dims)
-            db .+= dx
-        else
-            db .+= reshape(sum(dx; dims=broadcast_dims), size(pb))
-        end
+    function bias_act_pb!!(::NoRData)
+        _scale_by_derivative!(dx, pσ, px, old_px, pb)
+        _add_bias_gradient!(db, dx)
         copyto!(px, old_px)
         return NoRData(), NoRData(), NoRData(), NoRData()
     end
-    return x, gpu_bias_act_pb!!
+    return x, bias_act_pb!!
 end
 
 # σ is smooth, but tracing the primal is wrong at both ends. At zero it routes through
@@ -1007,33 +1006,34 @@ end
 # `σ(x)` rounds to `1.0` the factor `1 - σ(x)` is exactly `0` (Float64 `x ≳ 37`, Float32
 # `≳ 17`, Float16 `≳ 8`) while the
 # true value is still normal. `t / (1 + t)^2` with `t = exp(-abs(x))` holds it in an
-# exponent instead, and `t ≤ 1` bounds the quotient. `exp` therefore runs twice, here and in
+# exponent instead, and `t ≤ 1` bounds the quotient. `_exp` therefore runs twice, here and in
 # the primal, rather than restating the primal's branch and `sigmoid_fast`'s clamps where
 # they could drift from it — 2 ns of 5.5. Both rules differentiate the unclamped σ: past
 # `x ≈ 36.8` the analytic value is all there is, and below `-80` `sigmoid_fast`'s clamp is
 # documented as an accuracy compromise, not a different function.
+@inline function _sigmoid_derivative(x)
+    t = NNlib._exp(-abs(x))
+    return t / (one(t) + t)^2
+end
+
 for f in (:σ, :sigmoid_fast)
     @eval @is_primitive MinimalCtx Tuple{typeof(NNlib.$f),P} where {P<:IEEEFloat}
     @eval function Mooncake.frule!!(
         ::Dual{typeof(NNlib.$f)}, x::Dual{P}
     ) where {P<:IEEEFloat}
-        t = exp(-abs(primal(x)))
-        d = t / (one(P) + t)^2
-        return Dual(NNlib.$f(primal(x)), tangent(x) * d)
+        return Dual(NNlib.$f(primal(x)), tangent(x) * _sigmoid_derivative(primal(x)))
     end
     @eval function Mooncake.rrule!!(
         ::CoDual{typeof(NNlib.$f)}, x::CoDual{P}
     ) where {P<:IEEEFloat}
-        t = exp(-abs(primal(x)))
-        d = t / (one(P) + t)^2
+        d = _sigmoid_derivative(primal(x))
         sigmoid_pb!!(dΩ::P) = NoRData(), dΩ * d
         return zero_fcodual(NNlib.$f(primal(x))), sigmoid_pb!!
     end
     # GPU elementwise and reduction rules evaluate the whole fused broadcast on `NDual`s
     # inside one kernel, so they never reach the rules above and need the derivative too.
     @eval @inline function NNlib.$f(x::NDual{P,N}) where {P<:IEEEFloat,N}
-        t = exp(-abs(x.value))
-        d = t / (one(P) + t)^2
+        d = _sigmoid_derivative(x.value)
         return NDual{P,N}(NNlib.$f(x.value), ntuple(i -> x.partials[i] * d, Val(N)))
     end
 end
@@ -1048,6 +1048,11 @@ end
 #
 # `4u / (1 + u)^2` with `u = exp(-2|x|)` for σ's reason: `1 - tanh(x)^2` collapses to `0`
 # once `tanh(x)` rounds to `1.0` (Float64 `|x| ≳ 19.5`, Float32 `≳ 9`).
+@inline function _tanh_fast_derivative(x)
+    u = NNlib._exp(-2 * abs(x))
+    return 4u / (one(x) + u)^2
+end
+
 @is_primitive MinimalCtx Tuple{typeof(tanh_fast),P} where {P<:IEEEFloat}
 function Mooncake.frule!!(::Dual{typeof(tanh_fast)}, x::Dual{P}) where {P<:IEEEFloat}
     d = _tanh_fast_derivative(primal(x))
