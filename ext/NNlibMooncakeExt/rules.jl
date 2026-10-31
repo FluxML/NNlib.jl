@@ -558,6 +558,7 @@ function Mooncake.rrule!!(
     end
     return res, gather_pb!!
 end
+# Views are taken by the rules in `NNlibMooncakeExt.jl`: `@from_rrule` cannot.
 for conv in [:conv, :depthwiseconv]
     local ∇conv_data, ∇conv_filter = Symbol.(:∇, conv, [:_data, :_filter])
 

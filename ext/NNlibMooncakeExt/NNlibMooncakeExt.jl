@@ -4,7 +4,8 @@ using Mooncake: Mooncake, MinimalCtx, DefaultCtx, ReverseMode, CoDual, Dual, NoF
     primal, tangent, zero_fcodual, zero_rdata, @is_primitive, @zero_adjoint
 using NNlib: NNlib, batchnorm, instancenorm, groupnorm, layernorm, rmsnorm
 using NNlib.GPUArraysCore: AbstractGPUArray
-using ChainRulesCore: ChainRulesCore
+using ChainRulesCore: ChainRulesCore, unthunk
+using Base: IEEEFloat
 using Base.Broadcast: Broadcasted, DefaultArrayStyle, broadcasted, materialize
 
 # Mooncake's reverse pass restores every value that was overwritten on the forward pass.
@@ -48,33 +49,75 @@ for (f, args) in ((:batchnorm, :(NormParam, NormParam, NormArray, Vararg)),
 end
 
 function Mooncake.rrule!!(f::CoDual{<:NormFunction}, args::Vararg{CoDual,N}) where {N}
-    y, pullback = _norm_rrule(primal(f), (;), args)
+    y, pullback = _chainrules_rrule(primal(f), (;), args)
     return y, ȳ -> (NoRData(), pullback(ȳ)...)
 end
 
 function Mooncake.rrule!!(::CoDual{typeof(Core.kwcall)}, kw::CoDual{<:NamedTuple},
                           f::CoDual{<:NormFunction}, args::Vararg{CoDual,N}) where {N}
-    y, pullback = _norm_rrule(primal(f), primal(kw), args)
+    y, pullback = _chainrules_rrule(primal(f), primal(kw), args)
     kw_rdata = zero_rdata(primal(kw))
     return y, ȳ -> (NoRData(), kw_rdata, NoRData(), pullback(ȳ)...)
 end
 
-function _norm_rrule(f, kw, args::NTuple{N,CoDual}) where {N}
+function _chainrules_rrule(f, kw, args::NTuple{N,CoDual}) where {N}
     y, cr_pullback = ChainRulesCore.rrule(f, map(primal, args)...; kw...)
     res = zero_fcodual(y)
     function pullback(::NoRData)
         Δ = cr_pullback(tangent(res))
-        foreach(_accumulate!, map(tangent, args), ntuple(i -> Δ[i + 1], Val(N)))
+        foreach(_accumulate!, map(_cotangent, args), ntuple(i -> unthunk(Δ[i + 1]), Val(N)))
         return map(zero_rdata ∘ primal, args)
     end
     return res, pullback
 end
+
+# The fdata of a view holds its parent, whole: the cotangent is added to the slice `arrayify` gives.
+_cotangent(x::CoDual{<:SubArray}) = last(Mooncake.arrayify(x))
+_cotangent(x::CoDual) = tangent(x)
 
 # The running statistics have no cotangent, and a scale or bias that is `nothing` has
 # nowhere to put the one cuDNN computes.
 _accumulate!(x̄::AbstractArray, Δ::AbstractArray) = (x̄ .+= Δ; nothing)
 _accumulate!(x̄::AbstractArray, ::ChainRulesCore.AbstractZero) = nothing
 _accumulate!(::NoFData, Δ) = nothing
+
+# Convolutions and pooling over views. The rules for arrays (`@from_rrule`) add ChainRules'
+# cotangent to the fdata of an argument, which for a view holds its whole parent: they take no
+# views, and Mooncake would trace one down to the BLAS calls. Here the cotangent goes into the
+# slice of it that `arrayify` returns. A view is in at least one position of each signature,
+# which keeps them apart from those of the rules for arrays.
+const ViewArray{P,N} = SubArray{P,N,<:Union{Array{P},AbstractGPUArray{P}}}
+const PlainArray{P,N} = Union{Array{P,N},AbstractGPUArray{P,N}}
+const ViewFunction = Union{typeof(NNlib.conv),typeof(NNlib.depthwiseconv),
+                           typeof(NNlib.∇conv_data),typeof(NNlib.∇depthwiseconv_data),
+                           typeof(NNlib.∇conv_filter),typeof(NNlib.maxpool),
+                           typeof(NNlib.meanpool)}
+
+for f in (:conv, :depthwiseconv, :∇conv_data, :∇depthwiseconv_data, :∇conv_filter),
+    (X, W) in ((:ViewArray, :PlainArray), (:PlainArray, :ViewArray), (:ViewArray, :ViewArray))
+    @eval begin
+        @is_primitive MinimalCtx ReverseMode Tuple{typeof(NNlib.$f),$X{P,N},$W{P,M},NNlib.ConvDims} where {P<:IEEEFloat,N,M}
+        @is_primitive MinimalCtx ReverseMode Tuple{typeof(Core.kwcall),NamedTuple,typeof(NNlib.$f),$X{P,N},$W{P,M},NNlib.ConvDims} where {P<:IEEEFloat,N,M}
+    end
+end
+for f in (:maxpool, :meanpool)
+    @eval begin
+        @is_primitive MinimalCtx ReverseMode Tuple{typeof(NNlib.$f),ViewArray{<:IEEEFloat,N},NNlib.PoolDims} where {N}
+        @is_primitive MinimalCtx ReverseMode Tuple{typeof(Core.kwcall),NamedTuple,typeof(NNlib.$f),ViewArray{<:IEEEFloat,N},NNlib.PoolDims} where {N}
+    end
+end
+
+function Mooncake.rrule!!(f::CoDual{<:ViewFunction}, args::Vararg{CoDual,N}) where {N}
+    y, pullback = _chainrules_rrule(primal(f), (;), args)
+    return y, ȳ -> (NoRData(), pullback(ȳ)...)
+end
+
+function Mooncake.rrule!!(::CoDual{typeof(Core.kwcall)}, kw::CoDual{<:NamedTuple},
+                          f::CoDual{<:ViewFunction}, args::Vararg{CoDual,N}) where {N}
+    y, pullback = _chainrules_rrule(primal(f), primal(kw), args)
+    kw_rdata = zero_rdata(primal(kw))
+    return y, ȳ -> (NoRData(), kw_rdata, NoRData(), pullback(ȳ)...)
+end
 
 # `_exp` and `_expm1` build a power of two from its bits, which Mooncake refuses to
 # differentiate (a `bitcast` from an integer to a float). As primitives they are called
