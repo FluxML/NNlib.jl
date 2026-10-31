@@ -269,6 +269,70 @@ function mooncake_testsuite(Backend)
         end
     end
 
+    # Views are not in `SupportedArray`, as `@from_rrule` would add the cotangent to the fdata
+    # of the parent, which has its shape. Without a rule Mooncake traces `conv` down to BLAS.
+    @testset "convolution and pooling on views" begin
+        rng = StableRNG(123)
+        # Central differences in `Float32` of the sums in `∇conv_filter` can miss the default by a hair.
+        tol = gpu ? 1e-2 : 1e-3
+        xp = _rand(rng, 7, 6, 3, 4)
+        wp = _rand(rng, 2, 2, 3, 5)
+        wv = view(wp, :, :, :, 2:4)
+        w = copy(wv)
+        views = (
+            "contiguous" => view(xp, :, :, :, 2:3),
+            "strided" => view(xp, 1:2:7, :, :, 1:2),
+            "whole" => view(xp, :, :, :, :),
+        )
+
+        @testset "rules: $name" for (name, x) in views
+            xc = copy(x)
+            cdims = DenseConvDims(x, w)
+            y = conv(xc, w, cdims)
+            yv = view(y, :, :, :, :)
+            pdims = PoolDims(size(x), 2)
+            # An argument of a rule is a view, a plain array, or both are views.
+            cases = Any[
+                (conv, x, w, cdims), (conv, xc, wv, cdims), (conv, x, wv, cdims),
+                (∇conv_data, yv, w, cdims), (∇conv_data, y, wv, cdims), (∇conv_data, yv, wv, cdims),
+                (∇conv_filter, x, y, cdims), (∇conv_filter, xc, yv, cdims), (∇conv_filter, x, yv, cdims),
+                (maxpool, x, pdims), (meanpool, x, pdims),
+            ]
+            if !gpu
+                sdims = DepthwiseConvDims(x, w)
+                ysep = depthwiseconv(xc, w, sdims)
+                push!(cases,
+                    (depthwiseconv, x, w, sdims), (depthwiseconv, xc, wv, sdims),
+                    (∇depthwiseconv_data, view(ysep, :, :, :, :), w, sdims),
+                    (∇depthwiseconv_data, ysep, wv, sdims),
+                )
+            end
+            @testset "$(nameof(f)) $i" for (i, (f, args...)) in enumerate(cases)
+                for fargs in ((f, args...), (Core.kwcall, (;), f, args...))
+                    test_rule(StableRNG(123), fargs...; perf_flag=:none, is_primitive=true,
+                        mode=Mooncake.ReverseMode, rtol=tol, atol=tol)
+                end
+            end
+        end
+
+        # Through `withgradient`, the cotangent has to reach the parent, and only the view.
+        @testset "gradient to the parent" begin
+            losses = (
+                x -> sum(abs2, conv(view(x, :, :, :, :), w)),
+                x -> sum(abs2, conv(view(x, :, :, :, 2:3), w)),
+                x -> sum(abs2, conv(view(x, 1:2:7, :, :, 2:3), wv; stride=2, pad=1)),
+                x -> sum(abs2, maxpool(view(x, 1:2:7, :, :, 2:3), (2, 2))),
+                x -> sum(abs2, meanpool(view(x, :, :, :, 2:3), (2, 2); pad=1)),
+            )
+            @testset "loss $i" for (i, f) in enumerate(losses)
+                @test withgradient(f, AutoMooncake(), xp).grad[1] ≈ withgradient(f, AutoZygote(), xp).grad[1]
+            end
+            x = view(xp, :, :, :, 2:3)
+            f = w -> sum(abs2, conv(x, view(w, :, :, :, 2:4)))
+            @test withgradient(f, AutoMooncake(), wp).grad[1] ≈ withgradient(f, AutoZygote(), wp).grad[1]
+        end
+    end
+
     # `should_use_spawn` reads a `ScopedValue`, which Mooncake cannot differentiate. It
     # is the same with one thread: the read is compiled whether or not it is reached.
     gpu || @testset "spawn decision is not differentiated" begin
