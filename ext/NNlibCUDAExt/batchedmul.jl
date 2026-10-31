@@ -37,9 +37,9 @@ end
         compute = CUDA.math_mode() == CUDA.PEDANTIC_MATH ?
                   CUBLAS.CUBLAS_COMPUTE_32F_PEDANTIC : CUBLAS.CUBLAS_COMPUTE_32F
         CUBLAS.cublasGemmStridedBatchedEx(CUBLAS.handle(), transA, transB, m, n, k,
-            Ref(Float32(α)), A, eltype(A), max(1, stride(A, 2)), strideA,
+            CuRef{Float32}(α), A, eltype(A), max(1, stride(A, 2)), strideA,
             B, eltype(B), max(1, stride(B, 2)), strideB,
-            Ref(Float32(β)), C, eltype(C), max(1, stride(C, 2)), stride(C, 3),
+            CuRef{Float32}(β), C, eltype(C), max(1, stride(C, 2)), stride(C, 3),
             size(C, 3), compute, CUBLAS.CUBLAS_GEMM_DEFAULT)
         return C
     end
