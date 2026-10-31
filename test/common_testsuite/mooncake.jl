@@ -2,6 +2,7 @@
 # Mooncake.jl, without the cases that belong to its LuxLib extension.
 
 using Mooncake.TestUtils: test_rule, test_rule_throws
+using NNlib: batchnorm, instancenorm, groupnorm, layernorm, rmsnorm
 using Mooncake.Nfwd: NDual, ndual_partial, ndual_value
 using JET: JET  # `test_rule`'s stability checks need Mooncake's JET extension
 
@@ -267,6 +268,92 @@ function mooncake_testsuite(Backend)
             test_rule(StableRNG(123), fargs...;
                 perf_flag, is_primitive, interface_only, mode=Mooncake.ReverseMode)
         end
+
+        # Forward mode: the convolutions have forward rules on every array, the other operations
+        # on GPU arrays only, where a traced kernel launch fails. On the CPU those are traced.
+        # (is_primitive, f, args...)
+        pool_ceil = PoolDims(size(x), 3; stride=2, padding=1, ceil_mode=true)
+        pool_dil = PoolDims(size(x), 2; stride=1, dilation=2)
+        x1d = _rand(rng, 7, 2, 3)
+        fwd_cases = Any[
+            (true, conv, x, w, dense_cdims),
+            (true, Core.kwcall, (;), conv, x, w, dense_cdims),
+            (true, ∇conv_data, y, w, dense_cdims),
+            (true, Core.kwcall, (;), ∇conv_data, y, w, dense_cdims),
+            (true, ∇conv_filter, x, y, dense_cdims),
+            (true, Core.kwcall, (;), ∇conv_filter, x, y, dense_cdims),
+            # Through `conv`.
+            (false, depthwiseconv, x, w, sep_cd),
+            (false, ∇depthwiseconv_data, y_sep, w, sep_cd),
+            (false, ∇depthwiseconv_filter, x, y_sep, sep_cd),
+
+            (gpu, meanpool, x, pool_dims),
+            (gpu, Core.kwcall, (;), meanpool, x, pool_dims),
+            (gpu, meanpool, x, pool_ceil),
+            (gpu, maxpool, x, pool_dims),
+            (gpu, Core.kwcall, (;), maxpool, x, pool_dims),
+            # Padding, stride and `ceil_mode` move the windows; one spatial dimension.
+            (gpu, maxpool, x, pool_ceil),
+            (gpu, maxpool, x1d, PoolDims(size(x1d), 3; stride=2, padding=1)),
+
+            (false, upsample_nearest, _rand(rng, 3, 2), (2, 2)),
+            (gpu, NNlib.fold, _rand(rng, 12, 12, 2), size(x), dense_cdims),
+            (gpu, NNlib.unfold, x, dense_cdims),
+
+            (gpu, gather, _rand(rng, 2, 4), [1, 3, 1]),
+            (gpu, gather, _rand(rng, 2, 3, 4), [(1, 2), (3, 1), (2, 2)]),
+            (gpu, gather, _rand(rng, 4, 4)', [1, 3, 1]),
+            (gpu, gather, transpose(_rand(rng, 4, 4)), [1, 3, 1]),
+
+            (gpu, pad_constant, x, 1, T(2.0)),
+            (gpu, Core.kwcall, (dims=1,), pad_constant, x, 1, T(2.0)),
+
+            (gpu, scatter, +, _rand(rng, 2), [1, 3]),
+            (gpu, scatter, -, _rand(rng, 2, 3), [1, 3, 1]),
+            (gpu, scatter, mean, _rand(rng, 2, 3), [1, 3, 1]),
+            (gpu, Core.kwcall, (init=T(0.5),), scatter, +, _rand(rng, 2), [1, 3]),
+            # The extremum cases are those of the reverse rule: ties, `init` below, above and tied with
+            # the sources, an `init` without a tangent, and a destination no index reaches. Their rules
+            # are for the CPU as well, which would break a tie by taking one of the sources.
+            (true, scatter, max, _ones(3), [1, 1, 2]),
+            (true, scatter, min, _ones(3), [1, 1, 2]),
+            (true, scatter, max, _ones(2, 3), [1, 1, 2]),
+            (true, scatter, max, _rand(rng, 4), [1, 2, 3, 3]),
+            (true, Core.kwcall, (init=T(0.5),), scatter, max, _ones(3), [1, 1, 2]),
+            (true, Core.kwcall, (init=T(2.0),), scatter, max, _ones(3), [1, 1, 2]),
+            (true, Core.kwcall, (init=T(1.0),), scatter, max, device(T[1, 2]), [1, 2]),
+            (true, Core.kwcall, (init=mixed_init,), scatter, max, mixed_src, [1, 1, 2]),
+            (true, Core.kwcall, (init=2,), scatter, max, _ones(3), [1, 1, 2]),
+            (true, Core.kwcall, (init=nothing,), scatter, max, _ones(3), [1, 1, 2]),
+            # `dstsize` past the largest index leaves destinations holding `-Inf`, which finite
+            # differences cannot take the difference of: the slice leaves them out.
+            (false, z -> scatter(max, z, [1, 1, 2]; dstsize=(4,))[1:2], _ones(3)),
+            (false, z -> scatter(min, z, [1, 1, 2]; dstsize=(4,), init=T(2.0))[1:2], _ones(3)),
+        ]
+        # The primal of a rule that is not for the CPU is traced there, which is the point of it.
+        for f in (softmax, logsoftmax, logsumexp)
+            append!(fwd_cases, [
+                (gpu, f, _rand(rng, 2)),
+                (gpu, f, _rand(rng, 3, 3, 2)),
+                (gpu, Core.kwcall, (dims=1,), f, _rand(rng, 3, 3)),
+                (gpu, Core.kwcall, (dims=2,), f, _rand(rng, 3, 3)),
+                (gpu, Core.kwcall, (dims=(1, 2),), f, _rand(rng, 3, 3, 2)),
+                (gpu, f, _rand(rng, 2, 3)'),
+                (gpu, Core.kwcall, (dims=2,), f, transpose(_rand(rng, 3, 3))),
+            ])
+        end
+        # cuDNN pools ignore the dilation, so its primal is not the CPU's.
+        gpu || push!(fwd_cases, (false, maxpool, x, pool_dil))
+        if !gpu || cuda
+            append!(fwd_cases, [
+                (false, dropout_mixed_tester, Trng, wrap(device(ones(S, 32, 4))), Val(p), Val(dims))
+                for (S, p) in ((Float32, 0.9), (Float64, 0.1f0), (Float32, 0.0))
+                for dims in (nothing, 1) for wrap in (identity, adjoint, transpose)
+            ])
+        end
+        @testset "forward $(typeof(fargs))" for (is_primitive, fargs...) in fwd_cases
+            test_rule(StableRNG(123), fargs...; is_primitive, mode=Mooncake.ForwardMode)
+        end
     end
 
     gpu && @testset "saturated bias activations" begin
@@ -407,41 +494,71 @@ function mooncake_testsuite(Backend)
         @test Float64(pb16(one(Float16))[2]) ≈ ref16 rtol = 1e-2
     end
 
-    # These rules are reverse-only primitives, so forward mode traces the primal; declared for
-    # both modes it would find no `frule!!` and raise. CPU arrays only: a traced GPU kernel
-    # launch is a foreigncall, raising `MissingForeigncallRuleError`.
-    gpu || @testset "forward mode traces reverse-only rules" begin
-        x = randn(StableRNG(123), 3)
-        for f in (
-            # `softmax` is returned whole: its outputs sum to 1, so `1ᵀJ = 0` and a summed case
-            # is blind to every error in it. `logsoftmax` does not, so summing it is a real check.
-            x -> softmax(x),
-            x -> softmax(x; dims=1),
-            x -> sum(logsoftmax(x)),
-            x -> sum(logsoftmax(x; dims=1)),
-            x -> logsumexp(x),
-            x -> sum(logsumexp(x; dims=1)),
-            x -> sum(gather(x, [1, 3])),
-        )
-            test_rule(StableRNG(123), f, x; mode=Mooncake.ForwardMode, is_primitive=false)
+    # Forward over reverse: the forward rules differentiate the reverse rules, whose pullbacks call
+    # `∇conv_data`, `∇softmax`, `scatter!` and so on. A Hessian-vector product is checked against
+    # central differences of the reverse-mode gradient, taken on the CPU in `Float64`.
+    @testset "Hessian-vector products" begin
+        function test_hvp(f, args...)
+            rng = StableRNG(123)
+            vs = map(a -> randn(rng, size(a)...), args)
+            ∇f(xs) = Base.tail(Mooncake.value_and_gradient!!(Mooncake.build_rrule(f, xs...), f, xs...)[2])
+            at(s) = map((a, v) -> a .+ s .* v, args, vs)
+            h = 1e-5
+            ref = map((p, m) -> (p .- m) ./ 2h, ∇f(at(h)), ∇f(at(-h)))
+            dargs, dvs = map(a -> device(T.(a)), args), map(v -> device(T.(v)), vs)
+            cache = Mooncake.prepare_hvp_cache(f, dargs...)
+            _, _, hvp = Mooncake.value_and_hvp!!(
+                cache, f, length(args) == 1 ? only(dvs) : dvs, dargs...
+            )
+            for (hv, r) in zip(length(args) == 1 ? (hvp,) : hvp, ref)
+                @test isapprox(cpu(hv), r; rtol=gpu ? 1e-3 : 1e-4)
+            end
+        end
+        sumsq(f) = (xs...) -> sum(abs2, f(xs...))
+
+        rng = StableRNG(123)
+        x = randn(rng, 5, 4, 3, 2)
+        w = randn(rng, 2, 2, 3, 3)
+        cdims = DenseConvDims(x, w)
+        pdims = PoolDims(size(x), 2)
+        cases = Any[
+            ("softmax", sumsq(softmax), (randn(rng, 4, 3),)),
+            ("logsoftmax", sumsq(logsoftmax), (randn(rng, 4, 3),)),
+            ("logsumexp", sumsq(x -> logsumexp(x; dims=1)), (randn(rng, 4, 3),)),
+            ("conv", sumsq((x, w) -> conv(x, w, cdims)), (x, w)),
+            ("scatter", sumsq(x -> scatter(+, x, [1, 3, 1])), (randn(rng, 2, 3),)),
+            ("layernorm", sumsq((g, b, x) -> layernorm(g, b, x)), (randn(rng, 6), randn(rng, 6), randn(rng, 6, 8))),
+        ]
+        # The pullbacks of these call cuDNN pooling and a `scatter!` kernel, which cannot be traced.
+        gpu || append!(cases, [
+            ("meanpool", sumsq(x -> meanpool(x, pdims)), (x,)),
+            ("maxpool", sumsq(x -> maxpool(x, pdims)), (x,)),
+            ("gather", sumsq(x -> gather(x, [1, 3, 1, 2])), (randn(rng, 2, 4),)),
+        ])
+        @testset "$name" for (name, f, args) in cases
+            test_hvp(f, args...)
         end
     end
 
-    # `gather`'s GPU kernel launch does not survive the forward transform (an illegal
-    # instruction no test can catch), so its rule raises instead.
-    gpu && @testset "forward mode over gather raises" begin
-        gather_sum(z) = sum(gather(z, [1, 3]))
-        xg = device(randn(StableRNG(123), Float32, 4))
-        rule = Mooncake.build_frule(gather_sum, xg)
-        @test_throws ArgumentError rule(
-            Mooncake.zero_dual(gather_sum), Mooncake.Dual(copy(xg), device(ones(Float32, 4)))
-        )
-        # `Adjoint`/`Transpose` of a GPU array are `AnyGPUArray`, so NNlib sends them to the
-        # same kernel: they have to hit the guard, not slip past a bare `AbstractGPUArray`.
-        @testset "$wrap" for wrap in (adjoint, transpose)
-            w = wrap(copy(xg))
-            r = Mooncake.build_frule(gather_sum, w)
-            @test_throws ArgumentError r(Mooncake.zero_dual(gather_sum), Mooncake.zero_dual(w))
+    # The normalizations are reverse-only primitives, so forward mode traces the generic code.
+    @testset "forward mode traces the normalizations" begin
+        rng = StableRNG(123)
+        g, b = _rand(rng, 6), _rand(rng, 6)
+        x4, x2 = _rand(rng, 4, 5, 6, 3), _rand(rng, 6, 8)
+        cases = Any[
+            (batchnorm, g, b, x4),
+            (batchnorm, nothing, nothing, x4),
+            (batchnorm, g, b, x2),
+            (batchnorm, g, b, _rand(rng, 5, 6, 3)),
+            (instancenorm, g, b, x4),
+            (groupnorm, g, b, x4, 3),
+            (layernorm, g, b, x2),
+            (NNlib.normalise, x2),
+        ]
+        # Mooncake's `mapreduce` rule for `CuArray` refuses the function `mean(abs2, x)` builds.
+        gpu || push!(cases, (rmsnorm, g, x2))
+        @testset "$(typeof(fargs))" for fargs in cases
+            test_rule(StableRNG(123), fargs...; mode=Mooncake.ForwardMode, is_primitive=false)
         end
     end
 end
