@@ -43,6 +43,15 @@ function NNlib._batched_gemm!(::Type{<:MtlArray}, transA::Char, transB::Char,
     return C
 end
 
+# Metal < 1.12 reads `C` in MPSGraph matmuls (operands at offset zero) even when β is
+# zero, so a NaN or Inf in `C` survives the first group.
+@static if pkgversion(Metal) < v"1.12"
+    function NNlib._grouped_mul!(::Type{<:MtlArray}, C, A, B, ends, α, β)
+        iszero(β) && fill!(C, zero(eltype(C)))
+        return NNlib._grouped_mul_generic!(C, A, B, ends, α, β)
+    end
+end
+
 # Pretty-printing and conversion of a batched adjoint/transpose of an `MtlArray`,
 # mirroring `NNlibCUDAExt`: route through the CPU to avoid scalar indexing.
 const MtlBatchedAdjoint{T} = BatchedAdjoint{T, <:MtlArray{T}}
