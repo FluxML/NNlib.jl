@@ -5,6 +5,7 @@ using NNlib, Random, Mooncake
 import NNlib.GPUArraysCore: AbstractGPUArray
 using Base: IEEEFloat
 using LinearAlgebra
+using Statistics: mean
 using NNlib: conv, depthwiseconv, logsoftmax, softmax, logsumexp, dropout
 using Mooncake.Nfwd: NDual
 import ChainRulesCore as CRC
@@ -227,6 +228,308 @@ function rrule!!(
     end
     return CoDual(y, dy), affine_normalize_pullback!!
 end
+
+# Forward mode. The operations with reverse rules above are traced by forward mode. On the CPU
+# that works, except for the convolutions: the GEMM under them is a `ccall` without a rule. On
+# the GPU a traced kernel launch fails, or kills the process. Most of these operations
+# are linear or bilinear, and the JVP is the primal applied to the tangents.
+
+function _bilinear_jvp(f, kw, a, b, args...)
+    pa, da = arrayify(a)
+    pb, db = arrayify(b)
+    dy = f(da, pb, args...; kw...)
+    dy .+= f(pa, db, args...; kw...)
+    return Dual(f(pa, pb, args...; kw...), dy)
+end
+
+for f in (:conv, :∇conv_data, :∇conv_filter)
+    @eval begin
+        @is_primitive MinimalCtx ForwardMode Tuple{
+            typeof($f),SupportedArray{P,N},SupportedArray{P,M},ConvDims
+        } where {P<:IEEEFloat,N,M}
+        @is_primitive MinimalCtx ForwardMode Tuple{
+            typeof(Core.kwcall),NamedTuple,typeof($f),SupportedArray{P,N},SupportedArray{P,M},ConvDims
+        } where {P<:IEEEFloat,N,M}
+
+        function frule!!(
+            ::Dual{typeof($f)},
+            a::Dual{<:SupportedArray{P,N}},
+            b::Dual{<:SupportedArray{P,M}},
+            cdims::Dual{<:ConvDims},
+        ) where {P<:IEEEFloat,N,M}
+            return _bilinear_jvp($f, (;), a, b, primal(cdims))
+        end
+        function frule!!(
+            ::Dual{typeof(Core.kwcall)},
+            kw::Dual{<:NamedTuple},
+            ::Dual{typeof($f)},
+            a::Dual{<:SupportedArray{P,N}},
+            b::Dual{<:SupportedArray{P,M}},
+            cdims::Dual{<:ConvDims},
+        ) where {P<:IEEEFloat,N,M}
+            return _bilinear_jvp($f, primal(kw), a, b, primal(cdims))
+        end
+    end
+end
+
+# Linear in the array, with the other arguments constant.
+function _linear_jvp(f, kw, x, args...)
+    px, dx = arrayify(x)
+    return Dual(f(px, args...; kw...), f(dx, args...; kw...))
+end
+
+for (f, extra) in (
+    (:meanpool, (:PoolDims,)),
+    (:(NNlib.unfold), (:DenseConvDims,)),
+    (:(NNlib.fold), (:(NTuple{<:Any,Int}), :DenseConvDims)),
+)
+    @eval begin
+        @is_primitive MinimalCtx ForwardMode Tuple{
+            typeof($f),GPUBackedArray{<:IEEEFloat,N},$(extra...)
+        } where {N}
+        @is_primitive MinimalCtx ForwardMode Tuple{
+            typeof(Core.kwcall),NamedTuple,typeof($f),GPUBackedArray{<:IEEEFloat,N},$(extra...)
+        } where {N}
+
+        function frule!!(
+            ::Dual{typeof($f)}, x::Dual{<:GPUBackedArray{<:IEEEFloat,N}}, args::Vararg{Dual}
+        ) where {N}
+            return _linear_jvp($f, (;), x, map(primal, args)...)
+        end
+        function frule!!(
+            ::Dual{typeof(Core.kwcall)},
+            kw::Dual{<:NamedTuple},
+            ::Dual{typeof($f)},
+            x::Dual{<:GPUBackedArray{<:IEEEFloat,N}},
+            args::Vararg{Dual},
+        ) where {N}
+            return _linear_jvp($f, primal(kw), x, map(primal, args)...)
+        end
+    end
+end
+
+# cuDNN does not say which element a window takes. Unfolded, the windows are columns: the element
+# is the largest of a column, and the tangent is read at the same position. The windows are
+# padded with `-Inf`, including the part past the input that `ceil_mode` adds.
+@is_primitive MinimalCtx ForwardMode Tuple{
+    typeof(maxpool),GPUBackedArray{<:IEEEFloat,N},PoolDims
+} where {N}
+@is_primitive MinimalCtx ForwardMode Tuple{
+    typeof(Core.kwcall),NamedTuple,typeof(maxpool),GPUBackedArray{<:IEEEFloat,N},PoolDims
+} where {N}
+
+function _maxpool_jvp(kw, x, pdims)
+    px, dx = arrayify(x)
+    k, s, d = NNlib.kernel_size(pdims), NNlib.stride(pdims), NNlib.dilation(pdims)
+    lo = NNlib.padding(pdims)[1:2:end]
+    out, insize = NNlib.output_size(pdims), NNlib.input_size(pdims)
+    hi = @. max((out - 1) * s + d * (k - 1) + 1 - insize - lo, 0)
+    pad = (tuple.(lo, hi)..., (0, 0), (0, 0))
+    channels_in_batch(a) = reshape(a, size(a)[1:(end - 2)]..., 1, :)
+    windows = pad_constant(channels_in_batch(px), pad, -eltype(px)(Inf))
+    cdims = DenseConvDims(
+        pdims; I=size(windows)[1:(end - 2)], C_in=1, C_out=1, P=ntuple(_ -> 0, 2 * length(out)), G=1
+    )
+    selected = argmax(NNlib.unfold(windows, cdims); dims=2)
+    dy = NNlib.gather(NNlib.unfold(pad_constant(channels_in_batch(dx), pad, 0), cdims), selected)
+    return Dual(maxpool(px, pdims; kw...), reshape(dy, out..., size(px)[(end - 1):end]...))
+end
+
+function frule!!(
+    ::Dual{typeof(maxpool)}, x::Dual{<:GPUBackedArray{<:IEEEFloat,N}}, pdims::Dual{<:PoolDims}
+) where {N}
+    return _maxpool_jvp((;), x, primal(pdims))
+end
+function frule!!(
+    ::Dual{typeof(Core.kwcall)},
+    kw::Dual{<:NamedTuple},
+    ::Dual{typeof(maxpool)},
+    x::Dual{<:GPUBackedArray{<:IEEEFloat,N}},
+    pdims::Dual{<:PoolDims},
+) where {N}
+    return _maxpool_jvp(primal(kw), x, primal(pdims))
+end
+
+# The softmax family. The Jacobian of `softmax` is symmetric, so its JVP is `∇softmax`.
+function _softmax_jvp(::typeof(softmax), x, dims)
+    px, dx = arrayify(x)
+    y = softmax(px; dims)
+    return Dual(y, NNlib.∇softmax(dx, y; dims))
+end
+function _softmax_jvp(::typeof(logsoftmax), x, dims)
+    px, dx = arrayify(x)
+    y = logsoftmax(px; dims)
+    return Dual(y, dx .- sum(exp.(y) .* dx; dims))
+end
+function _softmax_jvp(::typeof(logsumexp), x, dims)
+    px, dx = arrayify(x)
+    y = logsumexp(px; dims)
+    return Dual(y, sum(exp.(px .- y) .* dx; dims))
+end
+
+for (f, dims) in ((:softmax, 1), (:logsoftmax, 1), (:logsumexp, :(:)))
+    @eval begin
+        @is_primitive MinimalCtx ForwardMode Tuple{
+            typeof($f),GPUBackedArray{T,N}
+        } where {T<:IEEEFloat,N}
+        @is_primitive MinimalCtx ForwardMode Tuple{
+            typeof(Core.kwcall),NamedTuple,typeof($f),GPUBackedArray{T,N}
+        } where {T<:IEEEFloat,N}
+
+        function frule!!(
+            ::Dual{typeof($f)}, x::Dual{<:GPUBackedArray{T,N}}
+        ) where {T<:IEEEFloat,N}
+            return _softmax_jvp($f, x, $dims)
+        end
+        function frule!!(
+            ::Dual{typeof(Core.kwcall)},
+            kw::Dual{<:NamedTuple{(:dims,)}},
+            ::Dual{typeof($f)},
+            x::Dual{<:GPUBackedArray{T,N}},
+        ) where {T<:IEEEFloat,N}
+            return _softmax_jvp($f, x, primal(kw).dims)
+        end
+    end
+end
+
+# The tangent of `pad_constant` is padded with the tangent of the constant, which is zero unless
+# it is a float.
+@is_primitive MinimalCtx ForwardMode Tuple{
+    typeof(pad_constant),GPUBackedArray{<:IEEEFloat,N},Any,Any
+} where {N}
+@is_primitive MinimalCtx ForwardMode Tuple{
+    typeof(Core.kwcall),NamedTuple,typeof(pad_constant),GPUBackedArray{<:IEEEFloat,N},Any,Any
+} where {N}
+
+function _pad_constant_jvp(kw, x, pad, val)
+    px, dx = arrayify(x)
+    dval = tangent(val) isa Number ? tangent(val) : 0
+    return Dual(
+        pad_constant(px, primal(pad), primal(val); kw...),
+        pad_constant(dx, primal(pad), dval; kw...),
+    )
+end
+
+function frule!!(
+    ::Dual{typeof(pad_constant)}, x::Dual{<:GPUBackedArray{<:IEEEFloat,N}}, pad::Dual, val::Dual
+) where {N}
+    return _pad_constant_jvp((;), x, pad, val)
+end
+function frule!!(
+    ::Dual{typeof(Core.kwcall)},
+    kw::Dual{<:NamedTuple},
+    ::Dual{typeof(pad_constant)},
+    x::Dual{<:GPUBackedArray{<:IEEEFloat,N}},
+    pad::Dual,
+    val::Dual,
+) where {N}
+    return _pad_constant_jvp(primal(kw), x, pad, val)
+end
+
+# The dropout mask multiplies the input, so the JVP is the pullback of ChainRules' rule.
+@is_primitive MinimalCtx ForwardMode Tuple{
+    typeof(dropout),AbstractRNG,GPUBackedArray{P,N},Real
+} where {P<:IEEEFloat,N}
+@is_primitive MinimalCtx ForwardMode Tuple{
+    typeof(Core.kwcall),NamedTuple,typeof(dropout),AbstractRNG,GPUBackedArray{P,N},Real
+} where {P<:IEEEFloat,N}
+
+function _dropout_jvp(kw, rng, x::Dual{<:GPUBackedArray{P}}, p) where {P}
+    0 <= primal(p) <= 1 || throw(ArgumentError("dropout expects a probability 0 <= p <= 1"))
+    px, dx = arrayify(x)
+    NNlib._rng_compat_array(primal(rng), px)
+    # As for the reverse rule, the input itself is the output at `p ≤ 0`.
+    primal(p) <= 0 && dropout(primal(rng), px, primal(p); kw...) === px && return x
+    y, pullback = Core.kwcall(kw, CRC.rrule, dropout, primal(rng), px, convert(P, primal(p)))
+    return Dual(y, pullback(dx)[3])
+end
+
+function frule!!(
+    ::Dual{typeof(dropout)},
+    rng::Dual{<:AbstractRNG},
+    x::Dual{<:GPUBackedArray{P,N}},
+    p::Dual{<:Real},
+) where {P<:IEEEFloat,N}
+    return _dropout_jvp((;), rng, x, p)
+end
+function frule!!(
+    ::Dual{typeof(Core.kwcall)},
+    kw::Dual{<:NamedTuple},
+    ::Dual{typeof(dropout)},
+    rng::Dual{<:AbstractRNG},
+    x::Dual{<:GPUBackedArray{P,N}},
+    p::Dual{<:Real},
+) where {P<:IEEEFloat,N}
+    return _dropout_jvp(primal(kw), rng, x, p)
+end
+
+# `scatter` of `+`, `-` and `mean` is linear in the source. For `max` and `min` a destination takes
+# the tangent of the source it holds, or the mean over several tied ones, as the reverse rule gives
+# each of them its share of the cotangent, and `init` competes for the extremum as a source. Traced
+# on the CPU, they pick one of the tied sources, so they have a rule there as well.
+const LinearScatterOp = Union{typeof(+),typeof(-),typeof(mean)}
+const ExtremumScatterOp = Union{typeof(max),typeof(min)}
+
+for (Op, Arr) in ((:LinearScatterOp, :GPUBackedArray), (:ExtremumScatterOp, :SupportedArray))
+    @eval begin
+        @is_primitive MinimalCtx ForwardMode Tuple{
+            typeof(NNlib.scatter),$Op,$Arr{P,N},SupportedArray{<:Union{Integer,Tuple},M}
+        } where {P<:IEEEFloat,N,M}
+        @is_primitive MinimalCtx ForwardMode Tuple{
+            typeof(Core.kwcall),
+            NamedTuple,
+            typeof(NNlib.scatter),
+            $Op,
+            $Arr{P,N},
+            SupportedArray{<:Union{Integer,Tuple},M},
+        } where {P<:IEEEFloat,N,M}
+
+        function frule!!(
+            ::Dual{typeof(NNlib.scatter)},
+            op::Dual{<:$Op},
+            src::Dual{<:$Arr{P,N}},
+            idx::Dual{<:SupportedArray{<:Union{Integer,Tuple},M}},
+        ) where {P<:IEEEFloat,N,M}
+            return _scatter_jvp(primal(op), (;), nothing, src, primal(idx))
+        end
+        function frule!!(
+            ::Dual{typeof(Core.kwcall)},
+            kw::Dual{<:NamedTuple},
+            ::Dual{typeof(NNlib.scatter)},
+            op::Dual{<:$Op},
+            src::Dual{<:$Arr{P,N}},
+            idx::Dual{<:SupportedArray{<:Union{Integer,Tuple},M}},
+        ) where {P<:IEEEFloat,N,M}
+            return _scatter_jvp(primal(op), primal(kw), tangent(kw), src, primal(idx))
+        end
+    end
+end
+
+function _scatter_jvp(op, kw, dkw, src, idx)
+    psrc, dsrc = arrayify(src)
+    y = NNlib.scatter(op, psrc, idx; kw...)
+    # The tangent of the keywords is `NoTangent` unless `init` is a float.
+    dinit = dkw isa NamedTuple ? dkw.init : nothing
+    return Dual(y, _scatter_tangent(op, psrc, dsrc, idx, y, get(kw, :init, nothing), dinit))
+end
+
+function _scatter_tangent(op::LinearScatterOp, psrc, dsrc, idx, y, init, dinit)
+    dy = NNlib.scatter(op, dsrc, idx; dstsize=size(y))
+    dinit isa Number && (dy .+= dinit)
+    return dy
+end
+
+function _scatter_tangent(::ExtremumScatterOp, psrc::AbstractArray{P}, dsrc, idx, y, init, dinit) where {P}
+    tied = psrc .== NNlib.gather(y, idx)
+    init_tie = isnothing(init) ? false : y .== convert(P, init)
+    counts = NNlib.scatter!(+, fill!(similar(y, Int), 0), tied, idx)
+    counts .+= init_tie
+    dy = NNlib.scatter(+, ifelse.(tied, dsrc, zero(P)), idx; dstsize=size(y))
+    dinit isa Number && (dy .+= init_tie .* convert(P, dinit))
+    # A destination no index reaches has no tied source.
+    return dy ./ max.(counts, 1)
+end
+
 # At `p ≤ 0` `dropout` returns its input itself, where ChainRules' rrule allocates and draws
 # from `rng` regardless. The `===` is checked, not assumed, because if that fast path ever
 # allocates, returning the input would alias where the primal does not.
@@ -521,8 +824,8 @@ end
         typeof(NNlib.gather),SupportedArray{P,N},SupportedArray{<:Union{Integer,Tuple},M}
     } where {P<:IEEEFloat,N,M},
 )
-# A GPU kernel launch does not survive the forward transform: the process dies with signal 4, no
-# Julia exception to catch. A forward primitive that raises keeps it an ordinary error.
+# Forward mode traces `gather` on the CPU. On the GPU a traced kernel launch does not survive
+# the forward transform: the process dies with signal 4, no Julia exception to catch.
 @is_primitive(
     MinimalCtx,
     ForwardMode,
@@ -532,17 +835,12 @@ end
 )
 function Mooncake.frule!!(
     ::Dual{typeof(NNlib.gather)},
-    ::Dual{<:GPUBackedArray{P,N}},
-    ::Dual{<:SupportedArray{<:Union{Integer,Tuple},M}},
+    src::Dual{<:GPUBackedArray{P,N}},
+    idx::Dual{<:SupportedArray{<:Union{Integer,Tuple},M}},
 ) where {P<:IEEEFloat,N,M}
-    throw(
-        ArgumentError(
-            "forward mode over `NNlib.gather` is not supported for GPU arrays: " *
-            "differentiating the traced kernel launch crashes the process. Reverse mode " *
-            "has a rule for this signature and does work; on the CPU, so does forward " *
-            "mode.",
-        ),
-    )
+    psrc, dsrc = arrayify(src)
+    pidx = primal(idx)
+    return Dual(NNlib.gather(psrc, pidx), NNlib.gather(dsrc, pidx))
 end
 
 function Mooncake.rrule!!(
