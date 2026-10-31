@@ -8,6 +8,13 @@ using ChainRulesCore: ChainRulesCore, unthunk
 using Base: IEEEFloat
 using Base.Broadcast: Broadcasted, DefaultArrayStyle, broadcasted, materialize
 
+# BFloat16 is a primitive float to Mooncake only where `BFloat16s.BFloat16` is `Core.BFloat16`
+# (Julia ≥ 1.11, as in Mooncake's own extension for it; `tangent_type` throws for it otherwise), and
+# its arrays have an array tangent only on the CPU: a `CuArray{BFloat16}` has none, so no rule can
+# return its gradient. The rules are for `RuleFloat` on the CPU and `IEEEFloat` on a device.
+const MaybeBFloat16 = isdefined(Core, :BFloat16) && NNlib.BFloat16 === Core.BFloat16 ? NNlib.BFloat16 : Union{}
+const RuleFloat = Union{IEEEFloat,MaybeBFloat16}
+
 # Mooncake's reverse pass restores every value that was overwritten on the forward pass.
 # Traced like ordinary code, the in-place update of the running statistics is therefore
 # undone, and a gradient call hands back the statistics it started with. As a primitive
@@ -54,7 +61,7 @@ end
 # Other arrays, and forward mode, differentiate the generic code.
 const NormFunction = Union{typeof(batchnorm),typeof(instancenorm),typeof(groupnorm),
                            typeof(layernorm),typeof(rmsnorm)}
-const NormArray = Union{Array{<:NNlib.FusedNormFloat},AbstractGPUArray{<:NNlib.FusedNormFloat}}
+const NormArray = Union{Array{<:RuleFloat},AbstractGPUArray{<:IEEEFloat}}
 const NormParam = Union{Nothing,NormArray}
 
 for (f, args) in ((:batchnorm, :(NormParam, NormParam, NormArray, Vararg)),

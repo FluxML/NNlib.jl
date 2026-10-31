@@ -92,13 +92,15 @@ const GPUBackedArray{P,N} = Union{
 # `@from_rrule` does not honour the wrapper members: it adds ChainRules' cotangent into a view's
 # fdata, which is the parent's, so those signatures throw — hence `dropout`'s hand-written rule.
 
-# Floats the softmax family is differentiated for. NNlib computes half precision in Float32; BFloat16
-# is Mooncake's primitive float only where `BFloat16s.BFloat16` is `Core.BFloat16` (Julia ≥ 1.11).
-const SoftmaxFloat = if Mooncake.tangent_type(NNlib.BFloat16) === NNlib.BFloat16
-    Union{IEEEFloat,NNlib.BFloat16}
-else
-    IEEEFloat
-end
+# BFloat16 arrays, on the CPU alone (none where BFloat16 is not a primitive float), and the arrays of
+# the rules that do not tie the element type of several arguments. The others declare BFloat16
+# arrays next to their `IEEEFloat` ones.
+const HalfArray{N} = Union{
+    Array{<:MaybeBFloat16,N},
+    (Adjoint{P,<:Array{P,N}} where P<:MaybeBFloat16),
+    (Transpose{P,<:Array{P,N}} where P<:MaybeBFloat16),
+}
+const RuleArray{N} = Union{SupportedArray{<:IEEEFloat,N},HalfArray{N}}
 
 # On Julia ≤ 1.11, `maximum(x::Adjoint/Transpose; dims, init)` routes through
 # `LinearAlgebra.mapreducedim! → switch_dim12 → PermutedDimsArray`, leaving
@@ -107,7 +109,7 @@ end
 @static if VERSION < v"1.12"
     function _maximum(
         x::Tx, dims, init
-    ) where {T<:SoftmaxFloat,A<:Array{T},Tx<:Union{Adjoint{T,A},Transpose{T,A}}}
+    ) where {T<:RuleFloat,A<:Array{T},Tx<:Union{Adjoint{T,A},Transpose{T,A}}}
         return maximum(collect(x); dims, init)
     end
 end
@@ -118,12 +120,15 @@ const BatchedMulArray{P} = Union{Array{P,3},AbstractGPUArray{P,3}}
 @is_primitive MinimalCtx Tuple{
     typeof(batched_mul),BatchedMulArray{P},BatchedMulArray{P}
 } where {P<:IEEEFloat}
+@is_primitive MinimalCtx Tuple{
+    typeof(batched_mul),Array{P,3},Array{P,3}
+} where {P<:MaybeBFloat16}
 
 function frule!!(
     ::Dual{typeof(batched_mul)},
     A::Dual{<:BatchedMulArray{P}},
     B::Dual{<:BatchedMulArray{P}},
-) where {P<:IEEEFloat}
+) where {P<:RuleFloat}
     pA, dA = arrayify(A)
     pB, dB = arrayify(B)
     y = batched_mul(pA, pB)
@@ -136,7 +141,7 @@ function rrule!!(
     ::CoDual{typeof(batched_mul)},
     A::CoDual{<:BatchedMulArray{P}},
     B::CoDual{<:BatchedMulArray{P}},
-) where {P<:IEEEFloat}
+) where {P<:RuleFloat}
     pA, dA = arrayify(A)
     pB, dB = arrayify(B)
     y = batched_mul(pA, pB)
@@ -166,6 +171,9 @@ end
     DenseArray{P},
     P,
 } where {P<:IEEEFloat}
+@is_primitive MinimalCtx Tuple{
+    typeof(NNlib._affine_normalize),Array{P},Array{P},Array{P},Array{P},Array{P},P
+} where {P<:MaybeBFloat16}
 
 function frule!!(
     ::Dual{typeof(NNlib._affine_normalize)},
@@ -175,7 +183,7 @@ function frule!!(
     scale::Dual{<:DenseArray{P}},
     bias::Dual{<:DenseArray{P}},
     eps::Dual{P},
-) where {P<:IEEEFloat}
+) where {P<:RuleFloat}
     px, dx = arrayify(x)
     pmean, dmean = arrayify(mean)
     pvariance, dvariance = arrayify(variance)
@@ -199,7 +207,7 @@ function rrule!!(
     scale::CoDual{<:DenseArray{P}},
     bias::CoDual{<:DenseArray{P}},
     eps::CoDual{P},
-) where {P<:IEEEFloat}
+) where {P<:RuleFloat}
     px, dx = arrayify(x)
     pmean, dmean = arrayify(mean)
     pvariance, dvariance = arrayify(variance)
@@ -472,26 +480,28 @@ end
 const LinearScatterOp = Union{typeof(+),typeof(-),typeof(mean)}
 const ExtremumScatterOp = Union{typeof(max),typeof(min)}
 
-for (Op, Arr) in ((:LinearScatterOp, :GPUBackedArray), (:ExtremumScatterOp, :SupportedArray))
+for (Op, Arr) in (
+    (:LinearScatterOp, :(GPUBackedArray{<:IEEEFloat,N})), (:ExtremumScatterOp, :(RuleArray{N}))
+)
     @eval begin
         @is_primitive MinimalCtx ForwardMode Tuple{
-            typeof(NNlib.scatter),$Op,$Arr{P,N},SupportedArray{<:Union{Integer,Tuple},M}
-        } where {P<:IEEEFloat,N,M}
+            typeof(NNlib.scatter),$Op,$Arr,SupportedArray{<:Union{Integer,Tuple},M}
+        } where {N,M}
         @is_primitive MinimalCtx ForwardMode Tuple{
             typeof(Core.kwcall),
             NamedTuple,
             typeof(NNlib.scatter),
             $Op,
-            $Arr{P,N},
+            $Arr,
             SupportedArray{<:Union{Integer,Tuple},M},
-        } where {P<:IEEEFloat,N,M}
+        } where {N,M}
 
         function frule!!(
             ::Dual{typeof(NNlib.scatter)},
             op::Dual{<:$Op},
-            src::Dual{<:$Arr{P,N}},
+            src::Dual{<:$Arr},
             idx::Dual{<:SupportedArray{<:Union{Integer,Tuple},M}},
-        ) where {P<:IEEEFloat,N,M}
+        ) where {N,M}
             return _scatter_jvp(primal(op), (;), nothing, src, primal(idx))
         end
         function frule!!(
@@ -499,9 +509,9 @@ for (Op, Arr) in ((:LinearScatterOp, :GPUBackedArray), (:ExtremumScatterOp, :Sup
             kw::Dual{<:NamedTuple},
             ::Dual{typeof(NNlib.scatter)},
             op::Dual{<:$Op},
-            src::Dual{<:$Arr{P,N}},
+            src::Dual{<:$Arr},
             idx::Dual{<:SupportedArray{<:Union{Integer,Tuple},M}},
-        ) where {P<:IEEEFloat,N,M}
+        ) where {N,M}
             return _scatter_jvp(primal(op), primal(kw), tangent(kw), src, primal(idx))
         end
     end
@@ -536,11 +546,11 @@ end
 # from `rng` regardless. The `===` is checked, not assumed, because if that fast path ever
 # allocates, returning the input would alias where the primal does not.
 @is_primitive MinimalCtx ReverseMode Tuple{
-    typeof(dropout),AbstractRNG,SupportedArray{P,N},Real
-} where {P<:IEEEFloat,N}
+    typeof(dropout),AbstractRNG,RuleArray{N},Real
+} where {N}
 @is_primitive MinimalCtx ReverseMode Tuple{
-    typeof(Core.kwcall),NamedTuple,typeof(dropout),AbstractRNG,SupportedArray{P,N},Real
-} where {P<:IEEEFloat,N}
+    typeof(Core.kwcall),NamedTuple,typeof(dropout),AbstractRNG,RuleArray{N},Real
+} where {N}
 
 # ChainRules called here rather than through `Mooncake.rrule_wrapper`, which adds the cotangent
 # straight into the fdata: for the `Adjoint` and `Transpose` that `SupportedArray` admits, that
@@ -548,15 +558,15 @@ end
 function Mooncake.rrule!!(
     f::CoDual{typeof(dropout)},
     rng::CoDual{<:AbstractRNG},
-    x::CoDual{<:SupportedArray{P,N}},
+    x::CoDual{<:RuleArray{N}},
     p::CoDual{<:Real},
-) where {P<:IEEEFloat,N}
+) where {N}
     0 <= primal(p) <= 1 || throw(ArgumentError("dropout expects a probability 0 <= p <= 1"))
     if primal(p) <= 0 && dropout(primal(rng), primal(x), primal(p)) === primal(x)
         return x, NoPullback(f, rng, x, p)
     end
     px, dx = arrayify(x)
-    y, cr_pb = CRC.rrule(dropout, primal(rng), px, convert(P, primal(p)))
+    y, cr_pb = CRC.rrule(dropout, primal(rng), px, convert(eltype(px), primal(p)))
     res = zero_fcodual(y)
     dp = Mooncake.zero_rdata(primal(p))
     function dropout_pb!!(::NoRData)
@@ -571,16 +581,16 @@ function Mooncake.rrule!!(
     kw::CoDual{<:NamedTuple},
     f::CoDual{typeof(dropout)},
     rng::CoDual{<:AbstractRNG},
-    x::CoDual{<:SupportedArray{P,N}},
+    x::CoDual{<:RuleArray{N}},
     p::CoDual{<:Real},
-) where {P<:IEEEFloat,N}
+) where {N}
     0 <= primal(p) <= 1 || throw(ArgumentError("dropout expects a probability 0 <= p <= 1"))
     pkw = primal(kw)
     if primal(p) <= 0 && dropout(primal(rng), primal(x), primal(p); pkw...) === primal(x)
         return x, NoPullback(kwcall, kw, f, rng, x, p)
     end
     px, dx = arrayify(x)
-    y, cr_pb = Core.kwcall(pkw, CRC.rrule, dropout, primal(rng), px, convert(P, primal(p)))
+    y, cr_pb = Core.kwcall(pkw, CRC.rrule, dropout, primal(rng), px, convert(eltype(px), primal(p)))
     res = zero_fcodual(y)
     kw_rdata = Mooncake.zero_rdata(pkw)
     dp = Mooncake.zero_rdata(primal(p))
@@ -593,15 +603,15 @@ end
 
 # logsoftmax rrules
 @is_primitive MinimalCtx ReverseMode Tuple{
-    typeof(logsoftmax),SupportedArray{T,N}
-} where {T<:SoftmaxFloat,N}
+    typeof(logsoftmax),RuleArray{N}
+} where {N}
 @is_primitive MinimalCtx ReverseMode Tuple{
-    typeof(Core.kwcall),NamedTuple,typeof(logsoftmax),SupportedArray{T,N}
-} where {T<:SoftmaxFloat,N}
+    typeof(Core.kwcall),NamedTuple,typeof(logsoftmax),RuleArray{N}
+} where {N}
 
 function Mooncake.rrule!!(
-    ::CoDual{typeof(logsoftmax)}, x::CoDual{<:SupportedArray{T,N}}
-) where {T<:SoftmaxFloat,N}
+    ::CoDual{typeof(logsoftmax)}, x::CoDual{<:RuleArray{N}}
+) where {N}
     xp = primal(x)
     y = logsoftmax(xp)
     res = zero_fcodual(y)
@@ -618,8 +628,8 @@ function Mooncake.rrule!!(
     ::CoDual{typeof(Core.kwcall)},
     kw::CoDual{<:NamedTuple{(:dims,)}},
     ::CoDual{typeof(logsoftmax)},
-    x::CoDual{<:SupportedArray{T,N}},
-) where {T<:SoftmaxFloat,N}
+    x::CoDual{<:RuleArray{N}},
+) where {N}
     dims = primal(kw).dims
     xp = primal(x)
     y = logsoftmax(xp; dims)
@@ -635,15 +645,15 @@ end
 
 # softmax rrules
 @is_primitive MinimalCtx ReverseMode Tuple{
-    typeof(softmax),SupportedArray{T,N}
-} where {T<:SoftmaxFloat,N}
+    typeof(softmax),RuleArray{N}
+} where {N}
 @is_primitive MinimalCtx ReverseMode Tuple{
-    typeof(Core.kwcall),NamedTuple,typeof(softmax),SupportedArray{T,N}
-} where {T<:SoftmaxFloat,N}
+    typeof(Core.kwcall),NamedTuple,typeof(softmax),RuleArray{N}
+} where {N}
 
 function Mooncake.rrule!!(
-    ::CoDual{typeof(softmax)}, x::CoDual{<:SupportedArray{T,N}}
-) where {T<:SoftmaxFloat,N}
+    ::CoDual{typeof(softmax)}, x::CoDual{<:RuleArray{N}}
+) where {N}
     xp = primal(x)
     y = softmax(xp)
     res = zero_fcodual(y)
@@ -660,8 +670,8 @@ function Mooncake.rrule!!(
     ::CoDual{typeof(Core.kwcall)},
     kw::CoDual{<:NamedTuple{(:dims,)}},
     ::CoDual{typeof(softmax)},
-    x::CoDual{<:SupportedArray{T,N}},
-) where {T<:SoftmaxFloat,N}
+    x::CoDual{<:RuleArray{N}},
+) where {N}
     dims = primal(kw).dims
     xp = primal(x)
     y = softmax(xp; dims)
@@ -677,11 +687,11 @@ end
 
 # logsumexp rrules
 @is_primitive MinimalCtx ReverseMode Tuple{
-    typeof(logsumexp),SupportedArray{T,N}
-} where {T<:SoftmaxFloat,N}
+    typeof(logsumexp),RuleArray{N}
+} where {N}
 @is_primitive MinimalCtx ReverseMode Tuple{
-    typeof(Core.kwcall),NamedTuple,typeof(logsumexp),SupportedArray{T,N}
-} where {T<:SoftmaxFloat,N}
+    typeof(Core.kwcall),NamedTuple,typeof(logsumexp),RuleArray{N}
+} where {N}
 
 # In the type NNlib's `logsumexp` computes and returns in (Float32 for half precision). The entries
 # equal to the maximum count as one, which avoids `Inf - Inf` when it is infinite.
@@ -693,8 +703,8 @@ function _logsumexp_terms(x, dims)
 end
 
 function Mooncake.rrule!!(
-    ::CoDual{typeof(logsumexp)}, x::CoDual{<:SupportedArray{T,N}}
-) where {T<:SoftmaxFloat,N}
+    ::CoDual{typeof(logsumexp)}, x::CoDual{<:RuleArray{N}}
+) where {N}
     y, tmp, s = _logsumexp_terms(primal(x), :)
     res = zero_fcodual(y)
     function logsumexp_pb!!(dy)
@@ -709,8 +719,8 @@ function Mooncake.rrule!!(
     ::CoDual{typeof(Core.kwcall)},
     kw::CoDual{<:NamedTuple{(:dims,)}},
     ::CoDual{typeof(logsumexp)},
-    x::CoDual{<:SupportedArray{T,N}},
-) where {T<:SoftmaxFloat,N}
+    x::CoDual{<:RuleArray{N}},
+) where {N}
     y, tmp, s = _logsumexp_terms(primal(x), primal(kw).dims)
     res = zero_fcodual(y)
     function logsumexp_kw_pb!!(::NoRData)
@@ -740,9 +750,9 @@ end
     Tuple{
         typeof(NNlib.scatter),
         Any,
-        SupportedArray{P,N},
+        SupportedArray{<:IEEEFloat,N},
         SupportedArray{<:Union{Integer,Tuple},M},
-    } where {P,N,M},
+    } where {N,M},
     true,
 )
 
@@ -757,13 +767,13 @@ end
     # `convert`, because NNlib rounds `init` into the destination before comparing.
     tied = psrc .== NNlib.gather(y, pidx)
     init_tie = isnothing(init) ? false : y .== convert(P, init)
-    # `Int`, because a float count saturates once its spacing passes 1 — `Float16` at 2048,
-    # `Float32` at 2^24 — inflating every share in a larger tie group.
+    # `Int`, because a float count saturates once its spacing passes 1 — `BFloat16` at 256,
+    # `Float16` at 2048, `Float32` at 2^24 — inflating every share in a larger tie group.
     counts = NNlib.scatter!(+, fill!(similar(y, Int), 0), tied, pidx)
     isnothing(init) || (counts .+= init_tie)
-    # `A` widens `Float16` for the division, whose operands are all O(1). No zero guard: `gather`
+    # `A` widens half precision for the division, whose operands are all O(1). No zero guard: `gather`
     # reads only destinations some index reaches, and each holds a tied source or `init` itself.
-    A = P === Float16 ? Float32 : P
+    A = typeof(NNlib._acc(zero(P)))
     total = A.(counts)
     dsrc .+= P.(tied .* A.(NNlib.gather(dy, pidx)) ./ NNlib.gather(total, pidx))
     # `oftype`, because `init` need not share `src`'s precision.
@@ -771,48 +781,67 @@ end
     return oftype(init, sum(A.(dy) .* init_tie ./ total))
 end
 
-function Mooncake.rrule!!(
-    ::CoDual{typeof(NNlib.scatter)},
-    op::CoDual{<:Union{typeof(max),typeof(min)}},
-    src::CoDual{<:SupportedArray{P,N}},
-    idx::CoDual{<:SupportedArray{<:Union{Integer,Tuple},M}},
-) where {P<:IEEEFloat,N,M}
-    psrc, dsrc = arrayify(src)
-    pidx = primal(idx)
-    res = zero_fcodual(NNlib.scatter(primal(op), psrc, pidx))
-    function scatter_extremum_pb!!(::NoRData)
-        _scatter_extremum_grads!(dsrc, psrc, pidx, primal(res), tangent(res), nothing)
-        return NoRData(), NoRData(), NoRData(), NoRData()
-    end
-    return res, scatter_extremum_pb!!
-end
+# The `@from_rrule` above is for `IEEEFloat`, as it cannot convert BFloat16. These rules need not.
+@is_primitive MinimalCtx ReverseMode Tuple{
+    typeof(NNlib.scatter),ExtremumScatterOp,HalfArray{N},SupportedArray{<:Union{Integer,Tuple},M}
+} where {N,M}
+@is_primitive MinimalCtx ReverseMode Tuple{
+    typeof(Core.kwcall),
+    NamedTuple,
+    typeof(NNlib.scatter),
+    ExtremumScatterOp,
+    HalfArray{N},
+    SupportedArray{<:Union{Integer,Tuple},M},
+} where {N,M}
 
-function Mooncake.rrule!!(
-    ::CoDual{typeof(Core.kwcall)},
-    kw::CoDual{<:NamedTuple},
-    ::CoDual{typeof(NNlib.scatter)},
-    op::CoDual{<:Union{typeof(max),typeof(min)}},
-    src::CoDual{<:SupportedArray{P,N}},
-    idx::CoDual{<:SupportedArray{<:Union{Integer,Tuple},M}},
-) where {P<:IEEEFloat,N,M}
-    psrc, dsrc = arrayify(src)
-    pidx = primal(idx)
-    pkw = primal(kw)
-    res = zero_fcodual(NNlib.scatter(primal(op), psrc, pidx; pkw...))
-    function scatter_extremum_kw_pb!!(::NoRData)
-        # `haskey` on a `NamedTuple`'s type is settled at compile time, so each keyword set
-        # gets its own specialisation and `kw_rdata` has one concrete type per call site.
-        init = haskey(pkw, :init) ? pkw.init : nothing
-        dinit = _scatter_extremum_grads!(dsrc, psrc, pidx, primal(res), tangent(res), init)
-        # With `init` supplied the keyword `NamedTuple`'s rdata is not `NoRData`; without, it is.
-        kw_rdata = if dinit === nothing
-            Mooncake.zero_rdata(pkw)
-        else
-            merge(Mooncake.zero_rdata(pkw), (; init=dinit))
+# A union of the two source types would be ambiguous with the methods of the `@from_rrule`, which
+# take the first alone.
+for Src in (:(SupportedArray{<:IEEEFloat,N}), :(HalfArray{N}))
+    @eval begin
+        function Mooncake.rrule!!(
+            ::CoDual{typeof(NNlib.scatter)},
+            op::CoDual{<:ExtremumScatterOp},
+            src::CoDual{<:$Src},
+            idx::CoDual{<:SupportedArray{<:Union{Integer,Tuple},M}},
+        ) where {N,M}
+            psrc, dsrc = arrayify(src)
+            pidx = primal(idx)
+            res = zero_fcodual(NNlib.scatter(primal(op), psrc, pidx))
+            function scatter_extremum_pb!!(::NoRData)
+                _scatter_extremum_grads!(dsrc, psrc, pidx, primal(res), tangent(res), nothing)
+                return NoRData(), NoRData(), NoRData(), NoRData()
+            end
+            return res, scatter_extremum_pb!!
         end
-        return NoRData(), kw_rdata, NoRData(), NoRData(), NoRData(), NoRData()
+
+        function Mooncake.rrule!!(
+            ::CoDual{typeof(Core.kwcall)},
+            kw::CoDual{<:NamedTuple},
+            ::CoDual{typeof(NNlib.scatter)},
+            op::CoDual{<:ExtremumScatterOp},
+            src::CoDual{<:$Src},
+            idx::CoDual{<:SupportedArray{<:Union{Integer,Tuple},M}},
+        ) where {N,M}
+            psrc, dsrc = arrayify(src)
+            pidx = primal(idx)
+            pkw = primal(kw)
+            res = zero_fcodual(NNlib.scatter(primal(op), psrc, pidx; pkw...))
+            function scatter_extremum_kw_pb!!(::NoRData)
+                # `haskey` on a `NamedTuple`'s type is settled at compile time, so each keyword set
+                # gets its own specialisation and `kw_rdata` has one concrete type per call site.
+                init = haskey(pkw, :init) ? pkw.init : nothing
+                dinit = _scatter_extremum_grads!(dsrc, psrc, pidx, primal(res), tangent(res), init)
+                # With `init` supplied the keyword `NamedTuple`'s rdata is not `NoRData`; without, it is.
+                kw_rdata = if dinit === nothing
+                    Mooncake.zero_rdata(pkw)
+                else
+                    merge(Mooncake.zero_rdata(pkw), (; init=dinit))
+                end
+                return NoRData(), kw_rdata, NoRData(), NoRData(), NoRData(), NoRData()
+            end
+            return res, scatter_extremum_kw_pb!!
+        end
     end
-    return res, scatter_extremum_kw_pb!!
 end
 
 # ChainRules defines an `rrule` only for the in-place `gather!`, not `gather`, so without
@@ -823,8 +852,8 @@ end
     MinimalCtx,
     ReverseMode,
     Tuple{
-        typeof(NNlib.gather),SupportedArray{P,N},SupportedArray{<:Union{Integer,Tuple},M}
-    } where {P<:IEEEFloat,N,M},
+        typeof(NNlib.gather),RuleArray{N},SupportedArray{<:Union{Integer,Tuple},M}
+    } where {N,M},
 )
 # Forward mode traces `gather` on the CPU. On the GPU a traced kernel launch does not survive
 # the forward transform: the process dies with signal 4, no Julia exception to catch.
@@ -847,9 +876,9 @@ end
 
 function Mooncake.rrule!!(
     ::CoDual{typeof(NNlib.gather)},
-    src::CoDual{<:SupportedArray{P,N}},
+    src::CoDual{<:RuleArray{N}},
     idx::CoDual{<:SupportedArray{<:Union{Integer,Tuple},M}},
-) where {P<:IEEEFloat,N,M}
+) where {N,M}
     pidx = primal(idx)
     res = zero_fcodual(NNlib.gather(primal(src), pidx))
     function gather_pb!!(::NoRData)
@@ -901,13 +930,12 @@ for pool in [:maxpool, :meanpool]
     )
 end
 @from_rrule(
-    MinimalCtx, Tuple{typeof(pad_constant),SupportedArray{P,N},Any,Any} where {P,N}, true,
+    MinimalCtx, Tuple{typeof(pad_constant),SupportedArray{<:IEEEFloat,N},Any,Any} where {N}, true,
 )
 
 # `bias_act!` overwrites the dense array `x` and returns it. The rules save the old `x` and have
-# the pullback restore it, as Mooncake's reverse pass has to. The element types are bounded in
-# `BiasActFloat` alone. The bias is `false` for a layer without one.
-const BiasActFloat = IEEEFloat
+# the pullback restore it, as Mooncake's reverse pass has to. The bias is `false` for a layer
+# without one.
 const BiasActArray{P} = Union{Array{P},AbstractGPUArray{P}}
 const BiasActBias{P} = Union{BiasActArray{P},Bool}
 
@@ -916,7 +944,10 @@ const BiasActivation = Union{typeof(identity),typeof(tanh),Activation}
 
 @is_primitive MinimalCtx Tuple{
     typeof(bias_act!),BiasActivation,BiasActArray{P},BiasActBias{P}
-} where {P<:BiasActFloat}
+} where {P<:IEEEFloat}
+@is_primitive MinimalCtx Tuple{
+    typeof(bias_act!),BiasActivation,Array{P},Union{Array{P},Bool}
+} where {P<:MaybeBFloat16}
 
 # The derivative at the pre-activation `z`, `Ω` being the output. These are NNlib's, except for
 # `tanh` and `σ` where `Ω` collapses to `±1` and `Ω * (1 - Ω)` to `0` long before the derivative
@@ -970,7 +1001,7 @@ function frule!!(
     σ::Dual{<:BiasActivation},
     x::Dual{<:BiasActArray{P}},
     b::Dual{<:BiasActBias{P}},
-) where {P<:BiasActFloat}
+) where {P<:RuleFloat}
     px, dx = primal(x), tangent(x)
     pb, db = primal(b), tangent(b)
     pσ = primal(σ)
@@ -985,7 +1016,7 @@ function rrule!!(
     σ::CoDual{<:BiasActivation},
     x::CoDual{<:BiasActArray{P}},
     b::CoDual{<:BiasActBias{P}},
-) where {P<:BiasActFloat}
+) where {P<:RuleFloat}
     px, dx = primal(x), tangent(x)
     pb, db = primal(b), tangent(b)
     pσ = primal(σ)
@@ -1017,15 +1048,15 @@ end
 end
 
 for f in (:σ, :sigmoid_fast)
-    @eval @is_primitive MinimalCtx Tuple{typeof(NNlib.$f),P} where {P<:IEEEFloat}
+    @eval @is_primitive MinimalCtx Tuple{typeof(NNlib.$f),P} where {P<:RuleFloat}
     @eval function Mooncake.frule!!(
         ::Dual{typeof(NNlib.$f)}, x::Dual{P}
-    ) where {P<:IEEEFloat}
+    ) where {P<:RuleFloat}
         return Dual(NNlib.$f(primal(x)), tangent(x) * _sigmoid_derivative(primal(x)))
     end
     @eval function Mooncake.rrule!!(
         ::CoDual{typeof(NNlib.$f)}, x::CoDual{P}
-    ) where {P<:IEEEFloat}
+    ) where {P<:RuleFloat}
         d = _sigmoid_derivative(primal(x))
         sigmoid_pb!!(dΩ::P) = NoRData(), dΩ * d
         return zero_fcodual(NNlib.$f(primal(x))), sigmoid_pb!!
@@ -1053,12 +1084,12 @@ end
     return 4u / (one(x) + u)^2
 end
 
-@is_primitive MinimalCtx Tuple{typeof(tanh_fast),P} where {P<:IEEEFloat}
-function Mooncake.frule!!(::Dual{typeof(tanh_fast)}, x::Dual{P}) where {P<:IEEEFloat}
+@is_primitive MinimalCtx Tuple{typeof(tanh_fast),P} where {P<:RuleFloat}
+function Mooncake.frule!!(::Dual{typeof(tanh_fast)}, x::Dual{P}) where {P<:RuleFloat}
     d = _tanh_fast_derivative(primal(x))
     return Dual(tanh_fast(primal(x)), tangent(x) * d)
 end
-function Mooncake.rrule!!(::CoDual{typeof(tanh_fast)}, x::CoDual{P}) where {P<:IEEEFloat}
+function Mooncake.rrule!!(::CoDual{typeof(tanh_fast)}, x::CoDual{P}) where {P<:RuleFloat}
     d = _tanh_fast_derivative(primal(x))
     tanh_fast_pb!!(dΩ::P) = NoRData(), dΩ * d
     return zero_fcodual(tanh_fast(primal(x))), tanh_fast_pb!!
