@@ -25,6 +25,26 @@ Mooncake.@mooncake_overlay NNlib.within_gradient(x) = true
 # call NNlib outside it, where the kernels keep their threads.
 Mooncake.@mooncake_overlay NNlib.should_use_spawn() = false
 
+# cuDNN's `batchnorm` for 3-5-D arrays cannot be traced, and an overlay method takes precedence
+# over the more specific methods of the cuDNN extension: where Mooncake differentiates the call,
+# the generic code runs, as `within_gradient` selects it for the other normalizations.
+Mooncake.@mooncake_overlay function NNlib.batchnorm(
+    g, b, x::AbstractGPUArray{T,N}, running_mean, running_var, momentum;
+    eps=1f-5, training::Bool=true, track_stats::Bool=true, kws...,
+) where {T,N}
+    return NNlib._norm_layer(g, b, x, running_mean, running_var, (ntuple(identity, N - 2)..., N);
+                             training, momentum, eps, track_stats)
+end
+
+# The backward pass of the softmax family calls cuDNN, and the reverse rules run it. A
+# Hessian-vector product differentiates that pass, which the overlay keeps to the generic code.
+for f in (:∇softmax!, :∇logsoftmax!)
+    _f = Symbol(:_, f)
+    @eval Mooncake.@mooncake_overlay NNlib.$f(
+        dx::AbstractGPUArray, dy::AbstractGPUArray, y::AbstractGPUArray; dims=1
+    ) = NNlib.$_f(dx, dy, y; dims)
+end
+
 # A normalization is one primitive, whose two passes are those of its ChainRules rule. That
 # runs outside the code Mooncake differentiates, where `within_gradient` is false: the fused
 # kernels compute the output and keep the statistics for the reverse pass, the running
