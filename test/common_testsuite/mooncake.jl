@@ -58,6 +58,15 @@ function mooncake_testsuite(Backend)
         end
     end
 
+    # The primal refuses a CPU generator for a GPU array, which would otherwise be filled by scalar
+    # indexing; so must the forward rule, which draws its mask outside `dropout`.
+    cuda && @testset "forward dropout rejects a CPU rng for a GPU array" begin
+        test_rule_throws(
+            StableRNG(123), dropout, StableRNG(1), device(ones(Float32, 4)), 0.5f0;
+            err=ArgumentError, msg="cannot use rng", mode=Mooncake.ForwardMode, primal=true,
+        )
+    end
+
     gpu || @testset "batched_mul with a singleton batch" for batches in ((3, 3), (1, 3), (3, 1))
         rng = StableRNG(123)
         test_rule(rng, batched_mul, randn(rng, 3, 2, batches[1]), randn(rng, 2, 5, batches[2]);

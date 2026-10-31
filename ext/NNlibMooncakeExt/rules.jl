@@ -428,6 +428,7 @@ end
 function _dropout_jvp(kw, rng, x::Dual{<:GPUBackedArray{P}}, p) where {P}
     0 <= primal(p) <= 1 || throw(ArgumentError("dropout expects a probability 0 <= p <= 1"))
     px, dx = arrayify(x)
+    NNlib._rng_compat_array(primal(rng), px)
     # As for the reverse rule, the input itself is the output at `p ≤ 0`.
     primal(p) <= 0 && dropout(primal(rng), px, primal(p); kw...) === px && return x
     y, pullback = Core.kwcall(kw, CRC.rrule, dropout, primal(rng), px, convert(P, primal(p)))
