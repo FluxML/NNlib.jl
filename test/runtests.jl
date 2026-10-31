@@ -42,6 +42,7 @@ const THREADED_TESTS = [
     "cpu/sampling",
     "common_testsuite/fold",
     "common_testsuite/normalization",
+    "common_testsuite/mooncake",
 ]
 
 # GPU backends (CUDA/cuDNN, AMDGPU, Metal) are added to the test project beforehand

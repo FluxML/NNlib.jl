@@ -2,6 +2,7 @@
 # Mooncake.jl, without the cases that belong to its LuxLib extension.
 
 using Mooncake.TestUtils: test_rule, test_rule_throws
+using NNlib: batchnorm, instancenorm, groupnorm, layernorm, rmsnorm
 using Mooncake.Nfwd: NDual, ndual_partial, ndual_value
 using JET: JET  # `test_rule`'s stability checks need Mooncake's JET extension
 
@@ -28,12 +29,30 @@ function dropout_alias_tester_dims(Trng, x)
     return sum(x)
 end
 
+# Every activation `bias_act!` has a rule for, but `identity`. `tanh` is among them as `bias_act!`
+# computes `tanh_fast` for it.
+const bias_act_activations = [getfield(NNlib, f) for (f, _) in NNlib.UNARY_ACTS]
+push!(bias_act_activations, tanh)
+
 function mooncake_testsuite(Backend)
     gpu = Backend != CPU
     device(x) = adapt(Backend(), x)
     T = gpu ? Float32 : Float64
     _rand(rng, size...) = device(randn(rng, T, size...))
     _ones(d...) = device(ones(T, d...))
+    # Random `x` and `b` (`false` if `bsize` is `nothing`), with `x .+ b` kept off the kinks of the
+    # piecewise activations, that finite differences cannot cross.
+    function bias_act_args(rng, xsize, bsize, Tx=T)
+        x = randn(rng, Tx, xsize...)
+        b = bsize === nothing ? zeros(Tx, 1) : randn(rng, Tx, bsize...)
+        kinks = Tx[-3, -1, -0.5, 0, 0.5, 1, 3, 6]
+        while true
+            near = [minimum(abs.(z .- kinks)) < 0.1 for z in x .+ b]
+            any(near) || break
+            x .+= Tx(0.23) .* near
+        end
+        return device(x), bsize === nothing ? false : device(b)
+    end
     Trng = gpu ? typeof(NNlib._rng_from_array(_ones(1))) : StableRNG
     # CUDA.jl#2886 is fixed after 5.9.6, allowing these checks on the GPU.
     cuda = gpu && CUDA.functional() && pkgversion(CUDA) > v"5.9.6"
@@ -55,6 +74,15 @@ function mooncake_testsuite(Backend)
                 @test rand(rng, Float32, 8) == rand(Trng(123), Float32, 8)
             end
         end
+    end
+
+    # The primal refuses a CPU generator for a GPU array, which would otherwise be filled by scalar
+    # indexing; so must the forward rule, which draws its mask outside `dropout`.
+    cuda && @testset "forward dropout rejects a CPU rng for a GPU array" begin
+        test_rule_throws(
+            StableRNG(123), dropout, StableRNG(1), device(ones(Float32, 4)), 0.5f0;
+            err=ArgumentError, msg="cannot use rng", mode=Mooncake.ForwardMode, primal=true,
+        )
     end
 
     gpu || @testset "batched_mul with a singleton batch" for batches in ((3, 3), (1, 3), (3, 1))
@@ -227,9 +255,17 @@ function mooncake_testsuite(Backend)
             (false, :none, false, x -> pad_constant(x, 1, T(2.0)), x),
             (false, :none, false, x -> pad_constant(x, 1, T(2.0); dims=:), x),
 
-            # bias_act!(identity, x, b): modifies x in-place
+            # bias_act!(σ, x, b): modifies x in-place
             (false, :stability, true, bias_act!, identity, _rand(rng, 8, 4), _rand(rng, 8)),
             (false, :stability, true, bias_act!, identity, _rand(rng, 8), _rand(rng, 8)),
+            (false, :none, true, bias_act!, relu, bias_act_args(rng, (3, 3, 4, 2), (1, 1, 4, 1))...),
+            (false, :none, true, bias_act!, swish, bias_act_args(rng, (3, 3, 4, 2), (1, 1, 4, 1))...),
+            (false, :none, true, bias_act!, relu, bias_act_args(rng, (8, 4), (1,))...),
+            (false, :none, true, bias_act!, relu, bias_act_args(rng, (8, 4), nothing)...),
+            (false, :none, true, bias_act!, swish, bias_act_args(rng, (8, 4), nothing)...),
+            (false, :none, true, bias_act!, tanh, bias_act_args(rng, (8, 4), nothing)...),
+            [(false, :none, true, bias_act!, σ, bias_act_args(rng, (8, 4), (8,))...)
+             for σ in bias_act_activations]...,
         ]
         if !gpu || cuda
             append!(test_cases, [
@@ -248,7 +284,6 @@ function mooncake_testsuite(Backend)
         end
         if gpu
             push!(test_cases,
-                (false, :none, true, bias_act!, tanh, _rand(rng, 8, 4), _rand(rng, 8)),
                 (false, :none, true, bias_act!, tanh, device(fill(20.0f0, 8)), device(zeros(Float32, 8))),
             )
         else
@@ -267,11 +302,172 @@ function mooncake_testsuite(Backend)
             test_rule(StableRNG(123), fargs...;
                 perf_flag, is_primitive, interface_only, mode=Mooncake.ReverseMode)
         end
+
+        # Forward mode: the convolutions have forward rules on every array, the other operations
+        # on GPU arrays only, where a traced kernel launch fails. On the CPU those are traced.
+        # (is_primitive, f, args...)
+        pool_ceil = PoolDims(size(x), 3; stride=2, padding=1, ceil_mode=true)
+        pool_dil = PoolDims(size(x), 2; stride=1, dilation=2)
+        x1d = _rand(rng, 7, 2, 3)
+        fwd_cases = Any[
+            (true, conv, x, w, dense_cdims),
+            (true, Core.kwcall, (;), conv, x, w, dense_cdims),
+            (true, ∇conv_data, y, w, dense_cdims),
+            (true, Core.kwcall, (;), ∇conv_data, y, w, dense_cdims),
+            (true, ∇conv_filter, x, y, dense_cdims),
+            (true, Core.kwcall, (;), ∇conv_filter, x, y, dense_cdims),
+            # Through `conv`.
+            (false, depthwiseconv, x, w, sep_cd),
+            (false, ∇depthwiseconv_data, y_sep, w, sep_cd),
+            (false, ∇depthwiseconv_filter, x, y_sep, sep_cd),
+
+            (gpu, meanpool, x, pool_dims),
+            (gpu, Core.kwcall, (;), meanpool, x, pool_dims),
+            (gpu, meanpool, x, pool_ceil),
+            (gpu, maxpool, x, pool_dims),
+            (gpu, Core.kwcall, (;), maxpool, x, pool_dims),
+            # Padding, stride and `ceil_mode` move the windows; one spatial dimension.
+            (gpu, maxpool, x, pool_ceil),
+            (gpu, maxpool, x1d, PoolDims(size(x1d), 3; stride=2, padding=1)),
+
+            (false, upsample_nearest, _rand(rng, 3, 2), (2, 2)),
+            (gpu, NNlib.fold, _rand(rng, 12, 12, 2), size(x), dense_cdims),
+            (gpu, NNlib.unfold, x, dense_cdims),
+
+            (gpu, gather, _rand(rng, 2, 4), [1, 3, 1]),
+            (gpu, gather, _rand(rng, 2, 3, 4), [(1, 2), (3, 1), (2, 2)]),
+            (gpu, gather, _rand(rng, 4, 4)', [1, 3, 1]),
+            (gpu, gather, transpose(_rand(rng, 4, 4)), [1, 3, 1]),
+
+            (gpu, pad_constant, x, 1, T(2.0)),
+            (gpu, Core.kwcall, (dims=1,), pad_constant, x, 1, T(2.0)),
+
+            (gpu, scatter, +, _rand(rng, 2), [1, 3]),
+            (gpu, scatter, -, _rand(rng, 2, 3), [1, 3, 1]),
+            (gpu, scatter, mean, _rand(rng, 2, 3), [1, 3, 1]),
+            (gpu, Core.kwcall, (init=T(0.5),), scatter, +, _rand(rng, 2), [1, 3]),
+            # The extremum cases are those of the reverse rule: ties, `init` below, above and tied with
+            # the sources, an `init` without a tangent, and a destination no index reaches. Their rules
+            # are for the CPU as well, which would break a tie by taking one of the sources.
+            (true, scatter, max, _ones(3), [1, 1, 2]),
+            (true, scatter, min, _ones(3), [1, 1, 2]),
+            (true, scatter, max, _ones(2, 3), [1, 1, 2]),
+            (true, scatter, max, _rand(rng, 4), [1, 2, 3, 3]),
+            (true, Core.kwcall, (init=T(0.5),), scatter, max, _ones(3), [1, 1, 2]),
+            (true, Core.kwcall, (init=T(2.0),), scatter, max, _ones(3), [1, 1, 2]),
+            (true, Core.kwcall, (init=T(1.0),), scatter, max, device(T[1, 2]), [1, 2]),
+            (true, Core.kwcall, (init=mixed_init,), scatter, max, mixed_src, [1, 1, 2]),
+            (true, Core.kwcall, (init=2,), scatter, max, _ones(3), [1, 1, 2]),
+            (true, Core.kwcall, (init=nothing,), scatter, max, _ones(3), [1, 1, 2]),
+            # `dstsize` past the largest index leaves destinations holding `-Inf`, which finite
+            # differences cannot take the difference of: the slice leaves them out.
+            (false, z -> scatter(max, z, [1, 1, 2]; dstsize=(4,))[1:2], _ones(3)),
+            (false, z -> scatter(min, z, [1, 1, 2]; dstsize=(4,), init=T(2.0))[1:2], _ones(3)),
+        ]
+        # The primal of a rule that is not for the CPU is traced there, which is the point of it.
+        for f in (softmax, logsoftmax, logsumexp)
+            append!(fwd_cases, [
+                (gpu, f, _rand(rng, 2)),
+                (gpu, f, _rand(rng, 3, 3, 2)),
+                (gpu, Core.kwcall, (dims=1,), f, _rand(rng, 3, 3)),
+                (gpu, Core.kwcall, (dims=2,), f, _rand(rng, 3, 3)),
+                (gpu, Core.kwcall, (dims=(1, 2),), f, _rand(rng, 3, 3, 2)),
+                (gpu, f, _rand(rng, 2, 3)'),
+                (gpu, Core.kwcall, (dims=2,), f, transpose(_rand(rng, 3, 3))),
+            ])
+        end
+        # cuDNN pools ignore the dilation, so its primal is not the CPU's.
+        gpu || push!(fwd_cases, (false, maxpool, x, pool_dil))
+        if !gpu || cuda
+            append!(fwd_cases, [
+                (false, dropout_mixed_tester, Trng, wrap(device(ones(S, 32, 4))), Val(p), Val(dims))
+                for (S, p) in ((Float32, 0.9), (Float64, 0.1f0), (Float32, 0.0))
+                for dims in (nothing, 1) for wrap in (identity, adjoint, transpose)
+            ])
+        end
+        @testset "forward $(typeof(fargs))" for (is_primitive, fargs...) in fwd_cases
+            test_rule(StableRNG(123), fargs...; is_primitive, mode=Mooncake.ForwardMode)
+        end
     end
 
-    gpu && @testset "saturated bias activations" begin
-        ref = 4 * exp(-40.0f0) / (1 + exp(-40.0f0))^2
-        for activation in (tanh, tanh_fast)
+    # Views are not in `SupportedArray`, as `@from_rrule` would add the cotangent to the fdata
+    # of the parent, which has its shape. Without a rule Mooncake traces `conv` down to BLAS.
+    @testset "convolution and pooling on views" begin
+        rng = StableRNG(123)
+        # Central differences in `Float32` of the sums in `∇conv_filter` can miss the default by a hair.
+        tol = gpu ? 1e-2 : 1e-3
+        xp = _rand(rng, 7, 6, 3, 4)
+        wp = _rand(rng, 2, 2, 3, 5)
+        wv = view(wp, :, :, :, 2:4)
+        w = copy(wv)
+        views = (
+            "contiguous" => view(xp, :, :, :, 2:3),
+            "strided" => view(xp, 1:2:7, :, :, 1:2),
+            "whole" => view(xp, :, :, :, :),
+        )
+
+        @testset "rules: $name" for (name, x) in views
+            xc = copy(x)
+            cdims = DenseConvDims(x, w)
+            y = conv(xc, w, cdims)
+            yv = view(y, :, :, :, :)
+            pdims = PoolDims(size(x), 2)
+            # An argument of a rule is a view, a plain array, or both are views.
+            cases = Any[
+                (conv, x, w, cdims), (conv, xc, wv, cdims), (conv, x, wv, cdims),
+                (∇conv_data, yv, w, cdims), (∇conv_data, y, wv, cdims), (∇conv_data, yv, wv, cdims),
+                (∇conv_filter, x, y, cdims), (∇conv_filter, xc, yv, cdims), (∇conv_filter, x, yv, cdims),
+                (maxpool, x, pdims), (meanpool, x, pdims),
+            ]
+            if !gpu
+                sdims = DepthwiseConvDims(x, w)
+                ysep = depthwiseconv(xc, w, sdims)
+                push!(cases,
+                    (depthwiseconv, x, w, sdims), (depthwiseconv, xc, wv, sdims),
+                    (∇depthwiseconv_data, view(ysep, :, :, :, :), w, sdims),
+                    (∇depthwiseconv_data, ysep, wv, sdims),
+                )
+            end
+            @testset "$(nameof(f)) $i" for (i, (f, args...)) in enumerate(cases)
+                for fargs in ((f, args...), (Core.kwcall, (;), f, args...))
+                    test_rule(StableRNG(123), fargs...; perf_flag=:none, is_primitive=true,
+                        mode=Mooncake.ReverseMode, rtol=tol, atol=tol)
+                end
+            end
+        end
+
+        # Through `withgradient`, the cotangent has to reach the parent, and only the view.
+        @testset "gradient to the parent" begin
+            losses = (
+                x -> sum(abs2, conv(view(x, :, :, :, :), w)),
+                x -> sum(abs2, conv(view(x, :, :, :, 2:3), w)),
+                x -> sum(abs2, conv(view(x, 1:2:7, :, :, 2:3), wv; stride=2, pad=1)),
+                x -> sum(abs2, maxpool(view(x, 1:2:7, :, :, 2:3), (2, 2))),
+                x -> sum(abs2, meanpool(view(x, :, :, :, 2:3), (2, 2); pad=1)),
+            )
+            @testset "loss $i" for (i, f) in enumerate(losses)
+                @test withgradient(f, AutoMooncake(), xp).grad[1] ≈ withgradient(f, AutoZygote(), xp).grad[1]
+            end
+            x = view(xp, :, :, :, 2:3)
+            f = w -> sum(abs2, conv(x, view(w, :, :, :, 2:4)))
+            @test withgradient(f, AutoMooncake(), wp).grad[1] ≈ withgradient(f, AutoZygote(), wp).grad[1]
+        end
+    end
+
+    # `should_use_spawn` reads a `ScopedValue`, which Mooncake cannot differentiate. It
+    # is the same with one thread: the read is compiled whether or not it is reached.
+    gpu || @testset "spawn decision is not differentiated" begin
+        f(x) = (NNlib.should_use_spawn(); sum(abs2, x))
+        x = randn(StableRNG(123), 4)
+        @test withgradient(f, AutoMooncake(), x).grad[1] ≈ 2x
+        test_rule(StableRNG(123), f, x; mode=Mooncake.ForwardMode, is_primitive=false)
+    end
+
+    @testset "saturated bias activations" begin
+        ref_tanh = 4 * exp(-40.0f0) / (1 + exp(-40.0f0))^2
+        ref_sigmoid = exp(-20.0f0) / (1 + exp(-20.0f0))^2
+        for (activation, ref) in ((tanh, ref_tanh), (tanh_fast, ref_tanh),
+                                  (NNlib.σ, ref_sigmoid), (sigmoid_fast, ref_sigmoid))
             x = device(fill(20.0f0, 1))
             b = device(zeros(Float32, 1))
             out = Mooncake.frule!!(
@@ -296,6 +492,35 @@ function mooncake_testsuite(Backend)
             pullback(Mooncake.NoRData())
             @test only(cpu(dx)) ≈ ref
             @test only(cpu(db)) ≈ ref
+        end
+    end
+
+    # The pullback has to leave `x` as it found it, whatever its own output was overwritten with,
+    # and its gradients are those of NNlib's `rrule`.
+    @testset "bias_act! restores x: $σ, $(b isa Bool ? b : size(b))" for σ in (identity, relu, elu, tanh, swish),
+                                                         (xs, b) in (((8, 4), _rand(rng, 8)),
+                                                                     ((8, 4), false),
+                                                                     ((3, 3, 4, 2), _rand(rng, 1, 1, 4, 1)))
+        x0 = _rand(rng, xs...)
+        x, dx, db = copy(x0), zero(x0), b isa Bool ? Mooncake.NoFData() : zero(b)
+        out, pullback = Mooncake.rrule!!(
+            Mooncake.zero_fcodual(bias_act!), Mooncake.zero_fcodual(σ),
+            Mooncake.CoDual(x, dx), Mooncake.CoDual(b, db),
+        )
+        @test Mooncake.primal(out) === x
+        @test cpu(x) == cpu(bias_act!(σ, copy(x0), b))
+        fill!(Mooncake.tangent(out), 1)
+        pullback(Mooncake.NoRData())
+        @test x == x0
+        ref_dx, ref_db = gradient((x, b) -> sum(bias_act!(σ, copy(x), b)), x0, b)
+        @test cpu(dx) ≈ cpu(ref_dx)
+        b isa Bool || @test cpu(db) ≈ cpu(ref_db)
+    end
+
+    @testset "bias_act! forward mode: $σ" for σ in (identity, bias_act_activations...)
+        for bsize in ((8,), nothing)
+            test_rule(StableRNG(123), bias_act!, σ, bias_act_args(rng, (8, 4), bsize)...;
+                perf_flag=:none, is_primitive=true, mode=Mooncake.ForwardMode)
         end
     end
 
@@ -349,6 +574,308 @@ function mooncake_testsuite(Backend)
         @test isinf(ndual_value(y_nd_neg)) && ndual_value(y_nd_neg) < 0
         @test !isnan(ndual_partial(y_nd_neg, 1))
         @test ndual_partial(y_nd_neg, 1) ≈ 0.5f0
+    end
+
+    # NNlib sums half precision in Float32, and `logsumexp` returns it. The rules must too: summed in
+    # `T`, Float16 overflows past 65504 entries and BFloat16 stops growing at 256.
+    # Mooncake takes BFloat16 for a primitive float only on Julia ≥ 1.11, and for a `CuArray` not at all.
+    bfloat16 = !gpu && isdefined(Core, :BFloat16) && BFloat16 === Core.BFloat16
+    half_types = bfloat16 ? (Float16, BFloat16) : (Float16,)
+    @testset "half-precision softmax family: $T" for T in half_types
+        # The output of the rule for `f(x; kw...)` and the cotangent it adds to `x`, given `ȳ`.
+        function rule_pullback(f, x, ȳ; kw...)
+            fs = isempty(kw) ? (f,) : (Core.kwcall, NamedTuple(kw), f)
+            cx = Mooncake.zero_fcodual(x)
+            y, pb = Mooncake.rrule!!(map(Mooncake.zero_fcodual, fs)..., cx)
+            if ȳ isa Number
+                pb(ȳ)
+            else
+                Mooncake.tangent(y) .= ȳ
+                pb(Mooncake.NoRData())
+            end
+            return Mooncake.primal(y), cpu(Mooncake.arrayify(cx)[2])
+        end
+
+        X = device(randn(StableRNG(123), T, 4, 3))
+        @testset "$f $kw $(typeof(x).name.name)" for f in (softmax, logsoftmax, logsumexp),
+            kw in ((;), (dims=1,), (dims=2,)), x in (X, X')
+
+            y_ref, pb_ref = rrule(f, x; kw...)
+            ȳ = y_ref isa Number ? one(y_ref) : device(randn(StableRNG(1), eltype(y_ref), size(y_ref)))
+            y, dx = rule_pullback(f, x, ȳ; kw...)
+            @test typeof(y) == typeof(y_ref)
+            @test cpu(y) ≈ cpu(y_ref) rtol = 1e-5
+            @test dx ≈ cpu(pb_ref(ȳ)[2]) rtol = 4eps(T)
+        end
+
+        @testset "large reduction" begin
+            n = 100_000
+            lse = Float32(log(n))
+            x = device(zeros(T, n))
+            y, dx = rule_pullback(logsumexp, x, 1.0f0)
+            @test y isa Float32
+            @test y ≈ lse
+            @test all(≈(1 / n; rtol=2e-2), dx)
+
+            X = device(zeros(T, n, 2))
+            y, dx = rule_pullback(logsumexp, X, device(ones(Float32, 1, 2)); dims=1)
+            @test cpu(y) isa Matrix{Float32}
+            @test all(≈(lse), cpu(y))
+            @test all(≈(1 / n; rtol=2e-2), dx)
+
+            # The issue's reproducer, through Mooncake's interface.
+            gpu || for (f, x) in ((logsumexp, zeros(T, n)), (X -> sum(logsumexp(X; dims=1)), zeros(T, n, 2)))
+                val, (_, dx) = Mooncake.value_and_gradient!!(Mooncake.prepare_gradient_cache(f, x), f, x)
+                val_ref, (dx_ref,) = Zygote.withgradient(f, x)
+                @test typeof(val) == typeof(f(x))
+                @test val ≈ val_ref
+                @test dx ≈ dx_ref rtol = 4eps(T)
+            end
+        end
+
+        @testset "infinite entries" begin
+            y, dx = rule_pullback(logsumexp, device(T[Inf, 1]), 1.0f0)
+            @test y == Inf32
+            @test dx == T[1, 0]
+            y, dx = rule_pullback(logsumexp, device(T[-Inf -Inf; 1 -Inf]), device(ones(Float32, 1, 2)); dims=1)
+            @test cpu(y) == Float32[1 -Inf]
+            @test dx == T[0 0.5; 1 0.5]
+        end
+    end
+
+    # The same in forward mode, where `logsumexp` is evaluated on `NDual`s. NDual has no BFloat16.
+    gpu || @testset "half-precision logsumexp on NDual" begin
+        n = 100_000
+        xs = [NDual{Float16,2}(Float16(0), (Float16(1), Float16(i % 2))) for i in 1:n]
+        y = logsumexp(xs)
+        @test y isa NDual{Float32,2}
+        @test ndual_value(y) ≈ log(Float32(n))
+        @test ndual_partial(y, 1) ≈ 1
+        @test ndual_partial(y, 2) ≈ 0.5
+
+        y = logsumexp(NDual{Float16,1}[NDual{Float16,1}(Inf16, (1,)), NDual{Float16,1}(Inf16, (0,))])
+        @test y isa NDual{Float32,1}
+        @test ndual_value(y) == Inf32
+        @test ndual_partial(y, 1) ≈ 0.5
+        y = logsumexp(NDual{Float16,1}[])
+        @test y isa NDual{Float32,1}
+        @test ndual_value(y) == -Inf32
+
+        # A vector of up to eight entries is lifted to `NDual`s by the derivative cache.
+        x = randn(StableRNG(123), Float16, 5)
+        val, (_, dx) = Mooncake.value_and_gradient!!(
+            Mooncake.prepare_derivative_cache(logsumexp, x), logsumexp, x
+        )
+        @test val isa Float32
+        @test val ≈ logsumexp(x)
+        @test dx ≈ softmax(Float32.(x)) rtol = 4eps(Float16)
+    end
+
+    # BFloat16 has rules on the CPU alone: Mooncake gives a `CuArray{BFloat16}` no array tangent, so a
+    # rule could not return the gradient of a device array. They are checked against the same
+    # computation in Float32 on the same values, to the precision of BFloat16.
+    claimed(mode, f, args...) = Mooncake.is_primitive(
+        Mooncake.DefaultCtx, mode, Tuple{typeof(f),map(typeof, args)...}, Base.get_world_counter()
+    )
+
+    bfloat16 && @testset "BFloat16 rules" begin
+        rng = StableRNG(123)
+        bf16(dims...) = randn(rng, BFloat16, dims...)
+        f32(a) = a isa AbstractArray{BFloat16} ? convert(AbstractArray{Float32}, a) : a
+        f32(a::BFloat16) = Float32(a)
+
+        # The output of `f(args...)` and the gradients of `args`, given the cotangent `ȳ` of the output.
+        function pullback(f, args...; ȳ)
+            config = Mooncake.Config(friendly_tangents=true)
+            cache = Mooncake.prepare_pullback_cache(f, args...; config)
+            y, grads = Mooncake.value_and_pullback!!(cache, ȳ, f, args...)
+            return y, Base.tail(grads)
+        end
+
+        function test_pullback(f, args...; rtol=2e-2)
+            ȳ = bf16(size(f(args...))...)
+            y, grads = pullback(f, args...; ȳ)
+            y32, grads32 = pullback(f, map(f32, args)...; ȳ=f32(ȳ))
+            @test eltype(y) == BFloat16
+            @test f32(y) ≈ y32 rtol = rtol atol = rtol
+            for (a, g, g32) in zip(args, grads, grads32)
+                @test eltype(g) == eltype(a)
+                @test f32(g) ≈ g32 rtol = rtol atol = rtol
+            end
+        end
+
+        # The gradient of a scalar loss, against Zygote's at Float32, as in the issue.
+        function test_gradient(loss, x; rtol=2e-2)
+            _, (_, dx) = Mooncake.value_and_gradient!!(Mooncake.prepare_gradient_cache(loss, x), loss, x)
+            @test eltype(dx) == BFloat16
+            @test f32(dx) ≈ only(Zygote.gradient(loss, f32(x))) rtol = rtol atol = rtol
+        end
+
+        # The tangent of `f(args...)` given the tangents `dargs` of `args`.
+        function jvp(f, args...; dargs)
+            rule = Mooncake.build_frule(f, args...)
+            out = rule(Mooncake.zero_dual(f), map(Mooncake.Dual, args, dargs)...)
+            return Mooncake.primal(out), Mooncake.tangent(out)
+        end
+
+        function test_jvp(f, args...; rtol=2e-2)
+            dargs = map(a -> bf16(size(a)...), args)
+            y, dy = jvp(f, args...; dargs)
+            y32, dy32 = jvp(f, map(f32, args)...; dargs=map(f32, dargs))
+            @test eltype(dy) == BFloat16
+            @test f32(y) ≈ y32 rtol = rtol atol = rtol
+            @test f32(dy) ≈ dy32 rtol = rtol atol = rtol
+        end
+
+        @testset "fold and unfold" begin
+            x, w = bf16(6, 5, 3, 2), bf16(2, 2, 3, 4)
+            cdims = DenseConvDims(x, w)
+            test_pullback(x -> NNlib.unfold(x, cdims), x)
+            test_pullback(y -> NNlib.fold(y, size(x), cdims), NNlib.unfold(x, cdims))
+        end
+
+        @testset "gather" begin
+            idx = [1, 3, 3, 6, 2]
+            test_pullback(src -> gather(src, idx), bf16(4, 6))
+            test_pullback(src -> gather(src, idx), bf16(6, 6)')
+            test_pullback(src -> gather(src, idx), transpose(bf16(6, 6)))
+            test_pullback(src -> gather(src, [(1, 2), (3, 1), (2, 2), (1, 2)]), bf16(2, 3, 4))
+            test_pullback(src -> gather(src, reshape(idx, 1, :)), bf16(4, 6))
+            test_gradient(src -> Float32(sum(gather(src, idx))), bf16(4, 6))
+            test_gradient(src -> Float32(sum(abs2, gather(src, idx))), bf16(4, 6))
+        end
+
+        @testset "scatter $(nameof(op))" for op in (+, -, mean, max, min)
+            idx = [1, 2, 1, 3, 2]
+            test_pullback(src -> scatter(op, src, idx), bf16(3, 5))
+            test_pullback(src -> scatter(op, src, idx; dstsize=(3, 4)), bf16(3, 5))
+            test_gradient(src -> Float32(sum(abs2, scatter(op, src, idx))), bf16(3, 5))
+            # Sources tied for a destination share its cotangent.
+            ties = ones(BFloat16, 3, 5)
+            test_pullback(src -> scatter(op, src, idx), ties)
+            op in (max, min) || continue
+            test_pullback(src -> scatter(op, src, idx; init=BFloat16(1)), ties)
+            test_pullback((src, init) -> scatter(op, src, idx; init), ties, BFloat16(1))
+            test_jvp(src -> scatter(op, src, idx), ties)
+            test_jvp(src -> scatter(op, src, idx; init=BFloat16(1)), ties)
+        end
+
+        # BFloat16 holds the integers up to 256: neither a tie count nor a sum of shares may be taken in it.
+        @testset "scatter max in a large tie group" begin
+            n = 1000
+            ties, idx = ones(BFloat16, n), ones(Int, n)
+            _, (g,) = pullback(src -> scatter(max, src, idx), ties; ȳ=ones(BFloat16, 1))
+            @test all(≈(1 / n; rtol=1e-2), g)
+            # Every source ties `init` in a destination of its own.
+            _, (g, ginit) = pullback(
+                (src, init) -> scatter(max, src, collect(1:n); init), ties, BFloat16(1); ȳ=ones(BFloat16, n)
+            )
+            @test all(==(0.5), g)
+            @test ginit ≈ n / 2 rtol = 1e-2
+        end
+
+        @testset "batched_mul" for sizes in (((3, 2, 3), (2, 4, 3)), ((3, 2, 1), (2, 4, 3)), ((3, 2, 3), (2, 4, 1)))
+            A, B = bf16(sizes[1]...), bf16(sizes[2]...)
+            test_pullback(batched_mul, A, B)
+            test_jvp(batched_mul, A, B)
+        end
+
+        @testset "affine normalization" begin
+            args = (bf16(2, 5), bf16(2, 1), 1 .+ abs.(bf16(2, 1)), bf16(2, 1), bf16(2, 1))
+            f(args...) = NNlib._affine_normalize(args..., BFloat16(1e-5))
+            test_pullback(f, args...; rtol=5e-2)
+            test_jvp(f, args...; rtol=5e-2)
+        end
+
+        @testset "dropout $kw" for kw in ((;), (dims=1,))
+            x, ȳ = bf16(6, 4), bf16(6, 4)
+            y_ref, pullback_ref = rrule(dropout, StableRNG(1), x, BFloat16(0.5); kw...)
+            y, (dx,) = pullback(x -> dropout(StableRNG(1), x, 0.5; kw...), x; ȳ)
+            @test y == y_ref
+            @test dx == pullback_ref(ȳ)[3]
+        end
+
+        @testset "bias_act! $σ" for σ in (identity, bias_act_activations...)
+            for bsize in ((8,), nothing)
+                x, b = bias_act_args(rng, (8, 4), bsize, BFloat16)
+                if b === false
+                    test_pullback(x -> bias_act!(σ, copy(x), false), x; rtol=5e-2)
+                    test_jvp(x -> bias_act!(σ, copy(x), false), x; rtol=5e-2)
+                else
+                    test_pullback((x, b) -> bias_act!(σ, copy(x), b), x, b; rtol=5e-2)
+                    test_jvp((x, b) -> bias_act!(σ, copy(x), b), x, b; rtol=5e-2)
+                end
+            end
+        end
+
+        # `Ω * (1 - Ω)` is exactly 0 from x = 6, where σ(x) rounds to 1, and `1 - Ω^2` from x = 4.
+        @testset "saturation of $f at $x" for (f, x) in (
+            (NNlib.σ, 8), (sigmoid_fast, 8), (tanh_fast, 6), (tanh_fast, 400)
+        )
+            big_x = big(float(x))
+            ref = f === tanh_fast ? 1 - tanh(big_x)^2 : exp(-big_x) / (1 + exp(-big_x))^2
+            d_fwd = Mooncake.tangent(
+                Mooncake.frule!!(Mooncake.zero_dual(f), Mooncake.Dual(BFloat16(x), one(BFloat16)))
+            )
+            _, pb = Mooncake.rrule!!(Mooncake.zero_fcodual(f), Mooncake.zero_fcodual(BFloat16(x)))
+            d_rev = pb(one(BFloat16))[2]
+            @test d_fwd isa BFloat16 && d_rev isa BFloat16
+            @test d_fwd ≈ ref atol = 1e-3 rtol = 2e-2
+            @test d_rev ≈ ref atol = 1e-3 rtol = 2e-2
+        end
+
+        @testset "σ at zero" for f in (NNlib.σ, sigmoid_fast)
+            _, pb = Mooncake.rrule!!(Mooncake.zero_fcodual(f), Mooncake.zero_fcodual(zero(BFloat16)))
+            @test pb(one(BFloat16))[2] == 0.25
+        end
+
+        @testset "normalizations" begin
+            # NNlib takes a BFloat16 input with Float32 scale and bias alone.
+            g, b, x = randn(rng, Float32, 6), randn(rng, Float32, 6), bf16(6, 8)
+            test_pullback((g, b, x) -> layernorm(g, b, x), g, b, x; rtol=5e-2)
+            test_pullback((g, x) -> rmsnorm(g, x), g, x; rtol=5e-2)
+        end
+
+        @testset "declared as primitives" begin
+            x, idx = bf16(4, 6), [1, 3, 2]
+            for mode in (Mooncake.ReverseMode, Mooncake.ForwardMode)
+                @test claimed(mode, batched_mul, bf16(3, 2, 3), bf16(2, 4, 3))
+                @test claimed(mode, bias_act!, relu, x, bf16(4))
+                @test claimed(mode, scatter, max, x, idx)
+                @test claimed(mode, NNlib.σ, BFloat16(1))
+            end
+            @test claimed(Mooncake.ReverseMode, gather, x, idx)
+            @test claimed(Mooncake.ReverseMode, gather, x', idx)
+            @test claimed(Mooncake.ReverseMode, softmax, x)
+            @test claimed(Mooncake.ReverseMode, dropout, StableRNG(1), x, 0.5)
+            @test claimed(Mooncake.ReverseMode, layernorm, bf16(4), bf16(4), x)
+            @test claimed(Mooncake.ReverseMode, NNlib.unfold, bf16(6, 5, 3, 2), DenseConvDims((6, 5, 3, 2), (2, 2, 3, 4)))
+            # `@from_rrule` cannot convert BFloat16, so those operations are differentiated as code.
+            @test !claimed(Mooncake.ReverseMode, scatter, +, x, idx)
+            @test !claimed(Mooncake.ReverseMode, conv, bf16(5, 3, 2), bf16(2, 3, 2), DenseConvDims((5, 3, 2), (2, 3, 2)))
+        end
+    end
+
+    # Not for a device array of BFloat16, as no rule could return its gradient.
+    gpu && @testset "BFloat16 device arrays are not declared as primitives" begin
+        rng = StableRNG(123)
+        for dtype in (BFloat16, Float32)
+            expected = dtype === Float32
+            arr(dims...) = dtype.(device(randn(rng, Float32, dims...)))
+            x, idx = arr(4, 6), device([1, 3, 2])
+            @test claimed(Mooncake.ReverseMode, gather, x, idx) == expected
+            @test claimed(Mooncake.ReverseMode, softmax, x) == expected
+            @test claimed(Mooncake.ReverseMode, logsumexp, x) == expected
+            @test claimed(Mooncake.ReverseMode, dropout, Trng(1), x, 0.5) == expected
+            @test claimed(Mooncake.ReverseMode, scatter, max, x, idx) == expected
+            @test claimed(Mooncake.ReverseMode, layernorm, arr(4), arr(4), x) == expected
+            for mode in (Mooncake.ReverseMode, Mooncake.ForwardMode)
+                @test claimed(mode, batched_mul, arr(3, 2, 3), arr(2, 4, 3)) == expected
+                @test claimed(mode, bias_act!, relu, x, arr(4)) == expected
+                @test claimed(mode, scatter, max, x, idx) == expected
+            end
+            @test claimed(Mooncake.ReverseMode, NNlib._affine_normalize, x, arr(4, 1), arr(4, 1), arr(4, 1), arr(4, 1), one(dtype)) == expected
+        end
     end
 
     # NNlib's `exp(-abs(x))` form of σ has a kink at zero that the function itself does not.
@@ -407,41 +934,108 @@ function mooncake_testsuite(Backend)
         @test Float64(pb16(one(Float16))[2]) ≈ ref16 rtol = 1e-2
     end
 
-    # These rules are reverse-only primitives, so forward mode traces the primal; declared for
-    # both modes it would find no `frule!!` and raise. CPU arrays only: a traced GPU kernel
-    # launch is a foreigncall, raising `MissingForeigncallRuleError`.
-    gpu || @testset "forward mode traces reverse-only rules" begin
-        x = randn(StableRNG(123), 3)
-        for f in (
-            # `softmax` is returned whole: its outputs sum to 1, so `1ᵀJ = 0` and a summed case
-            # is blind to every error in it. `logsoftmax` does not, so summing it is a real check.
-            x -> softmax(x),
-            x -> softmax(x; dims=1),
-            x -> sum(logsoftmax(x)),
-            x -> sum(logsoftmax(x; dims=1)),
-            x -> logsumexp(x),
-            x -> sum(logsumexp(x; dims=1)),
-            x -> sum(gather(x, [1, 3])),
-        )
-            test_rule(StableRNG(123), f, x; mode=Mooncake.ForwardMode, is_primitive=false)
+    # Forward over reverse: the forward rules differentiate the reverse rules, whose pullbacks call
+    # `∇conv_data`, `∇softmax`, `scatter!` and so on. A Hessian-vector product is checked against
+    # central differences of the reverse-mode gradient, taken on the CPU in `Float64`.
+    @testset "Hessian-vector products" begin
+        function test_hvp(f, args...)
+            rng = StableRNG(123)
+            vs = map(a -> randn(rng, size(a)...), args)
+            ∇f(xs) = Base.tail(Mooncake.value_and_gradient!!(Mooncake.build_rrule(f, xs...), f, xs...)[2])
+            at(s) = map((a, v) -> a .+ s .* v, args, vs)
+            h = 1e-5
+            ref = map((p, m) -> (p .- m) ./ 2h, ∇f(at(h)), ∇f(at(-h)))
+            dargs, dvs = map(a -> device(T.(a)), args), map(v -> device(T.(v)), vs)
+            cache = Mooncake.prepare_hvp_cache(f, dargs...)
+            _, _, hvp = Mooncake.value_and_hvp!!(
+                cache, f, length(args) == 1 ? only(dvs) : dvs, dargs...
+            )
+            for (hv, r) in zip(length(args) == 1 ? (hvp,) : hvp, ref)
+                @test isapprox(cpu(hv), r; rtol=gpu ? 1e-3 : 1e-4)
+            end
+        end
+        sumsq(f) = (xs...) -> sum(abs2, f(xs...))
+
+        rng = StableRNG(123)
+        x = randn(rng, 5, 4, 3, 2)
+        w = randn(rng, 2, 2, 3, 3)
+        cdims = DenseConvDims(x, w)
+        pdims = PoolDims(size(x), 2)
+        cases = Any[
+            ("softmax", sumsq(softmax), (randn(rng, 4, 3),)),
+            ("logsoftmax", sumsq(logsoftmax), (randn(rng, 4, 3),)),
+            ("logsumexp", sumsq(x -> logsumexp(x; dims=1)), (randn(rng, 4, 3),)),
+            ("conv", sumsq((x, w) -> conv(x, w, cdims)), (x, w)),
+            ("scatter", sumsq(x -> scatter(+, x, [1, 3, 1])), (randn(rng, 2, 3),)),
+            ("layernorm", sumsq((g, b, x) -> layernorm(g, b, x)), (randn(rng, 6), randn(rng, 6), randn(rng, 6, 8))),
+        ]
+        # The pullbacks of these call cuDNN pooling and a `scatter!` kernel, which cannot be traced.
+        gpu || append!(cases, [
+            ("meanpool", sumsq(x -> meanpool(x, pdims)), (x,)),
+            ("maxpool", sumsq(x -> maxpool(x, pdims)), (x,)),
+            ("gather", sumsq(x -> gather(x, [1, 3, 1, 2])), (randn(rng, 2, 4),)),
+        ])
+        @testset "$name" for (name, f, args) in cases
+            test_hvp(f, args...)
         end
     end
 
-    # `gather`'s GPU kernel launch does not survive the forward transform (an illegal
-    # instruction no test can catch), so its rule raises instead.
-    gpu && @testset "forward mode over gather raises" begin
-        gather_sum(z) = sum(gather(z, [1, 3]))
-        xg = device(randn(StableRNG(123), Float32, 4))
-        rule = Mooncake.build_frule(gather_sum, xg)
-        @test_throws ArgumentError rule(
-            Mooncake.zero_dual(gather_sum), Mooncake.Dual(copy(xg), device(ones(Float32, 4)))
+    # `elu`, `celu` and `selu` compute `_expm1` whatever the sign of the input. Where it overflows
+    # (`x > 88.7` for `Float32`, `709.8` for `Float64`) its derivative is `Inf` too, and a zero
+    # cotangent times it was `NaN`. For `celu` the argument is `x / α`, which does so much earlier.
+    @testset "elu, celu and selu above the overflow of expm1: $T" for (T, large) in (
+            gpu ? [(Float32, 100.0f0)] : [(Float32, 100.0f0), (Float64, 1000.0)]
         )
-        # `Adjoint`/`Transpose` of a GPU array are `AnyGPUArray`, so NNlib sends them to the
-        # same kernel: they have to hit the guard, not slip past a bare `AbstractGPUArray`.
-        @testset "$wrap" for wrap in (adjoint, transpose)
-            w = wrap(copy(xg))
-            r = Mooncake.build_frule(gather_sum, w)
-            @test_throws ArgumentError r(Mooncake.zero_dual(gather_sum), Mooncake.zero_dual(w))
+        grad(f, x) = Mooncake.value_and_gradient!!(Mooncake.prepare_gradient_cache(f, x), f, x)[2][2]
+        elu2(x) = elu(x, 2)
+        celu_half(x) = celu(x, 0.5)
+        celu_small(x) = celu(x, 0.01)
+        small = T === Float32 ? T(5) : T(8)  # `small / 0.01` is past the overflow
+
+        gpu || @testset "scalar $f" for (f, x, d) in (
+                (elu, large, 1), (celu, large, 1), (selu, large, T(NNlib.selu_λ)),
+                (elu2, large, 1), (celu_half, large, 1), (celu_small, small, 1),
+                (elu, T(-1), exp(T(-1))), (selu, T(-1), T(NNlib.selu_λ * NNlib.selu_α) * exp(T(-1))),
+            )
+            @test grad(f, x) ≈ d
+            frule = Mooncake.build_frule(f, x)
+            @test Mooncake.tangent(frule(Mooncake.zero_dual(f), Mooncake.Dual(x, one(T)))) ≈ d
+        end
+
+        xs = device(T[1, large, -1, large, 0])
+        xsmall = device(T[1, small, -1, small, 0])
+        # Through the rules for NNlib's activations, and through the code of the others
+        @testset "broadcast and bias_act!: $f" for (f, x) in (
+                (elu, xs), (celu, xs), (selu, xs),
+                (elu2, xs), (celu_half, xs), (celu_small, xsmall),
+            )
+            expected = gradient(x -> sum(f.(x)), cpu(x))[1]
+            @test all(isfinite, expected)
+            @test cpu(grad(x -> sum(f.(x)), x)) ≈ expected
+            gbias(x) = sum(bias_act!(f, reshape(copy(x), 1, :), device(zeros(T, 1))))
+            @test cpu(grad(gbias, x)) ≈ expected
+        end
+    end
+
+    # The normalizations are reverse-only primitives, so forward mode traces the generic code.
+    @testset "forward mode traces the normalizations" begin
+        rng = StableRNG(123)
+        g, b = _rand(rng, 6), _rand(rng, 6)
+        x4, x2 = _rand(rng, 4, 5, 6, 3), _rand(rng, 6, 8)
+        cases = Any[
+            (batchnorm, g, b, x4),
+            (batchnorm, nothing, nothing, x4),
+            (batchnorm, g, b, x2),
+            (batchnorm, g, b, _rand(rng, 5, 6, 3)),
+            (instancenorm, g, b, x4),
+            (groupnorm, g, b, x4, 3),
+            (layernorm, g, b, x2),
+            (NNlib.normalise, x2),
+        ]
+        # Mooncake's `mapreduce` rule for `CuArray` refuses the function `mean(abs2, x)` builds.
+        gpu || push!(cases, (rmsnorm, g, x2))
+        @testset "$(typeof(fargs))" for fargs in cases
+            test_rule(StableRNG(123), fargs...; mode=Mooncake.ForwardMode, is_primitive=false)
         end
     end
 end
