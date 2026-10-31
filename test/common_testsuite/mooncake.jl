@@ -269,6 +269,15 @@ function mooncake_testsuite(Backend)
         end
     end
 
+    # `should_use_spawn` reads a `ScopedValue`, which Mooncake cannot differentiate. It
+    # is the same with one thread: the read is compiled whether or not it is reached.
+    gpu || @testset "spawn decision is not differentiated" begin
+        f(x) = (NNlib.should_use_spawn(); sum(abs2, x))
+        x = randn(StableRNG(123), 4)
+        @test withgradient(f, AutoMooncake(), x).grad[1] ≈ 2x
+        test_rule(StableRNG(123), f, x; mode=Mooncake.ForwardMode, is_primitive=false)
+    end
+
     gpu && @testset "saturated bias activations" begin
         ref = 4 * exp(-40.0f0) / (1 + exp(-40.0f0))^2
         for activation in (tanh, tanh_fast)

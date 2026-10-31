@@ -19,6 +19,11 @@ using Base.Broadcast: Broadcasted, DefaultArrayStyle, broadcasted, materialize
 # Mooncake has no predicate to query, so `within_gradient` is replaced in the code it differentiates.
 Mooncake.@mooncake_overlay NNlib.within_gradient(x) = true
 
+# The code Mooncake differentiates runs serially: it can differentiate neither the
+# `ScopedValue` read of `should_use_spawn` nor the tasks that a `true` would start. The rules
+# call NNlib outside it, where the kernels keep their threads.
+Mooncake.@mooncake_overlay NNlib.should_use_spawn() = false
+
 # A normalization is one primitive, whose two passes are those of its ChainRules rule. That
 # runs outside the code Mooncake differentiates, where `within_gradient` is false: the fused
 # kernels compute the output and keep the statistics for the reverse pass, the running
