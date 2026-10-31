@@ -111,6 +111,36 @@
         end
     end
 
+    @testset "backward reuses the saved statistics" begin
+        # The rrule keeps the batch mean and inverse variance of the forward pass, so cuDNN
+        # does not recompute them in the backward pass (training mode only).
+        @testset for (T, sz) in ((Float32, (5, 4, 8)), (Float32, (4, 5, 3, 6)), (Float32, (3, 3, 3, 4, 6)),
+                                 (Float64, (4, 5, 3, 6)), (Float16, (4, 5, 3, 6))),
+                     training in (true, false), track_stats in (true, false), affine in (true, false)
+            P = T === Float64 ? Float64 : Float32
+            C = sz[end-1]
+            gc, bc = affine ? (randn(P, C), randn(P, C)) : (nothing, nothing)
+            ac, xc = randn(T, sz), randn(T, sz)
+            rm, rv = !training && track_stats ? (randn(P, C), rand(P, C) .+ P(0.5)) : (nothing, nothing)
+            dev(a) = a === nothing ? nothing : CuArray(a)
+            loss(g, b, a, rm, rv) = x -> sum(abs2, a .* batchnorm(g, b, x, rm, rv, 0.1f0; training, track_stats))
+            cpu_grad = Zygote.gradient(loss(gc, bc, ac, rm, rv), xc)[1]
+            reused, gpu_grad = Test.collect_test_logs(; min_level = Logging.Debug) do
+                Zygote.gradient(loss(dev(gc), dev(bc), CuArray(ac), dev(rm), dev(rv)), CuArray(xc))[1]
+            end
+            @test any(l -> l.message == "fetching mean and ivar from the cache", reused) == training
+            tol = T === Float16 ? 5e-2 : 1e-3
+            @test collect(gpu_grad) ≈ cpu_grad rtol=tol atol=tol
+        end
+        @testset "a cache the forward pass has not filled is ignored" begin
+            ext = Base.get_extension(NNlib, :NNlibCUDACUDNNExt)
+            g, b = CUDA.rand(Float32, 4), CUDA.rand(Float32, 4)
+            x, dy = CUDA.randn(Float32, 3, 3, 4, 6), CUDA.randn(Float32, 3, 3, 4, 6)
+            grads(cache) = ∇batchnorm(g, b, x, dy, nothing, nothing, 0.1f0; training=true, cache)
+            @test all(collect.(grads(ext.BNCache())) .≈ collect.(grads(nothing)))
+        end
+    end
+
     @testset "Float16" begin
         # cuDNN needs Float32 parameters and statistics for half-precision feature maps.
         x = CUDA.rand(Float16, 1, 1, 3, 4)
