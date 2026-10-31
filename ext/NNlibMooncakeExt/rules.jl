@@ -92,9 +92,9 @@ const GPUBackedArray{P,N} = Union{
 # `@from_rrule` does not honour the wrapper members: it adds ChainRules' cotangent into a view's
 # fdata, which is the parent's, so those signatures throw — hence `dropout`'s hand-written rule.
 
-# BFloat16 arrays, on the CPU alone (none where BFloat16 is not a primitive float), and the arrays of
-# the rules that do not tie the element type of several arguments. The others declare BFloat16
-# arrays next to their `IEEEFloat` ones.
+# BFloat16 arrays of the CPU (none where BFloat16 is not a primitive float), and the arrays of the
+# rules that do not tie the element type of several arguments. The others declare BFloat16 arrays
+# next to their `IEEEFloat` ones.
 const HalfArray{N} = Union{
     Array{<:MaybeBFloat16,N},
     (Adjoint{P,<:Array{P,N}} where P<:MaybeBFloat16),

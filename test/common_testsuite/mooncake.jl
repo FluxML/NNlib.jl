@@ -727,6 +727,13 @@ function mooncake_testsuite(Backend)
             @test f32(dy) ≈ dy32 rtol = rtol atol = rtol
         end
 
+        @testset "fold and unfold" begin
+            x, w = bf16(6, 5, 3, 2), bf16(2, 2, 3, 4)
+            cdims = DenseConvDims(x, w)
+            test_pullback(x -> NNlib.unfold(x, cdims), x)
+            test_pullback(y -> NNlib.fold(y, size(x), cdims), NNlib.unfold(x, cdims))
+        end
+
         @testset "gather" begin
             idx = [1, 3, 3, 6, 2]
             test_pullback(src -> gather(src, idx), bf16(4, 6))
@@ -842,6 +849,7 @@ function mooncake_testsuite(Backend)
             @test claimed(Mooncake.ReverseMode, softmax, x)
             @test claimed(Mooncake.ReverseMode, dropout, StableRNG(1), x, 0.5)
             @test claimed(Mooncake.ReverseMode, layernorm, bf16(4), bf16(4), x)
+            @test claimed(Mooncake.ReverseMode, NNlib.unfold, bf16(6, 5, 3, 2), DenseConvDims((6, 5, 3, 2), (2, 2, 3, 4)))
             # `@from_rrule` cannot convert BFloat16, so those operations are differentiated as code.
             @test !claimed(Mooncake.ReverseMode, scatter, +, x, idx)
             @test !claimed(Mooncake.ReverseMode, conv, bf16(5, 3, 2), bf16(2, 3, 2), DenseConvDims((5, 3, 2), (2, 3, 2)))
