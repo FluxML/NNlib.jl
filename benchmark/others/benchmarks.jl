@@ -19,6 +19,18 @@ for et in (Float16, Float32, Float64)
     end
 end
 
+SUITE["bias_act"] = BenchmarkGroup()
+for et in (Float32, Float64)
+    et_suite = BenchmarkGroup()
+    SUITE["bias_act"][string(et)] = et_suite
+    let x = randn(et, 1024, 1024), b = randn(et, 1024)
+        for f in (relu, sigmoid, gelu, swish, softplus, sigmoid ∘ abs)
+            et_suite["bias_act! $f"] = @benchmarkable bias_act!($f, y, $b) setup=(y = copy($x)) evals=1
+            et_suite["broadcast! $f ∘ +"] = @benchmarkable broadcast!($(f ∘ +), $(similar(x)), $x, $b)
+        end
+    end
+end
+
 for (fn!, fn_bw) in [(softmax!, NNlib.∇softmax_data), (logsoftmax!, NNlib.∇logsoftmax_data)]
     fn_suite = BenchmarkGroup()
     SUITE[rstrip(string(fn!), '!')] = fn_suite

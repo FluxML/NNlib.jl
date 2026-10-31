@@ -436,7 +436,7 @@ end
     end
 end
 
-# `act ∘ +` is what `bias_act!` broadcasts. A call to it that is not inlined boxes its arguments.
+# `σ ∘ +` is what LuxLib broadcasts. A call to it that is not inlined boxes its arguments.
 composed_allocs(f, y, xs...) = (broadcast!(f, y, xs...); @allocated broadcast!(f, y, xs...))
 
 @testset "composition with ∘" begin
@@ -451,6 +451,8 @@ composed_allocs(f, y, xs...) = (broadcast!(f, y, xs...); @allocated broadcast!(f
     @test (σ ∘ relu)(1.0) === σ(1.0)
     @test (σ ∘ +)(1, 2) === σ(3)
     @test (σ ∘ (x -> sum(x; dims=1)))([1.0 2.0; 3.0 4.0]) == σ.([4.0 6.0])  # not only numbers
+    # A method taking one argument would invalidate every call compiled for `(::ComposedFunction)(::Any)`
+    @test all(m -> typeintersect(m.sig, Tuple{ComposedFunction, Any}) === Union{}, methods(σ ∘ +, NNlib))
 end
 
 ## Half precision
