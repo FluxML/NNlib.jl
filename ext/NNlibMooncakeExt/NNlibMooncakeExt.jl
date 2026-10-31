@@ -112,13 +112,14 @@ _accumulate!(::NoFData, Δ) = nothing
 # cotangent to the fdata of an argument, which for a view holds its whole parent: they take no
 # views, and Mooncake would trace one down to the BLAS calls. Here the cotangent goes into the
 # slice of it that `arrayify` returns. A view is in at least one position of each signature,
-# which keeps them apart from those of the rules for arrays.
+# which keeps them apart from those of the rules for arrays. `fold` and `unfold` of BFloat16
+# arrays take the same rules, as `@from_rrule` cannot convert BFloat16, and tracing them fails.
 const ViewArray{P,N} = SubArray{P,N,<:Union{Array{P},AbstractGPUArray{P}}}
 const PlainArray{P,N} = Union{Array{P,N},AbstractGPUArray{P,N}}
 const ViewFunction = Union{typeof(NNlib.conv),typeof(NNlib.depthwiseconv),
                            typeof(NNlib.∇conv_data),typeof(NNlib.∇depthwiseconv_data),
                            typeof(NNlib.∇conv_filter),typeof(NNlib.maxpool),
-                           typeof(NNlib.meanpool)}
+                           typeof(NNlib.meanpool),typeof(NNlib.fold),typeof(NNlib.unfold)}
 
 for f in (:conv, :depthwiseconv, :∇conv_data, :∇depthwiseconv_data, :∇conv_filter),
     (X, W) in ((:ViewArray, :PlainArray), (:PlainArray, :ViewArray), (:ViewArray, :ViewArray))
@@ -133,6 +134,8 @@ for f in (:maxpool, :meanpool)
         @is_primitive MinimalCtx ReverseMode Tuple{typeof(Core.kwcall),NamedTuple,typeof(NNlib.$f),ViewArray{<:IEEEFloat,N},NNlib.PoolDims} where {N}
     end
 end
+@is_primitive MinimalCtx ReverseMode Tuple{typeof(NNlib.unfold),Array{<:MaybeBFloat16,N},NNlib.DenseConvDims} where {N}
+@is_primitive MinimalCtx ReverseMode Tuple{typeof(NNlib.fold),Array{<:MaybeBFloat16,N},NTuple{M,Int},NNlib.DenseConvDims} where {N,M}
 
 function Mooncake.rrule!!(f::CoDual{<:ViewFunction}, args::Vararg{CoDual,N}) where {N}
     y, pullback = _chainrules_rrule(primal(f), (;), args)
