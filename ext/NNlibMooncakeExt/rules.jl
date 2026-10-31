@@ -27,9 +27,10 @@ import Mooncake:
     ForwardMode,
     ReverseMode
 
+# Half precision is accumulated in `S = Float32`, as NNlib's `logsumexp` does, and returned in it.
 @inline function _nf_logsumexp_accum(
-    grad::NTuple{N,T}, w::T, partials::NTuple{N,T}
-) where {N,T}
+    grad::NTuple{N,S}, w::S, partials::NTuple{N,IEEEFloat}
+) where {N,S}
     return ntuple(k -> grad[k] + w * partials[k], Val(N))
 end
 
@@ -37,35 +38,36 @@ end
     return ntuple(k -> grad[k] * inv_sw, Val(N))
 end
 
-@inline function _nf_logsumexp_inf(x::AbstractVector{NDual{T,N}}, u::T) where {T,N}
+@inline function _nf_logsumexp_inf(x::AbstractVector{<:NDual{<:Any,N}}, u::S) where {N,S}
     count_u = 0
-    grad = ntuple(_ -> zero(T), Val(N))
+    grad = ntuple(_ -> zero(S), Val(N))
     @inbounds for xi in x
         if xi.value == u
             count_u += 1
-            grad = _nf_logsumexp_accum(grad, one(T), xi.partials)
+            grad = _nf_logsumexp_accum(grad, one(S), xi.partials)
         end
     end
-    return NDual{T,N}(u, _nf_logsumexp_scale(grad, inv(T(count_u))))
+    return NDual{S,N}(u, _nf_logsumexp_scale(grad, inv(S(count_u))))
 end
 
 function NNlib.logsumexp(x::AbstractVector{NDual{T,N}}) where {T<:IEEEFloat,N}
-    isempty(x) && return NDual{T,N}(typemin(T))
-    u = @inbounds x[begin].value
+    S = typeof(NNlib._acc(zero(T)))
+    isempty(x) && return NDual{S,N}(typemin(S))
+    u = S(@inbounds x[begin].value)
     @inbounds for i in (firstindex(x) + 1):lastindex(x)
-        v = x[i].value
+        v = S(x[i].value)
         v > u && (u = v)
     end
     isinf(u) && return _nf_logsumexp_inf(x, u)
-    sum_w = zero(T)
-    grad = ntuple(_ -> zero(T), Val(N))
+    sum_w = zero(S)
+    grad = ntuple(_ -> zero(S), Val(N))
     @inbounds for xi in x
-        w = exp(xi.value - u)
+        w = exp(S(xi.value) - u)
         sum_w += w
         grad = _nf_logsumexp_accum(grad, w, xi.partials)
     end
     y_val = u + log(sum_w)
-    return NDual{T,N}(y_val, _nf_logsumexp_scale(grad, inv(sum_w)))
+    return NDual{S,N}(y_val, _nf_logsumexp_scale(grad, inv(sum_w)))
 end
 
 # Array types which we test rules against, so are confident work.
@@ -87,6 +89,14 @@ const GPUBackedArray{P,N} = Union{
 # `@from_rrule` does not honour the wrapper members: it adds ChainRules' cotangent into a view's
 # fdata, which is the parent's, so those signatures throw — hence `dropout`'s hand-written rule.
 
+# Floats the softmax family is differentiated for. NNlib computes half precision in Float32; BFloat16
+# is Mooncake's primitive float only where `BFloat16s.BFloat16` is `Core.BFloat16` (Julia ≥ 1.11).
+const SoftmaxFloat = if Mooncake.tangent_type(NNlib.BFloat16) === NNlib.BFloat16
+    Union{IEEEFloat,NNlib.BFloat16}
+else
+    IEEEFloat
+end
+
 # On Julia ≤ 1.11, `maximum(x::Adjoint/Transpose; dims, init)` routes through
 # `LinearAlgebra.mapreducedim! → switch_dim12 → PermutedDimsArray`, leaving
 # type parameters unresolved and causing JET type-stability failures.
@@ -94,7 +104,7 @@ const GPUBackedArray{P,N} = Union{
 @static if VERSION < v"1.12"
     function _maximum(
         x::Tx, dims, init
-    ) where {T<:IEEEFloat,A<:Array{T},Tx<:Union{Adjoint{T,A},Transpose{T,A}}}
+    ) where {T<:SoftmaxFloat,A<:Array{T},Tx<:Union{Adjoint{T,A},Transpose{T,A}}}
         return maximum(collect(x); dims, init)
     end
 end
@@ -279,14 +289,14 @@ end
 # logsoftmax rrules
 @is_primitive MinimalCtx ReverseMode Tuple{
     typeof(logsoftmax),SupportedArray{T,N}
-} where {T<:IEEEFloat,N}
+} where {T<:SoftmaxFloat,N}
 @is_primitive MinimalCtx ReverseMode Tuple{
     typeof(Core.kwcall),NamedTuple,typeof(logsoftmax),SupportedArray{T,N}
-} where {T<:IEEEFloat,N}
+} where {T<:SoftmaxFloat,N}
 
 function Mooncake.rrule!!(
     ::CoDual{typeof(logsoftmax)}, x::CoDual{<:SupportedArray{T,N}}
-) where {T<:IEEEFloat,N}
+) where {T<:SoftmaxFloat,N}
     xp = primal(x)
     y = logsoftmax(xp)
     res = zero_fcodual(y)
@@ -304,7 +314,7 @@ function Mooncake.rrule!!(
     kw::CoDual{<:NamedTuple{(:dims,)}},
     ::CoDual{typeof(logsoftmax)},
     x::CoDual{<:SupportedArray{T,N}},
-) where {T<:IEEEFloat,N}
+) where {T<:SoftmaxFloat,N}
     dims = primal(kw).dims
     xp = primal(x)
     y = logsoftmax(xp; dims)
@@ -321,14 +331,14 @@ end
 # softmax rrules
 @is_primitive MinimalCtx ReverseMode Tuple{
     typeof(softmax),SupportedArray{T,N}
-} where {T<:IEEEFloat,N}
+} where {T<:SoftmaxFloat,N}
 @is_primitive MinimalCtx ReverseMode Tuple{
     typeof(Core.kwcall),NamedTuple,typeof(softmax),SupportedArray{T,N}
-} where {T<:IEEEFloat,N}
+} where {T<:SoftmaxFloat,N}
 
 function Mooncake.rrule!!(
     ::CoDual{typeof(softmax)}, x::CoDual{<:SupportedArray{T,N}}
-) where {T<:IEEEFloat,N}
+) where {T<:SoftmaxFloat,N}
     xp = primal(x)
     y = softmax(xp)
     res = zero_fcodual(y)
@@ -346,7 +356,7 @@ function Mooncake.rrule!!(
     kw::CoDual{<:NamedTuple{(:dims,)}},
     ::CoDual{typeof(softmax)},
     x::CoDual{<:SupportedArray{T,N}},
-) where {T<:IEEEFloat,N}
+) where {T<:SoftmaxFloat,N}
     dims = primal(kw).dims
     xp = primal(x)
     y = softmax(xp; dims)
@@ -363,21 +373,26 @@ end
 # logsumexp rrules
 @is_primitive MinimalCtx ReverseMode Tuple{
     typeof(logsumexp),SupportedArray{T,N}
-} where {T<:IEEEFloat,N}
+} where {T<:SoftmaxFloat,N}
 @is_primitive MinimalCtx ReverseMode Tuple{
     typeof(Core.kwcall),NamedTuple,typeof(logsumexp),SupportedArray{T,N}
-} where {T<:IEEEFloat,N}
+} where {T<:SoftmaxFloat,N}
+
+# In the type NNlib's `logsumexp` computes and returns in (Float32 for half precision). The entries
+# equal to the maximum count as one, which avoids `Inf - Inf` when it is infinite.
+function _logsumexp_terms(x, dims)
+    max_ = NNlib._acc.(_maximum(x, dims, typemin(eltype(x))))
+    tmp = ifelse.(x .== max_, one(eltype(max_)), NNlib._exp.(x .- max_))
+    s = sum(tmp; dims)
+    return max_ .+ log.(s), tmp, s
+end
 
 function Mooncake.rrule!!(
     ::CoDual{typeof(logsumexp)}, x::CoDual{<:SupportedArray{T,N}}
-) where {T<:IEEEFloat,N}
-    xp = primal(x)
-    max_ = maximum(xp; init=typemin(T))
-    @fastmath tmp = exp.(xp .- max_)
-    s = sum(tmp)
-    @fastmath y = max_ + log(s)
+) where {T<:SoftmaxFloat,N}
+    y, tmp, s = _logsumexp_terms(primal(x), :)
     res = zero_fcodual(y)
-    function logsumexp_pb!!(dy::T)
+    function logsumexp_pb!!(dy)
         _, dx = arrayify(x)
         dx .+= dy .* tmp ./ s
         return NoRData(), NoRData()
@@ -390,14 +405,8 @@ function Mooncake.rrule!!(
     kw::CoDual{<:NamedTuple{(:dims,)}},
     ::CoDual{typeof(logsumexp)},
     x::CoDual{<:SupportedArray{T,N}},
-) where {T<:IEEEFloat,N}
-    dims = primal(kw).dims
-    xp = primal(x)
-    max_ = _maximum(xp, dims, typemin(T))
-    # avoids Inf instability when xp[i]==max_==Inf
-    @fastmath tmp = ifelse.(xp .== max_, one(T), exp.(xp .- max_))
-    s = sum(tmp; dims)
-    @fastmath y = max_ .+ log.(s)
+) where {T<:SoftmaxFloat,N}
+    y, tmp, s = _logsumexp_terms(primal(x), primal(kw).dims)
     res = zero_fcodual(y)
     function logsumexp_kw_pb!!(::NoRData)
         _, dx = arrayify(x)
