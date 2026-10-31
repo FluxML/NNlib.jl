@@ -861,7 +861,7 @@ function mooncake_testsuite(Backend)
         rng = StableRNG(123)
         for dtype in (BFloat16, Float32)
             expected = dtype === Float32
-            arr(dims...) = device(randn(rng, dtype, dims...))
+            arr(dims...) = dtype.(device(randn(rng, Float32, dims...)))
             x, idx = arr(4, 6), device([1, 3, 2])
             @test claimed(Mooncake.ReverseMode, gather, x, idx) == expected
             @test claimed(Mooncake.ReverseMode, softmax, x) == expected
