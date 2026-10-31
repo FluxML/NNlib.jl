@@ -73,7 +73,8 @@ end
 
 Compute `C = α * grouped_mul(A, B, offsets) + β * C` in place.
 The destination must have the shape returned by [`grouped_mul`](@ref) and must
-not alias either input. Entries outside the groups are scaled by `β`.
+not alias either input. Entries outside the groups are scaled by `β`. `α` and `β` are
+converted to the element type of `C`.
 """
 function grouped_mul!(C::AbstractArray{T}, A::AbstractArray, B::AbstractMatrix,
                       offsets::AbstractVector{<:Integer}, α::Number=one(T), β::Number=zero(T)) where {T}
@@ -82,6 +83,7 @@ function grouped_mul!(C::AbstractArray{T}, A::AbstractArray, B::AbstractMatrix,
         throw(DimensionMismatch("grouped_mul destination has the wrong size"))
     total = ndims(A) == 3 ? size(B, 2) : size(A, 2)
     ends = _grouped_offsets(offsets, total)
+    α, β = convert(T, α), convert(T, β)
     _grouped_mul!(storage_typejoin(C, A, B), C, A, B, ends, α, β)
     if ndims(A) == 3
         stop = isempty(ends) ? 0 : Int(last(ends))
