@@ -42,14 +42,14 @@ function mooncake_testsuite(Backend)
     _ones(d...) = device(ones(T, d...))
     # Random `x` and `b` (`false` if `bsize` is `nothing`), with `x .+ b` kept off the kinks of the
     # piecewise activations, that finite differences cannot cross.
-    function bias_act_args(rng, xsize, bsize)
-        x = randn(rng, T, xsize...)
-        b = bsize === nothing ? zeros(T, 1) : randn(rng, T, bsize...)
-        kinks = T[-3, -1, -0.5, 0, 0.5, 1, 3, 6]
+    function bias_act_args(rng, xsize, bsize, Tx=T)
+        x = randn(rng, Tx, xsize...)
+        b = bsize === nothing ? zeros(Tx, 1) : randn(rng, Tx, bsize...)
+        kinks = Tx[-3, -1, -0.5, 0, 0.5, 1, 3, 6]
         while true
             near = [minimum(abs.(z .- kinks)) < 0.1 for z in x .+ b]
             any(near) || break
-            x .+= T(0.23) .* near
+            x .+= Tx(0.23) .* near
         end
         return device(x), bsize === nothing ? false : device(b)
     end
@@ -579,7 +579,7 @@ function mooncake_testsuite(Backend)
     # NNlib sums half precision in Float32, and `logsumexp` returns it. The rules must too: summed in
     # `T`, Float16 overflows past 65504 entries and BFloat16 stops growing at 256.
     # Mooncake takes BFloat16 for a primitive float only on Julia ≥ 1.11, and for a `CuArray` not at all.
-    bfloat16 = !gpu && Mooncake.tangent_type(BFloat16) === BFloat16
+    bfloat16 = !gpu && isdefined(Core, :BFloat16) && BFloat16 === Core.BFloat16
     half_types = bfloat16 ? (Float16, BFloat16) : (Float16,)
     @testset "half-precision softmax family: $T" for T in half_types
         # The output of the rule for `f(x; kw...)` and the cotangent it adds to `x`, given `ȳ`.
@@ -669,6 +669,205 @@ function mooncake_testsuite(Backend)
         @test val isa Float32
         @test val ≈ logsumexp(x)
         @test dx ≈ softmax(Float32.(x)) rtol = 4eps(Float16)
+    end
+
+    # BFloat16 has rules on the CPU alone: Mooncake gives a `CuArray{BFloat16}` no array tangent, so a
+    # rule could not return the gradient of a device array. They are checked against the same
+    # computation in Float32 on the same values, to the precision of BFloat16.
+    claimed(mode, f, args...) = Mooncake.is_primitive(
+        Mooncake.DefaultCtx, mode, Tuple{typeof(f),map(typeof, args)...}, Base.get_world_counter()
+    )
+
+    bfloat16 && @testset "BFloat16 rules" begin
+        rng = StableRNG(123)
+        bf16(dims...) = randn(rng, BFloat16, dims...)
+        f32(a) = a isa AbstractArray{BFloat16} ? convert(AbstractArray{Float32}, a) : a
+        f32(a::BFloat16) = Float32(a)
+
+        # The output of `f(args...)` and the gradients of `args`, given the cotangent `ȳ` of the output.
+        function pullback(f, args...; ȳ)
+            config = Mooncake.Config(friendly_tangents=true)
+            cache = Mooncake.prepare_pullback_cache(f, args...; config)
+            y, grads = Mooncake.value_and_pullback!!(cache, ȳ, f, args...)
+            return y, Base.tail(grads)
+        end
+
+        function test_pullback(f, args...; rtol=2e-2)
+            ȳ = bf16(size(f(args...))...)
+            y, grads = pullback(f, args...; ȳ)
+            y32, grads32 = pullback(f, map(f32, args)...; ȳ=f32(ȳ))
+            @test eltype(y) == BFloat16
+            @test f32(y) ≈ y32 rtol = rtol atol = rtol
+            for (a, g, g32) in zip(args, grads, grads32)
+                @test eltype(g) == eltype(a)
+                @test f32(g) ≈ g32 rtol = rtol atol = rtol
+            end
+        end
+
+        # The gradient of a scalar loss, against Zygote's at Float32, as in the issue.
+        function test_gradient(loss, x; rtol=2e-2)
+            _, (_, dx) = Mooncake.value_and_gradient!!(Mooncake.prepare_gradient_cache(loss, x), loss, x)
+            @test eltype(dx) == BFloat16
+            @test f32(dx) ≈ only(Zygote.gradient(loss, f32(x))) rtol = rtol atol = rtol
+        end
+
+        # The tangent of `f(args...)` given the tangents `dargs` of `args`.
+        function jvp(f, args...; dargs)
+            rule = Mooncake.build_frule(f, args...)
+            out = rule(Mooncake.zero_dual(f), map(Mooncake.Dual, args, dargs)...)
+            return Mooncake.primal(out), Mooncake.tangent(out)
+        end
+
+        function test_jvp(f, args...; rtol=2e-2)
+            dargs = map(a -> bf16(size(a)...), args)
+            y, dy = jvp(f, args...; dargs)
+            y32, dy32 = jvp(f, map(f32, args)...; dargs=map(f32, dargs))
+            @test eltype(dy) == BFloat16
+            @test f32(y) ≈ y32 rtol = rtol atol = rtol
+            @test f32(dy) ≈ dy32 rtol = rtol atol = rtol
+        end
+
+        @testset "gather" begin
+            idx = [1, 3, 3, 6, 2]
+            test_pullback(src -> gather(src, idx), bf16(4, 6))
+            test_pullback(src -> gather(src, idx), bf16(6, 6)')
+            test_pullback(src -> gather(src, idx), transpose(bf16(6, 6)))
+            test_pullback(src -> gather(src, [(1, 2), (3, 1), (2, 2), (1, 2)]), bf16(2, 3, 4))
+            test_pullback(src -> gather(src, reshape(idx, 1, :)), bf16(4, 6))
+            test_gradient(src -> Float32(sum(gather(src, idx))), bf16(4, 6))
+            test_gradient(src -> Float32(sum(abs2, gather(src, idx))), bf16(4, 6))
+        end
+
+        @testset "scatter $(nameof(op))" for op in (+, -, mean, max, min)
+            idx = [1, 2, 1, 3, 2]
+            test_pullback(src -> scatter(op, src, idx), bf16(3, 5))
+            test_pullback(src -> scatter(op, src, idx; dstsize=(3, 4)), bf16(3, 5))
+            test_gradient(src -> Float32(sum(abs2, scatter(op, src, idx))), bf16(3, 5))
+            # Sources tied for a destination share its cotangent.
+            ties = ones(BFloat16, 3, 5)
+            test_pullback(src -> scatter(op, src, idx), ties)
+            op in (max, min) || continue
+            test_pullback(src -> scatter(op, src, idx; init=BFloat16(1)), ties)
+            test_pullback((src, init) -> scatter(op, src, idx; init), ties, BFloat16(1))
+            test_jvp(src -> scatter(op, src, idx), ties)
+            test_jvp(src -> scatter(op, src, idx; init=BFloat16(1)), ties)
+        end
+
+        # BFloat16 holds the integers up to 256: neither a tie count nor a sum of shares may be taken in it.
+        @testset "scatter max in a large tie group" begin
+            n = 1000
+            ties, idx = ones(BFloat16, n), ones(Int, n)
+            _, (g,) = pullback(src -> scatter(max, src, idx), ties; ȳ=ones(BFloat16, 1))
+            @test all(≈(1 / n; rtol=1e-2), g)
+            # Every source ties `init` in a destination of its own.
+            _, (g, ginit) = pullback(
+                (src, init) -> scatter(max, src, collect(1:n); init), ties, BFloat16(1); ȳ=ones(BFloat16, n)
+            )
+            @test all(==(0.5), g)
+            @test ginit ≈ n / 2 rtol = 1e-2
+        end
+
+        @testset "batched_mul" for sizes in (((3, 2, 3), (2, 4, 3)), ((3, 2, 1), (2, 4, 3)), ((3, 2, 3), (2, 4, 1)))
+            A, B = bf16(sizes[1]...), bf16(sizes[2]...)
+            test_pullback(batched_mul, A, B)
+            test_jvp(batched_mul, A, B)
+        end
+
+        @testset "affine normalization" begin
+            args = (bf16(2, 5), bf16(2, 1), 1 .+ abs.(bf16(2, 1)), bf16(2, 1), bf16(2, 1))
+            f(args...) = NNlib._affine_normalize(args..., BFloat16(1e-5))
+            test_pullback(f, args...; rtol=5e-2)
+            test_jvp(f, args...; rtol=5e-2)
+        end
+
+        @testset "dropout $kw" for kw in ((;), (dims=1,))
+            x, ȳ = bf16(6, 4), bf16(6, 4)
+            y_ref, pullback_ref = rrule(dropout, StableRNG(1), x, BFloat16(0.5); kw...)
+            y, (dx,) = pullback(x -> dropout(StableRNG(1), x, 0.5; kw...), x; ȳ)
+            @test y == y_ref
+            @test dx == pullback_ref(ȳ)[3]
+        end
+
+        @testset "bias_act! $σ" for σ in (identity, bias_act_activations...)
+            for bsize in ((8,), nothing)
+                x, b = bias_act_args(rng, (8, 4), bsize, BFloat16)
+                if b === false
+                    test_pullback(x -> bias_act!(σ, copy(x), false), x; rtol=5e-2)
+                    test_jvp(x -> bias_act!(σ, copy(x), false), x; rtol=5e-2)
+                else
+                    test_pullback((x, b) -> bias_act!(σ, copy(x), b), x, b; rtol=5e-2)
+                    test_jvp((x, b) -> bias_act!(σ, copy(x), b), x, b; rtol=5e-2)
+                end
+            end
+        end
+
+        # `Ω * (1 - Ω)` is exactly 0 from x = 6, where σ(x) rounds to 1, and `1 - Ω^2` from x = 4.
+        @testset "saturation of $f at $x" for (f, x) in (
+            (NNlib.σ, 8), (sigmoid_fast, 8), (tanh_fast, 6), (tanh_fast, 400)
+        )
+            big_x = big(float(x))
+            ref = f === tanh_fast ? 1 - tanh(big_x)^2 : exp(-big_x) / (1 + exp(-big_x))^2
+            d_fwd = Mooncake.tangent(
+                Mooncake.frule!!(Mooncake.zero_dual(f), Mooncake.Dual(BFloat16(x), one(BFloat16)))
+            )
+            _, pb = Mooncake.rrule!!(Mooncake.zero_fcodual(f), Mooncake.zero_fcodual(BFloat16(x)))
+            d_rev = pb(one(BFloat16))[2]
+            @test d_fwd isa BFloat16 && d_rev isa BFloat16
+            @test d_fwd ≈ ref atol = 1e-3 rtol = 2e-2
+            @test d_rev ≈ ref atol = 1e-3 rtol = 2e-2
+        end
+
+        @testset "σ at zero" for f in (NNlib.σ, sigmoid_fast)
+            _, pb = Mooncake.rrule!!(Mooncake.zero_fcodual(f), Mooncake.zero_fcodual(zero(BFloat16)))
+            @test pb(one(BFloat16))[2] == 0.25
+        end
+
+        @testset "normalizations" begin
+            # NNlib takes a BFloat16 input with Float32 scale and bias alone.
+            g, b, x = randn(rng, Float32, 6), randn(rng, Float32, 6), bf16(6, 8)
+            test_pullback((g, b, x) -> layernorm(g, b, x), g, b, x; rtol=5e-2)
+            test_pullback((g, x) -> rmsnorm(g, x), g, x; rtol=5e-2)
+        end
+
+        @testset "declared as primitives" begin
+            x, idx = bf16(4, 6), [1, 3, 2]
+            for mode in (Mooncake.ReverseMode, Mooncake.ForwardMode)
+                @test claimed(mode, batched_mul, bf16(3, 2, 3), bf16(2, 4, 3))
+                @test claimed(mode, bias_act!, relu, x, bf16(4))
+                @test claimed(mode, scatter, max, x, idx)
+                @test claimed(mode, NNlib.σ, BFloat16(1))
+            end
+            @test claimed(Mooncake.ReverseMode, gather, x, idx)
+            @test claimed(Mooncake.ReverseMode, gather, x', idx)
+            @test claimed(Mooncake.ReverseMode, softmax, x)
+            @test claimed(Mooncake.ReverseMode, dropout, StableRNG(1), x, 0.5)
+            @test claimed(Mooncake.ReverseMode, layernorm, bf16(4), bf16(4), x)
+            # `@from_rrule` cannot convert BFloat16, so those operations are differentiated as code.
+            @test !claimed(Mooncake.ReverseMode, scatter, +, x, idx)
+            @test !claimed(Mooncake.ReverseMode, conv, bf16(5, 3, 2), bf16(2, 3, 2), DenseConvDims((5, 3, 2), (2, 3, 2)))
+        end
+    end
+
+    # Not for a device array of BFloat16, as no rule could return its gradient.
+    gpu && @testset "BFloat16 device arrays are not declared as primitives" begin
+        rng = StableRNG(123)
+        for dtype in (BFloat16, Float32)
+            expected = dtype === Float32
+            arr(dims...) = device(randn(rng, dtype, dims...))
+            x, idx = arr(4, 6), device([1, 3, 2])
+            @test claimed(Mooncake.ReverseMode, gather, x, idx) == expected
+            @test claimed(Mooncake.ReverseMode, softmax, x) == expected
+            @test claimed(Mooncake.ReverseMode, logsumexp, x) == expected
+            @test claimed(Mooncake.ReverseMode, dropout, Trng(1), x, 0.5) == expected
+            @test claimed(Mooncake.ReverseMode, scatter, max, x, idx) == expected
+            @test claimed(Mooncake.ReverseMode, layernorm, arr(4), arr(4), x) == expected
+            for mode in (Mooncake.ReverseMode, Mooncake.ForwardMode)
+                @test claimed(mode, batched_mul, arr(3, 2, 3), arr(2, 4, 3)) == expected
+                @test claimed(mode, bias_act!, relu, x, arr(4)) == expected
+                @test claimed(mode, scatter, max, x, idx) == expected
+            end
+            @test claimed(Mooncake.ReverseMode, NNlib._affine_normalize, x, arr(4, 1), arr(4, 1), arr(4, 1), arr(4, 1), one(dtype)) == expected
+        end
     end
 
     # NNlib's `exp(-abs(x))` form of σ has a kink at zero that the function itself does not.
