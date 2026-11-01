@@ -50,6 +50,19 @@
         @test NNlib.ceil_mode(pdims_ceil)
         @test_throws ArgumentError maxpool(CuArray(xc), pdims_ceil)
         @test_throws ArgumentError meanpool(CuArray(xc), pdims_ceil)
+
+        # dilation (issue #896), which cuDNN has none of
+        xd = rand(Float64, fill(9, num_spatial_dims)..., C_in, 2)
+        for pdims_dil in (PoolDims(xd, 2; stride=1, dilation=2),
+                          PoolDims(xd, 3; padding=2, stride=2, dilation=2),
+                          PoolDims(xd, 3; stride=2, dilation=3, ceil_mode=true),
+                          PoolDims(xd, 3; stride=1, dilation=2,
+                                   padding=ntuple(i -> isodd(i) ? 1 : 3, 2num_spatial_dims)))
+            gputest(x -> maxpool(x, pdims_dil), xd)
+            for cip in (true, false)
+                gputest(x -> meanpool(x, pdims_dil; count_include_pad=cip), xd)
+            end
+        end
     end
 end
 
