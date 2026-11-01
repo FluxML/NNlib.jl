@@ -207,6 +207,7 @@ ctc_loss
 ```@docs
 logsumexp
 NNlib.glu
+NNlib.swiglu
 NNlib.within_gradient
 bias_act!
 ```

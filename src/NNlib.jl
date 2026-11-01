@@ -135,7 +135,7 @@ export stft, istft, hann_window, hamming_window, spectrogram, melscale_filterban
 # Mark the documented but non-exported API with the `public` keyword.
 # `public` is only valid syntax on Julia 1.11+, so parse it lazily.
 @static if VERSION >= v"1.11.0-DEV.469"
-    eval(Meta.parse("public gather, gather!, scatter, scatter!, fold, unfold, glu, within_gradient, " *
+    eval(Meta.parse("public gather, gather!, scatter, scatter!, fold, unfold, glu, swiglu, within_gradient, " *
                     "is_fused_attention, rotary_embedding_table, apply_rotary_embedding, " *
                     "normalise, batchnorm, instancenorm, groupnorm, layernorm, rmsnorm, " *
                     "∇batchnorm, ∇instancenorm, ∇groupnorm, ∇layernorm, ∇rmsnorm"))
