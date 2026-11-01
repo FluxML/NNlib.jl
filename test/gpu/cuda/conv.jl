@@ -45,7 +45,9 @@
         x = rand(T, fill(8, num_spatial_dims)..., C_in, batch_size)
         w = rand(T, fill(2, num_spatial_dims)..., C_in ÷ groups, C_out)
 
-        @testset "opts #$i" for (i,opts) in enumerate(options)
+        # complex convolutions are real ones (Gauss's trick) with the same descriptors, and each
+        # option compiles anew: two of them for complex inputs
+        @testset "opts #$i" for (i,opts) in enumerate(T <: Complex ? options[[1, end]] : options)
             opts[:groups] = groups
 
 

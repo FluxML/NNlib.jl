@@ -35,6 +35,7 @@ const NNLIB_TEST_ENZYME =   if haskey(ENV, "NNLIB_TEST_ENZYME")
 const THREADED_TESTS = [
     "cpu/threading",
     "cpu/attention",
+    "cpu/attention_fused",
     "cpu/conv",
     "cpu/conv_bias_act",
     "cpu/batchedmul",

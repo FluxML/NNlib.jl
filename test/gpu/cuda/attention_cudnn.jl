@@ -81,7 +81,8 @@ end
                        scaled_dot_product_attention(qc1, kc, vc; kws...))
         end
     end
-    @testset "empty and padded queries" begin
+    # the same code in BFloat16, whose gradient kernels would compile anew
+    T == Float16 && @testset "empty and padded queries" begin
         qlong = cat(q, q; dims=3)
         @test same(Array(scaled_dot_product_attention(qlong, k, v; is_causal=:bottom_right)),
                    scaled_dot_product_attention(cat(qc, qc; dims=3), kc, vc; is_causal=:bottom_right))

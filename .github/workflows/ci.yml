@@ -32,6 +32,7 @@ jobs:
     # Mooncake), which routinely fail to precompile on Julia nightly. Keep the job
     # for information, but don't let it fail the workflow.
     continue-on-error: ${{ matrix.version == 'nightly' }}
+    timeout-minutes: 120
     strategy:
       fail-fast: false
       matrix:
@@ -58,6 +59,13 @@ jobs:
       - uses: julia-actions/cache@v3
       - uses: julia-actions/julia-buildpkg@v1
 
+      # Enzyme compiles slowly and is tested on Linux.
+      - if: runner.os != 'Linux'
+        run: echo "NNLIB_TEST_ENZYME=false" >> "$GITHUB_ENV"
+      # With 7 GB of memory, two test workers swap.
+      - if: runner.os == 'macOS'
+        run: echo "PTR_NUM_JOBS=1" >> "$GITHUB_ENV"
+
       - name: "Run test without coverage"
         uses: julia-actions/julia-runtest@v1
         if: ${{ !contains(fromJson('["1"]'), matrix.version) || matrix.os != 'ubuntu-latest' }}
@@ -77,6 +85,7 @@ jobs:
   test-threaded:
     name: Julia 1 - ubuntu-latest - 2 threads
     runs-on: ubuntu-latest
+    timeout-minutes: 120
     env:
       NNLIB_TEST_THREADED: 'true'
     steps:
@@ -93,6 +102,7 @@ jobs:
   test-reactant:
     name: Julia 1 - ubuntu-latest - Reactant
     runs-on: ubuntu-latest
+    timeout-minutes: 120
     env:
       NNLIB_TEST_REACTANT: 'true'
     steps:
