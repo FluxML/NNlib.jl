@@ -59,10 +59,25 @@ Backends and modes are selected by env flags (default: CPU only, single-threaded
 GPU backend packages are added to the test env by the `.buildkite/pipeline.yml` echo
 step, not declared in `test/Project.toml`.
 
+### Keep new tests cheap
+
+CI time goes into compilation: each `test_gradients` call compiles FiniteDifferences,
+Zygote and Enzyme for its function, and each EnzymeTestUtils/Mooncake `test_rule` case
+compiles anew (seconds per case). So when adding tests:
+
+- Test an AD rule once, at a small shape, not again for every spatial rank, element type,
+  activation or keyword combination, unless the code differs between them. Loop over
+  configurations in forward-pass checks, which are cheap.
+- Second derivatives: ForwardDiff over Zygote; Zygote over Zygote for a representative only.
+- `JULIA_TEST_VERBOSE=true julia --project=test test/runtests.jl cpu/conv` prints the time
+  of each testset (Julia 1.13). A file over ~5 min locally sets the wall time of its CI job:
+  trim it or split it.
+
 ## CI
 
 GitHub Actions in `.github/workflows/`: `ci.yml` (Linux/Windows/macOS × Julia versions ×
 thread counts), `docs.yml`, `Downstream.yml`, `BenchmarkTrigger.yml`, `TagBot.yml`.
+Enzyme is tested on Linux only (`NNLIB_TEST_ENZYME=false` on Windows and macOS).
 GPU CI runs on Buildkite (`.buildkite/pipeline.yml`).
 
 ## Links

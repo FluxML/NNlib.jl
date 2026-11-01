@@ -991,28 +991,31 @@ end
   x = rand(rng, repeat([5], spatial_rank)..., 3, 2)
   w = rand(rng, repeat([3], spatial_rank)..., 3, 3)
   cdims = DenseConvDims(x, w)
-  @test test_gradients((x, w) -> conv(x, w, cdims), x, w)
-  @test test_gradients((x, w) -> sum(conv(x, w, cdims)), x, w)  # https://github.com/FluxML/Flux.jl/issues/1055
+  # The Enzyme rules are the same for every rank, and each case takes long to compile
+  compare = spatial_rank == 1 ? [AutoZygote(), AutoEnzyme()] : [AutoZygote()]
+  @test test_gradients((x, w) -> conv(x, w, cdims), x, w; compare)
+  @test test_gradients((x, w) -> sum(conv(x, w, cdims)), x, w; compare)  # https://github.com/FluxML/Flux.jl/issues/1055
 
   y = conv(x, w, cdims)
-  @test test_gradients((y, w) -> ∇conv_data(y, w, cdims), y, w)
-  @test test_gradients((y, w) -> sum(∇conv_data(y, w, cdims)), y, w)
-  @test test_gradients((x, y) -> ∇conv_filter(x, y, cdims), x, y)
-  @test test_gradients((x, y) -> sum(∇conv_filter(x, y, cdims)), x, y)
+  @test test_gradients((y, w) -> ∇conv_data(y, w, cdims), y, w; compare)
+  @test test_gradients((y, w) -> sum(∇conv_data(y, w, cdims)), y, w; compare)
+  @test test_gradients((x, y) -> ∇conv_filter(x, y, cdims), x, y; compare)
+  @test test_gradients((x, y) -> sum(∇conv_filter(x, y, cdims)), x, y; compare)
 
   dcdims = DepthwiseConvDims(x, w)
-  @test test_gradients((x, w) -> depthwiseconv(x, w, dcdims), x, w)
+  @test test_gradients((x, w) -> depthwiseconv(x, w, dcdims), x, w; compare)
 
   y = depthwiseconv(x, w, dcdims)
-  @test test_gradients((y, w) -> ∇depthwiseconv_data(y, w, dcdims), y, w)
-  @test test_gradients((y, w) -> sum(∇depthwiseconv_data(y, w, dcdims)), y, w)
+  @test test_gradients((y, w) -> ∇depthwiseconv_data(y, w, dcdims), y, w; compare)
+  @test test_gradients((y, w) -> sum(∇depthwiseconv_data(y, w, dcdims)), y, w; compare)
 end
 
 @static if NNLIB_TEST_ENZYME
 
-@testset "EnzymeRules: conv! spatial_rank=$spatial_rank" for spatial_rank in (1, 2, 3)
-  x = rand(rng, repeat([5], spatial_rank)..., 3, 2)
-  w = rand(rng, repeat([3], spatial_rank)..., 3, 3)
+# The rules are the same for every spatial rank: test them for 1-D convolutions only.
+@testset "EnzymeRules: conv!" begin
+  x = rand(rng, 5, 3, 2)
+  w = rand(rng, 3, 3, 3)
 
   cdims = DenseConvDims(x, w)
 
@@ -1032,9 +1035,9 @@ end
   end
 end
 
-@testset "EnzymeRules: ∇conv_data! spatial_rank=$spatial_rank" for spatial_rank in (1, 2, 3)
-  x = rand(rng, repeat([5], spatial_rank)..., 3, 2)
-  w = rand(rng, repeat([3], spatial_rank)..., 3, 3)
+@testset "EnzymeRules: ∇conv_data!" begin
+  x = rand(rng, 5, 3, 2)
+  w = rand(rng, 3, 3, 3)
   cdims = DenseConvDims(x, w)
   y = conv(x, w, cdims)
   dy = randn(rng, size(y)...)
@@ -1053,9 +1056,9 @@ end
   end
 end
 
-@testset "EnzymeRules: ∇conv_filter! spatial_rank=$spatial_rank" for spatial_rank in (1, 2, 3)
-  x = rand(rng, repeat([5], spatial_rank)..., 3, 2)
-  w = rand(rng, repeat([3], spatial_rank)..., 3, 3)
+@testset "EnzymeRules: ∇conv_filter!" begin
+  x = rand(rng, 5, 3, 2)
+  w = rand(rng, 3, 3, 3)
   cdims = DenseConvDims(x, w)
   y = conv(x, w, cdims)
   dy = randn(rng, size(y)...)
@@ -1074,9 +1077,9 @@ end
   end
 end
 
-@testset "EnzymeRules: depthwiseconv! spatial_rank=$spatial_rank" for spatial_rank in (1, 2, 3)
-  x = rand(rng, repeat([5], spatial_rank)..., 3, 2)
-  w = rand(rng, repeat([3], spatial_rank)..., 3, 3)
+@testset "EnzymeRules: depthwiseconv!" begin
+  x = rand(rng, 5, 3, 2)
+  w = rand(rng, 3, 3, 3)
 
   cdims = DepthwiseConvDims(x, w)
 

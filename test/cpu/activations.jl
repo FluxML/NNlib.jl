@@ -534,7 +534,8 @@ end
     x = T[-2.3 -0.4; 0.7 1.9]  # away from the kinks
     rtol = T == Float32 ? 1e-3 : 1e-8
 
-    @testset "$f" for f in WITH_UNARY_RULE
+    # The rule is generic in the element type: Float64 takes a few activations only
+    @testset "$f" for f in (T == Float32 ? WITH_UNARY_RULE : [σ, elu, tanh_fast])
         Mooncake.TestUtils.test_rule(StableRNG(17), _broadcast, f, x; is_primitive=true, print_results=false)
         @test withgradient(x -> sum(abs2, f.(x)), AutoMooncake(), x).grad[1] ≈
             ForwardDiff.gradient(x -> sum(abs2, f.(x)), x) rtol=rtol
@@ -543,7 +544,7 @@ end
     # Mooncake is given a fused broadcast in pieces, with an array before and after the activation
     b = T[0.1, -0.2]
     hide(x) = Ref{Any}(x)[]  # a call dispatched at runtime (#799)
-    @testset "$name" for (name, h) in [
+    T == Float32 && @testset "$name" for (name, h) in [
             "f.(x .+ b)"    => (x -> sum(abs2, elu.(x .+ b))),
             "x .* f.(x)"    => (x -> sum(x .* softplus.(x))),
             "g.(f.(h.(x)))" => (x -> sum(abs2.(mish.(2 .* x .- 1)))),
@@ -695,29 +696,42 @@ end
 @testset "Second derivatives" begin
     ## Not extensive, but a start!
     ## More careful tests could look for `nothing` gradients of piecewise functions
+    ## ForwardDiff over Zygote is checked against ForwardDiff for every activation, and
+    ## Zygote over Zygote, which takes seconds to compile for each, for a few.
+    with_reverse = (σ, elu, tanh_fast)
+    d2(g, x) = ForwardDiff.derivative(x -> ForwardDiff.derivative(g, x), x)
+    x = [-0.9, -0.2, 0.1, 0.3, 1.2]
     @testset "$(f): $(has_rule(f))" for f in ACTIVATION_FUNCTIONS
         f == rrelu && continue
 
         ## Scalar
-        h = Zygote.hessian_dual(x -> sin(f(x)), 0.23)
-        @test h ≈ Zygote.hessian_reverse(x -> sin(f(x)), 0.23)
+        g = x -> sin(f(x))
+        @test Zygote.hessian_dual(g, 0.23) ≈ d2(g, 0.23)
 
         ## Broadcasting
-        x = [-0.9, -0.2, 0.1, 0.3, 1.2]
-        H = Zygote.hessian_dual(x -> sum(abs2, f.(x .+ 0.1)), x)
-        @test H ≈ Zygote.hessian_reverse(x -> sum(abs2, f.(x .+ 0.1)), x)
+        G = x -> sum(abs2, f.(x .+ 0.1))
+        @test Zygote.hessian_dual(G, x) ≈ ForwardDiff.hessian(G, x)
+
+        if f in with_reverse
+            @test Zygote.hessian_reverse(g, 0.23) ≈ d2(g, 0.23)
+            @test Zygote.hessian_reverse(G, x) ≈ ForwardDiff.hessian(G, x)
+        end
     end
     @testset "$(f): $(has_rule(f))" for f in BINARY_ACTIVATIONS
         f == rrelu && continue
 
         ## Scalar
-        h = Zygote.hessian_dual(x -> sin(f(x, 0.3)), 0.45)
-        @test h ≈ Zygote.hessian_reverse(x -> sin(f(x, 0.3)), 0.45)
+        g = x -> sin(f(x, 0.3))
+        @test Zygote.hessian_dual(g, 0.45) ≈ d2(g, 0.45)
 
         ## Broadcasting
-        x = [-0.9, -0.2, 0.1, 0.3, 1.2]
-        H = Zygote.hessian_dual(x -> sum(abs2, f.(x .+ 0.1, 0.3)), x)
-        @test H ≈ Zygote.hessian_reverse(x -> sum(abs2, f.(x .+ 0.1, 0.3)), x)
+        G = x -> sum(abs2, f.(x .+ 0.1, 0.3))
+        @test Zygote.hessian_dual(G, x) ≈ ForwardDiff.hessian(G, x)
+
+        if f in with_reverse
+            @test Zygote.hessian_reverse(g, 0.45) ≈ d2(g, 0.45)
+            @test Zygote.hessian_reverse(G, x) ≈ ForwardDiff.hessian(G, x)
+        end
     end
 end
 
