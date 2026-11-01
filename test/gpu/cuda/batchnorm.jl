@@ -86,13 +86,12 @@
         # the fast cuDNN backward (dispatched on `x::CuArray{<:CUDNNFloat}`); nesting AD
         # seeds `ForwardDiff.Dual` eltypes, which fall through that dispatch to the
         # generic differentiable `batchnorm`/`∇batchnorm` in NNlib core. We check the
-        # Hessian–vector product both ways — forward-over-reverse and reverse-over-reverse
-        # — against the (finite-difference-validated) CPU reference. The loss multiplies
-        # by a fixed array `a` to break batchnorm's normalisation invariance, so the
-        # second-order term is genuinely non-zero.
-        hvp(loss, X, V) =  # (reverse-over-reverse, forward-over-reverse)
-            (Zygote.gradient(x -> sum(Zygote.gradient(loss, x)[1] .* V), X)[1],
-             ForwardDiff.derivative(ε -> Zygote.gradient(loss, X .+ ε .* V)[1], 0f0))
+        # Hessian–vector product forward-over-reverse, and reverse-over-reverse (seconds to
+        # compile) in training mode, against the (finite-difference-validated) CPU
+        # reference. The loss multiplies by a fixed array `a` to break batchnorm's
+        # normalisation invariance, so the second-order term is genuinely non-zero.
+        fwd_hvp(loss, X, V) = ForwardDiff.derivative(ε -> Zygote.gradient(loss, X .+ ε .* V)[1], 0f0)
+        rev_hvp(loss, X, V) = Zygote.gradient(x -> sum(Zygote.gradient(loss, x)[1] .* V), X)[1]
         @testset for sz in ((3, 6), (4, 5, 3, 6))
             C = sz[end-1]
             gc = randn(Float32, C); bc = randn(Float32, C); ac = randn(Float32, sz)
@@ -102,21 +101,24 @@
                 dev(a) = a === nothing ? nothing : CuArray(a)
                 mkloss(g, b, a, rm, rv) =
                     x -> sum(abs2, a .* batchnorm(g, b, x, rm, rv, 0.1f0; training))
-                rev_c, fwd_c = hvp(mkloss(gc, bc, ac, rm, rv), xc, vc)
-                rev_g, fwd_g = hvp(mkloss(dev(gc), dev(bc), dev(ac), dev(rm), dev(rv)),
-                                   CuArray(xc), CuArray(vc))
-                @test collect(rev_g) ≈ rev_c rtol=1e-3 atol=1e-4
-                @test collect(fwd_g) ≈ fwd_c rtol=1e-3 atol=1e-4
+                loss_c, loss_g = mkloss(gc, bc, ac, rm, rv), mkloss(dev(gc), dev(bc), dev(ac), dev(rm), dev(rv))
+                @test collect(fwd_hvp(loss_g, CuArray(xc), CuArray(vc))) ≈ fwd_hvp(loss_c, xc, vc) rtol=1e-3 atol=1e-4
+                if training
+                    @test collect(rev_hvp(loss_g, CuArray(xc), CuArray(vc))) ≈ rev_hvp(loss_c, xc, vc) rtol=1e-3 atol=1e-4
+                end
             end
         end
     end
 
     @testset "backward reuses the saved statistics" begin
         # The rrule keeps the batch mean and inverse variance of the forward pass, so cuDNN
-        # does not recompute them in the backward pass (training mode only).
-        @testset for (T, sz) in ((Float32, (5, 4, 8)), (Float32, (4, 5, 3, 6)), (Float32, (3, 3, 3, 4, 6)),
+        # does not recompute them in the backward pass (training mode only). Each case
+        # compiles anew: every combination for the first shape and type, affine with tracked
+        # statistics for the others.
+        @testset for (T, sz) in ((Float32, (4, 5, 3, 6)), (Float32, (5, 4, 8)), (Float32, (3, 3, 3, 4, 6)),
                                  (Float64, (4, 5, 3, 6)), (Float16, (4, 5, 3, 6))),
                      training in (true, false), track_stats in (true, false), affine in (true, false)
+            (T, sz) == (Float32, (4, 5, 3, 6)) || (track_stats && affine) || continue
             P = T === Float64 ? Float64 : Float32
             C = sz[end-1]
             gc, bc = affine ? (randn(P, C), randn(P, C)) : (nothing, nothing)

@@ -78,7 +78,9 @@ compiles anew (seconds per case). So when adding tests:
 GitHub Actions in `.github/workflows/`: `ci.yml` (Linux/Windows/macOS × Julia versions ×
 thread counts), `docs.yml`, `Downstream.yml`, `BenchmarkTrigger.yml`, `TagBot.yml`.
 Enzyme is tested on Linux only (`NNLIB_TEST_ENZYME=false` on Windows and macOS).
-GPU CI runs on Buildkite (`.buildkite/pipeline.yml`).
+GPU CI runs on Buildkite (`.buildkite/pipeline.yml`). Its CUDA agents have 2 CPU cores, so
+the same advice applies. CUDA runs on Julia 1 for pull requests, and on Julia 1.10 too on
+master. The CUDA Enzyme job runs only `gpu/cuda/normalization_enzyme`.
 
 ## Links
 

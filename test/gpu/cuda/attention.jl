@@ -206,25 +206,27 @@ end
 
     @test NNlib.is_fused_attention(CuArray(q), CuArray(k), CuArray(v))
 
-    # lengths given on the CPU are moved to the device of the inputs
+    # lengths given on the CPU are moved to the device of the inputs; the gradients of
+    # NNlib's kernel under these masks are checked in "fused gradient"
     lengths = (; q_lengths=[16, 9, 1], kv_lengths=[12, 5, 7])
     gputest((q, k, v) -> scaled_dot_product_attention(q, k, v; lengths...), q, k, v;
-            rtol=1f-4, atol=1f-5)
+            rtol=1f-4, atol=1f-5, checkgrad=false)
     gputest((q, k, v) -> scaled_dot_product_attention(q, k, v; lengths..., is_causal=true),
-            q, k, v; rtol=1f-4, atol=1f-5)
+            q, k, v; rtol=1f-4, atol=1f-5, checkgrad=false)
     gputest((q, k, v) -> last(scaled_dot_product_attention_with_weights(q, k, v; lengths...)),
             q, k, v; rtol=1f-4, atol=1f-5)
 
     # offsets of the queries, in the fused and the materialized implementations
     gputest((q, k, v) -> scaled_dot_product_attention(q, k, v; lengths..., is_causal=true, q_offset=[2, 0, 5]),
-            q, k, v; rtol=1f-4, atol=1f-5)
+            q, k, v; rtol=1f-4, atol=1f-5, checkgrad=false)
     for q_offset in (3, [2, 0, 5])
         gputest((q, k, v) -> last(scaled_dot_product_attention_with_weights(q, k, v; is_causal=true, q_offset)),
                 q, k, v; rtol=1f-4, atol=1f-5)
     end
     # a bottom-right causal mask, the queries being the shorter sequences
     br = (; is_causal=:bottom_right, q_lengths=[12, 5, 1], kv_lengths=[16, 9, 7])
-    gputest((q, k, v) -> scaled_dot_product_attention(k, q, q; br...), q, k, v; rtol=1f-4, atol=1f-5)
+    gputest((q, k, v) -> scaled_dot_product_attention(k, q, q; br...), q, k, v; rtol=1f-4, atol=1f-5,
+            checkgrad=false)
     gputest((q, k, v) -> last(scaled_dot_product_attention_with_weights(k, q, q; br...)), q, k, v;
             rtol=1f-4, atol=1f-5)
 
@@ -433,35 +435,38 @@ end
     mask = rand(Bool, lenkv, lenq, 1, bs)
     mask[1, :, :, :] .= true
     lengths = (; q_lengths=[100, 37, 1], kv_lengths=[77, 12, 70])
-    @test same_gradients(q, k, v)
-    @test same_gradients(q, k, v; is_causal=true)
-    @test same_gradients(q, k, v; scale=0.3)
-    @test same_gradients(q, k, v; lengths...)
-    @test same_gradients(q, k, v; mask)
-    @test same_gradients(q, k, v; mask, is_causal=true, lengths...)
-    # grouped-query attention
-    @test same_gradients(q, k[:, 1:2, :, :], v[:, 1:2, :, :])
-    @test same_gradients(q, k[:, 1:2, :, :], v[:, 1:2, :, :]; is_causal=true, lengths...)
-    # offsets of the queries
-    @test same_gradients(q, k, v; is_causal=true, q_offset=[0, 40, 77])
-    @test same_gradients(q, k, v; mask, is_causal=true, q_offset=5, lengths...)
-    @test same_gradients(q, k[:, 1:2, :, :], v[:, 1:2, :, :]; is_causal=true, q_offset=[0, 40, 77], lengths...)
-    @test same_gradients(q, k, v; is_causal=:bottom_right, q_lengths=[60, 10, 1], kv_lengths=[77, 12, 70])
-    # sliding windows
-    @test same_gradients(q, k, v; is_causal=:bottom_right, window=20, q_lengths=[60, 10, 1], kv_lengths=[77, 12, 70])
-    @test same_gradients(q, k[:, 1:2, :, :], v[:, 1:2, :, :]; window=30, q_offset=[0, -20, -23])
-
     qd, kd, vd = CuArray(q), CuArray(k), CuArray(v)
-    # the same array as query, key and value
-    x = randn(T, head_dim, nheads, lenq, bs) ./ 2
-    wx = randn(T, head_dim, nheads, lenq, bs)
-    wxd = CuArray(wx)
-    @test Array(gradient(x -> sum(wxd .* scaled_dot_product_attention(x, x, x; is_causal=true)), CuArray(x))[1]) ≈
-          gradient(x -> sum(wx .* materialized_attention(x, x, x; is_causal=true)), x)[1] rtol=rtol
+    @test same_gradients(q, k, v)
+    @test same_gradients(q, k, v; mask, is_causal=true, lengths...)
+    # the kernels are generic in the element type, and each case compiles anew: the others in Float32 only
+    if T == Float32
+        @test same_gradients(q, k, v; is_causal=true)
+        @test same_gradients(q, k, v; scale=0.3)
+        @test same_gradients(q, k, v; lengths...)
+        @test same_gradients(q, k, v; mask)
+        # grouped-query attention
+        @test same_gradients(q, k[:, 1:2, :, :], v[:, 1:2, :, :])
+        @test same_gradients(q, k[:, 1:2, :, :], v[:, 1:2, :, :]; is_causal=true, lengths...)
+        # offsets of the queries
+        @test same_gradients(q, k, v; is_causal=true, q_offset=[0, 40, 77])
+        @test same_gradients(q, k, v; mask, is_causal=true, q_offset=5, lengths...)
+        @test same_gradients(q, k[:, 1:2, :, :], v[:, 1:2, :, :]; is_causal=true, q_offset=[0, 40, 77], lengths...)
+        @test same_gradients(q, k, v; is_causal=:bottom_right, q_lengths=[60, 10, 1], kv_lengths=[77, 12, 70])
+        # sliding windows
+        @test same_gradients(q, k, v; is_causal=:bottom_right, window=20, q_lengths=[60, 10, 1], kv_lengths=[77, 12, 70])
+        @test same_gradients(q, k[:, 1:2, :, :], v[:, 1:2, :, :]; window=30, q_offset=[0, -20, -23])
 
-    # with respect to the scale
-    ds = gradient(s -> sum(wd .* scaled_dot_product_attention(qd, kd, vd; scale=s)), T(0.3))[1]
-    @test ds ≈ gradient(s -> sum(w .* materialized_attention(q, k, v; scale=s)), T(0.3))[1] rtol=rtol
+        # the same array as query, key and value
+        x = randn(T, head_dim, nheads, lenq, bs) ./ 2
+        wx = randn(T, head_dim, nheads, lenq, bs)
+        wxd = CuArray(wx)
+        @test Array(gradient(x -> sum(wxd .* scaled_dot_product_attention(x, x, x; is_causal=true)), CuArray(x))[1]) ≈
+              gradient(x -> sum(wx .* materialized_attention(x, x, x; is_causal=true)), x)[1] rtol=rtol
+
+        # with respect to the scale
+        ds = gradient(s -> sum(wd .* scaled_dot_product_attention(qd, kd, vd; scale=s)), T(0.3))[1]
+        @test ds ≈ gradient(s -> sum(w .* materialized_attention(q, k, v; scale=s)), T(0.3))[1] rtol=rtol
+    end
 
     # no gradient reaches the padding, and a query attending to no key takes no part
     dq, dk, dv = map(Array, gradient(loss(scaled_dot_product_attention, wd; lengths...), qd, kd, vd))
@@ -477,31 +482,29 @@ end
     @test all(isfinite, dk) && all(isfinite, dv)
 
     # with a bias the materialized implementation is differentiated
-    bias = randn(T, lenkv, lenq)
-    @test Array(gradient(b -> sum(wd .* scaled_dot_product_attention(qd, kd, vd, b)), CuArray(bias))[1]) ≈
-          gradient(b -> sum(w .* materialized_attention(q, k, v, b)), bias)[1] rtol=rtol
+    if T == Float32
+        bias = randn(T, lenkv, lenq)
+        @test Array(gradient(b -> sum(wd .* scaled_dot_product_attention(qd, kd, vd, b)), CuArray(bias))[1]) ≈
+              gradient(b -> sum(w .* materialized_attention(q, k, v, b)), bias)[1] rtol=rtol
+    end
 end
 
-# Each gradient has a tiling of its own, set by the head dimension it has.
+# Each gradient has a tiling of its own, set by the head dimension it has. Each mask
+# compiles the kernels anew: the tilings take them in turn.
 @testset "fused gradient tilings" begin
-    @testset "head dimensions $head_dim and $v_head_dim, $nheads heads" for (head_dim, v_head_dim, nheads) in
-            ((5, 3, 2), (64, 64, 2), (64, 64, 40), (128, 128, 2), (128, 16, 40), (16, 256, 2), (600, 16, 2),
-             (16, 2048, 1), (2048, 16, 1))
+    masks = ((; is_causal=true, q_offset=0), (; is_causal=true, q_offset=37), (; is_causal=true, window=50))
+    @testset "head dimensions $head_dim and $v_head_dim, $nheads heads" for (i, (head_dim, v_head_dim, nheads)) in
+            enumerate(((5, 3, 2), (64, 64, 2), (64, 64, 40), (128, 128, 2), (128, 16, 40), (16, 256, 2), (600, 16, 2),
+                       (16, 2048, 1), (2048, 16, 1)))
         q = randn(Float32, head_dim, nheads, 150, 2) ./ 2
         k = randn(Float32, head_dim, nheads, 131, 2) ./ 2
         v = randn(Float32, v_head_dim, nheads, 131, 2)
         w = randn(Float32, v_head_dim, nheads, 150, 2)
         wd = CuArray(w)
         @test NNlib.is_fused_attention(CuArray(q), CuArray(k), CuArray(v))
-        for q_offset in (0, 37)
-            g = gradient((x...) -> sum(wd .* scaled_dot_product_attention(x...; is_causal=true, q_offset)),
-                         CuArray(q), CuArray(k), CuArray(v))
-            gm = gradient((x...) -> sum(w .* materialized_attention(x...; is_causal=true, q_offset)), q, k, v)
-            @test all(isapprox.(map(Array, g), gm; rtol=1f-3))
-        end
-        g = gradient((x...) -> sum(wd .* scaled_dot_product_attention(x...; is_causal=true, window=50)),
-                     CuArray(q), CuArray(k), CuArray(v))
-        gm = gradient((x...) -> sum(w .* materialized_attention(x...; is_causal=true, window=50)), q, k, v)
+        kws = masks[mod1(i, length(masks))]
+        g = gradient((x...) -> sum(wd .* scaled_dot_product_attention(x...; kws...)), CuArray(q), CuArray(k), CuArray(v))
+        gm = gradient((x...) -> sum(w .* materialized_attention(x...; kws...)), q, k, v)
         @test all(isapprox.(map(Array, g), gm; rtol=1f-3))
     end
     # beyond the head dimensions the kernel has a tiling for
@@ -542,9 +545,15 @@ end
     q, k, v, w = map(x -> Float64.(Array(x)), (qd, kd, vd, wd))
     @test NNlib.is_fused_attention(qd, kd, vd; segs...)
 
-    for kws in ((;), (; is_causal=true), (; is_causal=:bottom_right, kv_lengths=[3, 0, 100, 7]),
-                (; is_causal=true, q_offset=[0, 0, 3, 1], q_lengths=[1, 0, 50, 2]),
-                (; is_causal=true, window=20), (; window=15, q_offset=[0, 0, 3, 1]))
+    forward_kws = ((;), (; is_causal=true), (; is_causal=:bottom_right, kv_lengths=[3, 0, 100, 7]),
+                   (; is_causal=true, q_offset=[0, 0, 3, 1], q_lengths=[1, 0, 50, 2]),
+                   (; is_causal=true, window=20), (; window=15, q_offset=[0, 0, 3, 1]))
+    gradient_kws = ((; is_causal=true), (; is_causal=true, q_offset=1, kv_lengths=[80, 4, 150, 20]), (; window=60))
+    # the kernels are generic in the element type, and each case compiles anew: all of them in Float32 only
+    if T != Float32
+        forward_kws, gradient_kws = forward_kws[4:4], gradient_kws[2:2]
+    end
+    for kws in forward_kws
         yref = materialized_attention(q, k, v; segs..., kws...)
         y = scaled_dot_product_attention(qd, kd, vd; segs..., kws...)
         @test y isa CuArray{T,3}
@@ -566,7 +575,7 @@ end
                                        kv_segments=[95, 90, 90])) ≈ yref rtol=rtol
 
     loss(f, w; kws...) = (x...) -> sum(w .* f(x...; kws...))
-    for kws in ((; is_causal=true), (; is_causal=true, q_offset=1, kv_lengths=[80, 4, 150, 20]), (; window=60))
+    for kws in gradient_kws
         g = gradient(loss(scaled_dot_product_attention, wd; segs..., kws...), qd, kd, vd)
         gm = gradient(loss(materialized_attention, w; segs..., kws...), q, k, v)
         @test all(x -> x isa CuArray{T,3}, g)
