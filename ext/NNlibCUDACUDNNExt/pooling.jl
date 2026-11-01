@@ -15,6 +15,10 @@ function symmetric_padding(pdims::PoolDims)
     return all(i -> pad[2i-1] == pad[2i], 1:length(pad)÷2)
 end
 
+# Neither cuDNN pooling API has a dilation, and ignoring it gives the dilated output size
+# with undilated values (issue #896). NNlib pools such windows with broadcasts instead.
+dilated(pdims::PoolDims) = any(!isone, NNlib.dilation(pdims))
+
 # The legacy API pools into an output of any size, and so supports `ceil_mode`: it skips
 # the positions of a window past the padding, also in the divisor. The graph API only
 # takes the output size that the padding gives.
@@ -45,6 +49,7 @@ function cudnnPoolingDescriptor(pdims::PoolDims, x::CuDNNArray{T}, mode::cudnnPo
 end
 
 function maxpool!(y::CuDNNArray{T}, x::CuDNNArray{T}, pdims::PoolDims) where T<:CUDNNFloat
+    dilated(pdims) && return NNlib.maxpool_views!(y, x, pdims)
     symmetric_padding(pdims) || return cuDNN.maxpool!(y, x; pool_kwargs(pdims)...)
     d = cudnnPoolingDescriptor(pdims, x, CUDNN_POOLING_MAX)
     cudnnPoolingForward!(y, x, d; xDesc=tensor_descriptor(x), yDesc=tensor_descriptor(y))
@@ -52,6 +57,7 @@ end
 
 function ∇maxpool!(dx::DenseCuArray{T}, dy::DenseCuArray{T}, y::DenseCuArray{T}, x::DenseCuArray{T}, pdims::PoolDims;
                    alpha=1, beta=0, kwargs...) where T<:CUDNNFloat
+    dilated(pdims) && return NNlib.∇maxpool_views!(dx, dy, y, x, pdims; alpha, beta)
     symmetric_padding(pdims) ||
         return cuDNN.∇maxpool!(dx, dy, y, x; pool_kwargs(pdims)..., alpha, beta)
     xDesc, yDesc = cudnnTensorDescriptor.((x, y))
@@ -67,6 +73,7 @@ meanpool_mode(count_include_pad::Bool) = count_include_pad ?
 
 function meanpool!(y::CuDNNArray{T}, x::CuDNNArray{T}, pdims::PoolDims;
                    count_include_pad::Bool=true) where T<:CUDNNFloat
+    dilated(pdims) && return NNlib.meanpool_views!(y, x, pdims; count_include_pad)
     symmetric_padding(pdims) ||
         return cuDNN.meanpool!(y, x; pool_kwargs(pdims)..., count_include_pad)
     d = cudnnPoolingDescriptor(pdims, x, meanpool_mode(count_include_pad))
@@ -75,6 +82,8 @@ end
 
 function ∇meanpool!(dx::DenseCuArray{T}, dy::DenseCuArray{T}, y::DenseCuArray{T}, x::DenseCuArray{T}, pdims::PoolDims;
                     count_include_pad::Bool=true, alpha=1, beta=0, kwargs...) where T<:CUDNNFloat
+    dilated(pdims) &&
+        return NNlib.∇meanpool_views!(dx, dy, y, x, pdims; count_include_pad, alpha, beta)
     symmetric_padding(pdims) ||
         return cuDNN.∇meanpool!(dx, dy, y, x; pool_kwargs(pdims)..., count_include_pad, alpha, beta)
     xDesc, yDesc = cudnnTensorDescriptor.((x, y))

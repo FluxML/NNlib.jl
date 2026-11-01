@@ -122,6 +122,7 @@ include("impl/conv_im2col.jl")
 
 # Direct implementations of pooling
 include("impl/pooling_direct.jl")
+include("impl/pooling_views.jl")
 include("deprecations.jl")
 
 include("rotation.jl")

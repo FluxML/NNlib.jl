@@ -1215,6 +1215,43 @@ end
     end
 end
 
+# Pooling by views, which the cuDNN extension uses for dilated windows (issue #896)
+@testset "pooling by strided views" begin
+    for nsd in (1, 2, 3), (k, stride, pad, dil) in (
+            (2, 2, 0, 1), (3, 2, 1, 1), (3, 2, (1, 0), 1), (3, 2, (0, 2), 1),
+            (2, 3, 1, 2), (3, 3, 1, 1), (1, 2, 0, 1), (3, 1, (2, 1), 2), (2, 1, 0, 3))
+        sz = (7, 6, 5)[1:nsd]
+        padding = pad isa Tuple ? ntuple(i -> pad[mod1(i, 2)], 2nsd) : pad
+        # few distinct values, so that windows have ties
+        x = Float64.(rand(rng, 1:4, sz..., 2, 2))
+        for ceil_mode in (false, true)
+            pdims = PoolDims(x, k; stride, padding, dilation=dil, ceil_mode)
+            y = maxpool(x, pdims)
+            dy = randn(rng, size(y))
+            dx0 = randn(rng, size(x))
+            @test NNlib.maxpool_views!(similar(y), x, pdims) == y
+            @test NNlib.∇maxpool_views!(similar(x), dy, y, x, pdims) ≈ ∇maxpool(dy, y, x, pdims)
+            @test NNlib.∇maxpool_views!(copy(dx0), dy, y, x, pdims; alpha=2, beta=0.5) ≈
+                  2 .* ∇maxpool(dy, y, x, pdims) .+ dx0 ./ 2
+            for cip in (true, false)
+                y = meanpool(x, pdims; count_include_pad=cip)
+                @test NNlib.meanpool_views!(similar(y), x, pdims; count_include_pad=cip) ≈ y
+                dx = ∇meanpool(dy, y, x, pdims; count_include_pad=cip)
+                @test NNlib.∇meanpool_views!(similar(x), dy, y, x, pdims; count_include_pad=cip) ≈ dx
+                @test NNlib.∇meanpool_views!(copy(dx0), dy, y, x, pdims; count_include_pad=cip,
+                                             alpha=2, beta=0.5) ≈ 2 .* dx .+ dx0 ./ 2
+            end
+        end
+    end
+
+    # NaN is ignored, as in the direct kernel
+    x = rand(rng, 6, 6, 2, 2)
+    x[3, 4, 1, 1] = NaN
+    pdims = PoolDims(x, 3; stride=1, dilation=2)
+    y = maxpool(x, pdims)
+    @test NNlib.maxpool_views!(similar(y), x, pdims) == y
+end
+
 # The low and high padded regions of `calc_padding_regions` used to overlap when one
 # window spills over both ends, and the gradient went twice into it
 @testset "∇pool with a window wider than the padded input" begin
