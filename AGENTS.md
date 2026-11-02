@@ -27,6 +27,9 @@ upsampling. Primarily consumed by Flux.jl but usable standalone. Minimum Julia: 
   define the gradient (`@scalar_rule`/`rrule`), add value tests, document with an example.
 - Gradients are defined with ChainRules (`rrule`). Enzyme/ForwardDiff/Mooncake support
   lives in their extensions.
+- Mooncake rules are in `ext/NNlibMooncakeExt/rules.jl`, a port of Mooncake's own
+  `MooncakeNNlibExt`. While Mooncake still ships that extension the file is not loaded
+  (`MOONCAKE_SHIPS_RULES`), and `test/test_module.jl` swaps it in so the tests cover it.
 - Threading: NNlib spawns tasks on divisible workloads (conv, etc.). Suppress with
   `NNlib.@disallow_spawns`. Spawning only happens when `Threads.nthreads(:default) > 1`.
 
