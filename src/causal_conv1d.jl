@@ -90,7 +90,7 @@ function rrule(::typeof(causal_conv), xs::AbstractArray{<:Any,3}, w::AbstractMat
         Δ = unthunk(Δ)
         K, n = size(w, 1), size(Δ, 2)
         # the input `j` taps the outputs `j - K + 1` to `j`, with the filter reversed
-        dxs = shifted_sum!(similar(xs), reverse(w; dims=1),
+        dxs = shifted_sum!(similar(xs), w[end:-1:1, :],
                            pad_zeros(Δ, (K - 1, K - 1); dims=2), Val(K))
         dw = similar(w)
         for j in 1:K
