@@ -42,3 +42,12 @@ end
     end
 
 end
+
+@testset "BatchedAdjOrTrans reshaped gradients" begin
+    # Zygote adds the two cotangents of the transpose, each a reshaped `BatchedTranspose`.
+    B, C = randn(Float32, 3, 4, 2, 2), randn(Float32, 3, 5, 4)
+    f(B, C) = sum(batched_mul(batched_transpose(reshape(B, 3, 4, :)), C))
+    g(B, C) = f(B, C) + f(B, C)
+    @test Array(Zygote.gradient(g, cu(B), cu(C))[1]) ≈ Zygote.gradient(g, B, C)[1]
+    @test reshape(batched_transpose(cu(randn(Float32, 3, 4, 2))), 4, :) .+ 1 isa CuArray
+end

@@ -105,3 +105,7 @@ adapt_structure(to, x::BatchedAdjoint) = BatchedAdjoint(adapt(to, parent(x)))
 adapt_structure(to, x::BatchedTranspose) = BatchedTranspose(adapt(to, parent(x)))
 
 Broadcast.BroadcastStyle(::Type{<:BatchedAdjOrTrans{T, S}}) where {T, S} = Broadcast.BroadcastStyle(S)
+# A reshaped transpose, as the cotangent of a transpose of a reshape, also broadcasts on the
+# device of its parent: Zygote adds two of them.
+Broadcast.BroadcastStyle(::Type{<:Base.ReshapedArray{T, N, P}}) where {T, N, P<:BatchedAdjOrTrans} =
+    typeof(Broadcast.BroadcastStyle(P))(Val(N))
