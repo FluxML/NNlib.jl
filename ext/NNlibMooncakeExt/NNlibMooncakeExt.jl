@@ -149,6 +149,27 @@ function Mooncake.rrule!!(::CoDual{typeof(Core.kwcall)}, kw::CoDual{<:NamedTuple
     return y, ȳ -> (NoRData(), kw_rdata, NoRData(), pullback(ȳ)...)
 end
 
+# `batched_mul` of transposed batches, which the rules for arrays leave to be traced down to
+# the BLAS calls. The cotangent of a transpose is added to its parent, transposed.
+const BatchedMulTranspose{P} = Union{NNlib.BatchedTranspose{P,<:PlainArray{P,3}},
+                                     NNlib.BatchedAdjoint{P,<:PlainArray{P,3}}}
+for (A, B) in ((:(BatchedMulTranspose{P}), :(PlainArray{P,3})),
+               (:(PlainArray{P,3}), :(BatchedMulTranspose{P})),
+               (:(BatchedMulTranspose{P}), :(BatchedMulTranspose{P})))
+    @eval begin
+        @is_primitive MinimalCtx ReverseMode Tuple{typeof(NNlib.batched_mul),$A,$B} where {P<:IEEEFloat}
+        function Mooncake.rrule!!(f::CoDual{typeof(NNlib.batched_mul)}, a::CoDual{<:$A},
+                                  b::CoDual{<:$B}) where {P<:IEEEFloat}
+            y, pullback = _chainrules_rrule(primal(f), (;), (a, b))
+            return y, ȳ -> (NoRData(), pullback(ȳ)...)
+        end
+    end
+end
+
+_cotangent(x::CoDual{<:BatchedMulTranspose}) = NNlib.batched_transpose(tangent(x).data.parent)
+_accumulate!(x̄::NNlib.BatchedTranspose, Δ::AbstractArray) =
+    (parent(x̄) .+= permutedims(Δ, (2, 1, 3)); nothing)
+
 # `_exp` and `_expm1` build a power of two from its bits, which Mooncake refuses to
 # differentiate (a `bitcast` from an integer to a float). As primitives they are called
 # as they are, and their derivative comes from the value they return. `_log1p_unit` it

@@ -91,6 +91,17 @@ function mooncake_testsuite(Backend)
             is_primitive=true, unsafe_perturb=true)
     end
 
+    @testset "batched_mul of transposes" begin
+        rng = StableRNG(123)
+        a, b = _rand(rng, 2, 3, 4), _rand(rng, 2, 5, 4)
+        @testset "$i" for (i, (x, y)) in enumerate(((batched_transpose(a), b),
+                                                    (permutedims(b, (2, 1, 3)), batched_adjoint(permutedims(a, (2, 1, 3)))),
+                                                    (batched_transpose(a), batched_transpose(permutedims(b, (2, 1, 3))))))
+            test_rule(StableRNG(123), batched_mul, x, y; perf_flag=:none, is_primitive=true,
+                mode=Mooncake.ReverseMode)
+        end
+    end
+
     @testset "affine normalization" begin
         rng = StableRNG(123)
         test_rule(rng, NNlib._affine_normalize,
