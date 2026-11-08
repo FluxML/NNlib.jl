@@ -25,6 +25,9 @@ function gather_testsuite(Backend)
 
         dst = device(T.(zero(index)))
         @test cpu(gather!(dst, src, index)) == output
+        @test cpu(gather(src, index; checkbounds = false)) == output
+        @test cpu(gather!(zero(dst), src, index; checkbounds = false)) == output
+        @test cpu(gather(src, cpu(index); checkbounds = false)) == output
         dst = device(zeros(T, 3, 5))
         @test_throws ArgumentError gather!(dst, src, index)
 
@@ -208,6 +211,7 @@ function gather_testsuite(Backend)
         i, j = device([1,2]), device([2,4])
         y = gather(x, i, j)
         @test cpu(y) == [4, 11]
+        @test cpu(gather(x, i, j; checkbounds = false)) == [4, 11]
         y = gather(x, device([1, 2]))
         @test cpu(y) == [
             1 4
@@ -222,6 +226,21 @@ function gather_testsuite(Backend)
         y = gather!(dst, x, i, j)
         @test y === dst
         @test cpu(y) == [4, 11]
+        @test cpu(gather!(zero(dst), x, i, j; checkbounds = false)) == [4, 11]
+    end
+
+    @testset "gradient with checkbounds = false" begin
+        src = device(T[3 4 5; 6 7 8])
+        idx = device([3, 1, 3, 2])
+        f(kw) = s -> sum(abs2, gather(s, idx; kw...))
+        @test cpu(only(gradient(f((; checkbounds = false)), src))) == cpu(only(gradient(f((;)), src)))
+        if NNLIB_TEST_ENZYME
+            g!(d, s, i) = sum(abs2, gather!(d, s, i; checkbounds = false))
+            dst, dsrc = device(zeros(T, 2, 4)), zero(src)
+            Enzyme.autodiff(Enzyme.Reverse, g!, Active, Duplicated(dst, zero(dst)),
+                            Duplicated(copy(src), dsrc), Const(idx))
+            @test cpu(dsrc) == cpu(only(gradient(f((;)), src)))
+        end
     end
 end
 

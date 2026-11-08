@@ -525,18 +525,20 @@ function _scatter_jvp(op, kw, dkw, src, idx)
     return Dual(y, _scatter_tangent(op, psrc, dsrc, idx, y, get(kw, :init, nothing), dinit))
 end
 
+# The primal call has checked the indices, hence `checkbounds=false` here and in the
+# reverse rules.
 function _scatter_tangent(op::LinearScatterOp, psrc, dsrc, idx, y, init, dinit)
-    dy = NNlib.scatter(op, dsrc, idx; dstsize=size(y))
+    dy = NNlib.scatter(op, dsrc, idx; dstsize=size(y), checkbounds=false)
     dinit isa Number && (dy .+= dinit)
     return dy
 end
 
 function _scatter_tangent(::ExtremumScatterOp, psrc::AbstractArray{P}, dsrc, idx, y, init, dinit) where {P}
-    tied = psrc .== NNlib.gather(y, idx)
+    tied = psrc .== NNlib.gather(y, idx; checkbounds=false)
     init_tie = isnothing(init) ? false : y .== convert(P, init)
-    counts = NNlib.scatter!(+, fill!(similar(y, Int), 0), tied, idx)
+    counts = NNlib.scatter!(+, fill!(similar(y, Int), 0), tied, idx; checkbounds=false)
     counts .+= init_tie
-    dy = NNlib.scatter(+, ifelse.(tied, dsrc, zero(P)), idx; dstsize=size(y))
+    dy = NNlib.scatter(+, ifelse.(tied, dsrc, zero(P)), idx; dstsize=size(y), checkbounds=false)
     dinit isa Number && (dy .+= init_tie .* convert(P, dinit))
     # A destination no index reaches has no tied source.
     return dy ./ max.(counts, 1)
@@ -765,17 +767,18 @@ end
     dsrc, psrc::AbstractArray{P}, pidx, y, dy, init
 ) where {P}
     # `convert`, because NNlib rounds `init` into the destination before comparing.
-    tied = psrc .== NNlib.gather(y, pidx)
+    tied = psrc .== NNlib.gather(y, pidx; checkbounds=false)
     init_tie = isnothing(init) ? false : y .== convert(P, init)
     # `Int`, because a float count saturates once its spacing passes 1 — `BFloat16` at 256,
     # `Float16` at 2048, `Float32` at 2^24 — inflating every share in a larger tie group.
-    counts = NNlib.scatter!(+, fill!(similar(y, Int), 0), tied, pidx)
+    counts = NNlib.scatter!(+, fill!(similar(y, Int), 0), tied, pidx; checkbounds=false)
     isnothing(init) || (counts .+= init_tie)
     # `A` widens half precision for the division, whose operands are all O(1). No zero guard: `gather`
     # reads only destinations some index reaches, and each holds a tied source or `init` itself.
     A = typeof(NNlib._acc(zero(P)))
     total = A.(counts)
-    dsrc .+= P.(tied .* A.(NNlib.gather(dy, pidx)) ./ NNlib.gather(total, pidx))
+    dsrc .+= P.(tied .* A.(NNlib.gather(dy, pidx; checkbounds=false)) ./
+                NNlib.gather(total, pidx; checkbounds=false))
     # `oftype`, because `init` need not share `src`'s precision.
     (isnothing(init) || Mooncake.zero_rdata(init) isa Mooncake.NoRData) && return nothing
     return oftype(init, sum(A.(dy) .* init_tie ./ total))
@@ -847,12 +850,24 @@ end
 # ChainRules defines an `rrule` only for the in-place `gather!`, not `gather`, so without
 # this AD would trace `gather`'s scalar per-index loop (see
 # https://github.com/chalk-lab/Mooncake.jl/issues/1234). The pullback is `∇gather_src`
-# accumulating straight into `src`'s fdata, avoiding its intermediate allocation.
+# accumulating straight into `src`'s fdata, avoiding its intermediate allocation. The
+# keyword is `checkbounds`.
 @is_primitive(
     MinimalCtx,
     ReverseMode,
     Tuple{
         typeof(NNlib.gather),RuleArray{N},SupportedArray{<:Union{Integer,Tuple},M}
+    } where {N,M},
+)
+@is_primitive(
+    MinimalCtx,
+    ReverseMode,
+    Tuple{
+        typeof(Core.kwcall),
+        NamedTuple,
+        typeof(NNlib.gather),
+        RuleArray{N},
+        SupportedArray{<:Union{Integer,Tuple},M},
     } where {N,M},
 )
 # Forward mode traces `gather` on the CPU. On the GPU a traced kernel launch does not survive
@@ -864,14 +879,37 @@ end
         typeof(NNlib.gather),GPUBackedArray{P,N},SupportedArray{<:Union{Integer,Tuple},M}
     } where {P<:IEEEFloat,N,M},
 )
+@is_primitive(
+    MinimalCtx,
+    ForwardMode,
+    Tuple{
+        typeof(Core.kwcall),
+        NamedTuple,
+        typeof(NNlib.gather),
+        GPUBackedArray{P,N},
+        SupportedArray{<:Union{Integer,Tuple},M},
+    } where {P<:IEEEFloat,N,M},
+)
 function Mooncake.frule!!(
     ::Dual{typeof(NNlib.gather)},
     src::Dual{<:GPUBackedArray{P,N}},
     idx::Dual{<:SupportedArray{<:Union{Integer,Tuple},M}},
 ) where {P<:IEEEFloat,N,M}
+    return _gather_jvp((;), src, primal(idx))
+end
+function Mooncake.frule!!(
+    ::Dual{typeof(Core.kwcall)},
+    kw::Dual{<:NamedTuple},
+    ::Dual{typeof(NNlib.gather)},
+    src::Dual{<:GPUBackedArray{P,N}},
+    idx::Dual{<:SupportedArray{<:Union{Integer,Tuple},M}},
+) where {P<:IEEEFloat,N,M}
+    return _gather_jvp(primal(kw), src, primal(idx))
+end
+
+function _gather_jvp(kw, src, idx)
     psrc, dsrc = arrayify(src)
-    pidx = primal(idx)
-    return Dual(NNlib.gather(psrc, pidx), NNlib.gather(dsrc, pidx))
+    return Dual(NNlib.gather(psrc, idx; kw...), NNlib.gather(dsrc, idx; checkbounds=false))
 end
 
 function Mooncake.rrule!!(
@@ -882,19 +920,39 @@ function Mooncake.rrule!!(
     pidx = primal(idx)
     res = zero_fcodual(NNlib.gather(primal(src), pidx))
     function gather_pb!!(::NoRData)
-        _, dsrc = arrayify(src)
-        if dsrc isa Union{Array,AbstractGPUArray}
-            NNlib.scatter!(+, dsrc, tangent(res), pidx)
-        else
-            # `arrayify` keeps the wrapper and `scatter!` takes only a dense destination: a
-            # wrapped one compiles to invalid IR on the GPU and finds no method on the CPU.
-            # `similar` on an `Adjoint` re-wraps, so the buffer comes from the parent.
-            buf = fill!(similar(parent(dsrc), size(dsrc)), 0)
-            dsrc .+= NNlib.scatter!(+, buf, tangent(res), pidx)
-        end
+        _gather_pullback!(src, pidx, tangent(res))
         return NoRData(), NoRData(), NoRData()
     end
     return res, gather_pb!!
+end
+function Mooncake.rrule!!(
+    ::CoDual{typeof(Core.kwcall)},
+    kw::CoDual{<:NamedTuple},
+    ::CoDual{typeof(NNlib.gather)},
+    src::CoDual{<:RuleArray{N}},
+    idx::CoDual{<:SupportedArray{<:Union{Integer,Tuple},M}},
+) where {N,M}
+    pidx = primal(idx)
+    res = zero_fcodual(NNlib.gather(primal(src), pidx; primal(kw)...))
+    function gather_kw_pb!!(::NoRData)
+        _gather_pullback!(src, pidx, tangent(res))
+        return NoRData(), Mooncake.zero_rdata(primal(kw)), NoRData(), NoRData(), NoRData()
+    end
+    return res, gather_kw_pb!!
+end
+
+function _gather_pullback!(src, idx, dy)
+    _, dsrc = arrayify(src)
+    if dsrc isa Union{Array,AbstractGPUArray}
+        NNlib.scatter!(+, dsrc, dy, idx; checkbounds=false)
+    else
+        # `arrayify` keeps the wrapper and `scatter!` takes only a dense destination: a
+        # wrapped one compiles to invalid IR on the GPU and finds no method on the CPU.
+        # `similar` on an `Adjoint` re-wraps, so the buffer comes from the parent.
+        buf = fill!(similar(parent(dsrc), size(dsrc)), 0)
+        dsrc .+= NNlib.scatter!(+, buf, dy, idx; checkbounds=false)
+    end
+    return nothing
 end
 # Views are taken by the rules in `NNlibMooncakeExt.jl`: `@from_rrule` cannot.
 for conv in [:conv, :depthwiseconv]
