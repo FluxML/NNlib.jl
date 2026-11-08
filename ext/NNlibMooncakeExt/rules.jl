@@ -244,12 +244,21 @@ end
 # the GPU a traced kernel launch fails, or kills the process. Most of these operations
 # are linear or bilinear, and the JVP is the primal applied to the tangents.
 
-function _bilinear_jvp(f, kw, a, b, args...)
+# `alpha` scales the product, so its tangent multiplies the product itself: the primal result
+# divided by `alpha`, or a convolution with `alpha=1` where `alpha` is zero.
+function _bilinear_jvp(f, kw, dkw, a, b, args...)
     pa, da = arrayify(a)
     pb, db = arrayify(b)
+    y = f(pa, pb, args...; kw...)
     dy = f(da, pb, args...; kw...)
     dy .+= f(pa, db, args...; kw...)
-    return Dual(f(pa, pb, args...; kw...), dy)
+    # The tangent of keywords without a float is `NoTangent`.
+    dα = dkw isa NamedTuple ? get(dkw, :alpha, nothing) : nothing
+    if dα isa Real && !iszero(dα)
+        α = kw.alpha
+        dy .+= dα .* (iszero(α) ? f(pa, pb, args...; merge(kw, (; alpha=one(α)))...) : y ./ α)
+    end
+    return Dual(y, dy)
 end
 
 for f in (:conv, :∇conv_data, :∇conv_filter)
@@ -267,7 +276,7 @@ for f in (:conv, :∇conv_data, :∇conv_filter)
             b::Dual{<:SupportedArray{P,M}},
             cdims::Dual{<:ConvDims},
         ) where {P<:IEEEFloat,N,M}
-            return _bilinear_jvp($f, (;), a, b, primal(cdims))
+            return _bilinear_jvp($f, (;), nothing, a, b, primal(cdims))
         end
         function frule!!(
             ::Dual{typeof(Core.kwcall)},
@@ -277,7 +286,7 @@ for f in (:conv, :∇conv_data, :∇conv_filter)
             b::Dual{<:SupportedArray{P,M}},
             cdims::Dual{<:ConvDims},
         ) where {P<:IEEEFloat,N,M}
-            return _bilinear_jvp($f, primal(kw), a, b, primal(cdims))
+            return _bilinear_jvp($f, primal(kw), tangent(kw), a, b, primal(cdims))
         end
     end
 end
@@ -538,10 +547,12 @@ function _scatter_tangent(::ExtremumScatterOp, psrc::AbstractArray{P}, dsrc, idx
     init_tie = isnothing(init) ? false : y .== convert(P, init)
     counts = NNlib.scatter!(+, fill!(similar(y, Int), 0), tied, idx; checkbounds=false)
     counts .+= init_tie
-    dy = NNlib.scatter(+, ifelse.(tied, dsrc, zero(P)), idx; dstsize=size(y), checkbounds=false)
-    dinit isa Number && (dy .+= init_tie .* convert(P, dinit))
+    # `A` widens half precision, whose sum of a large tie group stalls once the spacing passes 1.
+    A = typeof(NNlib._acc(zero(P)))
+    dy = NNlib.scatter(+, ifelse.(tied, A.(dsrc), zero(A)), idx; dstsize=size(y), checkbounds=false)
+    dinit isa Number && (dy .+= init_tie .* A(dinit))
     # A destination no index reaches has no tied source.
-    return dy ./ max.(counts, 1)
+    return P.(dy ./ max.(counts, 1))
 end
 
 # At `p ≤ 0` `dropout` returns its input itself, where ChainRules' rrule allocates and draws
@@ -725,9 +736,10 @@ function Mooncake.rrule!!(
 ) where {N}
     y, tmp, s = _logsumexp_terms(primal(x), primal(kw).dims)
     res = zero_fcodual(y)
-    function logsumexp_kw_pb!!(::NoRData)
+    function logsumexp_kw_pb!!(dy)
         _, dx = arrayify(x)
-        dx .+= tangent(res) .* tmp ./ s
+        # `dims=:` gives a scalar output, whose cotangent is `dy`; an array's is in its tangent.
+        dx .+= (dy isa NoRData ? tangent(res) : dy) .* tmp ./ s
         return NoRData(), NoRData(), NoRData(), NoRData()
     end
     return res, logsumexp_kw_pb!!
@@ -1079,9 +1091,10 @@ function rrule!!(
     pb, db = primal(b), tangent(b)
     pσ = primal(σ)
     old_px = copy(px)
+    old_pb = Base.mightalias(px, pb) ? copy(pb) : pb  # `pb` is overwritten along with `px`
     bias_act!(pσ, px, pb)
     function bias_act_pb!!(::NoRData)
-        _scale_by_derivative!(dx, pσ, px, old_px, pb)
+        _scale_by_derivative!(dx, pσ, px, old_px, old_pb)
         _add_bias_gradient!(db, dx)
         copyto!(px, old_px)
         return NoRData(), NoRData(), NoRData(), NoRData()

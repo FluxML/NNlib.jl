@@ -406,6 +406,35 @@ function mooncake_testsuite(Backend)
         end
     end
 
+    # The convolutions are linear in `alpha`, so the derivative is the result for `alpha=1`,
+    # also at `alpha=0`. A closure over `x` and `w` leaves `alpha` the only tangent.
+    @testset "forward mode through alpha" begin
+        x = device(reshape(T[1, 2, 3], 3, 1, 1))
+        w = device(reshape(T[2], 1, 1, 1))
+        cdims, sdims = DenseConvDims(x, w), DepthwiseConvDims(x, w)
+        y = conv(x, w, cdims)
+        jvp(f, a) = last(Mooncake.value_and_derivative!!(
+            Mooncake.prepare_derivative_cache(f, a), (f, Mooncake.zero_tangent(f)), (a, one(a))
+        ))
+        @test sum(y) == 12
+        ops = (
+            a -> conv(x, w, cdims; alpha=a),
+            a -> depthwiseconv(x, w, sdims; alpha=a),
+            a -> ∇conv_data(y, w, cdims; alpha=a),
+            a -> ∇conv_filter(x, y, cdims; alpha=a),
+        )
+        for op in ops, alpha in T.((2, 0))
+            @test jvp(a -> sum(op(a)), alpha) ≈ sum(op(one(T)))
+        end
+        # With tangents on `alpha` and `x` together.
+        f(a, x) = sum(conv(x, w, cdims; alpha=a))
+        (_, d) = Mooncake.value_and_derivative!!(
+            Mooncake.prepare_derivative_cache(f, T(2), x),
+            (f, Mooncake.zero_tangent(f)), (T(2), one(T)), (x, _ones(3, 1, 1)),
+        )
+        @test d ≈ 12 + 2 * 2 * 3
+    end
+
     # Views are not in `SupportedArray`, as `@from_rrule` would add the cotangent to the fdata
     # of the parent, which has its shape. Without a rule Mooncake traces `conv` down to BLAS.
     @testset "convolution and pooling on views" begin
@@ -531,6 +560,32 @@ function mooncake_testsuite(Backend)
         ref_dx, ref_db = gradient((x, b) -> sum(bias_act!(σ, copy(x), b)), x0, b)
         @test cpu(dx) ≈ cpu(ref_dx)
         b isa Bool || @test cpu(db) ≈ cpu(ref_db)
+    end
+
+    # The bias is overwritten with the output when it shares memory with `x`, but the gradient is
+    # that of the old one.
+    @testset "bias_act! with the bias aliasing x: $σ, reshaped: $reshaped" for σ in (tanh, swish),
+                                                                          reshaped in (false, true)
+        alias(y) = reshaped ? reshape(vec(y), size(y)) : y
+        x0 = _rand(rng, 4, 2)
+        ref = cpu(gradient(x -> sum(σ.(x .+ x)), x0)[1])
+
+        x, dx = copy(x0), zero(x0)
+        out, pullback = Mooncake.rrule!!(
+            Mooncake.zero_fcodual(bias_act!), Mooncake.zero_fcodual(σ),
+            Mooncake.CoDual(x, dx), Mooncake.CoDual(alias(x), alias(dx)),
+        )
+        fill!(Mooncake.tangent(out), 1)
+        pullback(Mooncake.NoRData())
+        @test x == x0
+        @test cpu(dx) ≈ ref
+
+        x, dx = copy(x0), device(ones(T, 4, 2))
+        out = Mooncake.frule!!(
+            Mooncake.zero_dual(bias_act!), Mooncake.zero_dual(σ),
+            Mooncake.Dual(x, dx), Mooncake.Dual(alias(x), alias(dx)),
+        )
+        @test cpu(Mooncake.tangent(out)) ≈ ref
     end
 
     @testset "bias_act! forward mode: $σ" for σ in (identity, bias_act_activations...)
@@ -659,6 +714,18 @@ function mooncake_testsuite(Backend)
         end
     end
 
+    # With `dims=:` the output is a scalar, whose cotangent reaches the `kwcall` rule as rdata (#906).
+    gpu || @testset "logsumexp dims=: gradient: $T" for T in (Float64, Float32, half_types...)
+        for x in (T[0, 0], T[0.5 -1; 2 0])
+            f = z -> logsumexp(z; dims=:)
+            val, (_, dx) = Mooncake.value_and_gradient!!(Mooncake.prepare_gradient_cache(f, x), f, x)
+            @test typeof(val) == typeof(logsumexp(x))
+            @test val ≈ logsumexp(x)
+            @test dx isa typeof(x)
+            @test dx ≈ exp.(Float64.(x) .- logsumexp(Float64.(x))) rtol = 4eps(T)
+        end
+    end
+
     # The same in forward mode, where `logsumexp` is evaluated on `NDual`s. NDual has no BFloat16.
     gpu || @testset "half-precision logsumexp on NDual" begin
         n = 100_000
@@ -685,6 +752,19 @@ function mooncake_testsuite(Backend)
         @test val isa Float32
         @test val ≈ logsumexp(x)
         @test dx ≈ softmax(Float32.(x)) rtol = 4eps(Float16)
+    end
+
+    # The tangents of a tie group are summed in Float32: in `T`, the sum stops growing at 2048 for
+    # Float16 and 256 for BFloat16. A uniform shift of the sources shifts the extremum by the same amount.
+    gpu || @testset "scatter max/min tangent in a large tie group: $T" for T in half_types
+        n = 4096
+        for op in (max, min)
+            f = z -> scatter(op, z, ones(Int, n))
+            cache = Mooncake.prepare_derivative_cache(f, ones(T, n))
+            y, dy = Mooncake.value_and_derivative!!(cache, (f, Mooncake.zero_tangent(f)), (ones(T, n), ones(T, n)))
+            @test y == T[1]
+            @test dy == T[1]
+        end
     end
 
     # BFloat16 has rules on the CPU alone: Mooncake gives a `CuArray{BFloat16}` no array tangent, so a
@@ -994,6 +1074,17 @@ function mooncake_testsuite(Backend)
         @testset "$name" for (name, f, args) in cases
             test_hvp(f, args...)
         end
+    end
+
+    # The cotangent of `abs2(a(x) - a(-1))` is zero at `x = -1` but its tangent is not, which the
+    # pullbacks of `_exp`, `_expm1` and `_log1p_unit` must carry: the product is `2 a'(-1)^2`.
+    gpu || @testset "Hessian-vector product through $a" for (a, da) in (
+            (elu, exp(-1.0)), (celu, exp(-1.0)), (selu, NNlib.selu_λ * NNlib.selu_α * exp(-1.0)),
+            (logσ, NNlib.σ(1.0)), (softplus, NNlib.σ(-1.0)),
+        )
+        f(x) = abs2(a(x) - a(-1.0))
+        cache = Mooncake.prepare_hvp_cache(f, -1.0)
+        @test Mooncake.value_and_hvp!!(cache, f, 1.0, -1.0)[3] ≈ 2da^2 rtol = 1e-8
     end
 
     # `elu`, `celu` and `selu` compute `_expm1` whatever the sign of the input. Where it overflows
