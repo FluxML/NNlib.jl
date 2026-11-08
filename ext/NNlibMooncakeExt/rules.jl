@@ -727,9 +727,10 @@ function Mooncake.rrule!!(
 ) where {N}
     y, tmp, s = _logsumexp_terms(primal(x), primal(kw).dims)
     res = zero_fcodual(y)
-    function logsumexp_kw_pb!!(::NoRData)
+    function logsumexp_kw_pb!!(dy)
         _, dx = arrayify(x)
-        dx .+= tangent(res) .* tmp ./ s
+        # `dims=:` gives a scalar output, whose cotangent is `dy`; an array's is in its tangent.
+        dx .+= (dy isa NoRData ? tangent(res) : dy) .* tmp ./ s
         return NoRData(), NoRData(), NoRData(), NoRData()
     end
     return res, logsumexp_kw_pb!!

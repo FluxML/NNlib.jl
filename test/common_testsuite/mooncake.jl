@@ -685,6 +685,18 @@ function mooncake_testsuite(Backend)
         end
     end
 
+    # With `dims=:` the output is a scalar, whose cotangent reaches the `kwcall` rule as rdata (#906).
+    gpu || @testset "logsumexp dims=: gradient: $T" for T in (Float64, Float32, half_types...)
+        for x in (T[0, 0], T[0.5 -1; 2 0])
+            f = z -> logsumexp(z; dims=:)
+            val, (_, dx) = Mooncake.value_and_gradient!!(Mooncake.prepare_gradient_cache(f, x), f, x)
+            @test typeof(val) == typeof(logsumexp(x))
+            @test val ≈ logsumexp(x)
+            @test dx isa typeof(x)
+            @test dx ≈ exp.(Float64.(x) .- logsumexp(Float64.(x))) rtol = 4eps(T)
+        end
+    end
+
     # The same in forward mode, where `logsumexp` is evaluated on `NDual`s. NDual has no BFloat16.
     gpu || @testset "half-precision logsumexp on NDual" begin
         n = 100_000
