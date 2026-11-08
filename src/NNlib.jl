@@ -53,6 +53,7 @@ export scaled_dot_product_attention, scaled_dot_product_attention_with_weights,
 include("rotary_embedding.jl")
 include("causal_conv1d.jl")
 include("sequence_scans.jl")
+include("sequence_scans_kernels.jl")
 
 include("dropout.jl")
 export dropout, dropout!

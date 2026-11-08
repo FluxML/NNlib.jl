@@ -161,6 +161,37 @@ function sequence_scans_testsuite(Backend)
         @test_throws ArgumentError NNlib.gated_delta_rule(q, k, v, g, beta; chunk_size=12)
     end
 
+    # sizes of several tiles of the kernels of the GPU backends, against the CPU
+    test_gpu && @testset "kernel tiles" begin
+        function agree(f, args)
+            out = f(args...)
+            Δ = map(o -> randn(rng, T, size(o)), out)
+            loss(Δ) = (args...) -> (o = f(args...); sum(o[1] .* Δ[1]) + sum(o[2] .* Δ[2]))
+            @test all(cpu.(f(device.(args)...)) .≈ out)
+            for (gd, gc) in zip(Zygote.gradient(loss(device.(Δ)), device.(args)...), Zygote.gradient(loss(Δ), args...))
+                @test cpu(gd) ≈ gc
+            end
+        end
+        x, dt, A, B, C, D, S0 = ssd_inputs(70, 4, 130, 2, 300, 2)
+        agree((x, dt, A, B, C, D, S0)) do x, dt, A, B, C, D, S0
+            NNlib.ssd_scan(x, dt, A, B, C; D, initial_state=S0, chunk_size=128)
+        end
+        q, k, v, g, beta, S0 = delta_inputs(130, 2, 70, 4, 150, 2)
+        agree((q, k, v, g, beta, S0)) do q, k, v, g, beta, S0
+            NNlib.gated_delta_rule(q, k, v, g, beta; initial_state=S0, chunk_size=64)
+        end
+        # half-precision inputs, computed in single precision
+        x, dt, A, B, C, D, S0 = device.(ssd_inputs(8, 4, 16, 2, 40, 2))
+        x16, B16, C16 = Float16.(x), Float16.(B), Float16.(C)
+        g16 = Zygote.gradient((x, B, C) -> sum(NNlib.ssd_scan(x, dt, A, B, C; D, chunk_size=16)[1]), x16, B16, C16)
+        g32 = Zygote.gradient((x, B, C) -> sum(NNlib.ssd_scan(x, dt, A, B, C; D, chunk_size=16)[1]),
+                              map(a -> Float32.(a), (x16, B16, C16))...)
+        @test eltype(g16[1]) == Float16
+        for (a, b) in zip(g16, g32)
+            @test Float32.(cpu(a)) ≈ cpu(b) rtol=1e-2
+        end
+    end
+
     @testset "gradients" begin
         # two chunks, the second padded, and the step of one token
         for n in (7, 1)
