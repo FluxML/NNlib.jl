@@ -1,4 +1,4 @@
-# Kernels of the chunked scans for the GPU backends.
+# Kernels of the chunked scans for the GPU backends, and of their steps for decoding.
 #
 # As in mamba_ssm and flash-linear-attention, each kernel computes tiles of a product of
 # the matrices of a chunk, for all the chunks of all the heads at once. The masks and the
@@ -1329,7 +1329,7 @@ function rrule(::typeof(delta_kernels), q, k, v, g::AbstractArray{T}, beta, scal
 end
 
 function delta_kernels_apply(q, k, v, g, beta, state)
-    ssd_kernels_apply(q, k, v, g, beta, state, nothing) || return false
+    scan_kernels_apply(q, k, v, g, beta, state) || return false
     backend = get_backend(q)
     T = promote_type(Float32, eltype(q), eltype(k), eltype(v), eltype(g), eltype(beta))
     budget = attention_shmem_budget(backend) ÷ sizeof(T)
@@ -1339,16 +1339,15 @@ end
 
 @non_differentiable delta_kernels_apply(::Any...)
 
-# Whether the kernels compute `ssd_scan` of these arrays: arrays of floating-point numbers
-# on one GPU backend, which the kernels take dense (`scan_dense`).
-function ssd_kernels_apply(x, dt, A, B, C, D, state)
-    arrays = (x, dt, A, B, C, D, state)
-    all(a -> a === nothing || (a isa AnyGPUArray && eltype(a) <: FusedAttentionFloat), arrays) || return false
+# Whether the kernels compute with these arrays (or `nothing`s): arrays of floating-point
+# numbers on one GPU backend, which the kernels take dense (`scan_dense`).
+function scan_kernels_apply(x, arrays...)
+    all(a -> a === nothing || (a isa AnyGPUArray && eltype(a) <: FusedAttentionFloat), (x, arrays...)) || return false
     backend = get_backend(x)
     return all(a -> a === nothing || get_backend(a) == backend, arrays)
 end
 
-@non_differentiable ssd_kernels_apply(::Any...)
+@non_differentiable scan_kernels_apply(::Any...)
 
 scan_dense(x) = x isa DenseArray || x === nothing ? x : copy(x)
 
@@ -1376,4 +1375,185 @@ function rrule(::typeof(ssd_kernels), x, dt::AbstractArray{T}, A, B, C, D, state
         return NoTangent(), dx, ddt, dA, dB, dC, dD, dstate, NoTangent()
     end
     return (out, final), ssd_kernels_pullback
+end
+
+
+#######################
+# Decoding
+#######################
+
+# One token, as when decoding: a block computes `STEP_ROWS` rows of the state of a head,
+# which it reads and writes once. Its thread `(i, j)` holds the elements `j + STEP_PARTS * m`
+# of the row `i`, and the sums along the rows add the parts through shared memory.
+const STEP_ROWS, STEP_PARTS = 32, 8
+
+# the longest rows of the states (`state_size`, `head_k_dim`) the step kernels take
+const STEP_MAX_COLUMNS = 256
+
+step_kernels_apply(ncolumns, arrays...) = ncolumns <= STEP_MAX_COLUMNS && scan_kernels_apply(arrays...)
+
+@non_differentiable step_kernels_apply(::Any...)
+
+# whether the token of the batch element `b` is past the end of its sequence
+@inline step_masked(::Nothing, b) = false
+@inline step_masked(len, b) = @inbounds(len[b]) == 0
+
+# the elements `j + STEP_PARTS * m` of a row of `n`, at `x[o + st * f + 1]` for the element
+# `f`, in the type `A`, zero past `n` (and for `x = nothing`)
+@inline step_row(::Type{A}, x, o, st, j, n, ::Val{NF}) where {A,NF} =
+    ntuple(Val(NF)) do m
+        @inline
+        f = j + STEP_PARTS * (m - 1)
+        v = A(@inbounds x[o + st * min(f, n - 1) + 1])
+        ifelse(f < n, v, zero(A))
+    end
+@inline step_row(::Type{A}, ::Nothing, o, st, j, n, ::Val{NF}) where {A,NF} = ntuple(_ -> zero(A), Val(NF))
+
+@inline function step_store!(x, vals::NTuple{NF}, o, st, j, n) where {NF}
+    ntuple(Val(NF)) do m
+        @inline
+        f = j + STEP_PARTS * (m - 1)
+        f < n && (@inbounds x[o + st * f + 1] = vals[m])
+        nothing
+    end
+    return nothing
+end
+
+# (`map` and `sum` of tuples of 32 elements or more are not unrolled)
+@generated function step_dot(a::NTuple{NF,A}, b::NTuple{NF,A}) where {NF,A}
+    ex = :(zero(A))
+    for m in 1:NF
+        ex = :(muladd(a[$m], b[$m], $ex))
+    end
+    return Expr(:block, Expr(:meta, :inline), ex)
+end
+
+# the sums of the values `v` over the parts of the row `i`, on each of its threads
+@inline function step_sum(red, v::NTuple{NV,A}, t, i) where {NV,A}
+    ntuple(Val(NV)) do q
+        @inline
+        @inbounds red[t + STEP_ROWS * STEP_PARTS * (q - 1) + 1] = v[q]
+        nothing
+    end
+    @synchronize()
+    return ntuple(Val(NV)) do q
+        @inline
+        s = zero(A)
+        for r in 0:(STEP_PARTS - 1)
+            s += @inbounds red[i + STEP_ROWS * r + STEP_ROWS * STEP_PARTS * (q - 1) + 1]
+        end
+        s
+    end
+end
+
+@kernel inbounds=true cpu=false unsafe_indices=true function ssd_step_kernel!(
+        y, final::AbstractArray{A}, @Const(initial), @Const(x), @Const(dt), @Const(Ah), @Const(B),
+        @Const(C), D, len, ::Val{NF}) where {A,NF}
+    red = @localmem A (STEP_ROWS * STEP_PARTS,)
+    t = @index(Local, Linear) - 1
+    rb, hd, b = @index(Group, NTuple)
+    P, h = size(x, 1), size(x, 2)
+    N, g = size(B, 1), size(B, 2)
+    gg = (hd - 1) ÷ (h ÷ g) + 1
+    i, j = t % STEP_ROWS, t ÷ STEP_ROWS
+    p = (rb - 1) * STEP_ROWS + i
+    pc = min(p, P - 1)
+    Δ = ifelse(step_masked(len, b), zero(A), A(dt[hd, 1, b]))
+    xp = A(x[pc + 1, hd, 1, b])
+    os, ob = P * N * ((hd - 1) + h * (b - 1)) + pc, N * ((gg - 1) + g * (b - 1))
+    s0 = step_row(A, initial, os, P, j, N, Val(NF))
+    Bv, Cv = step_row(A, B, ob, 1, j, N, Val(NF)), step_row(A, C, ob, 1, j, N, Val(NF))
+    decay, w = exp(Δ * A(Ah[hd])), Δ * xp
+    s = ntuple(m -> muladd(decay, s0[m], w * Bv[m]), Val(NF))
+    yp, = step_sum(red, (step_dot(s, Cv),), t, i)
+    if p < P
+        if j == 0
+            y[p + 1, hd, 1, b] = D === nothing ? yp : muladd(A(D[hd]), xp, yp)
+        end
+        step_store!(final, s, os, P, j, N)
+    end
+end
+
+# `ssd_scan` of one token of dense arrays, with `final` of the compute type `T`
+function ssd_step_kernel(::Type{T}, x, dt, A, B, C, D, state, lengths) where {T}
+    P, h, _, b = size(x)
+    N = size(B, 1)
+    y, final = similar(x), similar(x, T, P, N, h, b)
+    len = lengths === nothing ? nothing : sequence_lengths(x, lengths, 1, b)
+    ssd_step_kernel!(get_backend(x), (STEP_ROWS * STEP_PARTS, 1, 1))(y, final, state, x, dt, A, B, C, D, len,
+        Val(cld(N, STEP_PARTS)); ndrange=(STEP_ROWS * STEP_PARTS * cld(P, STEP_ROWS), h, b))
+    return y, final
+end
+
+# With `S` the state before the token, decayed by `e = exp(g)`, and the write
+# `u = beta * (v - e * S k)`, the state after it is `e * S + u kᵀ` and the output
+# `scale * (e * S q + (k ⋅ q) * u)`.
+@kernel inbounds=true cpu=false unsafe_indices=true function delta_step_kernel!(
+        o, final::AbstractArray{A}, @Const(initial), @Const(q), @Const(k), @Const(v), @Const(g),
+        @Const(beta), scale, len, ::Val{NF}) where {A,NF}
+    red = @localmem A (3 * STEP_ROWS * STEP_PARTS,)
+    t = @index(Local, Linear) - 1
+    rb, hd, b = @index(Group, NTuple)
+    dk, hk = size(k, 1), size(k, 2)
+    dv, h = size(v, 1), size(v, 2)
+    kh = (hd - 1) ÷ (h ÷ hk) + 1
+    i, j = t % STEP_ROWS, t ÷ STEP_ROWS
+    d = (rb - 1) * STEP_ROWS + i
+    dc = min(d, dv - 1)
+    masked = step_masked(len, b)
+    e = ifelse(masked, one(A), exp(A(g[hd, 1, b])))
+    β = ifelse(masked, zero(A), A(beta[hd, 1, b]))
+    os, ok = dv * dk * ((hd - 1) + h * (b - 1)) + dc, dk * ((kh - 1) + hk * (b - 1))
+    s = step_row(A, initial, os, dv, j, dk, Val(NF))
+    kv, qv = step_row(A, k, ok, 1, j, dk, Val(NF)), step_row(A, q, ok, 1, j, dk, Val(NF))
+    sk, sq, kq = step_sum(red, (step_dot(s, kv), step_dot(s, qv), step_dot(kv, qv)), t, i)
+    u = β * (A(v[dc + 1, hd, 1, b]) - e * sk)
+    if d < dv
+        if j == 0
+            o[d + 1, hd, 1, b] = scale * muladd(e, sq, kq * u)
+        end
+        step_store!(final, ntuple(m -> muladd(e, s[m], u * kv[m]), Val(NF)), os, dv, j, dk)
+    end
+end
+
+# `gated_delta_rule` of one token of dense arrays, with `final` of the compute type of `scale`
+function delta_step_kernel(q, k, v, g, beta, scale::T, state, lengths) where {T}
+    dk, _, _, b = size(q)
+    dv, h = size(v, 1), size(v, 2)
+    o, final = similar(v), similar(v, T, dv, dk, h, b)
+    len = lengths === nothing ? nothing : sequence_lengths(q, lengths, 1, b)
+    delta_step_kernel!(get_backend(q), (STEP_ROWS * STEP_PARTS, 1, 1))(o, final, state, q, k, v, g, beta,
+        scale, len, Val(cld(dk, STEP_PARTS)); ndrange=(STEP_ROWS * STEP_PARTS * cld(dv, STEP_ROWS), h, b))
+    return o, final
+end
+
+# `causal_conv1d` of one token, a thread for each channel: its inputs `[state x]`
+@kernel inbounds=true cpu=false function causal_conv_step_kernel!(
+        y::AbstractArray{Y}, new_state::AbstractArray{S}, @Const(x), @Const(w), bias, @Const(state), len,
+        ::Val{K}) where {Y,S,K}
+    c, b = @index(Global, NTuple)
+    xs = ntuple(Val(K)) do j
+        @inline
+        j < K ? (state === nothing ? zero(S) : S(state[c, j, b])) : S(x[c, 1, b])
+    end
+    yc = sum(ntuple(j -> Y(w[j, c]) * Y(xs[j]), Val(K)))
+    y[c, 1, b] = bias === nothing ? yc : yc + Y(bias[c])
+    shift = !step_masked(len, b)
+    ntuple(Val(K - 1)) do j
+        @inline
+        new_state[c, j, b] = ifelse(shift, xs[j + 1], xs[j])
+        nothing
+    end
+end
+
+function causal_conv_step(x, w, bias, state, lengths)
+    C, _, b = size(x)
+    K = size(w, 1)
+    S = state === nothing ? eltype(x) : promote_type(eltype(x), eltype(state))
+    Y = promote_type(S, eltype(w), bias === nothing ? S : eltype(bias))
+    y, new_state = similar(x, Y, C, 1, b), similar(x, S, C, K - 1, b)
+    len = lengths === nothing ? nothing : sequence_lengths(x, lengths, 1, b)
+    causal_conv_step_kernel!(get_backend(x), (256, 1))(y, new_state, x, w, bias, state, len, Val(K);
+        ndrange=(C, b))
+    return y, new_state
 end

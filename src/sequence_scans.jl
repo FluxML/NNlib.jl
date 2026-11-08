@@ -53,7 +53,8 @@ form `Cᵀ B` once for each group of heads and apply the decays as they read it,
 states from chunk to chunk with one pass over them, and have a gradient that keeps only the
 states at the starts of the chunks. The kernels take chunks of at most 256 tokens. The
 gradient is that of the kernels under ChainRules (Zygote); other differentiation packages
-differentiate the generic implementation.
+differentiate the generic implementation. Outside of differentiation, a single token is one
+kernel, which reads and writes the states once, for a `state_size` of at most 256.
 
 The state of Transformers' `ssm_state`, of size `(batch_size, nheads, head_dim,
 state_size)`, is `permutedims(final_state, (4, 3, 1, 2))`.
@@ -81,7 +82,10 @@ function ssd_scan(x::AbstractArray{<:Any,4}, dt::AbstractArray{<:Any,3}, A::Abst
     check_ssd_scan(x, dt, A, B, C, D, initial_state, chunk_size)
     P, h, n, b = size(x)
     T = promote_type(Float32, eltype(x), eltype(dt), eltype(A), eltype(B), eltype(C))
-    if n > 1 && ssd_kernels_apply(x, dt, A, B, C, D, initial_state) && scan_kernels_differentiable(x)
+    if n == 1 && !within_gradient(x) && step_kernels_apply(size(B, 1), x, dt, A, B, C, D, initial_state)
+        return ssd_step_kernel(T, scan_dense.((x, dt, A, B, C, D, initial_state))..., lengths)
+    end
+    if n > 1 && scan_kernels_apply(x, dt, A, B, C, D, initial_state) && scan_kernels_differentiable(x)
         dt = reshape(mask_padding(reshape(T.(dt), 1, h, n, b), lengths), h, n, b)
         return ssd_kernels(scan_dense(x), dt, T.(A), scan_dense(B), scan_dense(C),
                            D === nothing ? nothing : T.(D), scan_dense(initial_state),
@@ -224,7 +228,8 @@ head of keys, the triangular inverse of each chunk in shared memory, and the sta
 carried through the chunks by blocks of its rows. The gradient keeps the states at the
 starts of the chunks. The kernels take chunks of at most 64 tokens. The gradient is that
 of the kernels under ChainRules (Zygote); other differentiation packages differentiate the
-generic implementation.
+generic implementation. Outside of differentiation, a single token is one kernel, which
+reads and writes the states once, for a `head_k_dim` of at most 256.
 
 The state of Transformers' `recurrent_state`, of size `(batch_size, nheads, head_k_dim,
 head_v_dim)`, is `permutedims(final_state, (4, 3, 2, 1))`.
@@ -255,6 +260,9 @@ function gated_delta_rule(q::AbstractArray{<:Any,4}, k::AbstractArray{<:Any,4},
     h = size(v, 2)
     T = promote_type(Float32, eltype(q), eltype(k), eltype(v), eltype(g), eltype(beta))
     scale = T(something(scale, 1 / sqrt(T(dk))))
+    if n == 1 && !within_gradient(q) && step_kernels_apply(dk, q, k, v, g, beta, initial_state)
+        return delta_step_kernel(scan_dense.((q, k, v, g, beta))..., scale, scan_dense(initial_state), lengths)
+    end
     if n > 1 && delta_kernels_apply(q, k, v, g, beta, initial_state) && scan_kernels_differentiable(q)
         g = reshape(mask_padding(reshape(T.(g), 1, h, n, b), lengths), h, n, b)
         beta = reshape(mask_padding(reshape(T.(beta), 1, h, n, b), lengths), h, n, b)

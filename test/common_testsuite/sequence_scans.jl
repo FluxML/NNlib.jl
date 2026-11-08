@@ -180,6 +180,18 @@ function sequence_scans_testsuite(Backend)
         agree((q, k, v, g, beta, S0)) do q, k, v, g, beta, S0
             NNlib.gated_delta_rule(q, k, v, g, beta; initial_state=S0, chunk_size=64)
         end
+        # one token, as when decoding: several blocks of rows, rows in several parts
+        x, dt, A, B, C, D, S0 = ssd_inputs(70, 4, 130, 2, 1, 3)
+        q, k, v, g, beta, R0 = delta_inputs(130, 2, 70, 4, 1, 3)
+        for init in (false, true), lengths in (nothing, [0, 1, 1])
+            S, R = init ? (S0, R0) : (nothing, nothing)
+            y = NNlib.ssd_scan(x, dt, A, B, C; D, initial_state=S, lengths)
+            @test all(cpu.(NNlib.ssd_scan(device.((x, dt, A, B, C))...; D=device(D),
+                                          initial_state=device(S), lengths)) .≈ y)
+            o = NNlib.gated_delta_rule(q, k, v, g, beta; initial_state=R, lengths)
+            @test all(cpu.(NNlib.gated_delta_rule(device.((q, k, v, g, beta))...;
+                                                  initial_state=device(R), lengths)) .≈ o)
+        end
         # half-precision inputs, computed in single precision
         x, dt, A, B, C, D, S0 = device.(ssd_inputs(8, 4, 16, 2, 40, 2))
         x16, B16, C16 = Float16.(x), Float16.(B), Float16.(C)

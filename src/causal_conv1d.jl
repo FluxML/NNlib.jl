@@ -19,7 +19,8 @@ The `kernel_size - 1` inputs before the first position are the columns of `state
 `(channels, kernel_size - 1, batch_size)`, or zeros. The returned `new_state` holds the
 last `kernel_size - 1` inputs of `state` continued by `x`. Convolving a sequence in
 pieces, each starting from the `new_state` of the previous one, gives the convolution of
-the whole sequence: this is how a decoder passes its tokens one at a time.
+the whole sequence: this is how a decoder passes its tokens one at a time. On the GPU
+backends, a single token outside of differentiation is one kernel.
 
 Returns `y`, of the size of `x`, and `new_state`.
 
@@ -52,6 +53,9 @@ y1, state = NNlib.causal_conv1d(x1, w; bias, state)
 function causal_conv1d(x::AbstractArray{<:Any,3}, w::AbstractMatrix;
                        bias=nothing, state=nothing, lengths=nothing)
     check_causal_conv1d(x, w, bias, state)
+    if size(x, 2) == 1 && !within_gradient(x) && scan_kernels_apply(x, w, bias, state)
+        return causal_conv_step(scan_dense.((x, w, bias, state))..., lengths)
+    end
     K = size(w, 1)
     xs = state === nothing ? pad_zeros(x, (K - 1, 0); dims=2) : cat(state, x; dims=2)
     y = causal_conv(xs, w)

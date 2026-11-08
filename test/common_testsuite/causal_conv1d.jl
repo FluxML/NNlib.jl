@@ -49,6 +49,13 @@ function causal_conv1d_testsuite(Backend)
             end
         end
         @test conv(x, w; state, lengths=9)[2] ≈ conv(x, w; state)[2]
+
+        # a single token, past the end of the first sequence
+        y1, state1 = conv(x[:, 1:1, :], w; bias=device(bias), state, lengths=[0, 1])
+        y_ref, state_ref = conv_reference(x[:, 1:1, :], w, bias, state)
+        @test y1 ≈ y_ref
+        @test state1 ≈ cat(state[:, :, 1:1], state_ref[:, :, 2:2]; dims=3)
+        @test conv(x[:, 1:1, :], w)[1] ≈ conv_reference(x[:, 1:1, :], w, nothing, nothing)[1]
     end
 
     @testset "types and errors" begin
