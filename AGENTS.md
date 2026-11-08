@@ -9,6 +9,7 @@ upsampling. Primarily consumed by Flux.jl but usable standalone. Minimum Julia: 
 - `src/` — CPU implementations. Key files: `NNlib.jl` (module + exports),
   `activations.jl`, `attention.jl`, `conv.jl`, `pooling.jl`, `softmax.jl`,
   `batched/`, `gather.jl`/`scatter.jl`, `dropout.jl`, `normalization.jl`,
+  `causal_conv1d.jl`/`sequence_scans.jl` (Mamba-2 and gated delta rule scans),
   `audio/` (STFT/mel/spectrogram).
   - `src/dim_helpers/` — `ConvDims`, `DenseConvDims`, `DepthwiseConvDims`, `PoolDims`.
   - `src/impl/` — direct and im2col conv/pooling kernels.

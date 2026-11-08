@@ -55,6 +55,18 @@ NNlib.rotary_embedding_table
 NNlib.apply_rotary_embedding
 ```
 
+## State-space and linear-attention layers
+
+The sequence mixing of the layers that carry a state along the sequence, as Mamba-2 and
+Gated DeltaNet, in the layout of the attention. Each takes the state of a previous part of
+the sequences and returns the state after its last token, for decoding one token at a time.
+
+```@docs
+NNlib.causal_conv1d
+NNlib.ssd_scan
+NNlib.gated_delta_rule
+```
+
 ## Softmax
 
 `Flux`'s `logitcrossentropy` uses `NNlib.logsoftmax` internally.
