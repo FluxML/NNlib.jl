@@ -620,8 +620,7 @@ pad_tokens(a, L) = (pad = mod(-size(a, 2), L); pad == 0 ? a : pad_zeros(a, (0, p
 # Σ_{l ≥ t} d[l] over the positions `l` of the chunk of `t`
 function reverse_chunk_cumsum(d, L)
     h, n, b = size(d)
-    dc = reshape(pad_tokens(d, L), h, L, :, b)
-    r = sum(dc; dims=2) .- cumsum(dc; dims=2) .+ dc
+    r = reverse_cumsum(reshape(pad_tokens(d, L), h, L, :, b); dims=2)
     return reshape(r, h, :, b)[:, 1:n, :]
 end
 

@@ -151,7 +151,7 @@ function ssd_chunked(x, dt, A, B, C, state, chunk_size)
     flat(z) = reshape(z, size(z, 1), size(z, 2), :)
     # (features, L, nc, nheads * batch_size)
     xdt = chunked(x .* dt)
-    cum = cumsum(chunked(dt .* A); dims=2)
+    cum = scan_cumsum(chunked(dt .* A); dims=2)
     BC = batched_mul(batched_transpose(flat(chunked(B))), flat(chunked(C)))
     weights = reshape(BC, L, L, nc, 1, g, b) .* reshape(chunk_decays(cum), L, L, nc, r, g, b)
     y = batched_mul(flat(xdt), reshape(weights, L, L, :))
@@ -162,7 +162,7 @@ function ssd_chunked(x, dt, A, B, C, state, chunk_size)
     s0 = state === nothing ? zeros_like(x, (P * N, 1, h * b)) : reshape(state, P * N, 1, :)
     # the states at the start of each chunk, and after the last
     states = batched_mul(cat(s0, reshape(written, P * N, nc, :); dims=2),
-                         chunk_decays(cumsum(pad_zeros(reshape(last, 1, nc, :), (1, 0); dims=2); dims=2)))
+                         chunk_decays(scan_cumsum(pad_zeros(reshape(last, 1, nc, :), (1, 0); dims=2); dims=2)))
     y = y .+ batched_mul(reshape(states[:, 1:nc, :], P, N, :), flat(Cc)) .* flat(exp.(cum))
     return from_chunks(reshape(y, P, L, nc, :), h, n), reshape(states[:, nc + 1, :], P, N, h, b)
 end
@@ -327,7 +327,7 @@ function gated_delta_chunked(q, k, v, g, beta, state, chunk_size)
     # (features, L, nc, nheads * batch_size)
     q, k, v, g, beta = chunked(q), chunked(k), chunked(v), chunked(g), chunked(beta)
     k_beta = k .* beta
-    cum = cumsum(g; dims=2)
+    cum = scan_cumsum(g; dims=2)
     decay = flat(chunk_decays(cum))
     kt = batched_transpose(flat(k))
     attn = batched_mul(kt, flat(q)) .* decay
@@ -434,6 +434,17 @@ function causal_log_mask(x, L)
 end
 
 @non_differentiable causal_log_mask(::Any...)
+
+# `cumsum`, with a pullback without `reverse`, which GPUArrays 11 runs on the CPU (Metal)
+scan_cumsum(x; dims) = cumsum(x; dims)
+
+function rrule(::typeof(scan_cumsum), x; dims)
+    scan_cumsum_pullback(Δ) = (NoTangent(), reverse_cumsum(unthunk(Δ); dims))
+    return scan_cumsum(x; dims), scan_cumsum_pullback
+end
+
+# `Σ_{j ≥ i} d[j]` along `dims`
+reverse_cumsum(d; dims) = sum(d; dims) .- cumsum(d; dims) .+ d
 
 # `x` (features, nheads, seq_len, batch_size) padded with `pad` zero tokens and cut in
 # chunks of `L` tokens: (features, L, chunks, nheads * batch_size).
