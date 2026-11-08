@@ -244,12 +244,21 @@ end
 # the GPU a traced kernel launch fails, or kills the process. Most of these operations
 # are linear or bilinear, and the JVP is the primal applied to the tangents.
 
-function _bilinear_jvp(f, kw, a, b, args...)
+# `alpha` scales the product, so its tangent multiplies the product itself: the primal result
+# divided by `alpha`, or a convolution with `alpha=1` where `alpha` is zero.
+function _bilinear_jvp(f, kw, dkw, a, b, args...)
     pa, da = arrayify(a)
     pb, db = arrayify(b)
+    y = f(pa, pb, args...; kw...)
     dy = f(da, pb, args...; kw...)
     dy .+= f(pa, db, args...; kw...)
-    return Dual(f(pa, pb, args...; kw...), dy)
+    # The tangent of keywords without a float is `NoTangent`.
+    dα = dkw isa NamedTuple ? get(dkw, :alpha, nothing) : nothing
+    if dα isa Real && !iszero(dα)
+        α = kw.alpha
+        dy .+= dα .* (iszero(α) ? f(pa, pb, args...; merge(kw, (; alpha=one(α)))...) : y ./ α)
+    end
+    return Dual(y, dy)
 end
 
 for f in (:conv, :∇conv_data, :∇conv_filter)
@@ -267,7 +276,7 @@ for f in (:conv, :∇conv_data, :∇conv_filter)
             b::Dual{<:SupportedArray{P,M}},
             cdims::Dual{<:ConvDims},
         ) where {P<:IEEEFloat,N,M}
-            return _bilinear_jvp($f, (;), a, b, primal(cdims))
+            return _bilinear_jvp($f, (;), nothing, a, b, primal(cdims))
         end
         function frule!!(
             ::Dual{typeof(Core.kwcall)},
@@ -277,7 +286,7 @@ for f in (:conv, :∇conv_data, :∇conv_filter)
             b::Dual{<:SupportedArray{P,M}},
             cdims::Dual{<:ConvDims},
         ) where {P<:IEEEFloat,N,M}
-            return _bilinear_jvp($f, primal(kw), a, b, primal(cdims))
+            return _bilinear_jvp($f, primal(kw), tangent(kw), a, b, primal(cdims))
         end
     end
 end

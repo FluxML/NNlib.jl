@@ -406,6 +406,35 @@ function mooncake_testsuite(Backend)
         end
     end
 
+    # The convolutions are linear in `alpha`, so the derivative is the result for `alpha=1`,
+    # also at `alpha=0`. A closure over `x` and `w` leaves `alpha` the only tangent.
+    @testset "forward mode through alpha" begin
+        x = device(reshape(T[1, 2, 3], 3, 1, 1))
+        w = device(reshape(T[2], 1, 1, 1))
+        cdims, sdims = DenseConvDims(x, w), DepthwiseConvDims(x, w)
+        y = conv(x, w, cdims)
+        jvp(f, a) = last(Mooncake.value_and_derivative!!(
+            Mooncake.prepare_derivative_cache(f, a), (f, Mooncake.zero_tangent(f)), (a, one(a))
+        ))
+        @test sum(y) == 12
+        ops = (
+            a -> conv(x, w, cdims; alpha=a),
+            a -> depthwiseconv(x, w, sdims; alpha=a),
+            a -> ∇conv_data(y, w, cdims; alpha=a),
+            a -> ∇conv_filter(x, y, cdims; alpha=a),
+        )
+        for op in ops, alpha in T.((2, 0))
+            @test jvp(a -> sum(op(a)), alpha) ≈ sum(op(one(T)))
+        end
+        # With tangents on `alpha` and `x` together.
+        f(a, x) = sum(conv(x, w, cdims; alpha=a))
+        (_, d) = Mooncake.value_and_derivative!!(
+            Mooncake.prepare_derivative_cache(f, T(2), x),
+            (f, Mooncake.zero_tangent(f)), (T(2), one(T)), (x, _ones(3, 1, 1)),
+        )
+        @test d ≈ 12 + 2 * 2 * 3
+    end
+
     # Views are not in `SupportedArray`, as `@from_rrule` would add the cotangent to the fdata
     # of the parent, which has its shape. Without a rule Mooncake traces `conv` down to BLAS.
     @testset "convolution and pooling on views" begin
