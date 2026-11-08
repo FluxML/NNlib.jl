@@ -713,6 +713,19 @@ function mooncake_testsuite(Backend)
         @test dx ≈ softmax(Float32.(x)) rtol = 4eps(Float16)
     end
 
+    # The tangents of a tie group are summed in Float32: in `T`, the sum stops growing at 2048 for
+    # Float16 and 256 for BFloat16. A uniform shift of the sources shifts the extremum by the same amount.
+    gpu || @testset "scatter max/min tangent in a large tie group: $T" for T in half_types
+        n = 4096
+        for op in (max, min)
+            f = z -> scatter(op, z, ones(Int, n))
+            cache = Mooncake.prepare_derivative_cache(f, ones(T, n))
+            y, dy = Mooncake.value_and_derivative!!(cache, (f, Mooncake.zero_tangent(f)), (ones(T, n), ones(T, n)))
+            @test y == T[1]
+            @test dy == T[1]
+        end
+    end
+
     # BFloat16 has rules on the CPU alone: Mooncake gives a `CuArray{BFloat16}` no array tangent, so a
     # rule could not return the gradient of a device array. They are checked against the same
     # computation in Float32 on the same values, to the precision of BFloat16.

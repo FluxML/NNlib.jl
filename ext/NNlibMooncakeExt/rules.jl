@@ -538,10 +538,12 @@ function _scatter_tangent(::ExtremumScatterOp, psrc::AbstractArray{P}, dsrc, idx
     init_tie = isnothing(init) ? false : y .== convert(P, init)
     counts = NNlib.scatter!(+, fill!(similar(y, Int), 0), tied, idx; checkbounds=false)
     counts .+= init_tie
-    dy = NNlib.scatter(+, ifelse.(tied, dsrc, zero(P)), idx; dstsize=size(y), checkbounds=false)
-    dinit isa Number && (dy .+= init_tie .* convert(P, dinit))
+    # `A` widens half precision, whose sum of a large tie group stalls once the spacing passes 1.
+    A = typeof(NNlib._acc(zero(P)))
+    dy = NNlib.scatter(+, ifelse.(tied, A.(dsrc), zero(A)), idx; dstsize=size(y), checkbounds=false)
+    dinit isa Number && (dy .+= init_tie .* A(dinit))
     # A destination no index reaches has no tied source.
-    return dy ./ max.(counts, 1)
+    return P.(dy ./ max.(counts, 1))
 end
 
 # At `p ≤ 0` `dropout` returns its input itself, where ChainRules' rrule allocates and draws
