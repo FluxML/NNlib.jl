@@ -178,9 +178,11 @@ _accumulate!(x̄::NNlib.BatchedTranspose, Δ::AbstractArray) =
 # The rules are inlined into the code Mooncake derives, like the kernels into NNlib's:
 # left as a call, each costs some 2 ns more per element.
 #
-# A zero cotangent stays zero: `elu` and its relatives call `_expm1` on any input, large
-# positive ones included, where it and its derivative overflow to `Inf`. The `ifelse` that
-# discards it gives it a zero cotangent, and `0 * Inf` is `NaN`.
+# A zero cotangent stays zero where the derivative is not finite: `elu` and its relatives
+# call `_expm1` on any input, large positive ones included, where it and its derivative
+# overflow to `Inf`. The `ifelse` that discards it gives it a zero cotangent, and `0 * Inf`
+# is `NaN`. Where the derivative is finite the product is kept, as forward over reverse
+# differentiates the pullback: a zero cotangent may carry a tangent.
 for (f, ctx, dydx) in ((:_exp, :MinimalCtx, :y), (:_expm1, :MinimalCtx, :(y + 1)),
                        (:_log1p_unit, :DefaultCtx, :(inv(1 + x))))
     @eval begin
@@ -194,7 +196,7 @@ for (f, ctx, dydx) in ((:_exp, :MinimalCtx, :y), (:_expm1, :MinimalCtx, :(y + 1)
             x = primal(x_x̄)
             y = NNlib.$f(x)
             dydx = $dydx
-            pullback(ȳ::P) = NoRData(), ifelse(iszero(ȳ), ȳ, dydx * ȳ)
+            pullback(ȳ::P) = NoRData(), ifelse(iszero(ȳ) & !isfinite(dydx), ȳ, dydx * ȳ)
             return zero_fcodual(y), pullback
         end
     end

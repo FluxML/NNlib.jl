@@ -1047,6 +1047,17 @@ function mooncake_testsuite(Backend)
         end
     end
 
+    # The cotangent of `abs2(a(x) - a(-1))` is zero at `x = -1` but its tangent is not, which the
+    # pullbacks of `_exp`, `_expm1` and `_log1p_unit` must carry: the product is `2 a'(-1)^2`.
+    gpu || @testset "Hessian-vector product through $a" for (a, da) in (
+            (elu, exp(-1.0)), (celu, exp(-1.0)), (selu, NNlib.selu_λ * NNlib.selu_α * exp(-1.0)),
+            (logσ, NNlib.σ(1.0)), (softplus, NNlib.σ(-1.0)),
+        )
+        f(x) = abs2(a(x) - a(-1.0))
+        cache = Mooncake.prepare_hvp_cache(f, -1.0)
+        @test Mooncake.value_and_hvp!!(cache, f, 1.0, -1.0)[3] ≈ 2da^2 rtol = 1e-8
+    end
+
     # `elu`, `celu` and `selu` compute `_expm1` whatever the sign of the input. Where it overflows
     # (`x > 88.7` for `Float32`, `709.8` for `Float64`) its derivative is `Inf` too, and a zero
     # cotangent times it was `NaN`. For `celu` the argument is `x / α`, which does so much earlier.
