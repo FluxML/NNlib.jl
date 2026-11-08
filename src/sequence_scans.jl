@@ -48,6 +48,13 @@ chunks are combined by a product with a matrix of their decays. The
 chunk size trades memory, `(chunk_size, chunk_size)` per head and chunk, against the
 `(head_dim, state_size)` state per head and chunk.
 
+On the GPU backends, the chunked algorithm runs as kernels, as those of mamba_ssm: they
+form `Cᵀ B` once for each group of heads and apply the decays as they read it, carry the
+states from chunk to chunk with one pass over them, and have a gradient that keeps only the
+states at the starts of the chunks. The kernels take chunks of at most 256 tokens. The
+gradient is that of the kernels under ChainRules (Zygote); other differentiation packages
+differentiate the generic implementation.
+
 The state of Transformers' `ssm_state`, of size `(batch_size, nheads, head_dim,
 state_size)`, is `permutedims(final_state, (4, 3, 1, 2))`.
 
@@ -74,13 +81,19 @@ function ssd_scan(x::AbstractArray{<:Any,4}, dt::AbstractArray{<:Any,3}, A::Abst
     check_ssd_scan(x, dt, A, B, C, D, initial_state, chunk_size)
     P, h, n, b = size(x)
     T = promote_type(Float32, eltype(x), eltype(dt), eltype(A), eltype(B), eltype(C))
+    if n > 1 && ssd_kernels_apply(x, dt, A, B, C, D, initial_state) && scan_kernels_differentiable(x)
+        dt = reshape(mask_padding(reshape(T.(dt), 1, h, n, b), lengths), h, n, b)
+        return ssd_kernels(scan_dense(x), dt, T.(A), scan_dense(B), scan_dense(C),
+                           D === nothing ? nothing : T.(D), scan_dense(initial_state),
+                           min(chunk_size, n, L_MAX_SCAN))
+    end
     r = h ÷ size(B, 2)
     xT = T.(x)
     dt = mask_padding(reshape(T.(dt), 1, h, n, b), lengths)
     A = reshape(T.(A), 1, h)
-    B, C = repeat_heads(T.(B), r), repeat_heads(T.(C), r)
+    B, C = T.(B), T.(C)
     state = initial_state === nothing ? nothing : T.(initial_state)
-    y, state = n == 1 ? ssd_step(xT, dt, A, B, C, state) :
+    y, state = n == 1 ? ssd_step(xT, dt, A, repeat_heads(B, r), repeat_heads(C, r), state) :
                         ssd_chunked(xT, dt, A, B, C, state, chunk_size)
     y = D === nothing ? y : y .+ reshape(T.(D), 1, h) .* xT
     return eltype(y) == eltype(x) ? y : eltype(x).(y), state
@@ -125,26 +138,31 @@ end
 
 # The chunks are processed in parallel: the outputs within a chunk are a masked product
 # of its matrices, as in attention, and the state at the start of each chunk is a sum of
-# the states written by the previous chunks, weighted by their decays.
+# the states written by the previous chunks, weighted by their decays. `B` and `C` are those
+# of the groups of heads, of which `Bᵀ C` is formed once.
 function ssd_chunked(x, dt, A, B, C, state, chunk_size)
     P, h, n, b = size(x)
-    N = size(B, 1)
+    N, g = size(B, 1), size(B, 2)
+    r = h ÷ g
     L = min(chunk_size, n)
     pad = mod(-n, L)
     nc = (n + pad) ÷ L
     chunked(z) = to_chunks(z, L, pad)
     flat(z) = reshape(z, size(z, 1), size(z, 2), :)
     # (features, L, nc, nheads * batch_size)
-    xdt, Bc, Cc = chunked(x .* dt), chunked(B), chunked(C)
-    cum = cumsum(chunked(dt .* A); dims=2)
+    xdt = chunked(x .* dt)
+    cum = scan_cumsum(chunked(dt .* A); dims=2)
+    BC = batched_mul(batched_transpose(flat(chunked(B))), flat(chunked(C)))
+    weights = reshape(BC, L, L, nc, 1, g, b) .* reshape(chunk_decays(cum), L, L, nc, r, g, b)
+    y = batched_mul(flat(xdt), reshape(weights, L, L, :))
+    Bc, Cc = chunked(repeat_heads(B, r)), chunked(repeat_heads(C, r))
     Bt = batched_transpose(flat(Bc))
-    y = batched_mul(flat(xdt), batched_mul(Bt, flat(Cc)) .* flat(chunk_decays(cum)))
     last = cum[:, L:L, :, :]
     written = batched_mul(flat(xdt .* exp.(last .- cum)), Bt)
     s0 = state === nothing ? zeros_like(x, (P * N, 1, h * b)) : reshape(state, P * N, 1, :)
     # the states at the start of each chunk, and after the last
     states = batched_mul(cat(s0, reshape(written, P * N, nc, :); dims=2),
-                         chunk_decays(cumsum(pad_zeros(reshape(last, 1, nc, :), (1, 0); dims=2); dims=2)))
+                         chunk_decays(scan_cumsum(pad_zeros(reshape(last, 1, nc, :), (1, 0); dims=2); dims=2)))
     y = y .+ batched_mul(reshape(states[:, 1:nc, :], P, N, :), flat(Cc)) .* flat(exp.(cum))
     return from_chunks(reshape(y, P, L, nc, :), h, n), reshape(states[:, nc + 1, :], P, N, h, b)
 end
@@ -200,6 +218,14 @@ writes are found by solving a unit triangular system, here by inverting its matr
 blocks, and the outputs are matrix products. The state is carried from one chunk to the
 next by a loop over the chunks.
 
+On the GPU backends, the chunked algorithm runs as kernels, as those of
+flash-linear-attention: the products of the queries and the keys are formed once for each
+head of keys, the triangular inverse of each chunk in shared memory, and the state is
+carried through the chunks by blocks of its rows. The gradient keeps the states at the
+starts of the chunks. The kernels take chunks of at most 64 tokens. The gradient is that
+of the kernels under ChainRules (Zygote); other differentiation packages differentiate the
+generic implementation.
+
 The state of Transformers' `recurrent_state`, of size `(batch_size, nheads, head_k_dim,
 head_v_dim)`, is `permutedims(final_state, (4, 3, 2, 1))`.
 
@@ -229,6 +255,12 @@ function gated_delta_rule(q::AbstractArray{<:Any,4}, k::AbstractArray{<:Any,4},
     h = size(v, 2)
     T = promote_type(Float32, eltype(q), eltype(k), eltype(v), eltype(g), eltype(beta))
     scale = T(something(scale, 1 / sqrt(T(dk))))
+    if n > 1 && delta_kernels_apply(q, k, v, g, beta, initial_state) && scan_kernels_differentiable(q)
+        g = reshape(mask_padding(reshape(T.(g), 1, h, n, b), lengths), h, n, b)
+        beta = reshape(mask_padding(reshape(T.(beta), 1, h, n, b), lengths), h, n, b)
+        return delta_kernels(scan_dense(q), scan_dense(k), scan_dense(v), g, beta, scale,
+                             scan_dense(initial_state), min(chunk_size, n, L_MAX_DELTA))
+    end
     q, k = repeat_heads(T.(q) .* scale, h ÷ hk), repeat_heads(T.(k), h ÷ hk)
     g = mask_padding(reshape(T.(g), 1, h, n, b), lengths)
     beta = mask_padding(reshape(T.(beta), 1, h, n, b), lengths)
@@ -295,7 +327,7 @@ function gated_delta_chunked(q, k, v, g, beta, state, chunk_size)
     # (features, L, nc, nheads * batch_size)
     q, k, v, g, beta = chunked(q), chunked(k), chunked(v), chunked(g), chunked(beta)
     k_beta = k .* beta
-    cum = cumsum(g; dims=2)
+    cum = scan_cumsum(g; dims=2)
     decay = flat(chunk_decays(cum))
     kt = batched_transpose(flat(k))
     attn = batched_mul(kt, flat(q)) .* decay
@@ -402,6 +434,17 @@ function causal_log_mask(x, L)
 end
 
 @non_differentiable causal_log_mask(::Any...)
+
+# `cumsum`, with a pullback without `reverse`, which GPUArrays 11 runs on the CPU (Metal)
+scan_cumsum(x; dims) = cumsum(x; dims)
+
+function rrule(::typeof(scan_cumsum), x; dims)
+    scan_cumsum_pullback(Δ) = (NoTangent(), reverse_cumsum(unthunk(Δ); dims))
+    return scan_cumsum(x; dims), scan_cumsum_pullback
+end
+
+# `Σ_{j ≥ i} d[j]` along `dims`
+reverse_cumsum(d; dims) = sum(d; dims) .- cumsum(d; dims) .+ d
 
 # `x` (features, nheads, seq_len, batch_size) padded with `pad` zero tokens and cut in
 # chunks of `L` tokens: (features, L, chunks, nheads * batch_size).

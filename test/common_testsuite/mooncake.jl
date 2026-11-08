@@ -321,6 +321,9 @@ function mooncake_testsuite(Backend)
         pool_ceil = PoolDims(size(x), 3; stride=2, padding=1, ceil_mode=true)
         pool_dil = PoolDims(size(x), 2; stride=1, dilation=2)
         x1d = _rand(rng, 7, 2, 3)
+        # In Float32, cuDNN computes grouped convolutions in TF32 on some GPUs, too coarse for
+        # finite differences.
+        x64, w64, y_sep64 = map(a -> Float64.(a), (x, w, y_sep))
         fwd_cases = Any[
             (true, conv, x, w, dense_cdims),
             (true, Core.kwcall, (;), conv, x, w, dense_cdims),
@@ -329,9 +332,9 @@ function mooncake_testsuite(Backend)
             (true, ∇conv_filter, x, y, dense_cdims),
             (true, Core.kwcall, (;), ∇conv_filter, x, y, dense_cdims),
             # Through `conv`.
-            (false, depthwiseconv, x, w, sep_cd),
-            (false, ∇depthwiseconv_data, y_sep, w, sep_cd),
-            (false, ∇depthwiseconv_filter, x, y_sep, sep_cd),
+            (false, depthwiseconv, x64, w64, sep_cd),
+            (false, ∇depthwiseconv_data, y_sep64, w64, sep_cd),
+            (false, ∇depthwiseconv_filter, x64, y_sep64, sep_cd),
 
             (gpu, meanpool, x, pool_dims),
             (gpu, Core.kwcall, (;), meanpool, x, pool_dims),
