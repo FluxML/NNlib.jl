@@ -1079,9 +1079,10 @@ function rrule!!(
     pb, db = primal(b), tangent(b)
     pσ = primal(σ)
     old_px = copy(px)
+    old_pb = Base.mightalias(px, pb) ? copy(pb) : pb  # `pb` is overwritten along with `px`
     bias_act!(pσ, px, pb)
     function bias_act_pb!!(::NoRData)
-        _scale_by_derivative!(dx, pσ, px, old_px, pb)
+        _scale_by_derivative!(dx, pσ, px, old_px, old_pb)
         _add_bias_gradient!(db, dx)
         copyto!(px, old_px)
         return NoRData(), NoRData(), NoRData(), NoRData()

@@ -533,6 +533,32 @@ function mooncake_testsuite(Backend)
         b isa Bool || @test cpu(db) ≈ cpu(ref_db)
     end
 
+    # The bias is overwritten with the output when it shares memory with `x`, but the gradient is
+    # that of the old one.
+    @testset "bias_act! with the bias aliasing x: $σ, reshaped: $reshaped" for σ in (tanh, swish),
+                                                                          reshaped in (false, true)
+        alias(y) = reshaped ? reshape(vec(y), size(y)) : y
+        x0 = _rand(rng, 4, 2)
+        ref = cpu(gradient(x -> sum(σ.(x .+ x)), x0)[1])
+
+        x, dx = copy(x0), zero(x0)
+        out, pullback = Mooncake.rrule!!(
+            Mooncake.zero_fcodual(bias_act!), Mooncake.zero_fcodual(σ),
+            Mooncake.CoDual(x, dx), Mooncake.CoDual(alias(x), alias(dx)),
+        )
+        fill!(Mooncake.tangent(out), 1)
+        pullback(Mooncake.NoRData())
+        @test x == x0
+        @test cpu(dx) ≈ ref
+
+        x, dx = copy(x0), device(ones(T, 4, 2))
+        out = Mooncake.frule!!(
+            Mooncake.zero_dual(bias_act!), Mooncake.zero_dual(σ),
+            Mooncake.Dual(x, dx), Mooncake.Dual(alias(x), alias(dx)),
+        )
+        @test cpu(Mooncake.tangent(out)) ≈ ref
+    end
+
     @testset "bias_act! forward mode: $σ" for σ in (identity, bias_act_activations...)
         for bsize in ((8,), nothing)
             test_rule(StableRNG(123), bias_act!, σ, bias_act_args(rng, (8, 4), bsize)...;
