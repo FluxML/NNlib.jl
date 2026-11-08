@@ -1,5 +1,5 @@
 """
-    NNlib.gather(src, idx) -> dst
+    NNlib.gather(src, idx; checkbounds = true) -> dst
 
 Reverse operation of [`scatter`](@ref). Gathers data from source `src`
 and writes it in a destination `dst` according to the index
@@ -20,6 +20,10 @@ The elements of `idx` can be integers or integer tuples and may be repeated.
 A single `src` column can end up being copied into zero, one,
 or multiple `dst` columns.
 
+On a GPU, checking that the indices are in range synchronizes the host with the device.
+A caller that has checked them already can skip that with `checkbounds = false`: an
+index out of range then gives an undefined result, and may corrupt memory.
+
 See [`gather!`](@ref) for an in-place version.
 
 # Examples
@@ -38,16 +42,17 @@ julia> NNlib.gather([1 2 3; 4 5 6], [1,3,1,3,1])
 ```
 """
 function gather(
-    src::AbstractArray{Tsrc, Nsrc}, idx::AbstractArray{Tidx, Nidx},
+    src::AbstractArray{Tsrc, Nsrc}, idx::AbstractArray{Tidx, Nidx}; checkbounds::Bool = true,
 ) where {Tsrc, Nsrc, Nidx, Tidx}
     M = typelength(Tidx)
     dstsize = (size(src)[1:Nsrc-M]..., size(idx)...)
     dst = similar(src, Tsrc, dstsize)
-    return gather!(dst, src, idx)
+    # no keyword by default, for the methods of other packages that take none (Reactant's)
+    return checkbounds ? gather!(dst, src, idx) : gather!(dst, src, idx; checkbounds)
 end
 
 """
-    gather(src, IJK...)
+    gather(src, IJK...; checkbounds = true)
 
 Convert the tuple of integer vectors `IJK` to a tuple of `CartesianIndex` and
 call `gather` on it: `gather(src, CartesianIndex.(IJK...))`.
@@ -70,16 +75,17 @@ julia> NNlib.gather(src, [1, 2], [2, 4])
 function gather(
     src::AbstractArray{Tsrc, Nsrc},
     I::AbstractVector{<:Integer}, J::AbstractVector{<:Integer},
-    Ks::AbstractVector{<:Integer}...,
+    Ks::AbstractVector{<:Integer}...; checkbounds::Bool = true,
 ) where {Nsrc, Tsrc}
-    return gather(src, to_cartesian_index(I, J, Ks...))
+    idx = to_cartesian_index(I, J, Ks...)
+    return checkbounds ? gather(src, idx) : gather(src, idx; checkbounds)
 end
 
 to_cartesian_index(IJK...) = CartesianIndex.(IJK...)
 
 @non_differentiable to_cartesian_index(::Any...)
 """
-    NNlib.gather!(dst, src, idx)
+    NNlib.gather!(dst, src, idx; checkbounds = true)
 
 Reverse operation of [`scatter!`](@ref). Gathers data from source `src`
 and writes it in destination `dst` according to the index array `idx`.
@@ -98,9 +104,12 @@ The elements of `idx` can be integers or integer tuples and may be repeated.
 A single `src` column can end up being copied into zero, one,
 or multiple `dst` columns.
 
+With `checkbounds = false`, the GPU methods do not check that the indices are in range,
+see [`gather`](@ref).
+
 See [`gather`](@ref) for an allocating version.
 """
-function gather!(dst::AbstractArray, src::AbstractArray, idx::AbstractArray)
+function gather!(dst::AbstractArray, src::AbstractArray, idx::AbstractArray; checkbounds::Bool = true)
     dims = scatter_dims(src, dst, idx)
     colons = ntuple(i -> Colon(), dims)
     for k in CartesianIndices(idx)
@@ -110,7 +119,7 @@ function gather!(dst::AbstractArray, src::AbstractArray, idx::AbstractArray)
 end
 
 """
-    gather!(dst, src, IJK...)
+    gather!(dst, src, IJK...; checkbounds = true)
 
 Convert the tuple of integer vectors `IJK` to a tuple of `CartesianIndex` and
 call `gather!` on it: `gather!(dst, src, CartesianIndex.(IJK...))`.
@@ -135,15 +144,16 @@ julia> NNlib.gather!(dst, src, [1, 2], [2, 4])
 function gather!(
     dst::AbstractArray, src::AbstractArray,
     I::AbstractVector{<:Integer}, J::AbstractVector{<:Integer},
-    Ks::AbstractVector{<:Integer}...,
+    Ks::AbstractVector{<:Integer}...; checkbounds::Bool = true,
 )
-    return gather!(dst, src, to_cartesian_index(I, J, Ks...))
+    idx = to_cartesian_index(I, J, Ks...)
+    return checkbounds ? gather!(dst, src, idx) : gather!(dst, src, idx; checkbounds)
 end
 
-function gather!(dst::AnyGPUArray, src::AnyGPUArray, idx::AnyGPUArray)
+function gather!(dst::AnyGPUArray, src::AnyGPUArray, idx::AnyGPUArray; checkbounds::Bool = true)
     isempty(dst) && return dst
     n_dims = scatter_dims(src, dst, idx)
-    checkbounds_idx(idx, size(src)[n_dims+1:end])
+    checkbounds && checkbounds_idx(idx, size(src)[n_dims+1:end])
     dims = size(src)[1:n_dims]
     max_dims_idx = prod(dims)
     ndrange = max_dims_idx * length(idx)
@@ -153,9 +163,12 @@ function gather!(dst::AnyGPUArray, src::AnyGPUArray, idx::AnyGPUArray)
 end
 
 # Source on the GPU, index on the CPU: move the index to the GPU and dispatch to the
-# kernel above, rather than falling back to slow scalar indexing (issue #415).
-gather!(dst::AnyGPUArray, src::AnyGPUArray, idx::AbstractArray) =
-    gather!(dst, src, _to_backend(src, idx))
+# kernel above, rather than falling back to slow scalar indexing (issue #415). The index
+# is checked before the copy, on the CPU, where the check does not wait for the GPU.
+function gather!(dst::AnyGPUArray, src::AnyGPUArray, idx::AbstractArray; checkbounds::Bool = true)
+    checkbounds && checkbounds_idx(idx, size(src)[scatter_dims(src, dst, idx)+1:end])
+    return gather!(dst, src, _to_backend(src, idx); checkbounds = false)
+end
 
 @kernel function _gather!(
     dst, @Const(src), @Const(idx),
@@ -166,10 +179,13 @@ gather!(dst::AnyGPUArray, src::AnyGPUArray, idx::AbstractArray) =
     @inbounds dst[i] = src[dim_ids[k + 1], Tuple(idx[j + 1])...]
 end
 
-∇gather_src(Δ, src_size, idx) = scatter!(+, fill!(similar(Δ, eltype(Δ), src_size), 0), Δ, idx)
+# The pullbacks reuse the indices that the forward pass checked.
+∇gather_src(Δ, src_size, idx) =
+    scatter!(+, fill!(similar(Δ, eltype(Δ), src_size), 0), Δ, idx; checkbounds = false)
 
-function rrule(::typeof(gather!), dst::AbstractArray, src::AbstractArray, idx::AbstractArray)
-    y = gather!(dst, src, idx)
+function rrule(::typeof(gather!), dst::AbstractArray, src::AbstractArray, idx::AbstractArray;
+               checkbounds::Bool = true)
+    y = gather!(dst, src, idx; checkbounds)
     src_size = size(src)
     gather!_pullback(Δ) = (NoTangent(), NoTangent(), ∇gather_src(unthunk(Δ), src_size, idx), NoTangent())
     return y, gather!_pullback

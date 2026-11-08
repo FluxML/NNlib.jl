@@ -86,6 +86,8 @@ function test_scatter(device, types, ops; pt, ops_skip_types, is_metal=false)
                 end
 
                 @test cpu(scatter!(op, T.(dst), T.(src), idx)) == T.(target_y)
+                @test cpu(scatter!(op, T.(dst), T.(src), idx; checkbounds = false)) == T.(target_y)
+                @test cpu(scatter!(op, T.(dst), T.(src), cpu(idx); checkbounds = false)) == T.(target_y)
                 @test cpu(scatter!(op, T.(dst), src, idx)) == PT.(target_y)
                 if op == /
                     @test cpu(scatter!(op, T.(dst), T.(src), idx)) == PT.(target_y)
@@ -100,6 +102,7 @@ function test_scatter(device, types, ops; pt, ops_skip_types, is_metal=false)
                     mutated = false
                     src = device(srcs[(dims, mutated)])
                     @test cpu(scatter(op, T.(src), idx)) == T.(res[(op, dims, mutated)])
+                    @test cpu(scatter(op, T.(src), idx; checkbounds = false)) == T.(res[(op, dims, mutated)])
                 end
             end
         end
@@ -258,6 +261,17 @@ function scatter_testsuite(Backend)
                 # the scatter still runs, but a Const dst passes no derivative to src
                 @test cpu(dst) == cpu(scatter(+, src, idx))
                 @test all(iszero, cpu(dsrc))
+            end
+
+            @testset "checkbounds = false" begin
+                dst = device(zeros(T, 3, 4))
+                dsrc = device(zeros(T, 3, 5))
+                Enzyme.autodiff(Enzyme.Reverse,
+                                (d, s, i) -> sum(abs2, scatter!(+, d, s, i; checkbounds = false)),
+                                Active, Duplicated(dst, device(zeros(T, 3, 4))),
+                                Duplicated(copy(src), dsrc), Const(idx))
+                @test cpu(dst) == cpu(scatter(+, src, idx))
+                @test cpu(dsrc) == cpu(2 .* gather(dst, idx))
             end
 
             # the reverse of `max`/`min` reads src and the post-scatter dst

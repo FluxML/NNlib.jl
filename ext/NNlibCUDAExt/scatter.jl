@@ -101,10 +101,11 @@ end
 
 function NNlib.scatter!(op::OP, dst::AnyCuArray,
         src::AnyCuArray,
-        idx::AnyCuArray) where OP
+        idx::AnyCuArray; checkbounds::Bool = true) where OP
     isempty(idx) && return dst
     dims = NNlib.scatter_dims(dst, src, idx)
-    NNlib.checkbounds_idx(idx, size(dst)[dims+1:end])  # the kernels below are @inbounds (#416)
+    # the kernels below are @inbounds (#416)
+    checkbounds && NNlib.checkbounds_idx(idx, size(dst)[dims+1:end])
     args = if dims == 0
         max_idx = length(idx)
         op, dst, src, idx
@@ -125,9 +126,9 @@ end
 
 function NNlib.scatter!(op::typeof(mean), dst::AnyCuArray,
         src::AnyCuArray,
-        idx::AnyCuArray)
-    Ns = NNlib.scatter!(+, zero(dst), one.(src), idx)
-    dst_ = NNlib.scatter!(+, zero(dst), src, idx)
+        idx::AnyCuArray; checkbounds::Bool = true)
+    Ns = NNlib.scatter!(+, zero(dst), one.(src), idx; checkbounds)
+    dst_ = NNlib.scatter!(+, zero(dst), src, idx; checkbounds = false)
     dst .+= NNlib.safe_div.(dst_, Ns)
     return dst
 end
@@ -225,7 +226,7 @@ function NNlib.∇scatter_src(op::Union{typeof(*),typeof(/)}, Δ, dst,
     src::AnyCuArray,
     idx::AnyCuArray)
     dims = ndims(src) - ndims(idx)
-    Δsrc = NNlib.modify_src(op, NNlib.gather(Δ, idx), src)
+    Δsrc = NNlib.modify_src(op, NNlib.gather(Δ, idx; checkbounds = false), src)
     rev_idx = NNlib.reverse_indices(idx)
     rev_idx = CuArray(map(CUDA.cudaconvert, rev_idx))
 

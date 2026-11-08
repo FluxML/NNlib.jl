@@ -242,6 +242,7 @@ function mooncake_testsuite(Backend)
 
             # gather
             (false, :none, true, gather, _rand(rng, 2, 4), [1, 3, 1]),
+            (false, :none, true, Core.kwcall, (checkbounds=false,), gather, _rand(rng, 2, 4), [1, 3, 1]),
             # Wrapped `src`: the pullback scatters into `arrayify`'s fdata, which keeps the
             # wrapper, and `scatter!` takes only a dense destination. Square, so the wrapped
             # trailing size still admits the indices.
@@ -346,6 +347,7 @@ function mooncake_testsuite(Backend)
             (gpu, NNlib.unfold, x, dense_cdims),
 
             (gpu, gather, _rand(rng, 2, 4), [1, 3, 1]),
+            (gpu, Core.kwcall, (checkbounds=false,), gather, _rand(rng, 2, 4), [1, 3, 1]),
             (gpu, gather, _rand(rng, 2, 3, 4), [(1, 2), (3, 1), (2, 2)]),
             (gpu, gather, _rand(rng, 4, 4)', [1, 3, 1]),
             (gpu, gather, transpose(_rand(rng, 4, 4)), [1, 3, 1]),

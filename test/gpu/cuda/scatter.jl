@@ -124,6 +124,20 @@ types = [CuArray{Int32}, CuArray{Int64}, CuArray{Float32}, CuArray{Float64}]
         @test_throws ArgumentError NNlib.scatter!(+, cu(Float32[1, 2, 3]), cu(Float32[1, 2]), cu([2, 9]))
         @test_throws ArgumentError NNlib.scatter!(+, cu(Float32[1, 2, 3]), cu(Float32[1, 2]), [2, 9])
         @test_throws ArgumentError NNlib.scatter!(+, CUDA.zeros(Float32, 2, 3), cu(Float32[1 2 3 4; 5 6 7 8]), cu([2, 1, 1, 9]))
+        @test_throws ArgumentError NNlib.scatter!(mean, CUDA.zeros(Float32, 3), cu(Float32[1, 2]), cu([2, 9]))
+    end
+
+    @testset "checkbounds = false (#908)" begin
+        src = cu(Float32[1 2 3 4; 5 6 7 8])
+        idx = [2, 1, 1, 3]
+        for op in (+, mean, max)
+            y = Array(NNlib.scatter(op, src, cu(idx)))
+            @test Array(NNlib.scatter(op, src, cu(idx); checkbounds = false)) == y
+            @test Array(NNlib.scatter!(op, CUDA.zeros(Float32, 2, 3), src, idx; checkbounds = false)) ==
+                  NNlib.scatter!(op, zeros(Float32, 2, 3), Array(src), idx)
+        end
+        f(kw) = s -> sum(abs2, NNlib.scatter(+, s, cu(idx); kw...))
+        @test Array(only(gradient(f((; checkbounds = false)), src))) == Array(only(gradient(f((;)), src)))
     end
 
     # Paired 16-bit atomics. Sums of small integers are exact in 16 bits, and the

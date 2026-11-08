@@ -128,4 +128,14 @@
         @test_throws ArgumentError NNlib.gather(src, [1, 6])
         @test_throws ArgumentError NNlib.gather(CT(rand(2, 3)), cu([1, 4]))
     end
+
+    @testset "checkbounds = false (#908)" begin
+        src = CT([3 4 5; 6 7 8])
+        idx = [3, 1, 3, 2]
+        y = Array(NNlib.gather(src, cu(idx)))
+        @test Array(NNlib.gather(src, cu(idx); checkbounds = false)) == y
+        @test Array(NNlib.gather(src, idx; checkbounds = false)) == y
+        f(kw) = s -> sum(abs2, NNlib.gather(s, cu(idx); kw...))
+        @test Array(only(gradient(f((; checkbounds = false)), src))) == Array(only(gradient(f((;)), src)))
+    end
 end

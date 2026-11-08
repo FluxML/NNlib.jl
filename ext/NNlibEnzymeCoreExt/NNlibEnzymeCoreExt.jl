@@ -109,18 +109,19 @@ for (name, dataname, filtername) in (
 end
 end
 
-function EnzymeRules.augmented_primal(config, func::EnzymeCore.Const{typeof(NNlib.gather!)}, ::Type{RT}, dst::OutType, src, idx::EnzymeCore.Annotation) where {OutType, RT}
+# `kws` is `checkbounds`, which the reverse pass does not need: its indices are checked.
+function EnzymeRules.augmented_primal(config, func::EnzymeCore.Const{typeof(NNlib.gather!)}, ::Type{RT}, dst::OutType, src, idx::EnzymeCore.Annotation; kws...) where {OutType, RT}
 
     # a Const dst is still written, it just has no shadow and passes nothing back
     if OutType <: EnzymeCore.Const
-        func.val(dst.val, src.val, idx.val)
+        func.val(dst.val, src.val, idx.val; kws...)
         primal = EnzymeRules.needs_primal(config) ? dst.val : nothing
         shadow = EnzymeRules.needs_shadow(config) ? _enz_shadow(config, dst.val) : nothing
         return EnzymeRules.AugmentedReturn(primal, shadow, nothing)
     end
 
     if OutType <: EnzymeCore.Duplicated || OutType <: EnzymeCore.BatchDuplicated
-        func.val(dst.val, src.val, idx.val)
+        func.val(dst.val, src.val, idx.val; kws...)
     end
 
     primal = if EnzymeRules.needs_primal(config)
@@ -143,7 +144,7 @@ function EnzymeRules.augmented_primal(config, func::EnzymeCore.Const{typeof(NNli
     return EnzymeRules.AugmentedReturn(primal, shadow, cache_idx)
 end
 
-function EnzymeRules.reverse(config, func::EnzymeCore.Const{typeof(NNlib.gather!)}, ::Type{RT}, cache_idx, dst::OutType, src, idx::EnzymeCore.Annotation) where {OutType, RT}
+function EnzymeRules.reverse(config, func::EnzymeCore.Const{typeof(NNlib.gather!)}, ::Type{RT}, cache_idx, dst::OutType, src, idx::EnzymeCore.Annotation; kws...) where {OutType, RT}
 
     OutType <: EnzymeCore.Const && return (nothing, nothing, nothing)
 
@@ -166,7 +167,7 @@ function EnzymeRules.reverse(config, func::EnzymeCore.Const{typeof(NNlib.gather!
         if !(typeof(dst) <: EnzymeCore.Const) && ddst !== dst.val
 
             if !(typeof(src) <: EnzymeCore.Const) && dsrc !== src.val
-                NNlib.scatter!(+, dsrc, ddst, cache_idx)
+                NNlib.scatter!(+, dsrc, ddst, cache_idx; checkbounds = false)
             end
 
             ddst .= 0
@@ -178,11 +179,11 @@ end
 
 
 
-function EnzymeRules.augmented_primal(config, func::EnzymeCore.Const{typeof(NNlib.scatter!)}, ::Type{RT}, op::EnzymeCore.Const, dst::OutType, src, idx::EnzymeCore.Annotation) where {OutType, RT}
+function EnzymeRules.augmented_primal(config, func::EnzymeCore.Const{typeof(NNlib.scatter!)}, ::Type{RT}, op::EnzymeCore.Const, dst::OutType, src, idx::EnzymeCore.Annotation; kws...) where {OutType, RT}
 
     # a Const dst is still written, it just has no shadow and passes nothing back
     if OutType <: EnzymeCore.Const
-        func.val(op.val, dst.val, src.val, idx.val)
+        func.val(op.val, dst.val, src.val, idx.val; kws...)
         primal = EnzymeRules.needs_primal(config) ? dst.val : nothing
         shadow = EnzymeRules.needs_shadow(config) ? _enz_shadow(config, dst.val) : nothing
         return EnzymeRules.AugmentedReturn(primal, shadow, nothing)
@@ -194,7 +195,7 @@ function EnzymeRules.augmented_primal(config, func::EnzymeCore.Const{typeof(NNli
     reads_old = is_minmax || op.val isa Union{typeof(*),typeof(/)}
     dst_old = reads_old ? copy(dst.val) : nothing
     if OutType <: EnzymeCore.Duplicated || OutType <: EnzymeCore.BatchDuplicated
-        func.val(op.val, dst.val, src.val, idx.val)
+        func.val(op.val, dst.val, src.val, idx.val; kws...)
     end
 
     primal = if EnzymeRules.needs_primal(config)
@@ -226,7 +227,7 @@ function EnzymeRules.reverse(config,
 										op::EnzymeCore.Const{<:Union{typeof(+),typeof(-),typeof(*),typeof(/),typeof(max),typeof(min),typeof(NNlib.mean)}},
 										dst::OutType,
 										src,
-										idx::EnzymeCore.Annotation) where {OutType, RT}
+										idx::EnzymeCore.Annotation; kws...) where {OutType, RT}
 
     OutType <: EnzymeCore.Const && return (nothing, nothing, nothing, nothing)
 
