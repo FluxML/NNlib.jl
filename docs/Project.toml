@@ -15,4 +15,4 @@ NNlib = {path = ".."}
 [compat]
 Documenter = "1.17.0"
 # FFTA 0.3.2 makes `rfft` ambiguous with FFTW (JuliaMath/FFTA.jl#146); it comes in through Makie.
-FFTA = "=0.3.1"
+FFTA = "0.3, =0.3.1"
