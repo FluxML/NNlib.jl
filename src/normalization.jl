@@ -113,6 +113,13 @@ end
 
 ChainRulesCore.@non_differentiable _update_running_stats!(::Any...)
 
+# The mean and the uncorrected variance of `x` over `dims`, for the generic code of all the
+# normalizations. `NNlibReactantExt` specializes it.
+function _mean_var(x, dims)
+    μ = mean(x; dims)
+    return μ, var(x; mean=μ, dims, corrected=false)
+end
+
 # Shared engine for `batchnorm` and `instancenorm`: per-channel statistics/affine
 # over `reduce_dims`, with optional running-statistics tracking. The channel
 # dimension is `N-1`.
@@ -129,8 +136,7 @@ function _norm_layer(g, b, x::AbstractArray{T,N}, running_mean, running_var,
         μ = reshape(running_mean, affine_shape)
         σ² = reshape(running_var, affine_shape)
     else
-        μ = mean(xc; dims=reduce_dims)
-        σ² = var(xc; mean=μ, dims=reduce_dims, corrected=false)
+        μ, σ² = _mean_var(xc, reduce_dims)
         if track_stats && running_mean !== nothing
             _update_running_stats!(running_mean, running_var, μ, σ², momentum, reduce_dims, size(x))
         end
@@ -275,8 +281,7 @@ function groupnorm(g, b, x::AbstractArray{T,N}, G::Integer; eps=1f-5) where {T,N
     # Split the channel dimension into (C÷G) × G, giving an (N+1)-dim array.
     x2 = reshape(Tc === T ? x : Tc.(x), sz[1:N-2]..., C ÷ G, G, sz[N])
     reduce_dims = ntuple(identity, N-1)  # spatial dims + the intra-group channel dim
-    μ = mean(x2; dims=reduce_dims)
-    σ² = var(x2; mean=μ, dims=reduce_dims, corrected=false)
+    μ, σ² = _mean_var(x2, reduce_dims)
     ϵ = _epsof(x2, eps)
     affine_shape = (ntuple(_ -> 1, N-2)..., C ÷ G, G, 1)
     g2 = g === nothing ? nothing : reshape(g, affine_shape)
@@ -316,8 +321,7 @@ function layernorm(g, b, x::AbstractArray{T}; dims=1, eps=1f-5) where {T}
     use_fused_norm(x, dims, g, b) && return fused_norm(g, b, x, dims, eps, true)[1]
     Tc = _stats_type(T)
     xc = Tc === T ? x : Tc.(x)
-    μ = mean(xc; dims)
-    σ² = var(xc; dims, mean=μ, corrected=false)
+    μ, σ² = _mean_var(xc, dims)
     y = _affine_normalize(xc, μ, σ², g, b, _epsof(xc, eps))
     return Tc === T ? y : T.(y)
 end
