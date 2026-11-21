@@ -36,7 +36,7 @@ function NNlib._batched_gemm!(::Type{<:MtlArray}, transA::Char, transB::Char,
                               α::Number, A, B, β::Number, C)
     if eltype(C) <: Union{Float16, Float32} && A isa MtlArray && B isa MtlArray &&
             size(A, 3) == size(C, 3) && size(B, 3) == size(C, 3)
-        Metal.MPS.matmul!(C, A, B, α, β, transA != 'N', transB != 'N')
+        Metal.MPSGraphs.matmul!(C, A, B, α, β, transA != 'N', transB != 'N')
     else
         batched_mul_generic!(C, _rewrap_batched(transA, A), _rewrap_batched(transB, B), α, β)
     end
