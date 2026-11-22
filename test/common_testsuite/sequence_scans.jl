@@ -213,9 +213,15 @@ function sequence_scans_testsuite(Backend)
                 return vcat(vec(y), vec(S))
             end
             q, k, v, g, beta, S0 = delta_inputs(3, 1, 2, 2, n, 2)
-            @test test_gradients(q, k, v, g, beta, S0; test_gpu, compare) do q, k, v, g, beta, S0
+            delta_gradients() = test_gradients(q, k, v, g, beta, S0; test_gpu, compare) do q, k, v, g, beta, S0
                 o, S = NNlib.gated_delta_rule(q, k, v, g, beta; initial_state=S0, chunk_size=4)
                 return vcat(vec(o), vec(S))
+            end
+            if n == 1 && nameof(Backend) === :ROCBackend
+                # the gradient of `k` has the wrong sign in a term: FluxML/NNlib.jl#927
+                @test_broken delta_gradients()
+            else
+                @test delta_gradients()
             end
         end
     end

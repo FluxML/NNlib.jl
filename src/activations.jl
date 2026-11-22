@@ -1035,6 +1035,11 @@ const ComposedActivation = Union{ComposedFunction{<:Activation}, ComposedFunctio
 
 ## Faster, less accurate, versions of some.
 
+# `sign(x)` ends in `typeof(one(x))(x)`. On Julia 1.10, that call is not inlined once a package
+# image has cached it without its source, as that of KernelAbstractions 0.10 does, and loops over
+# `tanh_fast` are then not vectorized. This has the values of `sign` for floats.
+@inline _sign(x::AbstractFloat) = ifelse(x < 0, -one(x), ifelse(x > 0, one(x), x))
+
 """
     tanh_fast(x)
 
@@ -1067,7 +1072,7 @@ julia> hard_tanh(0.5f0)
     x2 = abs2(x)
     n = evalpoly(x2, (1.0f0, 0.1346604f0, 0.0035974074f0, 2.2332108f-5, 1.587199f-8))
     d = evalpoly(x2, (1.0f0, 0.4679937f0, 0.026262015f0, 0.0003453992f0, 8.7767893f-7))
-    ifelse(x2 < 66f0, x * (n / d), sign(x))
+    ifelse(x2 < 66f0, x * (n / d), _sign(x))
 end
 
 @inline function tanh_fast(x::Float64)
@@ -1077,7 +1082,7 @@ end
     # Instead, we switch to a polynomial, which is very accurate within its range:
     x2 = x * x
     ypoly = x * evalpoly(x2, (1.0, -0.33333333333324583, 0.13333333325511604, -0.05396823125794372, 0.02186660872609521, -0.008697141630499953))
-    ifelse(x2 > 900.0, sign(x), ifelse(x2 < 0.017, ypoly, y))
+    ifelse(x2 > 900.0, _sign(x), ifelse(x2 < 0.017, ypoly, y))
 end
 
 # These approximations are a bit slower with ForwardDiff.Dual numbers, let's use Base.
