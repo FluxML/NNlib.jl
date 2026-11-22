@@ -22,7 +22,7 @@ end
 # `_batched_gemm!` is reached, NNlib's stride analysis has reduced each strided
 # operand to a plain `MtlArray` plus a BLAS-style transpose flag (`transA`/`transB`).
 #
-# Metal Performance Shaders' `matmul!` natively handles 3D (batched) inputs and
+# `MPSGraphs.matmul!` (Metal ≥ 1.12) natively handles 3D (batched) inputs and
 # transposition, but only for real `Float16`/`Float32`, and only when the batch
 # dimensions match (it cannot broadcast a size-1 batch). Everything else — complex
 # eltypes, batch broadcasting, or operands that did not reduce to a plain `MtlArray`
@@ -36,20 +36,11 @@ function NNlib._batched_gemm!(::Type{<:MtlArray}, transA::Char, transB::Char,
                               α::Number, A, B, β::Number, C)
     if eltype(C) <: Union{Float16, Float32} && A isa MtlArray && B isa MtlArray &&
             size(A, 3) == size(C, 3) && size(B, 3) == size(C, 3)
-        Metal.MPS.matmul!(C, A, B, α, β, transA != 'N', transB != 'N')
+        Metal.MPSGraphs.matmul!(C, A, B, α, β; tA=transA, tB=transB)
     else
         batched_mul_generic!(C, _rewrap_batched(transA, A), _rewrap_batched(transB, B), α, β)
     end
     return C
-end
-
-# Metal < 1.12 reads `C` in MPSGraph matmuls (operands at offset zero) even when β is
-# zero, so a NaN or Inf in `C` survives the first group.
-@static if pkgversion(Metal) < v"1.12"
-    function NNlib._grouped_mul!(::Type{<:MtlArray}, C, A, B, ends, α, β)
-        iszero(β) && fill!(C, zero(eltype(C)))
-        return NNlib._grouped_mul_generic!(C, A, B, ends, α, β)
-    end
 end
 
 # Pretty-printing and conversion of a batched adjoint/transpose of an `MtlArray`,
